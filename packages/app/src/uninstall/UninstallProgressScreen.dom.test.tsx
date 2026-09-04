@@ -17,8 +17,6 @@ describe('uninstall progress screen', () => {
   test('announces itself as busy without asking for anything', () => {
     render(<UninstallProgressScreen />);
 
-    // Cleanup is already running and cannot be answered, waived or interrupted;
-    // main also refuses to let this window close while it runs.
     expect(screen.getByRole('status')).toBeDefined();
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });

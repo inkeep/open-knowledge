@@ -10,15 +10,9 @@ import {
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
 
-// The real chain, captured from the mirror. The private merge commit, its
-// mirrored counterpart, and the containment verdict for every stable tag in
-// the surrounding range were read off the mirror repo tag by tag.
 const PRIVATE_SHA = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
 const MIRRORED_SHA = 'eb52a625cd86859a8ec43ddc8f96e9b418d092a7';
 
-// Verbatim shape of the mirrored commit message: subject with the source PR
-// number, the squashed commit subjects, then the trailer. The body did not
-// survive the mirror, which is exactly why the trailer is the carrier.
 const MIRRORED_MESSAGE = [
   'Increase detached server memory limit (#2767)',
   '',
@@ -30,8 +24,6 @@ const MIRRORED_MESSAGE = [
   '',
 ].join('\n');
 
-// Every stable tag in the window around the fix, deliberately shuffled so the
-// tests prove the sort is applied rather than inherited from input order.
 const STABLE_TAGS_SHUFFLED = [
   'v0.35.4',
   'v0.36.0',
@@ -43,8 +35,6 @@ const STABLE_TAGS_SHUFFLED = [
   'v0.35.5',
 ];
 
-// Containment truth for MIRRORED_SHA: absent from the whole v0.35.x line,
-// present from v0.36.0 onward.
 const containsMirrored = (tag, sha) => {
   if (sha !== MIRRORED_SHA) return false;
   return tag === 'v0.36.0';
@@ -155,9 +145,6 @@ describe('firstContainingStableTag', () => {
   });
 
   test('does not bisect: a lower tag that contains the commit wins over a higher one', () => {
-    // Point-release shape. v0.35.7 is cut off v0.35.6 and carries the fix;
-    // v0.36.0 carries it too. Containment is therefore not monotonic across
-    // the sorted sequence, and only a linear walk finds the lower answer.
     const contains = (tag) => tag === 'v0.35.7' || tag === 'v0.36.0';
     const tag = firstContainingStableTag({
       sortedStableTags: ['v0.35.6', 'v0.35.7', 'v0.36.0'],
@@ -190,9 +177,6 @@ describe('resolveShippedVersion', () => {
       ...over,
     });
 
-  // The load-bearing regression. A "most recent release published after the
-  // merge date" heuristic answers v0.35.2 here and is wrong: three v0.35.x
-  // stables published after the source merged and none of them carry the fix.
   test('pinned fixture: the memory-limit fix resolves to v0.36.0', () => {
     expect(resolve()).toEqual({
       shipped: true,
@@ -208,8 +192,6 @@ describe('resolveShippedVersion', () => {
     for (const tag of ['v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.35.3', 'v0.35.4', 'v0.35.5', 'v0.35.6']) {
       expect(containsMirrored(tag, MIRRORED_SHA)).toBe(false);
     }
-    // And with v0.36.0 withheld from the tag set there is no answer at all,
-    // rather than a fallback onto the newest v0.35.x.
     const withoutTarget = resolve({ stableTags: STABLE_TAGS_SHUFFLED.filter((t) => t !== 'v0.36.0') });
     expect(withoutTarget).toMatchObject({ shipped: false, reason: 'not-in-any-stable' });
   });
@@ -224,9 +206,6 @@ describe('resolveShippedVersion', () => {
   });
 
   test('discards a candidate whose message only quotes the trailer', () => {
-    // `git log --grep` substring-matches the whole message, so a commit that
-    // pasted someone else's footer comes back as a candidate and must not be
-    // treated as the mirrored commit.
     const quoted = { sha: 'f'.repeat(40), message: `chore: cite GitOrigin-RevId: ${PRIVATE_SHA} inline` };
     expect(resolve({ findMirroredCommits: finderFor([quoted]) })).toMatchObject({
       shipped: false,
@@ -351,8 +330,6 @@ describe('release tags across both channels', () => {
   const MIXED = ['v0.36.0', 'v0.35.0-beta.10', 'v0.35.0', 'v0.35.0-beta.2', 'not-a-tag', 'v0.35.6'];
 
   test('a beta sorts below the stable it becomes, and betas order numerically', () => {
-    // String ordering would put beta.10 before beta.2 and leave the stable
-    // adjacent to its own prereleases in whatever order they were listed.
     expect(sortReleaseTagsAscending(MIXED)).toEqual([
       'v0.35.0-beta.2',
       'v0.35.0-beta.10',
@@ -373,7 +350,6 @@ describe('resolving against a channel', () => {
   const TAGS = ['v0.35.0', 'v0.36.0-beta.0', 'v0.36.0-beta.1', 'v0.36.0'];
   const findMirrored = (sha) =>
     sha === PRIVATE ? [{ sha: MIRRORED, message: `subject\n\nGitOrigin-RevId: ${PRIVATE}\n` }] : [];
-  // The fix landed in the first beta of the 0.36 cycle and rode it to stable.
   const contains = (tag, sha) =>
     sha === MIRRORED && ['v0.36.0-beta.0', 'v0.36.0-beta.1', 'v0.36.0'].includes(tag);
 
@@ -439,8 +415,6 @@ describe('resolving against a channel', () => {
 
 describe('the tag boundary', () => {
   test('prereleases survive it, because the channel decides what counts and not this', () => {
-    // The beta channel went dead on a reader that filtered to bare vX.Y.Z here.
-    // Filtering belongs to the sorter, which knows which channel is asking.
     expect(parseTagLines('v0.36.0\nv0.37.0-beta.1\n\n  v0.37.0  \n')).toEqual([
       'v0.36.0',
       'v0.37.0-beta.1',
@@ -449,9 +423,6 @@ describe('the tag boundary', () => {
   });
 
   test('a fix that only a stable contains resolves to that stable even on the beta channel', () => {
-    // The precondition behind `stable-covers-it`: a point-release cherry-pick
-    // has no beta to point anyone at, so the beta run must see a stable-shaped
-    // version and stand down rather than invent one.
     const PRIVATE = 'a'.repeat(40);
     const MIRRORED = 'b'.repeat(40);
     expect(

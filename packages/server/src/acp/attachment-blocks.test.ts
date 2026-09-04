@@ -7,20 +7,15 @@ import {
   partToBlock,
 } from './attachment-blocks.ts';
 
-/** A resolver that pretends every path is already inside the content root. */
 const acceptingResolver: AttachmentPathResolver = async (requested) => ({
   abs: `/root/${requested}`,
   rel: requested,
 });
 
-/** A resolver that always throws — simulates `confineToContentDir` refusing
- *  an escape. `partToBlock` catches it and returns a dropped outcome. */
 const rejectingResolver: AttachmentPathResolver = async (requested) => {
   throw new Error(`path escapes: ${requested}`);
 };
 
-/** Stat/readFile stubs — sized so the file falls under the embed cap. Size
- *  comes from the buffer OR the text, whichever the assertion cares about. */
 function makeDeps(text = 'hello world', bytes = Buffer.from(text)) {
   return {
     stat: vi.fn(async () => ({ size: bytes.length }) as never),
@@ -96,8 +91,6 @@ describe('partToBlock — files', () => {
         size: 4,
       },
     });
-    // Never reads bytes when embedding isn't allowed — a resource_link is a
-    // reference, not a payload.
     expect(deps.readFile).not.toHaveBeenCalled();
   });
 
@@ -119,11 +112,6 @@ describe('partToBlock — files', () => {
   });
 
   test('binary file WITH embeddedContext → resource_link (Zed-aligned; never inline bytes)', async () => {
-    // Zed's rule: binary files ride as `ResourceLink`, not `EmbeddedResource`.
-    // Sending base64 payload for a PDF/image-as-file just inflates the wire —
-    // agents like Claude Code don't translate blob resources into their
-    // native document/vision paths, they fall back to their Read tool, which
-    // works fine off a `file://` URI alone.
     const part: AttachmentPart = { kind: 'file', path: 'assets/logo.png', name: 'logo.png' };
     const caps: PromptCapabilities = { embeddedContext: true };
     const bytes = Buffer.from([1, 2, 3, 4]);
@@ -138,8 +126,6 @@ describe('partToBlock — files', () => {
         size: bytes.length,
       },
     });
-    // And crucially: no readFile call happened, because binaries are pure
-    // references — the agent reads bytes off disk via its own tool.
     expect(deps.readFile).not.toHaveBeenCalled();
   });
 
@@ -152,8 +138,6 @@ describe('partToBlock — files', () => {
     };
     const out = await partToBlock(part, caps, acceptingResolver, deps as never);
     expect(out).toHaveProperty('block.type', 'resource_link');
-    // Never reads bytes for a file above the cap — the resource_link is a
-    // reference, so shipping the bytes would defeat the point of the cap.
     expect(deps.readFile).not.toHaveBeenCalled();
   });
 
@@ -188,10 +172,6 @@ describe('buildPromptBlocks', () => {
     );
     expect(dropped).toEqual([]);
     expect(blocks).toEqual([
-      // File/folder attachments get a `[name](path)` marker inline in the
-      // text so Claude Code's ACP adapter correlates the ResourceLink block
-      // against the message. Images are self-describing (they ride inline
-      // as a native ImageContent block) and get no marker.
       { type: 'text', text: '[specs](specs)\n\nlook at this' },
       {
         type: 'resource_link',
@@ -214,7 +194,6 @@ describe('buildPromptBlocks', () => {
       { kind: 'image', data: 'AAAA', mimeType: 'image/png', name: 'shot.png' },
       { kind: 'folder', path: 'specs', name: 'specs' },
     ];
-    // capabilities.image is false → the image drops, the folder still lands
     const { blocks, dropped } = await buildPromptBlocks('here', parts, {}, acceptingResolver);
     expect(blocks.map((b) => b.type)).toEqual(['text', 'resource_link']);
     expect(dropped).toHaveLength(1);

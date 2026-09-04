@@ -1,33 +1,3 @@
-/**
- * Detached spawn lifetime.
- *
- * The core invariant (sibling-spawn supersedes embedding):
- * when the MCP stdio process exits, its detached `ok start`
- * child MUST remain alive AND keep serving requests on its bound port.
- * The concern was that Claude kills the MCP child on session end —
- * a sibling-spawn with `{detached: true, stdio: ['ignore','ignore','ignore'],
- * .unref()}` puts the grandchild in a new process group with no
- * parent-lifetime dependency, so the kill cannot propagate.
- *
- * Test strategy (no published CLI required):
- *   1. Parent test spawns an "MCP-surrogate" node child that in turn spawns
- *      an "ok-start-surrogate" grandchild detached + unref.
- *   2. The grandchild binds `http.createServer` on a kernel port, writes its
- *      pid + port to a tempfile, then idles serving requests with a unique
- *      marker body. This is the surrogate of `ok start`'s real listener.
- *   3. Parent waits for the MCP-surrogate to exit cleanly (mimicking Claude
- *      Code closing its stdio child).
- *   4. Parent then asserts — twice, with a 5-second gap — that:
- *        (a) the grandchild process is alive (`process.kill(pid, 0)`)
- *        (b) the grandchild is still serving HTTP on its port (real socket
- *            request returns the marker body)
- *      The two-checkpoint pattern proves the grandchild survives the parent
- *      death AND continues to respond ≥5s afterwards. Surviving for
- *      ≥10s is the same OS-level guarantee — the assertion would not differ
- *      structurally — but 5s keeps CI fast while still demonstrating the
- *      grandchild is genuinely independent of the parent's lifecycle.
- */
-
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
@@ -36,9 +6,6 @@ import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { describe as _describe, afterEach, beforeEach, expect, it } from 'vitest';
 
-// Skip-on-CI gate: a detached grandchild plus SIGTERM cleanup can strand
-// processes on Linux GHA runners. Tests run locally; a follow-up will narrow
-// the leak or use a subprocess wrapper so this can run in CI too.
 const describe = process.env.CI ? _describe.skip : _describe;
 
 function isProcessAlive(pid: number): boolean {
@@ -94,10 +61,6 @@ describe('detached spawn lifetime (A3 / D-003)', () => {
     const stateFile = join(testDir, 'grandchild.state.json');
     const mcpSurrogateScript = join(testDir, 'mcp-surrogate.mjs');
 
-    // Grandchild: bind http.Server on a kernel port, write {pid, port} to
-    // disk, then serve requests with a unique marker body until killed.
-    // This mirrors the responsibility of `ok start`: own a port, respond
-    // to network probes, and outlive its parent.
     writeFileSync(
       grandchildScript,
       `
@@ -121,9 +84,6 @@ await wait(30_000);
       'utf-8',
     );
 
-    // MCP-surrogate: spawn the grandchild detached + unref, give it a beat
-    // to bind, then exit cleanly. This is the canonical Node detach
-    // pattern — same shape we use in src/commands/{mcp,start}.ts.
     writeFileSync(
       mcpSurrogateScript,
       `
@@ -148,7 +108,6 @@ setTimeout(() => process.exit(0), 300);
     const mcpExitCode = await mcpExited;
     expect(mcpExitCode).toBe(0);
 
-    // Wait for the grandchild to bind + write its state file.
     const stateDeadline = Date.now() + 3_000;
     while (Date.now() < stateDeadline && !existsSync(stateFile)) {
       await wait(50);
@@ -162,39 +121,27 @@ setTimeout(() => process.exit(0), 300);
     expect(state.pid).toBeGreaterThan(0);
     expect(state.port).toBeGreaterThan(0);
 
-    // The MCP-surrogate parent is definitely dead now.
     if (mcpPid !== undefined) {
       expect(isProcessAlive(mcpPid)).toBe(false);
     }
-    // The grandchild's pid is NOT the MCP-surrogate's pid — separate process.
     expect(state.pid).not.toBe(mcpPid);
 
     try {
-      // Checkpoint #1 — immediately after MCP-surrogate death.
       expect(isProcessAlive(state.pid)).toBe(true);
       const probe1 = await fetchTo(state.port);
       expect(probe1.status).toBe(200);
       expect(probe1.body).toBe(GRANDCHILD_MARKER);
 
-      // Wait 5 seconds — long enough to demonstrate the grandchild is
-      // genuinely outliving its parent (not coincidentally still
-      // shutting down). The OS guarantee that 5s of survival implies
-      // any duration of survival; the ≥10s target is the same
-      // structural assertion. Keeping it at 5s preserves CI speed.
       await wait(5_000);
 
-      // Checkpoint #2 — 5 seconds later, still alive AND still serving.
       expect(isProcessAlive(state.pid)).toBe(true);
       const probe2 = await fetchTo(state.port);
       expect(probe2.status).toBe(200);
       expect(probe2.body).toBe(GRANDCHILD_MARKER);
     } finally {
-      // Cleanup: kill the grandchild so it doesn't linger for 30s.
       try {
         process.kill(state.pid, 'SIGKILL');
-      } catch {
-        // already gone — fine
-      }
+      } catch {}
     }
-  }, 20_000); // test timeout: 5s sleep + setup + safety margin
+  }, 20_000);
 });

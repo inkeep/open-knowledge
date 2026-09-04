@@ -13,8 +13,6 @@ describe('classifyImageTargetExistence', () => {
   });
 
   test('server-absolute src present only in the tracked-file set is exists', () => {
-    // An unreferenced image on disk surfaces as a `kind:'file'` row, not a
-    // referenced asset — the union of both partitions is the existence oracle.
     const state = classifyImageTargetExistence(
       '/pics/loose.png',
       '',
@@ -59,16 +57,12 @@ describe('classifyImageTargetExistence', () => {
   });
 
   test('traversal escape past the content root is unknown, not missing', () => {
-    // A `..` that pops above the root resolves to no project path, so it must
-    // not be reported as a missing project-local file.
     expect(classifyImageTargetExistence('../../../etc/passwd.png', '', new Set(), new Set())).toBe(
       'unknown',
     );
   });
 
   test('a doc-relative src resolves against the source doc directory', () => {
-    // The rare un-normalized relative form still classifies correctly when a
-    // source doc is supplied.
     expect(
       classifyImageTargetExistence(
         './cat.png',
@@ -88,9 +82,6 @@ describe('classifyImageTargetExistence', () => {
   });
 
   test('undefined inventory partitions classify a resolvable src as missing', () => {
-    // Both partitions absent (cold/legacy snapshot) — a resolvable project path
-    // with no inventory to confirm it is treated as missing by this pure
-    // function; the hook layer suppresses this during the cold load.
     expect(classifyImageTargetExistence('/images/cat.png', '', undefined, undefined)).toBe(
       'missing',
     );

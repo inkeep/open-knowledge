@@ -1,13 +1,3 @@
-/**
- * Frontmatter edits promote the document's preview tab.
- *
- * Property-panel writes land in the YAML region of `Y.Text('source')`, so they
- * reach both editors as sync-origin changes and neither editor's origin guard
- * classifies them as user input. The panel therefore announces the promotion
- * itself, and this pins that wiring — including the part that is easy to get
- * wrong, that a REJECTED patch announces nothing.
- */
-
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -63,9 +53,7 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 });
 
@@ -86,14 +74,12 @@ describe('PropertyPanel — preview-tab promotion', () => {
     await user.click(titleInput);
     await user.clear(titleInput);
     await user.type(titleInput, 'Published');
-    await user.tab(); // blur — commits the draft through the binding.
+    await user.tab();
 
     expect(onUserEdit).toHaveBeenCalledWith('promotion-commit-doc');
   });
 
   test('merely rendering the panel announces nothing', async () => {
-    // Binding setup reads and subscribes; a doc the user only previewed must
-    // not be promoted by the panel mounting against it.
     const onUserEdit = vi.fn();
     unsubscribePromotion = subscribePreviewTabPromotion(onUserEdit);
 

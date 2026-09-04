@@ -1,12 +1,5 @@
 import { FileUp } from 'lucide-react';
 
-/**
- * Preview clone of the app `File` — inline Notion-style attachment row.
- * `size` is a raw human string ("124 KB") since the app takes a
- * pre-formatted `size` prop off the descriptor. `href` is optional; when
- * absent the row renders as a plain span so demo cards don't drive
- * navigation.
- */
 export function FilePreview({ name, size, href }: { name: string; size?: string; href?: string }) {
   const inner = (
     <>

@@ -16,15 +16,12 @@ describe('randomUUID', () => {
   });
 
   test('falls back to getRandomValues when randomUUID is absent (insecure http origin)', () => {
-    // Simulate a plain-HTTP non-localhost origin: getRandomValues exists,
-    // crypto.randomUUID does not. This is the tab-identity module-load crash.
     const real = globalThis.crypto;
     vi.stubGlobal('crypto', {
       getRandomValues: (a: Uint8Array) => real.getRandomValues(a),
     });
     const id = randomUUID();
     expect(id).toMatch(V4);
-    // Distinct across calls (probabilistically certain for 122 random bits).
     expect(randomUUID()).not.toBe(id);
   });
 

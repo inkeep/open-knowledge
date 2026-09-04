@@ -1,12 +1,3 @@
-/**
- * RTL mount tests for the thread-rendering parity surfaces: the terminal
- * card (command + output + exit badge), the genuine line diff, the explicit
- * Deny path and kind-aware resolution summaries, dead-turn permission
- * gating, the awaiting-permission transcript line, the context-usage ring
- * (shown only once a percentage is computable), and the raw tool-input block.
- * Invocation via `bun run test:dom`.
- */
-
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import {
   act,
@@ -27,19 +18,9 @@ import type {
 } from '@/lib/acp/thread-event-model';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
-// ThreadView renders Radix Tooltips (the context-usage ring, the follow
-// toggle). The app installs the single TooltipProvider at its root (main.tsx),
-// so mount tests must supply one or Radix throws "`Tooltip` must be used
-// within `TooltipProvider`".
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
 let model: ThreadRenderModel | null = null;
-/**
- * The subscribed thread's store entry. `lastSeq` is how far the client has
- * folded the server's log and `replayThroughSeq` is the upper bound of the
- * replay the subscription announced, so a transcript still coming out of
- * history is one whose `lastSeq` has not reached that bound yet.
- */
 let threadState = {
   info: undefined,
   events: [] as unknown[],
@@ -53,8 +34,6 @@ const setConfigOption = vi.fn(
 const setMode = vi.fn((_threadId: string, _modeId: string) => {});
 const prompt = vi.fn((_threadId: string, _content: string) => {});
 const steer = vi.fn((_threadId: string, _content: string) => {});
-/** What the mocked `editQueued` hands back — a rejection stands in for the
- *  server refusing an entry that already dispatched. */
 let editQueuedResult: Promise<void> = Promise.resolve();
 const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => editQueuedResult);
 const holdQueued = vi.fn((_threadId: string, _id: string, _held: boolean) => {});
@@ -62,8 +41,6 @@ const removeQueued = vi.fn((_threadId: string, _id: string) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
 const retryThread = vi.fn(async (_threadId: string) => {});
-/** What the mocked `authenticateThread` hands back — a rejection stands in for
- *  the agent refusing the sign-in. */
 let authenticateResult: Promise<void> = Promise.resolve();
 const authenticateThread = vi.fn((_threadId: string, _methodId: string) => authenticateResult);
 
@@ -112,22 +89,15 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => null,
 }));
 
-// Markdown rendering is covered by AgentMarkdown.dom.test.tsx; keep this
-// suite off the streamdown pipeline.
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
-  // Marked so a test can tell WHICH bubbles route through the renderer. Real
-  // markdown output is AgentMarkdown.dom.test.tsx's subject, not this file's.
   AgentMarkdown: ({ text }: { text: string }) => <div data-testid="rendered-markdown">{text}</div>,
 }));
 
-// The composer's rich input, doubled as a textarea (jsdom can't type into a
-// ProseMirror contentEditable) — see the helper's header for contract parity.
 vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: MockComposerMentionInput,
 }));
 
 const { ThreadView } = await import('./ThreadView');
-// Not mocked — the settings popover writes real remembered picks through it.
 const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
   '@/lib/acp/agent-settings-store'
 );
@@ -188,10 +158,6 @@ function permission(overrides?: Partial<Extract<RenderedItem, { kind: 'permissio
   };
 }
 
-/**
- * Tool-call bodies are collapsed by default (failures excepted), so any test
- * asserting on body content has to open the card first.
- */
 async function openToolCall(): Promise<void> {
   await userEvent.click(screen.getByRole('button', { name: /Run tests/ }));
 }
@@ -199,8 +165,6 @@ async function openToolCall(): Promise<void> {
 afterEach(() => {
   cleanup();
   localStorage.clear();
-  // No-op when timers are already real; makes cleanup unconditional even if a
-  // test using fake timers fails before its own teardown would run.
   vi.useRealTimers();
   respondPermission.mockClear();
   setConfigOption.mockClear();
@@ -265,41 +229,27 @@ describe('ThreadView agent settings', () => {
     const follow = screen.getByRole('button', { name: "Follow the agent's edits" });
     expect(screen.queryByTestId('agent-thread-agent-name')).toBeNull();
     expect(trigger.textContent).toContain('Sonnet');
-    // The settings trigger now lives in the composer's bottom bar, after the
-    // header's follow toggle in document order.
     expect(follow.compareDocumentPosition(trigger) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The menu (and its submenu rows) mount only once the menu is opened.
     expect(screen.queryByTestId('agent-thread-config-model')).toBeNull();
 
     await userEvent.click(trigger);
-    // Each multi-value select is a submenu row summarizing its current value
-    // (testids key off option.id); the boolean is an inline menuitemcheckbox.
     const modelRow = screen.getByTestId('agent-thread-config-model');
     expect(modelRow.textContent).toContain('Sonnet');
     const effortRow = screen.getByTestId('agent-thread-config-effort');
     expect(effortRow.textContent).toContain('Medium');
 
-    // Fast mode is an inline checkbox row — clicking it toggles (menu stays open).
     const fastRow = screen.getByTestId('agent-thread-config-fast');
     expect(fastRow.textContent).toContain('Fast mode');
     expect(fastRow.getAttribute('aria-checked')).toBe('false');
     await userEvent.click(fastRow);
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'fast', true);
 
-    // Open the Model submenu and pick Opus.
     await userEvent.click(modelRow);
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
   });
 
   test('a pick lands on a real pointer press, not just a synthetic click', async () => {
-    // The settings trigger lives inside the composer card, and that card's
-    // `mousedown` handler focuses the textarea when a press lands on its
-    // whitespace. React portals bubble synthetic events along the REACT tree,
-    // so presses inside the portaled menu reach that handler too. It used to
-    // claim them: the submenu closed, focus jumped to the composer, and the
-    // pick never reached the agent. Only a full pointer sequence shows it — a
-    // bare `fireEvent.click` dispatches no `mousedown` at all.
     render(
       <ThreadView
         info={makeInfo({
@@ -330,10 +280,6 @@ describe('ThreadView agent settings', () => {
   });
 
   test('an archived thread keeps the menu usable and says when a pick lands', async () => {
-    // The server records a pick against an archived thread and the resume
-    // applies it. A pick that sticks in the menu but changes nothing until the
-    // conversation wakes is indistinguishable from a menu that silently failed,
-    // so the row that explains it is part of the behaviour, not decoration.
     render(
       <ThreadView
         info={makeInfo({
@@ -356,10 +302,6 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    // The caveat rides the trigger's accessible name too. A menu label is a
-    // bare div outside both the roving-focus collection and the menu's
-    // accessible name, so on its own it never reaches a screen reader — the
-    // one audience the "did my pick do anything?" confusion hits hardest.
     const trigger = screen.getByRole('button', { name: /Agent settings/ });
     expect(trigger.getAttribute('aria-label')).toMatch(/pick this conversation back up/);
 
@@ -393,8 +335,6 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    // Both channels, not just the visible one: an inverted archived check would
-    // otherwise announce the caveat on every live thread and still pass here.
     const trigger = screen.getByRole('button', { name: 'Agent settings' });
     expect(trigger.getAttribute('aria-label')).not.toMatch(/pick this conversation back up/);
     await userEvent.click(trigger);
@@ -437,16 +377,11 @@ describe('ThreadView agent settings', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
 
-    // A model pick is remembered, so the next thread with this agent opens on it.
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
     expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus' });
 
-    // A mode advertised as a config option is remembered through that same
-    // path — no special case. Its permissiveness is surfaced by the accent, not
-    // by declining to remember it. (Picking a select value closes the menu, so
-    // reopen it.)
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
     await userEvent.click(screen.getByTestId('agent-thread-config-permission'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
@@ -456,7 +391,6 @@ describe('ThreadView agent settings', () => {
 });
 
 describe('ThreadView permissive-mode accent', () => {
-  /** A ready thread sitting on `currentValue`. */
   const modeInfo = (currentValue: string) =>
     makeInfo({
       status: 'ready',
@@ -483,7 +417,6 @@ describe('ThreadView permissive-mode accent', () => {
   test('a mode that lets the agent act unprompted is marked, and says so', () => {
     render(<ThreadView info={modeInfo('bypassPermissions')} />);
     expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
-    // The warning must name what it is warning about, not just glow.
     expect(
       screen.getByRole('button', {
         name: /Bypass permissions lets Claude Agent act without asking/,
@@ -512,8 +445,6 @@ describe('ThreadView permissive-mode accent', () => {
   test('the accent tracks the live mode, restored or hand-picked alike', async () => {
     const { rerender } = render(<ThreadView info={modeInfo('default')} />);
     expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
-    // Whatever moved the thread into a permissive mode — a pick, or a restore
-    // applied before turn 1 — the accent follows the mode the agent reports.
     rerender(<ThreadView info={modeInfo('bypassPermissions')} />);
     expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
     rerender(<ThreadView info={modeInfo('default')} />);
@@ -539,13 +470,9 @@ describe('ThreadView agent settings (modes)', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
-    // Legacy modes render as an "Agent mode" submenu (synthetic id 'legacy-mode');
-    // open it and pick Ask.
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'ask');
-    // The legacy surface has no config option to ride, so it persists under its
-    // own key — but it persists just the same.
     expect(getRememberedAgentMode(agentSettingsKey({ source: 'registry', id: 'claude' }))).toBe(
       'ask',
     );
@@ -571,8 +498,6 @@ describe('ThreadView agent settings (modes)', () => {
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'yolo');
-    // Guards against a relapse into gating persistence on permissiveness: the
-    // accent is what makes a permissive mode legible, not refusing to keep it.
     expect(getRememberedAgentMode(agentSettingsKey({ source: 'registry', id: 'claude' }))).toBe(
       'yolo',
     );
@@ -598,8 +523,6 @@ describe('ThreadView agent settings (disable, not hide)', () => {
   });
 
   test("an exited thread that never advertised settings reads 'none', not 'not yet'", () => {
-    // The session ran to completion — "hasn't reported yet" would imply an
-    // answer is still coming.
     render(<ThreadView info={makeInfo({ status: 'exited' })} />);
     expect(screen.getByText("Claude Agent doesn't offer any settings to adjust")).toBeTruthy();
   });
@@ -619,7 +542,6 @@ describe('ThreadView permission posture badge', () => {
   });
 
   test('every milder posture renders no badge — those signals live elsewhere', () => {
-    // Asks-first (Claude): the permission prompts themselves are the signal.
     const { unmount: unmountAsks } = render(
       <ThreadView
         info={makeInfo({ agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' } })}
@@ -628,8 +550,6 @@ describe('ThreadView permission posture badge', () => {
     expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
     unmountAsks();
 
-    // Self-managed (declared modes): the settings trigger names the mode and
-    // the permissive-mode accent flags the dangerous ones.
     const { unmount: unmountModes } = render(
       <ThreadView
         info={makeInfo({
@@ -647,8 +567,6 @@ describe('ThreadView permission posture badge', () => {
     expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
     unmountModes();
 
-    // Unverified with no modes: "can't tell" must never render as the
-    // autonomous warning.
     render(<ThreadView info={makeInfo()} />);
     expect(screen.queryByTestId('agent-thread-posture')).toBeNull();
   });
@@ -672,7 +590,6 @@ describe('ThreadView terminal card', () => {
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // Completed cards start collapsed — expand to reach the body.
     await userEvent.click(screen.getByRole('button', { name: /Run tests/ }));
     const card = screen.getByTestId('agent-thread-terminal');
     expect(card.textContent).toContain('npm test');
@@ -770,29 +687,23 @@ describe('ThreadView permissions', () => {
     const deny = screen.getByTestId('agent-thread-permission-deny');
     const primary = screen.getByTestId('agent-thread-permission-allow');
 
-    // Primary allow is first in DOM order (top of stack); deny follows below.
     expect(primary.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The escalating grant renders as a peer button, not tucked behind a chevron.
     const escalating = within(stack).getByRole('button', {
       name: 'Always allow all mcp__open-knowledge__exec',
     });
     expect(escalating).toBeDefined();
 
-    // Only the least-privilege grant carries primary emphasis.
     expect(primary.textContent).toBe('Allow');
     expect(primary.getAttribute('data-variant')).toBe('default');
     expect(escalating.getAttribute('data-variant')).toBe('outline');
     expect(deny.getAttribute('data-variant')).toBe('outline');
 
-    // No secondary-cluster chevron — the stack has no dropdown.
     expect(within(card).queryByTestId('agent-thread-permission-allow-more')).toBeNull();
     expect(within(card).queryByTestId('agent-thread-permission-allow-more-more')).toBeNull();
   });
 
   test('renders every one of four options as a full-width button — no overflow menu', async () => {
-    // Claude's four-option shape: `kind` is a hint, not a key — two distinct
-    // grants share `allow_always` and differ only by name.
     model = makeModel({
       items: [
         permission({
@@ -807,7 +718,6 @@ describe('ThreadView permissions', () => {
     });
     render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
 
-    // Every option is a real peer button — no dropdown, no truncation.
     const primary = screen.getByTestId('agent-thread-permission-allow');
     const deny = screen.getByTestId('agent-thread-permission-deny');
     expect(primary.textContent).toBe('Allow');
@@ -817,14 +727,12 @@ describe('ThreadView permissions', () => {
     expect(session).toBeDefined();
     expect(forever).toBeDefined();
 
-    // Clicking a secondary allow selects its optionId directly.
     await userEvent.click(session);
     expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', {
       kind: 'selected',
       optionId: 'session',
     });
 
-    // Escalated allow is likewise directly actionable.
     await userEvent.click(forever);
     expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', {
       kind: 'selected',
@@ -833,10 +741,6 @@ describe('ThreadView permissions', () => {
   });
 
   test('stacks even when the extra option is a second allow with no reject', async () => {
-    // Two-allow / zero-reject shape: the row branch renders only the primary
-    // grant, so without the stack the escalating grant is unreachable. And
-    // the stack must still surface a refusal — the agent offered none, so we
-    // synthesize a cancel-wired Deny.
     model = makeModel({
       items: [
         permission({
@@ -857,10 +761,6 @@ describe('ThreadView permissions', () => {
   });
 
   test('stacks two reject options with no allow so the escalating refusal is reachable', () => {
-    // Symmetric to the two-allow / zero-reject case: the row branch would
-    // collapse denyOptions to just the primary, dropping the escalating
-    // refusal. Two-reject / zero-allow enters the stack via
-    // `denyOptions.length > 1` and renders both refusal buttons.
     model = makeModel({
       items: [
         permission({
@@ -906,8 +806,6 @@ describe('ThreadView permissions', () => {
       ],
     });
     render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
-    // One refusal control, and it routes through the agent's option (selected)
-    // instead of the protocol-level `cancelled` fallback.
     const deny = screen.getByTestId('agent-thread-permission-deny');
     expect(deny.textContent).toBe('Reject');
     await userEvent.click(deny);
@@ -965,7 +863,6 @@ describe('ThreadView status + usage', () => {
   });
 
   test('shows no usage ring when the agent reports usage but no context size', () => {
-    // Without a size there is no fill to draw — the ring is meaningless.
     model = makeModel({ tokenUsage: { used: 500, size: undefined } });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     expect(screen.queryByTestId('agent-thread-usage')).toBeNull();
@@ -985,11 +882,9 @@ describe('ThreadView tool-call status', () => {
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // Replayed rows never flash a check, and "done" is not painted on the row.
     expect(screen.queryByTestId('agent-thread-tool-check')).toBeNull();
     expect(screen.queryByTestId('agent-thread-tool-failed')).toBeNull();
     expect(screen.queryByTestId('agent-thread-tool-spinner')).toBeNull();
-    // …but the status still reaches assistive tech.
     expect(screen.getByRole('button', { name: /Run tests/ }).textContent).toContain('done');
   });
 
@@ -1005,7 +900,6 @@ describe('ThreadView tool-call status', () => {
     });
     rerender(<ThreadView info={makeInfo({ status: 'ready' })} />);
     expect(screen.queryByTestId('agent-thread-tool-spinner')).toBeNull();
-    // Only a call that completed while mounted acknowledges the transition.
     expect(screen.getByTestId('agent-thread-tool-check')).toBeDefined();
   });
 
@@ -1032,8 +926,6 @@ describe('ThreadView tool-call status', () => {
   });
 
   test('the completion check fades out once its window elapses', async () => {
-    // Without this, deleting the setTimeout would leave a check pinned to every
-    // recently-completed row and the "flashes a check" test above would still pass.
     vi.useFakeTimers({ shouldAdvanceTime: true });
     model = makeModel({ items: [toolCall({ status: 'in_progress', content: ['out'] })] });
     const { rerender } = render(<ThreadView info={makeInfo()} />);
@@ -1043,13 +935,10 @@ describe('ThreadView tool-call status', () => {
       turnActive: false,
     });
     rerender(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // `.className` on an <svg> is an SVGAnimatedString, not a string.
     expect(screen.getByTestId('agent-thread-tool-check').getAttribute('class')).toContain(
       'opacity-100',
     );
 
-    // Past COMPLETION_CHECK_MS the element stays mounted (so the row doesn't
-    // reflow) but transitions to transparent.
     await act(async () => {
       vi.advanceTimersByTime(2_000);
     });
@@ -1109,7 +998,6 @@ describe('ThreadView permission merged into its tool call', () => {
   test('an approval leaves no trace — the card goes, and nothing replaces it', () => {
     model = modelWithGatedCall({ optionId: 'yes', auto: false });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // The call ran; that it was allowed is not separately worth saying.
     expect(screen.queryByTestId('agent-thread-permission')).toBeNull();
     expect(screen.queryByTestId('agent-thread-tool-permission')).toBeNull();
   });
@@ -1128,7 +1016,6 @@ describe('ThreadView permission merged into its tool call', () => {
   });
 
   test('a dismissed prompt marks the row too — it also did not get an answer', () => {
-    // `auto: true` with no chosen option is the timeout/turn-cancel path.
     model = modelWithGatedCall({ optionId: null, auto: true });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     expect(screen.getByTestId('agent-thread-tool-permission').textContent).toContain(
@@ -1137,7 +1024,6 @@ describe('ThreadView permission merged into its tool call', () => {
   });
 
   test('stays quiet when the failed row already says the call did not run', () => {
-    // The FAILED badge and the body cover it; a third statement is noise.
     const item = gated({ optionId: null, auto: false });
     model = makeModel({
       items: [toolCall({ status: 'failed', content: ['User refused permission'] }), item],
@@ -1161,7 +1047,6 @@ describe('ThreadView permission merged into its tool call', () => {
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // "Denied — Reject" says the same word twice.
     expect(screen.getByTestId('agent-thread-tool-permission').textContent).toBe('Denied');
 
     cleanup();
@@ -1177,7 +1062,6 @@ describe('ThreadView permission merged into its tool call', () => {
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // The persistence is not implied by "Denied", so it survives.
     expect(screen.getByTestId('agent-thread-tool-permission').textContent).toContain('Always deny');
   });
 
@@ -1193,7 +1077,6 @@ describe('ThreadView permission merged into its tool call', () => {
   });
 
   test('an unmergeable outcome keeps the standalone card as its fallback', () => {
-    // No toolCallId from the agent — the outcome must stay reachable somewhere.
     model = makeModel({
       items: [permission({ resolved: { optionId: 'yes', auto: false } })],
       turnActive: false,
@@ -1211,7 +1094,6 @@ describe('ThreadView tool-call collapse', () => {
     const { rerender } = render(<ThreadView info={makeInfo()} />);
     expect(screen.queryByText('running output')).toBeNull();
 
-    // Completing changes nothing about the body: there is no fold to jank.
     model = makeModel({
       items: [toolCall({ status: 'completed', content: ['running output'] })],
       turnActive: false,
@@ -1222,7 +1104,6 @@ describe('ThreadView tool-call collapse', () => {
       'false',
     );
 
-    // Still openable on demand.
     await openToolCall();
     expect(screen.getByText('running output')).toBeDefined();
   });
@@ -1237,11 +1118,8 @@ describe('ThreadView tool-call collapse', () => {
       turnActive: false,
     });
     rerender(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    // An error is the one body worth showing unasked.
     expect(screen.getByText('boom')).toBeDefined();
 
-    // A failure already on screen at mount (replay) opens too — but that is the
-    // mount state, not a transition, so it never animates a hundred rows at once.
     cleanup();
     model = makeModel({
       items: [toolCall({ status: 'failed', content: ['old failure'] })],
@@ -1252,9 +1130,6 @@ describe('ThreadView tool-call collapse', () => {
   });
 
   test('keeps a card open when the user expanded it before completion', async () => {
-    // The regression this guards: a fold-on-completion rule wiping a manual
-    // toggle mid-run. So the expand has to happen while the call is still
-    // in_progress, and the completion has to arrive as a live transition.
     model = makeModel({
       items: [toolCall({ status: 'in_progress', content: ['review me'] })],
     });
@@ -1304,7 +1179,6 @@ describe('ThreadView message queue', () => {
     model = makeModel({ turnActive: true });
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
-    // Empty draft: Stop owns the slot outright — no competing Send button.
     expect(screen.getByTestId('agent-thread-cancel')).toBeTruthy();
     expect(screen.queryByTestId('agent-thread-send')).toBeNull();
 
@@ -1327,12 +1201,10 @@ describe('ThreadView message queue', () => {
 
     const composer = screen.getByTestId('agent-thread-composer');
     fireEvent.change(composer, { target: { value: 'typed mid-turn' } });
-    // Stop is gone, so this is the only remaining way to cancel.
     expect(screen.queryByTestId('agent-thread-cancel')).toBeNull();
 
     fireEvent.keyDown(composer, { key: 'Escape' });
     expect(cancel).toHaveBeenCalledWith('thread-1');
-    // The draft survives the cancel — it's still queueable against the next turn.
     expect((composer as HTMLTextAreaElement).value).toBe('typed mid-turn');
   });
 
@@ -1377,10 +1249,6 @@ describe('ThreadView message queue', () => {
     fireEvent.keyDown(screen.getByTestId('agent-thread-transcript'), { key: 'Escape' });
     expect(cancel).not.toHaveBeenCalled();
 
-    // Escape is dismiss-shaped, so a panel-wide binding would let a stray press
-    // kill a running turn. The accepted cost is this state: a draft hides Stop,
-    // and cancelling means clicking back into the composer or clearing the draft.
-    // Pinned so widening the scope is a deliberate change, not an accident.
     fireEvent.keyDown(screen.getByTestId('agent-thread-composer'), { key: 'Escape' });
     expect(cancel).toHaveBeenCalledWith('thread-1');
   });
@@ -1389,9 +1257,6 @@ describe('ThreadView message queue', () => {
     model = makeModel({ turnActive: true });
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
-    // The `+` opened a one-row menu whose only row was inert without a loaded
-    // comment queue, and the queue panel's own Send already dispatches to this
-    // thread. Pinned so it does not drift back in as decoration.
     expect(screen.queryByTestId('composer-add-context')).toBeNull();
   });
 
@@ -1498,7 +1363,6 @@ describe('ThreadView message queue', () => {
     fireEvent.change(input, { target: { value: 'sharper text' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(editQueued).toHaveBeenCalledWith('thread-1', 'q1', 'sharper text');
-    // The row returned to display mode.
     expect(screen.queryByTestId('agent-thread-queued-input')).toBeNull();
     expect(screen.getByTestId('agent-thread-queued')).toBeTruthy();
   });
@@ -1539,10 +1403,8 @@ describe('ThreadView thought collapse', () => {
 
     const toggle = screen.getByTestId('agent-thread-thought-toggle');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    // Streaming shows the tail line (it moves), not the head.
     expect(toggle.textContent).toContain('Last thought line');
     expect(toggle.textContent).not.toContain('First thought line');
-    // The full body is not mounted while collapsed.
     expect(screen.getByTestId('agent-thread-thought').textContent).not.toContain(
       'First thought line',
     );
@@ -1577,7 +1439,6 @@ describe('ThreadView config value hints', () => {
               category: 'thought_level',
               type: 'select',
               currentValue: 'default',
-              // Mirrors the claude-acp adapter: no description on any entry.
               options: [
                 { value: 'default', name: 'Default' },
                 { value: 'high', name: 'High' },
@@ -1589,11 +1450,9 @@ describe('ThreadView config value hints', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
-    // The collapsed row summarizes what the default resolves to, not "Default".
     const effortRow = screen.getByTestId('agent-thread-config-effort');
     expect(effortRow.textContent).toContain("Model's default effort");
 
-    // In the flyout the hint is the secondary line under the adapter's name.
     await userEvent.click(effortRow);
     const entry = await screen.findByTestId('agent-thread-config-option-default');
     expect(entry.textContent).toContain('Default');
@@ -1613,8 +1472,6 @@ describe('ThreadView config value hints', () => {
               category: 'model',
               type: 'select',
               currentValue: 'default',
-              // Mirrors the claude-acp adapter: the default entry carries the
-              // exact description of the model it resolves to.
               options: [
                 {
                   value: 'default',
@@ -1634,8 +1491,6 @@ describe('ThreadView config value hints', () => {
       />,
     );
 
-    // The composer trigger names the resolved model, with default demoted to
-    // the secondary hint.
     const trigger = screen.getByRole('button', { name: 'Agent settings' });
     expect(trigger.textContent).toContain('Opus (1M context) · default');
 
@@ -1663,7 +1518,6 @@ describe('ThreadView queue rescue on Stop', () => {
     fireEvent.click(screen.getByTestId('agent-thread-cancel'));
 
     expect(cancel).toHaveBeenCalledWith('thread-1');
-    // The server drops the queue on cancel, so the words only survive here.
     const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     expect(composer.value).toBe('first correction\n\nsecond correction');
   });
@@ -1704,13 +1558,11 @@ describe('ThreadView steer now', () => {
     model = makeModel({ turnActive: true });
     render(<ThreadView info={makeInfo({ status: 'running' })} />);
 
-    // Nothing typed: no steer affordance to mis-click, only Stop.
     expect(screen.queryByTestId('agent-thread-steer')).toBeNull();
 
     const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     fireEvent.change(composer, { target: { value: '  actually, do this instead  ' } });
 
-    // Both outcomes are offered side by side: wait your turn, or interrupt.
     expect(screen.getByTestId('agent-thread-send').getAttribute('aria-label')).toBe(
       'Queue message',
     );
@@ -1773,8 +1625,6 @@ describe('ThreadView steer now', () => {
     fireEvent.click(screen.getByTestId('agent-thread-cancel'));
 
     expect(cancel).toHaveBeenCalledWith('thread-1');
-    // Server-side both are dropped, so the composer is the only place the
-    // words survive — steer first, because that is the order it would have run.
     const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     expect(composer.value).toBe('the correction\n\nqueued after');
   });
@@ -1827,7 +1677,6 @@ describe('ThreadView queued-message holds', () => {
     fireEvent.keyDown(screen.getByTestId('agent-thread-queued-input'), { key: 'Enter' });
 
     expect(editQueued).toHaveBeenCalledWith('thread-1', 'q1', 'sharper text');
-    // A second release frame would race the edit's own clear.
     expect(holdQueued).toHaveBeenCalledTimes(1);
     expect(holdQueued).toHaveBeenCalledWith('thread-1', 'q1', true);
   });
@@ -1907,8 +1756,6 @@ describe('ThreadView send-vs-queue labelling', () => {
     });
 
     const send = screen.getByTestId('agent-thread-send');
-    // The aria-label alone was the only send-vs-queue tell; sighted users read
-    // the glyph.
     expect(send.querySelector('svg')?.getAttribute('class')).toContain('list-plus');
 
     await user.hover(send);
@@ -2002,10 +1849,6 @@ describe('ThreadView retry', () => {
     expect(retryThread).toHaveBeenCalledWith('thread-1');
   });
 
-  // Restore-to-composer is the prompt-failure counterpart to Retry: the session
-  // is live so a launch respawn is wrong, but the failed text isn't retrievable
-  // from the composer either (only from the transcript row above the notice).
-  // The button seeds the composer from the nearest preceding user_message.
   test('a prompt failure offers Edit and resend instead of Retry, seeds the composer, and hides the failed pair', async () => {
     model = makeModel({
       turnActive: false,
@@ -2029,20 +1872,11 @@ describe('ThreadView retry', () => {
 
     await userEvent.click(screen.getByTestId('agent-thread-restore'));
 
-    // Edit-and-resend is a revert, not an append: the failed message + its
-    // notice leave the transcript and the composer takes the text so the
-    // user can edit and send anew. The transcript keeps other turns intact.
     expect(composer.value).toBe('give me a haiku about tokens');
     expect(screen.queryByTestId('agent-thread-user-message')).toBeNull();
     expect(screen.queryByTestId('agent-thread-notice')).toBeNull();
   });
 
-  // Only the most-recent prompt failure carries the button, mirroring Retry's
-  // one-card discipline. Older failures stay in the log as history — and the
-  // restore reverse-scans from the notice for the NEAREST user message, not
-  // the earliest, so the last failure resurfaces the last prompt (not the
-  // first). A forward-scan regression would still leave the button count at
-  // one but seed the wrong text; the click assertion is what guards that.
   test('only the last prompt failure carries the button, seeds from nearest, and hides only the reverted pair', async () => {
     model = makeModel({
       turnActive: false,
@@ -2066,19 +1900,12 @@ describe('ThreadView retry', () => {
     await userEvent.click(button);
 
     expect(composer.value).toBe('second try');
-    // Only the reverted pair hides. The earlier failed turn stays as history.
     const users = screen.getAllByTestId('agent-thread-user-message');
     expect(users).toHaveLength(1);
     expect(users[0]?.textContent).toContain('first try');
     expect(screen.getAllByTestId('agent-thread-notice')).toHaveLength(1);
   });
 
-  // Restore-to-composer is inert unless the composer is actually usable after
-  // it. A prompt failure leaves `status: 'error'` (the session is alive, but
-  // the top-level status still records the failed turn), and the composer's
-  // Send is normally gated by `status === 'ready'`. The guard has to admit
-  // this mid-session recoverable case or the button seeds text into a dead
-  // composer.
   test('after Edit-and-resend the composer is usable — Send button becomes enabled and can send', async () => {
     const promptFn = prompt as ReturnType<typeof vi.fn>;
     promptFn.mockClear();
@@ -2091,28 +1918,19 @@ describe('ThreadView retry', () => {
     });
     render(<ThreadView info={makeInfo({ status: 'error' })} />);
 
-    // Before the restore the composer is empty and Send is disabled.
     const send = screen.getByTestId('agent-thread-send');
     expect(send.hasAttribute('disabled')).toBe(true);
 
     await userEvent.click(screen.getByTestId('agent-thread-restore'));
 
-    // The seed lands, and the Send button lights up because the mid-session
-    // failure guard now admits `status === 'error'` with a prompt reason.
     const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     expect(composer.value).toBe('give me a haiku');
     expect(send.hasAttribute('disabled')).toBe(false);
 
-    // A real click flows through the send path — the wire call fires, so the
-    // user can actually retry the prompt they just edited.
     await userEvent.click(send);
     expect(promptFn).toHaveBeenCalledWith('thread-1', 'give me a haiku', undefined);
   });
 
-  // The `restoreNoticeIndex` guard tests both `!archived` and `status !==
-  // 'exited'`. An exited thread has no live agent, so restore has no
-  // destination; the sibling test to `archived thread offers no
-  // Edit-and-resend` closes the other branch of the same guard.
   test('an exited thread offers no Edit-and-resend', () => {
     model = makeModel({
       turnActive: false,
@@ -2126,9 +1944,6 @@ describe('ThreadView retry', () => {
     expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
   });
 
-  // An attachment-only prompt lands as a real user item with `text: ''` in
-  // the fold. The scan stops at the first `role === 'user'` regardless of
-  // text so it can't step past this row into an earlier turn.
   test('Edit-and-resend is a no-op when the failed prompt has no text', async () => {
     model = makeModel({
       turnActive: false,
@@ -2144,9 +1959,6 @@ describe('ThreadView retry', () => {
     expect(composer.value).toBe('');
   });
 
-  // The wrong-turn hazard: the scan must stop at the failed prompt's OWN user
-  // row even when that row has no text — otherwise an attachment-only prompt
-  // that failed pulls text from an earlier, unrelated turn's user message.
   test('an attachment-only failed prompt does not restore text from an earlier turn', async () => {
     model = makeModel({
       turnActive: false,
@@ -2164,8 +1976,6 @@ describe('ThreadView retry', () => {
     expect(composer.value).toBe('');
   });
 
-  // Archived threads are read-only — the composer is disabled — so the
-  // restore action has no destination.
   test('an archived thread offers no Edit-and-resend', () => {
     model = makeModel({
       turnActive: false,
@@ -2179,8 +1989,6 @@ describe('ThreadView retry', () => {
     expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
   });
 
-  // A transcript accumulates a notice per failed attempt; Retry belongs to the
-  // one the user is looking at, not to every one they have ever seen.
   test('only the last startup failure carries the button', () => {
     model = makeModel({
       turnActive: false,
@@ -2225,12 +2033,9 @@ describe('ThreadView retry', () => {
     expect(button.textContent).toContain('Sign in with Test Login');
     await userEvent.click(button);
     expect(authenticateThread).toHaveBeenCalledWith('thread-1', 'test_login');
-    // Retry stays: "I signed in elsewhere, try again" is still a valid answer.
     expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
   });
 
-  // Several ways in are still one decision: the agent's first method leads and
-  // the alternatives stay quiet, so the pane never reads as competing demands.
   test('only the first sign-in method carries the primary weight', () => {
     model = makeModel({
       turnActive: false,
@@ -2252,8 +2057,6 @@ describe('ThreadView retry', () => {
     });
     render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
 
-    // The rule is "exactly one primary, and it's the first" — which quiet
-    // variant the alternatives wear is a styling call, free to be retuned.
     const variants = screen
       .getAllByTestId('agent-thread-auth-method')
       .map((b) => b.getAttribute('data-variant'));
@@ -2262,9 +2065,6 @@ describe('ThreadView retry', () => {
     expect(variants.slice(1).every((v) => v !== 'default')).toBe(true);
   });
 
-  // Alone under the stack, Retry is a lone muted word with nothing to explain
-  // it; beside a details toggle it has company, and the framing would only make
-  // the pair wordy.
   test('Retry is framed as a question only when it stands alone', () => {
     const authFailure = (machineDetail?: string): Extract<RenderedItem, { kind: 'notice' }> => ({
       kind: 'notice',
@@ -2290,8 +2090,6 @@ describe('ThreadView retry', () => {
     );
   });
 
-  // Clicking a method used to drop the prompt and say "Starting the agent…" —
-  // a claim the user could see was false, since they had not signed in yet.
   test('a sign-in in flight reads as a wait, not as the agent starting', () => {
     model = makeModel({
       turnActive: false,
@@ -2311,19 +2109,12 @@ describe('ThreadView retry', () => {
 
     const card = screen.getByTestId('agent-thread-notice');
     expect(card.textContent).toContain('Signing in to Claude');
-    // The offer is over: the methods stop inviting a second click, and nothing
-    // claims the agent is on its way.
     expect(screen.queryByTestId('agent-thread-auth-method')).toBeNull();
     expect(screen.queryByTestId('agent-thread-starting')).toBeNull();
     expect(card.textContent).not.toContain('Already signed in?');
-    // Abandoning the sign-in in a browser tab parks the thread until it times
-    // out, so the way back stays on screen throughout.
     expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
   });
 
-  // The browser asks the user to confirm a device code against what their
-  // device shows. If OK shows nothing, they confirm blind and the check is
-  // theatre — so the agent's own words go on screen while the wait is live.
   test('a sign-in in flight shows what the agent printed', () => {
     model = makeModel({
       turnActive: false,
@@ -2352,16 +2143,12 @@ describe('ThreadView retry', () => {
       />,
     );
 
-    // The code is the focus, one tap to copy, with the page to confirm it at
-    // underneath — not a wall of log lines to squint through.
     expect(screen.getByTestId('agent-thread-sign-in-code').textContent).toContain('CRQT-NXNT');
     expect(screen.getByTestId('agent-thread-sign-in-url').textContent).toBe(
       'authkit.cline.bot/device',
     );
   });
 
-  // The headline swap is silent to anyone not looking at it: the shimmer reads
-  // as progress visually and as nothing to a screen reader.
   test('the sign-in transition is announced to assistive tech', () => {
     const authNotice: Extract<RenderedItem, { kind: 'notice' }> = {
       kind: 'notice',
@@ -2373,8 +2160,6 @@ describe('ThreadView retry', () => {
     model = makeModel({ turnActive: false, items: [authNotice] });
     const parked = render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
     const regions = () => screen.getAllByRole('status').map((n) => n.textContent);
-    // Mounted before the transition, and empty — a region that appears and
-    // fills in one cycle is missed on VoiceOver.
     expect(regions()).toContain('');
     parked.unmount();
 
@@ -2383,7 +2168,6 @@ describe('ThreadView retry', () => {
     expect(regions().join(' ')).toContain('Signing in to Claude');
   });
 
-  // Copy feedback is an icon swap, which is no feedback at all without this.
   test('copying the code is announced to assistive tech', async () => {
     const writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
@@ -2419,8 +2203,6 @@ describe('ThreadView retry', () => {
     vi.unstubAllGlobals();
   });
 
-  // A flow shaped differently must still reach the user: this stderr is the
-  // only channel a sign-in has before a session exists.
   test('a sign-in that prints something unrecognized shows it verbatim', () => {
     model = makeModel({
       turnActive: false,
@@ -2448,7 +2230,6 @@ describe('ThreadView retry', () => {
     );
   });
 
-  // Nothing to say yet: an empty channel must not leave an empty box behind.
   test('a sign-in with nothing printed shows no output block', () => {
     model = makeModel({
       turnActive: false,
@@ -2469,8 +2250,6 @@ describe('ThreadView retry', () => {
     expect(screen.queryByTestId('agent-thread-sign-in-output')).toBeNull();
   });
 
-  // Nothing has been said in this thread yet, so the sign-in is the whole
-  // screen — not an alert stacked on top of the startup failures it replaces.
   test('a sign-in on an unstarted thread replaces the startup notices', () => {
     model = makeModel({
       turnActive: false,
@@ -2514,8 +2293,6 @@ describe('ThreadView retry', () => {
     });
     render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
 
-    // Synchronous click: the pre-armed rejection has to meet its handler in
-    // this same tick, or Node reports it as unhandled before the click lands.
     fireEvent.click(screen.getByTestId('agent-thread-auth-method'));
 
     await vi.waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
@@ -2523,8 +2300,6 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-auth-method').hasAttribute('disabled')).toBe(false);
   });
 
-  // A terminal/env_var sign-in happens in the user's own shell — a button OK
-  // can't complete would be a promise it has no way to keep.
   test('a terminal-kind method is named, not offered as a button', () => {
     model = makeModel({
       turnActive: false,
@@ -2556,8 +2331,6 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-retry')).toBeDefined();
   });
 
-  // Signing in takes a detour through a browser; a draft written before it has
-  // to survive, so the field stays typable even though sending is still gated.
   test('the composer stays typable while the thread waits on sign-in', () => {
     model = makeModel({ turnActive: false, items: [] });
     render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
@@ -2569,8 +2342,6 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
   });
 
-  // Clicking Sign in flips the status to `installing` — the same field the
-  // draft was written in must not go read-only underneath it.
   test('the composer stays typable once the sign-in is under way', () => {
     model = makeModel({ turnActive: false, items: [] });
     render(<ThreadView info={makeInfo({ status: 'authenticating' })} />);
@@ -2635,11 +2406,8 @@ describe('ThreadView failure notices', () => {
     render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
 
     const card = screen.getByTestId('agent-thread-notice');
-    // "Claude Agent" reads as the brand in copy — the display name drops the suffix.
     expect(card.textContent).toContain('Sign in to Claude to continue');
     expect(card.textContent).toContain('Authentication required');
-    // The JSON payload is diagnostic, not headline copy: it stays behind the
-    // disclosure until the user asks for it.
     expect(card.textContent).not.toContain('run /login first');
     expect(screen.queryByTestId('agent-thread-notice-details')).toBeNull();
 
@@ -2672,7 +2440,6 @@ describe('ThreadView failure notices', () => {
     const card = screen.getByTestId('agent-thread-notice');
     expect(card.textContent).toContain("Claude couldn't start a conversation");
     expect(card.textContent).toContain('Failed to initialize session services');
-    // Nothing machine-readable was attached, so no disclosure is offered.
     expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
   });
 
@@ -2688,10 +2455,6 @@ describe('ThreadView failure notices', () => {
     expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
   });
 
-  // Regression guard for extractRootCauseLine: npm prints the cause up-front
-  // and follows it with an "A complete log of this run can be found in: …"
-  // epilogue. A last-match heuristic picks the log-path — the single line
-  // this feature exists to skip past.
   test('root-cause line picks the CAUSE, not the "complete log" epilogue', () => {
     const stderr = [
       'npm error code EUSAGE',
@@ -2722,15 +2485,6 @@ describe('ThreadView failure notices', () => {
   });
 });
 
-/**
- * Runtime status the agent reported, drawn as chrome rather than speech.
- *
- * The defect this row exists to fix is misattribution: an operational warning
- * that reads as the agent's answer gets acted on as if the agent had said it.
- * So the assertions here are about what separates the two — a label, a glyph,
- * a box — and about what the row must NOT offer, since passive guidance with a
- * Retry button invites an action that does nothing.
- */
 describe('ThreadView agent notices', () => {
   const WARNING_TEXT = 'Warning: Skill "foo" was not loaded because its manifest is invalid.\n\n';
 
@@ -2744,15 +2498,11 @@ describe('ThreadView agent notices', () => {
 
     const card = screen.getByRole('note');
     expect(card).toBe(screen.getByTestId('agent-thread-agent-notice'));
-    // Three cues, because any one of them can be unavailable: the label for a
-    // reader who cannot see the box, the glyph for one skimming, and the
-    // border for forced-colors mode, where the amber fill is discarded.
     expect(card.textContent).toContain('Warning');
     expect(card.className).toContain('border');
     expect(card.className).toContain('amber');
     const glyph = card.querySelector('svg');
     expect(glyph?.getAttribute('aria-hidden')).toBe('true');
-    // Not an assistant bubble — that is the whole point of the row.
     expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
   });
 
@@ -2795,7 +2545,6 @@ describe('ThreadView agent notices', () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(card.compareDocumentPosition(answer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    // The answer keeps its own bubble: warning chrome never absorbs it.
     expect(within(answer).getByTestId('rendered-markdown').textContent).toBe('Done.');
   });
 
@@ -2831,7 +2580,6 @@ describe('ThreadView agent notices', () => {
 
     const failure = screen.getByTestId('agent-thread-notice');
     expect(failure.textContent).toContain("Claude couldn't start");
-    // Retry belongs to the failure card, and the warning card sits outside it.
     const retry = screen.getByTestId('agent-thread-retry');
     expect(failure.contains(retry)).toBe(true);
     expect(screen.getByTestId('agent-thread-agent-notice').contains(retry)).toBe(false);
@@ -2841,15 +2589,6 @@ describe('ThreadView agent notices', () => {
   });
 });
 
-/**
- * Arrival announcements for runtime warnings.
- *
- * A warning card is silent by construction — it draws itself and offers
- * nothing to act on — so a reader who cannot see the transcript gets no cue
- * that one appeared. The polite region is that cue. The two failure modes it
- * has to avoid are opposite: saying nothing when a warning lands mid-turn, and
- * reciting a month of history to anyone who reopens an old thread.
- */
 describe('ThreadView warning announcements', () => {
   const CODEX = { id: 'codex-acp', name: 'Codex', source: 'registry' as const };
   const FIRST = 'Warning: skill "alpha" was skipped\n\nIts manifest is invalid.\n\n';
@@ -2863,7 +2602,6 @@ describe('ThreadView warning announcements', () => {
     return screen.getByTestId('agent-thread-warning-announcer');
   }
 
-  /** A thread whose retained log has been fully folded — nothing left to replay. */
   function settled(seq: number) {
     threadState = { info: undefined, events: [], lastSeq: seq, replayThroughSeq: seq };
     return makeInfo({ status: 'ready', agent: CODEX, lastSeq: seq });
@@ -2889,8 +2627,6 @@ describe('ThreadView warning announcements', () => {
     model = makeModel({ turnActive: true, items: [notice(FIRST, 6)] });
     rerender(<ThreadView info={settled(5)} />);
 
-    // The agent's own opening line, framed by app copy that says who reported
-    // it — the detail paragraph stays on the card rather than in the queue.
     await waitFor(() =>
       expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
     );
@@ -2907,8 +2643,6 @@ describe('ThreadView warning announcements', () => {
     await waitFor(() =>
       expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
     );
-    // The second one waits its turn instead of replacing the first before it
-    // has been read out.
     await waitFor(
       () =>
         expect(announcer().textContent).toBe('Codex reported: Warning: skill "beta" was skipped'),
@@ -2917,8 +2651,6 @@ describe('ThreadView warning announcements', () => {
   });
 
   test('draws a replayed transcript without announcing any of it', () => {
-    // Mounted before the retained log has been folded — what arrives next is
-    // history, not news.
     threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 4 };
     model = makeModel({ turnActive: false, items: [] });
     const info = makeInfo({ status: 'ready', agent: CODEX, lastSeq: 4 });
@@ -2953,24 +2685,17 @@ describe('ThreadView warning announcements', () => {
   });
 
   test('speaks a warning that lands in the batch that closes the replay window', async () => {
-    // The server advances `info.lastSeq` the moment it appends while event
-    // batches coalesce on a timer, so delivery and that field cross back and
-    // forth all session. The subscription's own bound is what separates
-    // history from news, and the warning above it has to be spoken even when
-    // the batch carrying it is also the one that catches delivery up.
     threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 4 };
     model = makeModel({ turnActive: false, items: [] });
     const { rerender } = render(
       <ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 4 })} />,
     );
 
-    // The retained log lands, but an info snapshot has already raced past it.
     threadState = { info: undefined, events: [], lastSeq: 4, replayThroughSeq: 4 };
     model = makeModel({ turnActive: false, items: [notice(FIRST, 2)] });
     rerender(<ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 8 })} />);
     expect(announcer().textContent).toBe('');
 
-    // The live batch that catches delivery up carries the warning with it.
     threadState = { info: undefined, events: [], lastSeq: 8, replayThroughSeq: 4 };
     model = makeModel({ turnActive: true, items: [notice(FIRST, 2), notice(SECOND, 8)] });
     rerender(<ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 8 })} />);
@@ -2989,8 +2714,6 @@ describe('ThreadView warning announcements', () => {
       expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
     );
 
-    // Content alone cannot tell a second announcement from the first: they
-    // are the same string. Count the writes instead.
     const spoken: string[] = [];
     const observer = new MutationObserver((records) => {
       for (const record of records) {
@@ -3002,9 +2725,6 @@ describe('ThreadView warning announcements', () => {
     });
     observer.observe(announcer(), { childList: true });
 
-    // The socket drops and resubscribes. The server re-announces its retained
-    // log, which now covers the warning already spoken — a bound that moves
-    // with the log is what keeps the reader from hearing it a second time.
     threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 6 };
     model = makeModel({ turnActive: false, items: [] });
     rerender(<ThreadView info={info} />);
@@ -3033,13 +2753,6 @@ describe('ThreadView warning announcements', () => {
   });
 });
 
-/**
- * Sent messages render as markdown, like the agent's replies.
- *
- * They used to print verbatim. Fine for a typed sentence, wrong for a comment
- * batch: that prompt is composed markdown, so the reader saw the raw `>`
- * blockquotes and backticks the agent parses instead of the passages they mark.
- */
 describe('the transcript renders both sides as markdown', () => {
   test('a sent message goes through the renderer', async () => {
     model = {
@@ -3166,12 +2879,9 @@ describe('ThreadView plan approval wiring (PRD-8022)', () => {
     const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await userEvent.type(composer, 'hey ');
     await userEvent.click(screen.getByTestId('agent-thread-plan-approval-ask-changes'));
-    // appendText: existing draft preserved, prefix joined with a blank line.
     expect(composer.value).toBe('hey\n\nIn the plan above, please ');
-    // Second click: idempotent — the prefix is not duplicated.
     await userEvent.click(screen.getByTestId('agent-thread-plan-approval-ask-changes'));
     expect(composer.value).toBe('hey\n\nIn the plan above, please ');
-    // client.prompt is untouched by Ask changes.
     expect(prompt).not.toHaveBeenCalled();
   });
 
@@ -3186,8 +2896,6 @@ describe('ThreadView plan approval wiring (PRD-8022)', () => {
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     await userEvent.click(screen.getByTestId('agent-thread-plan-approval-approve'));
     expect(prompt).toHaveBeenCalledTimes(1);
-    // Post-click: the pending flag hides the whole row so a second click has
-    // nothing to hit before the status has transitioned.
     expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
   });
 

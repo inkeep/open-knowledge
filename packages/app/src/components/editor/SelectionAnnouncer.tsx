@@ -37,14 +37,9 @@ export function SelectionAnnouncer({ editor }: { editor: Editor | null }) {
   const blockSelection = useBlockSelection(editor);
   const regionRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
-  /** Tracks whether the most-recent announcement was non-empty. Used to
-   *  decide if a transition to no-selection deserves a "deselection"
-   *  announcement (transition matters; standing-empty does not). */
   const lastWasSelected = useRef(false);
 
   useEffect(() => {
-    // Clear any pending announcement — selection has moved; the in-flight
-    // message is stale.
     if (timeoutRef.current !== null) {
       window.clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -58,24 +53,13 @@ export function SelectionAnnouncer({ editor }: { editor: Editor | null }) {
     if (isSelected) {
       message = formatSelectionMessage(editor, blockSelection);
     } else if (lastWasSelected.current) {
-      // Selection was non-empty and is now empty — announce deselection
-      // explicitly so AT users know they exited the block.
       message = DESELECTION_MESSAGE;
     } else {
-      // No selection, no prior selection — nothing useful to say.
       message = '';
     }
 
     timeoutRef.current = window.setTimeout(() => {
       if (regionRef.current) {
-        // Imperative write — bypasses React's batching so AT gets every
-        // mutation. Two-step clear-then-write guarantees a detectable DOM
-        // change even when the new message is identical to the previous
-        // one (e.g. re-selecting the same block): screen readers only
-        // re-announce on observed content change, so `textContent = same`
-        // would be a silent no-op.
-        // Reference: MDN "ARIA live regions" — "briefly clear the contents
-        // of the alert container before injecting the alert message."
         regionRef.current.textContent = '';
         regionRef.current.textContent = message;
       }
@@ -96,16 +80,6 @@ export function SelectionAnnouncer({ editor }: { editor: Editor | null }) {
   );
 }
 
-/**
- * Format the aria-live message for the current selection. Separated out so
- * the formatting logic is pure and the useEffect stays focused on lifecycle.
- * Exported for unit testing.
- *
- * `unregisteredSuffix: true` is applied ONLY to the focused (innermost) label —
- * the parent label drops the suffix so AT users don't hear "(unregistered)"
- * twice in one announcement when both nodes resolve to wildcard descriptors.
- * The disambiguation belongs on the focused item.
- */
 export function formatSelectionMessage(
   editor: Editor,
   blockSelection: ReturnType<typeof useBlockSelection>,
@@ -123,14 +97,8 @@ export function formatSelectionMessage(
   }
 
   const parent = chain[chain.length - 2];
-  // No `unregisteredSuffix` here — only the focused label needs the
-  // disambiguation. Doubling it ("Foo (unregistered) in Bar (unregistered)")
-  // is screen-reader noise.
   const parentLabel = getEntryLabel(parent);
 
-  // Compute the selected wrapper's index within its parent's children via
-  // PM position resolution. If the resolve fails (doc shifted mid-tick), we
-  // gracefully fall back to the simpler message without the index.
   try {
     const $pos = editor.state.doc.resolve(innermost.pos);
     const index = $pos.index($pos.depth);

@@ -1,29 +1,3 @@
-/**
- * `PropertyInlineLinks` — render a YAML-frontmatter property value with
- * its embedded link syntax (`[[Page]]`, `[text](url)`, bare http(s) URLs)
- * surfaced as clickable elements rather than raw markdown source.
- *
- * Used inside the property panel's `ListWidget` non-tag chips and
- * `TextWidget` plain-text view so a value like
- * `[[some/page]] — description` renders as
- *   <chip target="some/page">some/page</chip> — description
- * instead of the raw `[[some/page]] — description` text.
- *
- * Click semantics:
- *   - Wikilink   → navigates the host window to `#/<target>` (hash route).
- *     Cmd/Ctrl/middle-click is not specially handled — wiki targets
- *     resolve to the same doc tab regardless of modifier, and a property-
- *     panel chip is not a primary navigation surface.
- *   - Markdown link / autolink → delegates to `dispatchExternalLinkClick`
- *     for `http(s)://` so Electron's openExternal routes through the OS
- *     default browser. Relative / `mailto:` etc. fall back to the
- *     anchor's default behavior.
- *
- * The component takes no commit-related props — it's read-only render,
- * paired with sibling editing affordances (textarea / pencil button) in
- * the parent widget.
- */
-
 import type { ReactNode } from 'react';
 import { UserText } from '@/components/UserText';
 import { hashFromDocName } from '@/lib/doc-hash';
@@ -37,18 +11,10 @@ import {
 
 interface PropertyInlineLinksProps {
   text: string;
-  /** Optional className passed through to the outer element. */
   className?: string;
 }
 
 export function PropertyInlineLinks({ text, className }: PropertyInlineLinksProps): ReactNode {
-  // Fast path: most property values are plain text. The widgets that wrap
-  // this component already pre-check via `hasInlineLinks`, but render the
-  // guard here too so the component is safe to drop in anywhere without
-  // requiring callers to opt into the optimization.
-  // The isolate goes on the whole value, not on each link inside it: the links
-  // are fragments of one string the user wrote, so splitting them into separate
-  // direction contexts would reorder a sentence rather than protect it.
   if (!hasInlineLinks(text)) {
     return <UserText className={className}>{text}</UserText>;
   }
@@ -62,9 +28,6 @@ export function PropertyInlineLinks({ text, className }: PropertyInlineLinksProp
 }
 
 function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
-  // Segment identity doesn't outlive a render — the input text is the
-  // thing that changes, and React's reconciler handles position-keyed
-  // children correctly when the parent re-renders.
   const key = index;
   switch (seg.type) {
     case 'text':
@@ -72,10 +35,6 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
 
     case 'wikilink': {
       const label = seg.alias ?? (seg.anchor ? `${seg.target}#${seg.anchor}` : seg.target);
-      // `<a href="#/...">` lets the browser's native nav handle the
-      // hash change — same surface every other in-app nav already
-      // uses (CommandPalette, ActivityModeContent, PresenceBar). No
-      // custom onClick needed; keyboard activation works for free.
       return (
         <a
           key={key}
@@ -101,10 +60,6 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
           target="_blank"
           rel="noopener noreferrer"
           data-testid="property-inline-link"
-          // Same dispatch pattern as `TextWidget`'s URL chip — routes
-          // through Electron's `shell.openExternal` allowlist when the
-          // desktop bridge is mounted; falls through to the anchor's
-          // default `target="_blank"` on web.
           onClick={(e) => dispatchExternalLinkClick(e, seg.url)}
           onAuxClick={(e) => {
             if (e.button === 1) dispatchExternalLinkClick(e, seg.url);

@@ -67,7 +67,6 @@ describe('inspectPluginBundleDir', () => {
       skill(codex, 's');
       manifest(gemini, 'gemini-extension.json', { name: 'gx', version: '2.0.0' });
       skill(gemini, 's');
-      // Copilot bare-root plugin.json must declare `skills` to count.
       manifest(copilot, 'plugin.json', { name: 'cp', version: '3.0.0', skills: ['skills/'] });
       skill(copilot, 's');
 
@@ -84,11 +83,9 @@ describe('inspectPluginBundleDir', () => {
   });
 
   test('an unrelated bare-root plugin.json (no skills field) is NOT a Copilot plugin', () => {
-    // Common filename — must not false-positive just because a skills/ dir exists.
     manifest(root, 'plugin.json', { name: 'some-random-tool', version: '1.0.0' });
     skill(root, 'a');
     expect(inspectPluginBundleDir(root)).toBeNull();
-    // But a Copilot-namespaced manifest IS unambiguous, no skills field needed.
     manifest(root, '.plugin/plugin.json', { name: 'cop' });
     expect(inspectPluginBundleDir(root)).toMatchObject({ provider: 'copilot', plugin: 'cop' });
   });
@@ -102,7 +99,6 @@ describe('inspectPluginBundleDir', () => {
   });
 
   test('enumerates skills nested under category folders (real plugin layout)', () => {
-    // mattpocock/skills-style: skills/<category>/<name>/SKILL.md (depth 2).
     manifest(root, '.claude-plugin/plugin.json', { name: 'mattpocock-skills' });
     for (const [cat, name] of [
       ['productivity', 'grill-me'],
@@ -113,7 +109,6 @@ describe('inspectPluginBundleDir', () => {
       mkdirSync(d, { recursive: true });
       writeFileSync(join(d, 'SKILL.md'), `---\nname: ${name}\n---\nx\n`);
     }
-    // A references/ dir under a skill must NOT be mistaken for a sub-skill.
     mkdirSync(join(root, 'skills', 'productivity', 'grill-me', 'references'), { recursive: true });
     writeFileSync(join(root, 'skills', 'productivity', 'grill-me', 'references', 'x.md'), 'ref');
 
@@ -123,10 +118,8 @@ describe('inspectPluginBundleDir', () => {
   });
 
   test('null for a bare skill repo (no manifest) and a manifest with no skills/', () => {
-    // Bare skill dir, no plugin manifest.
     skill(root, 'lonely');
     expect(inspectPluginBundleDir(root)).toBeNull();
-    // Plugin manifest but no skills/ dir → nothing to bundle-offer.
     const noSkills = mkdtempSync(join(tmpdir(), 'noskills-'));
     try {
       manifest(noSkills, '.claude-plugin/plugin.json', { name: 'p' });

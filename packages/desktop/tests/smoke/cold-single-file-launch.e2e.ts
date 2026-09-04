@@ -1,46 +1,3 @@
-/**
- * Cold-launch boot-restore smoke — the ONE tier that can observe what a Finder
- * "Open With" actually does to the initial window set.
- *
- * **Why this file does not use `_electron.launch`.** Every other smoke file
- * launches Electron directly and then fires `open(1)` at the already-running
- * app. That exercises the warm `open-url` path. It structurally CANNOT exercise
- * the cold one: a direct launch delivers the target via `process.argv` (the
- * `second-instance` path), never as the `open-file` / `open-url` Apple Event
- * that macOS sends when Launch Services starts a not-yet-running app. The
- * boot-restore decision reads its launch flag behind a settle barrier built for
- * exactly that asynchronous Apple-Event delivery, so a direct launch tests the
- * barrier's fast path and nothing else. Here the app is started BY `open(1)`,
- * which is the real thing.
- *
- * **The precondition is produced by the app, not written by the test.** Each
- * case first launches with a file that lives inside a project, then quits
- * cleanly so the app writes its own `pendingWindowRestore` snapshot. Only then
- * does the case do the launch under test.
- *
- * Two earlier revisions wrote `state.json` directly instead. Both failed in CI
- * with `snapshotWindowCount: 0` — the app booted from a different `state.json`
- * than the one seeded, so the precedence under test was never exercised. The
- * first revision moved `userData` by overriding `HOME`; removing that override
- * did not fix it, which means the test cannot reliably predict where a packaged
- * build resolves `app.getPath('userData')` on an arbitrary machine. Letting the
- * app produce and consume its own snapshot removes the need to know: wherever
- * it keeps state, it is the same place across the two launches.
- *
- * That also buys real coverage the seeded version never had — the clean-exit
- * snapshot WRITE path is now exercised, not assumed — and it means the suite no
- * longer reads or rewrites the developer's own `state.json`.
- *
- * **The oracle is the main process's structured log, not the renderer.** The
- * app is not ours to attach to, so each case asserts on `boot-restore decision`
- * (`urlLaunch`, `action`, `snapshotWindowCount`). The log is shared across
- * launches, so entries are selected by recency against a timestamp taken
- * immediately before each launch.
- *
- * Packaged-only by construction: an unpackaged `out/main/index.js` has no
- * bundle for Launch Services to start.
- */
-
 import { execFileSync } from 'node:child_process';
 import {
   existsSync,
@@ -61,12 +18,9 @@ const TARGET = resolveDesktopTarget({ requirePackaged: true });
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
-/** `OpenKnowledge.app` → `OpenKnowledge`, the process name `pkill`/`pgrep` use. */
 const APP_NAME = TARGET.appPath ? basename(TARGET.appPath, '.app') : 'OpenKnowledge';
-/** Shared across launches; entries are selected by recency, never by isolation. */
 const LOG_DIR = join(process.env.HOME ?? '', '.ok', 'logs');
 
-/** A cold launch is only cold if nothing holds the single-instance lock. */
 function appIsRunning(): boolean {
   try {
     execFileSync('pgrep', ['-x', APP_NAME], { stdio: 'pipe' });
@@ -83,32 +37,19 @@ function waitForExit(): void {
   }
 }
 
-/**
- * Quit via AppleScript rather than a signal. The snapshot this suite depends on
- * is written on the app's clean-exit path; a `pkill` is not guaranteed to reach
- * it, and a missed snapshot would look like a precedence failure.
- */
 function quitAppCleanly(): void {
   try {
     execFileSync('osascript', ['-e', `tell application "${APP_NAME}" to quit`], { stdio: 'pipe' });
-  } catch {
-    // Not running, or refused the Apple Event. The force path below covers it.
-  }
+  } catch {}
   waitForExit();
   if (appIsRunning()) {
     try {
       execFileSync('pkill', ['-x', APP_NAME], { stdio: 'pipe' });
-    } catch {
-      // Already gone.
-    }
+    } catch {}
     waitForExit();
   }
 }
 
-/**
- * A project with one markdown file in it. Opening that file cold gives the app
- * a project window, which is what the clean-exit snapshot then records.
- */
 function makeProjectFixture(): { dir: string; file: string } {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-cold-launch-project-')));
   mkdirSync(join(dir, '.ok'), { recursive: true });
@@ -169,18 +110,10 @@ function launchViaLaunchServices(target: string): number {
   return since;
 }
 
-/**
- * Give the app a non-empty clean-exit snapshot: open a file inside a project so
- * a project window exists, then quit cleanly so that window is recorded.
- * Returns nothing — the snapshot lives in the app's own userData, wherever that
- * is, which is precisely what this test declines to assume.
- */
 async function establishRestoreSnapshot(projectFile: string): Promise<void> {
   quitAppCleanly();
   const since = launchViaLaunchServices(projectFile);
   await waitForBootDecision(since);
-  // The window opens after the decision is logged; give it a moment to exist so
-  // the clean exit has something to record.
   execFileSync('sleep', ['6']);
   quitAppCleanly();
 }
@@ -206,9 +139,6 @@ test.describe('cold launch with an explicit target owns the initial window set',
       const since = launchViaLaunchServices(loose.file);
       const decision = await waitForBootDecision(since);
 
-      // Load-bearing: with an empty snapshot a single-file launch still yields
-      // `action: none`, so without this the case passes while proving nothing.
-      // A 0 here means the precondition never took, NOT that precedence broke.
       expect(
         decision.snapshotWindowCount,
         'the app booted with an empty snapshot, so the suppression under test was never exercised',
@@ -225,12 +155,6 @@ test.describe('cold launch with an explicit target owns the initial window set',
   test('a cold launch that opens no window of its own still lands on the Navigator', async () => {
     test.setTimeout(180_000);
 
-    // A share for a repo this machine does not hold takes the foreign-host
-    // gate, and every remaining branch there declines without opening a
-    // window. Suppressing the restore removed what used to mask that, so the
-    // boot must recover to the Navigator. Left unhandled the app runs with no
-    // window at all, which off macOS is unrecoverable: `window-all-closed`
-    // fires only when a window closes, and none was ever created.
     const project = makeProjectFixture();
     const share = 'openknowledge://share?url=https://github.com/inkeep/not-cloned-repo/tree/main';
 

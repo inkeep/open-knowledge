@@ -1,19 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleLocalOpClone`.
- *
- * Validates the canonical pattern handles NDJSON streaming endpoints:
- *   - Pre-stream errors (response head not yet written) emit RFC 9457
- *     `application/problem+json` via `errorResponse(...)` — same shape as
- *     non-streaming handlers.
- *   - Mid-stream errors (response head already written as
- *     `application/x-ndjson`) emit a typed event matching
- *     `StreamingProblemEventSchema`: `{ type: 'error', problem: ProblemDetails }`.
- *
- * Real server + real handler + real schema. The test points the spawn at a
- * deterministic non-existent binary so `child.on('error', ENOENT)` fires on
- * every mid-stream test — no real `git clone` runs, no network access.
- */
-
 import { homedir } from 'node:os';
 import { ProblemDetailsSchema, StreamingProblemEventSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -23,10 +7,6 @@ import { createTestServer, type TestServer } from '../test-harness';
 let server: TestServer;
 
 beforeAll(async () => {
-  // Deterministic ENOENT: spawn() against a path we control + can guarantee
-  // does not exist. The clone subprocess can't start, the `child.on('error')`
-  // handler fires, and we get to assert the streaming envelope without a
-  // real CLI install.
   server = await createTestServer({
     localOpCliArgs: ['/nonexistent-test-binary-do-not-create-this-file'],
   });
@@ -106,7 +86,6 @@ describe('local-op-clone envelope (RFC 9457 + streaming, US-005, D36 c)', () => 
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.type).toBe('urn:ok:error:invalid-request');
-      // Detail surfaces the missing field path.
       expect(parsed.data.detail ?? '').toMatch(/url/i);
     }
   });
@@ -157,9 +136,6 @@ describe('local-op-clone envelope (RFC 9457 + streaming, US-005, D36 c)', () => 
   });
 
   test('mid-stream: spawn ENOENT emits typed { type: "error", problem: ProblemDetails } event on the NDJSON stream', async () => {
-    // Valid pre-stream gates (https URL + path under home dir) so the handler
-    // commits to the NDJSON response head; the spawn then fails with ENOENT
-    // (deterministic via localOpCliArgs override at server boot).
     const res = await postClone({
       url: 'https://github.com/owner/repo',
       dir: `${homedir()}/.ok-test-clone-target`,
@@ -176,8 +152,6 @@ describe('local-op-clone envelope (RFC 9457 + streaming, US-005, D36 c)', () => 
     );
     expect(errorEvents.length).toBeGreaterThan(0);
 
-    // Every error event matches the canonical streaming envelope, and the
-    // nested `problem` field passes ProblemDetailsSchema.safeParse.
     for (const evt of errorEvents) {
       const eventParsed = StreamingProblemEventSchema.safeParse(evt);
       expect(eventParsed.success).toBe(true);
@@ -192,7 +166,6 @@ describe('local-op-clone envelope (RFC 9457 + streaming, US-005, D36 c)', () => 
         }
       }
 
-      // ProblemDetailsSchema.safeParse on the nested field.
       const problemParsed = ProblemDetailsSchema.safeParse((evt as { problem: unknown }).problem);
       expect(problemParsed.success).toBe(true);
     }

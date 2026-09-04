@@ -1,10 +1,3 @@
-/**
- * RTL behavioral tests for the per-scope Folders surface. The machine-wide
- * install-mode toggle and the project-wide editor-target picker are both
- * retired — this section renders ONLY the folder rows with their observable
- * state and the SYMLINK (explicit pick) / UNLINK verbs.
- */
-
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -24,8 +17,6 @@ vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => children,
   t: translate,
   useLingui: () => ({
-    // Production's useLingui always carries `i18n`; the picker reads
-    // `i18n.locale` to format the shared-folder sentence with Intl.ListFormat.
     i18n: { locale: 'en' },
     t: translate,
   }),
@@ -72,26 +63,18 @@ describe('SkillTargetsPicker (folders)', () => {
     render(<SkillTargetsPicker scope="project" />);
 
     await waitFor(() => expect(screen.getByTestId('skill-folder-row-claude')).toBeDefined());
-    // `.codex` is a symlink to `.agents`, so it is a READER of that folder, not a
-    // peer: it nests under its target instead of taking a row. Rows are the
-    // folders that own skills — `.claude` and `.agents`. The global-scope row
-    // stays off the project page (scope split).
     expect(screen.getAllByTestId(/^skill-folder-row-/)).toHaveLength(2);
     expect(screen.queryByTestId('skill-folder-row-codex')).toBeNull();
     const agentsFollowers = screen.getByTestId('skill-folder-followers-agents');
     expect(agentsFollowers.textContent).toContain('.codex/skills');
-    // A symlinked folder keeps UNLINK where it now lives — nested under its
-    // target — and a real folder offers the SYMLINK picker.
     expect(agentsFollowers.contains(screen.getByTestId('skill-folder-unlink-codex'))).toBe(true);
     expect(screen.getByTestId('skill-folder-link-claude')).toBeDefined();
-    // Retired controls are GONE.
     expect(screen.queryByTestId('skill-install-mode-user')).toBeNull();
     expect(screen.queryByTestId('skill-install-mode-project')).toBeNull();
     expect(screen.queryByTestId('skill-target-claude')).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Custom skills folder path' })).toBeDefined();
   });
 
-  /** Record every folderAction sent, answering the preview request with `preview`. */
   function captureFolderActions(preview?: Record<string, unknown>): Array<Record<string, unknown>> {
     const calls: Array<Record<string, unknown>> = [];
     global.fetch = vi.fn(async (_url: unknown, init?: { body?: string }) => {
@@ -129,11 +112,6 @@ describe('SkillTargetsPicker (folders)', () => {
     const calls = captureFolderActions(EMPTY_PREVIEW);
     await pickAgentsIntoClaude();
 
-    // `.agents` was PICKED, so `.agents` is the one that merges in and becomes
-    // the symlink; the clicked `.claude` row stays the real folder. Running it
-    // the other way round was the inverted direction people read backwards.
-    // Nothing to disclose, so the write follows the classification with no
-    // question in between — a clean link stays one click.
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(calls[0]).toMatchObject({
       action: 'link',
@@ -151,9 +129,6 @@ describe('SkillTargetsPicker (folders)', () => {
 
   test('a pure-duplicate merge never asks — it costs the user nothing', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm');
-    // Every name is byte-identical in both folders. After the link the picked
-    // folder IS a symlink to the one holding those copies, so every agent reads
-    // exactly what it read before. Nothing to consent to.
     const calls = captureFolderActions({ ...EMPTY_PREVIEW, drops: ['a', 'b', 'c'] });
     await pickAgentsIntoClaude();
 
@@ -174,9 +149,6 @@ describe('SkillTargetsPicker (folders)', () => {
     await pickAgentsIntoClaude();
 
     const dialog = await screen.findByRole('alertdialog');
-    // Direction is drawn, not described — the picked folder becomes the link,
-    // the acted-on row keeps the skills. Reading it backwards is the mistake
-    // this surface keeps producing.
     expect(within(dialog).getByTestId('skill-folder-link-direction').textContent).toContain(
       '.agents/skills',
     );
@@ -184,14 +156,11 @@ describe('SkillTargetsPicker (folders)', () => {
       'only-here',
     );
     expect(within(dialog).getByTestId('skill-folder-link-drops').textContent).toContain('both');
-    // The dot-entries no move covers go away with the folder — say so before
-    // the write, not never.
     expect(within(dialog).getByTestId('skill-folder-link-removes').textContent).toContain(
       '.system',
     );
 
     await userEvent.click(within(dialog).getByText('Cancel'));
-    // Declined: the classification was the only request.
     expect(calls).toHaveLength(1);
     expect(calls[0]?.preview).toBe(true);
   });
@@ -205,8 +174,6 @@ describe('SkillTargetsPicker (folders)', () => {
     await pickAgentsIntoClaude();
 
     const dialog = await screen.findByRole('alertdialog');
-    // Listed only under "moves" the name reads as a pure addition, when the
-    // survivor is in fact losing a working delivery.
     expect(within(dialog).getByTestId('skill-folder-link-replaces').textContent).toContain(
       'shared',
     );
@@ -229,7 +196,6 @@ describe('SkillTargetsPicker (folders)', () => {
     const { toast } = await import('sonner');
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(String(vi.mocked(toast.error).mock.calls.at(-1)?.[0])).toContain('fork');
-    // Never asked, never written — the link could only have been refused.
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(calls).toHaveLength(1);
   });
@@ -243,8 +209,6 @@ describe('SkillTargetsPicker (folders)', () => {
     const message = String(vi.mocked(toast.error).mock.calls.at(-1)?.[0]);
     expect(message).toContain('notes.md');
     expect(message).toContain('Remove or move them from the folder and try again.');
-    // Same shape as the conflicts refusal: the classification is the only
-    // request, no dialog, no write.
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(calls).toHaveLength(1);
   });
@@ -256,8 +220,6 @@ describe('SkillTargetsPicker (folders)', () => {
         ? (JSON.parse(init.body).folderAction as Record<string, unknown>)
         : undefined;
       if (action) calls.push(action);
-      // The preview PUT answers with an unreadable body — the plan is lost in
-      // transit. The write must NOT fire on the strength of "nothing came back".
       if (action?.preview === true) {
         return {
           ok: true,
@@ -273,7 +235,6 @@ describe('SkillTargetsPicker (folders)', () => {
 
     const { toast } = await import('sonner');
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
-    // The classification was the only request — the merge never ran unwitnessed.
     expect(calls).toHaveLength(1);
     expect(calls[0]?.preview).toBe(true);
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -324,7 +285,6 @@ describe('SkillTargetsPicker (folders)', () => {
     await waitFor(() => expect(screen.getByTestId('skill-folder-link-claude')).toBeDefined());
     await userEvent.click(screen.getByTestId('skill-folder-link-claude'));
 
-    // `.codex` is already linked into `.agents` — picking it could only fail.
     expect(await screen.findByTestId('skill-folder-link-claude-to-.agents/skills')).toBeDefined();
     expect(screen.queryByTestId('skill-folder-link-claude-to-.codex/skills')).toBeNull();
   });
@@ -341,10 +301,6 @@ describe('the .agents hub row', () => {
   });
 
   test('an ABSENT hub offers no Link verb and says why', async () => {
-    // The consent guard, pinned. A link mkdirs the surviving root and renames the
-    // picked folder's bundles into it, so offering it on a hub that does not
-    // exist would create `.agents` and relocate the user's skills there. Nothing
-    // failed if this guard was lost — that is what this test is for.
     global.fetch = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -359,8 +315,6 @@ describe('the .agents hub row', () => {
   });
 
   test('an ABSENT hub is not offered as a merge target on another row either', async () => {
-    // The row you act on is the merge TARGET, so excluding the hub from the pick
-    // list alone would have left the dangerous direction open.
     global.fetch = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -370,12 +324,6 @@ describe('the .agents hub row', () => {
     render(<SkillTargetsPicker scope="project" />);
     await waitFor(() => expect(screen.getByTestId('skill-folder-row-claude')).toBeDefined());
 
-    // Assert the TRIGGER, not the menu item. Radix portals the item and unmounts
-    // it while the menu is closed, so querying it without clicking passes either
-    // way — the assertion could not fail. What `targets` actually gates is the
-    // trigger: with the absent hub excluded the claude row has no targets, so no
-    // DropdownMenu renders at all. Drop `!isAbsentHub(o)` and the trigger
-    // appears, which is the regression this must catch.
     expect(screen.queryByTestId('skill-folder-link-claude')).toBeNull();
   });
 

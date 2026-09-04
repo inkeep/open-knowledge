@@ -26,7 +26,6 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-/** A complete, valid scheme: sixteen distinct `#rrggbb` slots. */
 function scheme(name: string, variant: 'dark' | 'light' = 'dark'): Base16Scheme {
   const palette = Object.fromEntries(
     BASE16_SLOTS.map((slot, i) => {
@@ -183,7 +182,6 @@ describe('saveSavedTheme', () => {
       homedirOverride: home,
     });
 
-    // The write path and the read path agree — a saved theme lists as `ok`.
     const [entry] = scanSavedThemes({ homedirOverride: home }).entries;
     expect(entry).toMatchObject({ ok: true, id: 'saved-aurora', filename: 'aurora.yaml' });
     if (entry?.ok) {
@@ -204,7 +202,6 @@ describe('saveSavedTheme', () => {
     });
 
     expect(result).toEqual({ ok: false, code: 'name-taken' });
-    // The existing file is untouched — a collision never overwrites prior work.
     expect(readFileSync(join(savedThemesDir(home), 'dup.yaml'), 'utf-8')).toBe(before);
     expect(storeFiles()).toEqual(['dup.yaml']);
   });
@@ -223,7 +220,6 @@ describe('saveSavedTheme', () => {
   test('a name colliding across extensions (.yml vs .yaml) is still refused', async () => {
     const dir = savedThemesDir(home);
     mkdirSync(dir, { recursive: true });
-    // A hand-dropped `.yml` file establishes the identity `saved-terse`.
     writeFileSync(join(dir, 'terse.yml'), 'placeholder');
 
     const result = await saveSavedTheme({
@@ -292,7 +288,6 @@ describe('saveSavedTheme', () => {
   });
 
   test('refuses an over-length explicit restore stem with a distinct code', async () => {
-    // `saved-` (6) leaves 26 for the stem; 27 overflows the 32-char id budget.
     const result = await saveSavedTheme({
       name: 'a'.repeat(27),
       stem: 'a'.repeat(27),
@@ -325,8 +320,6 @@ describe('saveSavedTheme', () => {
   test('persists only the standard scheme fields — no author unless supplied', async () => {
     await saveSavedTheme({ name: 'plain', scheme: scheme('Plain'), homedirOverride: home });
     const raw = readFileSync(join(savedThemesDir(home), 'plain.yaml'), 'utf-8');
-    // The file the user owns carries nothing proprietary, and no identity is
-    // written for them — `author` is absent when the scheme carried none.
     expect(raw).not.toMatch(/author:/);
     expect(raw).not.toMatch(/okVersion|provenance|source:|lock/i);
   });
@@ -479,7 +472,6 @@ describe('deleteSavedTheme', () => {
       filename: 'gone.yaml',
       scheme: scheme('Gone'),
     });
-    // Nothing left in the store, and no sibling backup / trash directory minted.
     expect(storeFiles()).toEqual([]);
     expect(readdirSync(join(home, '.ok'))).toEqual(['themes']);
   });

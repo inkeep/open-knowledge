@@ -1,22 +1,8 @@
-/**
- * DOM tests for the lint-config editor pane: the Source/Rules toggle, its
- * correct-target gating (Rules is offered only for the governing root config),
- * and the mount discipline that lets the Source view reflect a WYSIWYG edit.
- *
- * The system boundaries are mocked: the governing-config lookup
- * (`useProjectLintConfig`), the read-only source viewer (`TextViewer`, which
- * fetches `/api/asset-text`), and the rule browser (`MarkdownlintRuleBrowser`).
- * The toggle, its gating logic, the persistence hook, and the active-segment
- * mount decision are the real code under test.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-// Radix primitives reach for DOM globals the jsdom preload doesn't expose;
-// hoist the same shims the sibling settings DOM tests use.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -61,8 +47,6 @@ vi.doMock('@/components/settings/markdownlint-rule-browser', () => ({
   MarkdownlintRuleBrowser: () => <div data-testid="mock-rule-browser" />,
 }));
 
-// The not-in-sidebar chrome reads ConfigProvider context; mock it as a boundary
-// and capture the entry it is handed (its own behavior is covered by its tests).
 vi.doMock('@/components/NotInSidebarIndicator', () => ({
   NotInSidebarIndicator: (props: { entry: unknown }) => (
     <div data-testid="mock-not-in-sidebar" data-entry={JSON.stringify(props.entry)} />
@@ -79,7 +63,6 @@ function renderEditor(assetPath: string) {
   );
 }
 
-// The toggle segments name themselves via aria-label ("Rules" / "Source").
 function rulesSegment(): HTMLButtonElement {
   return screen.getByLabelText('Rules') as HTMLButtonElement;
 }
@@ -103,7 +86,6 @@ describe('LintConfigEditor — toggle and default view', () => {
     expect(rulesSegment()).toBeDefined();
     expect(sourceSegment()).toBeDefined();
 
-    // Default is Source: the read-only viewer mounts, the rule browser does not.
     const viewer = screen.getByTestId('mock-text-viewer');
     expect(viewer.getAttribute('data-src')).toBe(
       `/api/asset-text?path=${encodeURIComponent(ROOT_CONFIG)}`,
@@ -111,7 +93,6 @@ describe('LintConfigEditor — toggle and default view', () => {
     expect(viewer.getAttribute('data-extension')).toBe('json');
     expect(screen.queryByTestId('mock-rule-browser')).toBeNull();
 
-    // Carries the same not-in-sidebar chrome as AssetPreview, keyed to this asset.
     expect(screen.getByTestId('mock-not-in-sidebar').getAttribute('data-entry')).toBe(
       JSON.stringify({ kind: 'asset', path: ROOT_CONFIG }),
     );
@@ -153,7 +134,6 @@ describe('LintConfigEditor — correct-target gating', () => {
     mockProjectLintData = { configFile: null };
     renderEditor(ROOT_CONFIG);
 
-    // The disabled <button> can't fire pointer events; the wrapping trigger does.
     const trigger = rulesSegment().parentElement;
     if (trigger === null) throw new Error('expected the Rules segment to have a wrapping trigger');
     await user.hover(trigger);
@@ -169,13 +149,11 @@ describe('LintConfigEditor — correct-target gating', () => {
     renderEditor(ROOT_CONFIG);
 
     const rules = rulesSegment();
-    // Announced to keyboard/SR users via a broadly-supported mechanism.
     const describedById = rules.getAttribute('aria-describedby');
     expect(describedById).not.toBeNull();
     expect(document.getElementById(describedById as string)?.textContent).toBe(
       "Rule editing is available for the project's root markdownlint config",
     );
-    // The ARIA 1.3 draft attribute (uneven SR support) is not relied upon.
     expect(rules.getAttribute('aria-description')).toBeNull();
   });
 
@@ -200,8 +178,6 @@ describe('LintConfigEditor — correct-target gating', () => {
     await user.hover(trigger);
     await Promise.resolve();
 
-    // The lint-config editor passes sourceLabel="Source"; without the override
-    // this would read "Markdown".
     expect(screen.getByRole('tooltip').textContent).toBe('Source');
   });
 });
@@ -216,8 +192,6 @@ describe('LintConfigEditor — switching and persistence', () => {
     expect(screen.queryByTestId('mock-text-viewer')).toBeNull();
     expect(localStorage.getItem(VIEW_MODE_KEY)).toBe('rules');
 
-    // Returning to Source unmounts the browser and remounts the viewer (a fresh
-    // mount refetches, so a WYSIWYG edit is reflected).
     await user.click(sourceSegment());
     expect(screen.getByTestId('mock-text-viewer')).toBeDefined();
     expect(screen.queryByTestId('mock-rule-browser')).toBeNull();

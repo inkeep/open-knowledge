@@ -1,18 +1,17 @@
-import { SITE_URL } from '@/lib/site';
+import { buildLlmsTxt, type LlmsTxtLink } from '@/lib/llms-txt';
+import { markdownResponse } from '@/lib/markdown-response';
+import { blogPostLinks } from '@/lib/marketing-blog-index';
+import { absoluteSiteUrl } from '@/lib/site';
 import { source } from '@/lib/source';
 
-export const revalidate = false;
+export const revalidate = 3600;
 
 export async function GET() {
-  const pages = source.getPages();
-  return new Response(
-    [
-      '# OpenKnowledge',
-      '## Docs',
-      // Link to the per-page `.md` so an agent following this index fetches
-      // clean Markdown directly instead of the HTML shell. The `…/<slug>.md`
-      // route (next.config rewrite → /llms.mdx/[...slug]) serves it.
-      ...pages.map((page) => `- [${page.data.title}](${SITE_URL}${page.url}.md)`),
-    ].join('\n\n'),
-  );
+  const docs: LlmsTxtLink[] = source.getPages().map((page) => ({
+    url: absoluteSiteUrl(`${page.url}.md`),
+    name: page.data.title,
+    description: page.data.description || undefined,
+  }));
+
+  return markdownResponse(buildLlmsTxt({ docs, blogPosts: await blogPostLinks(revalidate) }));
 }

@@ -1,21 +1,3 @@
-/**
- * Parse-pool contract tests: worker parse output is byte-identical to the
- * inline `mdManager.parseWithFallback` path, the byte-identity guard in
- * bridge-intake makes stale precomputes structurally harmless, and every
- * pool failure mode degrades to the inline path instead of a hung or
- * wrong write.
- *
- * Equivalence comparisons use canonical JSON text, not deep-strict
- * equality: ProseMirror's `toJSON()` emits `attrs` objects with a null
- * prototype, which the worker's structured-clone transfer normalizes to
- * `Object.prototype`. `schema.nodeFromJSON` reads properties only, so the
- * prototype difference is unobservable downstream — canonical JSON is the
- * "same PM JSON" claim these tests pin.
- *
- * The worker resolves `@inkeep/open-knowledge-core` through the `default`
- * export condition (built dist); run a core build before these tests if
- * core sources changed (turbo's `test` task depends on `^build`).
- */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -38,7 +20,6 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Frozen paired-write origin for the primitive-level tests. */
 const TEST_ORIGIN = {
   source: 'local',
   context: { origin: 'agent', paired: true },
@@ -63,7 +44,6 @@ function fragmentJson(ydoc: Y.Doc): string {
   );
 }
 
-/** Deterministic feature-rich markdown large enough to cross the offload threshold. */
 function largeMarkdown(): string {
   const section = [
     '## Heading with **strong** and _emphasis_ and `code`',
@@ -88,12 +68,6 @@ function largeMarkdown(): string {
   return section.repeat(Math.ceil((PARSE_OFFLOAD_MIN_BYTES * 4) / section.length));
 }
 
-/**
- * Byte-exercising fixtures for the worker-vs-inline equivalence sweep.
- * Each hits a different pipeline surface: fallback recovery, PUA
- * sentinels, hard-break trimming (the patched dependency), math, tables,
- * escapes, raw HTML, JSX, reference links.
- */
 const EQUIVALENCE_FIXTURES: ReadonlyArray<[string, string]> = [
   ['plain paragraph', 'Just a paragraph.\n'],
   ['heading and setext', '# H1\n\nSetext\n===\n\nBody.\n'],
@@ -147,12 +121,6 @@ describe('worker parse equivalence', () => {
   }, 60_000);
 
   test('patched dependency behavior holds inside the worker', async () => {
-    // The pinned @handlewithcare/remark-prosemirror patch drops a
-    // whitespace-only text node after a hard break instead of throwing
-    // RangeError from schema.text(''). An unpatched worker install would
-    // recover through the whole-doc fallback (a single paragraph of raw
-    // text) — assert the structured shape positively so the test fails
-    // even if BOTH sides were unpatched.
     const offloaded = await offloadParse('foo\\\n *bar*');
     const paragraph = offloaded.content?.[0];
     expect(paragraph?.type).toBe('paragraph');
@@ -256,17 +224,12 @@ describe('bridge-intake byte-identity guard', () => {
   });
 
   test('a byte-matching precompute is honored (observable via a divergent parse)', () => {
-    // Production precomputes always hold a true parse of rawContent; the
-    // deliberately-divergent JSON here is the only way to OBSERVE which
-    // branch applied. A matching rawContent must use the supplied parse.
     const raw = '# Real\n\nreal body\n';
     const divergent = mdManager.parseWithFallback('# Marker heading only\n');
     const doc = new Y.Doc();
     doc.transact(() => {
       replaceRawBody(doc, raw, undefined, { rawContent: raw, parsedJson: divergent });
     }, TEST_ORIGIN);
-    // Y.Text still receives the raw bytes verbatim (precedent #38) —
-    // only the fragment derivation consumed the precompute.
     expect(doc.getText('source').toString()).toBe(raw);
     expect(fragmentJson(doc)).toContain('Marker heading only');
   });
@@ -299,7 +262,6 @@ describe('prepareAgentMarkdownParse end-to-end', () => {
     const doc = asDocument(ydoc);
     const precomputed = await prepareAgentMarkdownParse(doc, md, 'append');
     expect(precomputed).toBeDefined();
-    // A concurrent writer lands between the precompute and the transact.
     ydoc.transact(() => {
       ydoc.getText('source').insert(0, '# Raced-in heading\n\n');
     }, TEST_ORIGIN);
@@ -328,10 +290,6 @@ describe('prepareAgentMarkdownParse end-to-end', () => {
 });
 
 describe('worker entry ships in every bundle shape', () => {
-  // Build-config source assertions (the runtime alternative is running two
-  // full tsdown builds per test run). Same justification as the sibling
-  // tsdown-bundle-coverage test: dist shape is decided entirely by these
-  // configs, and the parse pool's sibling probe depends on the entry name.
   test('server tsdown config emits the parse-worker entry', () => {
     const config = readFileSync(resolve(__dirname, '../tsdown.config.ts'), 'utf8');
     expect(config).toMatch(/'parse-worker':\s*'src\/parse-worker\.ts'/);

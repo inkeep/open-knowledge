@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import { pluginUpstreamsByName } from './plugin-upstream.ts';
 import type { CatalogSkill } from './schema.ts';
 
-/** Minimal detected-skill record — only the fields the join reads. */
 function skill(name: string, home: string, provenance: Record<string, unknown>): CatalogSkill {
   return {
     name,
@@ -49,8 +48,6 @@ describe('pluginUpstreamsByName', () => {
   });
 
   test('a bare skill dir is not an upstream', () => {
-    // No plugin provenance. Its copies are already first-class rows, so treating
-    // it as an upstream would let a skill become its own origin.
     const index = pluginUpstreamsByName(
       [skill('grill-me', '/cache/shared/write-skill', { scope: 'user' })],
       hashOf,
@@ -59,8 +56,6 @@ describe('pluginUpstreamsByName', () => {
   });
 
   test('a plugin without a marketplace is not an upstream', () => {
-    // `<plugin>@<marketplace>` is the import identity; half of it addresses
-    // nothing, and a partial source would be unresolvable later.
     const index = pluginUpstreamsByName(
       [skill('write-skill', '/cache/shared/write-skill', { plugin: 'shared' })],
       hashOf,
@@ -69,8 +64,6 @@ describe('pluginUpstreamsByName', () => {
   });
 
   test('an unreadable bundle is dropped rather than indexed with a blank hash', () => {
-    // A blank baseline would make every local copy compare as diverged from it,
-    // which is a worse answer than saying nothing.
     const index = pluginUpstreamsByName(
       [
         skill('missing', '/cache/gone', {
@@ -99,8 +92,6 @@ describe('pluginUpstreamsByName', () => {
   });
 
   test('optional provenance is omitted rather than sent as undefined', () => {
-    // The origin schema is `.strict()`; an explicit `undefined` is not the same
-    // as an absent key once it reaches the wire.
     const index = pluginUpstreamsByName(
       [
         skill('write-skill', '/cache/shared/write-skill', {

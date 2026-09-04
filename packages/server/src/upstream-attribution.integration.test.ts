@@ -8,11 +8,6 @@ import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { getDocumentHistory } from './timeline-query.ts';
 
-/**
- * End-to-end: a git merge (stand-in for `git pull`) that moves HEAD while a doc
- * is open should attribute the reconcile to the incoming commit's author, not
- * "File System". Drives the real createServer + head-watcher + file-watcher path.
- */
 let dir: string;
 let git: SimpleGit;
 let shadow: ShadowHandle;
@@ -32,11 +27,6 @@ async function commitAs(name: string, email: string, file: string, body: string)
 }
 
 beforeEach(async () => {
-  // The pending-contributor accumulator is module-level and shared across every
-  // test file in the process. A stale `file-system` entry leaked by an earlier
-  // file would be drained into THIS test's shadow repo — and recordContributor's
-  // last-subject-wins merge can stamp it with this test's `reconcile:` subject,
-  // making the body assertions below match the wrong commit.
   resetContributorsForTest();
   dir = mkdtempSync(resolve(tmpdir(), 'ok-upstream-attr-int-'));
   git = simpleGit(dir);
@@ -72,16 +62,10 @@ test('merge while doc is open attributes the reconcile to the incoming author', 
   });
   await server.ready;
 
-  // Load the doc so it is a live Y.Doc when the merge lands.
   const conn = await server.hocuspocus.openDirectConnection('bugs');
 
-  // Merge the incoming branch — moves HEAD + rewrites bugs.md on disk.
   await git.merge(['--no-ff', '-m', 'merge incoming', 'incoming']);
 
-  // Poll the shadow log for a reconcile commit whose git author is the incoming
-  // commit's author (display name). The writer-bucket email is synthetic
-  // (git-upstream@…) by design — the real email rides along as the ok-actor
-  // color seed, asserted separately below.
   const sg = shadowGit(shadow);
   let reconcileLine = '';
   let reconcileSha = '';
@@ -96,11 +80,6 @@ test('merge while doc is open attributes the reconcile to the incoming author', 
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  // The recovered git identity (real email) is carried on the ok-actor body line
-  // as the color seed, not as the git-author email. Read the body by the SHA of
-  // the commit found above — a `--grep` here can race a sibling drain commit
-  // whose subject also says `reconcile: bugs` (e.g. the provisional file-system
-  // entry) and return the wrong body.
   const body = reconcileSha ? await sg.raw('log', '-1', '--format=%b', reconcileSha) : '';
 
   await conn.disconnect?.();
@@ -110,8 +89,6 @@ test('merge while doc is open attributes the reconcile to the incoming author', 
 }, 20_000);
 
 test('a multi-author pull attributes each doc to its own author', async () => {
-  // Add a second incoming commit by a different author touching a different doc,
-  // so the merge range spans two authors (Ana → bugs, Ben → notes).
   await git.checkout('incoming');
   await commitAs('Ben Dev', 'ben@example.com', 'notes.md', '# Notes\n\nBen wrote this\n');
   await git.checkout('main');
@@ -137,14 +114,9 @@ test('a multi-author pull attributes each doc to its own author', async () => {
   }
 
   const lines = log.split('\n');
-  // Each author gets their own reconcile commit — no collapse onto one name.
   expect(lines).toContain('Ana Dev | reconcile: bugs');
   expect(lines).toContain('Ben Dev | reconcile: notes');
 
-  // The real fix: the per-doc Timeline query must attribute each doc to its own
-  // author. Per-author writer refs make each commit diff against its own base,
-  // so `bugs` surfaces Ana and `notes` surfaces Ben — not the collapse where a
-  // shared ref's identical trees pinned both docs onto the oldest commit.
   const authorsFor = async (docName: string) => {
     const hist = await getDocumentHistory(shadow, { docName, limit: 20 }, '.');
     return hist.entries.flatMap((e) => e.contributors.map((c) => c.name));

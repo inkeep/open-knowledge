@@ -1,12 +1,3 @@
-/**
- * L1 integration coverage for per-doc lint-config resolution over HTTP:
- * `GET /api/lint/config?doc=` follows the markdownlint-cli2 cascade (the
- * nearest `.markdownlint.*` file on the doc→root walk governs WHOLESALE), a
- * governing file is honored pure-native (no OK-tuned underlay), problems are
- * reported loudly, and the agent write path lints with the same per-doc
- * config.
- */
-
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from '@inkeep/open-knowledge-core';
@@ -17,8 +8,6 @@ import { createTestServer, type TestServer } from './test-harness.ts';
 let server: TestServer;
 
 beforeAll(async () => {
-  // markdownlint is opt-in (off by default); this file exercises the lint
-  // config cascade, so enable it for the whole test server.
   server = await createTestServer({ markdownlintEnabled: true });
 }, HARNESS_BOOT_TIMEOUT_MS);
 
@@ -61,7 +50,6 @@ describe('GET /api/lint/config per-doc cascade', () => {
     );
     try {
       const body = await getLintConfig('some-doc');
-      // Exactly the file's config — MD033/MD041 tuned disables do NOT leak in.
       expect(rules(body)).toEqual({ MD013: false });
       expect(body.configFile).toBe('.markdownlint.json');
     } finally {
@@ -115,7 +103,6 @@ describe('GET /api/lint/config per-doc cascade', () => {
       const body = await getLintConfig('some-doc');
       expect(rules(body)).toEqual({ MD010: 'error', MD013: 'warning' });
       expect(body.configFile).toBe('.markdownlint.json');
-      // Severity strings are native markdownlint vocabulary, not a config problem.
       expect(body.configProblems).toEqual([]);
     } finally {
       rmSync(join(server.contentDir, '.markdownlint.json'), { force: true });
@@ -125,7 +112,6 @@ describe('GET /api/lint/config per-doc cascade', () => {
   test('lint still runs on a doc governed by a severity-string config', async () => {
     const folder = join(server.contentDir, 'severity-notes');
     mkdirSync(folder, { recursive: true });
-    // 'error' enables MD010 (truthy, default params) — the hard-tab body must warn.
     writeFileSync(join(folder, '.markdownlint.json'), JSON.stringify({ MD010: 'error' }), 'utf-8');
     try {
       const res = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
@@ -149,7 +135,6 @@ describe('GET /api/lint/config per-doc cascade', () => {
   test('agent writes lint with the folder-governed config, not the root one', async () => {
     const folder = join(server.contentDir, 'cascade-agent');
     mkdirSync(folder, { recursive: true });
-    // Folder file disables MD010 (hard tabs) — the hard-tab body must NOT warn.
     writeFileSync(
       join(folder, '.markdownlint.json'),
       JSON.stringify({ MD010: false, MD047: false }),

@@ -27,7 +27,6 @@ export interface TerminalSmokeShellCommands {
   setEnvironment(name: string, value: string): string;
 }
 
-/** Commands used by live terminal smokes against either PowerShell or a POSIX shell. */
 export function terminalSmokeShellCommands(
   platform: NodeJS.Platform = process.platform,
 ): TerminalSmokeShellCommands {
@@ -83,7 +82,6 @@ interface TerminalSmokeEnvironmentOptions {
   restrictPath?: boolean;
 }
 
-/** Hermetic home/PATH overrides for terminal smoke Electron launches. */
 export function terminalSmokeEnvironment(
   tmpHome: string,
   options: TerminalSmokeEnvironmentOptions = {},
@@ -122,7 +120,6 @@ interface TerminalShellProfileOptions {
   restrictPath?: boolean;
 }
 
-/** Seed zsh startup files without writing POSIX artifacts into Windows profiles. */
 export function seedTerminalShellProfiles(
   tmpHome: string,
   options: TerminalShellProfileOptions,
@@ -143,7 +140,6 @@ export function seedTerminalShellProfiles(
 
 export type FakeClaudeMode = 'interactive' | 'version';
 
-/** Write the fake Claude executable in the shape each platform's PATH probe discovers. */
 export function writeFakeClaudeShim(
   binDir: string,
   mode: FakeClaudeMode,

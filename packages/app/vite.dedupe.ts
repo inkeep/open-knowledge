@@ -53,7 +53,6 @@ export const RENDERER_DEDUPE: readonly string[] = [
   '@codemirror/view',
   '@codemirror/language',
   '@codemirror/commands',
-  '@codemirror/merge',
   '@codemirror/lang-markdown',
   // Yjs intermediaries (TipTap collaboration + Hocuspocus). Each runs
   // `import * as Y from 'yjs'` at module load with mixed CJS/ESM

@@ -1,20 +1,3 @@
-/**
- * QA probe: the INVERSE direction of the #3132 doc-edge blank-run fix.
- *
- * #3132 fixed WYSIWYG -> source (Observer A). Nobody adversarially checked the
- * mirror: source mode -> WYSIWYG (Observer B full re-derive) and disk -> both
- * surfaces (file-watcher paired write). These probes assert the DESIRED
- * user-visible behavior; a failure here is a QA finding, not necessarily a
- * regression, because the shipped tolerance deliberately rests on some of
- * these divergences. Every observation also lands in the QA_DIAG_OUT sink so
- * the evidence survives a passing run (vitest suppresses console on pass).
- *
- * Multi-client on purpose: the server is the sole cross-CRDT writer, and the
- * WYSIWYG every peer renders is the fragment Observer B maintains. Raw-byte
- * assertions only (the bridge comparator tolerance swallows exactly the
- * diffs under test).
- */
-
 import { appendFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -98,8 +81,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       const clients = await seedDocument('Above.\n\nBelow.\n');
       try {
         const a = clients[0];
-        // Enter pressed b times at the very end of the source view: a direct
-        // Y.Text append, which is exactly what CodeMirror does.
         a.doc.transact(() => {
           a.ytext.insert(a.ytext.length, '\n'.repeat(b));
         });
@@ -162,7 +143,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
     try {
       const a = clients[0];
       const b = clients[1];
-      // Seed the carried run through the FIXED forward path so both surfaces hold it.
       a.doc.transact(() => {
         a.fragment.insert(a.fragment.length, [para(), para()]);
       });
@@ -178,7 +158,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
         'precondition: forward path landed the run',
       ).toBe(true);
 
-      // Source-mode delete of the whole run.
       a.doc.transact(() => {
         a.ytext.delete(a.ytext.length - 2, 2);
       });
@@ -200,7 +179,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
         expect(countBlankLineNodes(c.fragment), 'phantom blanks after source delete').toBe(0);
       }
 
-      // A later WYSIWYG edit on the OTHER peer must not resurrect the deleted run.
       b.doc.transact(() => {
         const first = b.fragment.get(0) as { get(i: number): unknown };
         (first.get(0) as { insert(i: number, s: string): void }).insert(0, 'Z');
@@ -224,7 +202,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
     try {
       const a = clients[0];
       const b = clients[1];
-      // Same event-loop turn on two different peers: a real settlement race.
       a.doc.transact(() => {
         a.ytext.insert(0, 'X');
       });
@@ -260,8 +237,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.length, '\n\n\n');
       });
-      // Out-of-tolerance nudge forces Observer B off the early-exit, so the
-      // fragment MUST rebuild from parse(Y.Text) including the tail run.
       a.doc.transact(() => {
         a.ytext.insert(0, 'Q');
       });
@@ -285,7 +260,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
         expect(countBlankLineNodes(c.fragment)).toBe(3);
       }
 
-      // Three more full re-derive cycles: byte state must be a fixed point.
       for (let i = 0; i < 3; i++) {
         a.doc.transact(() => {
           a.ytext.delete(0, 1);
@@ -339,7 +313,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       );
       diag('INV-09:direct', { direct, ...snapshot(clients) });
 
-      // Healing probe (a): an unrelated WYSIWYG edit on the other peer.
       b.doc.transact(() => {
         const first = b.fragment.get(0) as { get(i: number): unknown };
         (first.get(0) as { insert(i: number, s: string): void }).insert(0, 'Z');
@@ -350,7 +323,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       );
       diag('INV-09:after-wysiwyg', { afterWysiwyg, ...snapshot(clients) });
 
-      // Healing probe (b): an unrelated source edit.
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.toString().indexOf('Above'), 'W');
       });
@@ -360,7 +332,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       );
       diag('INV-09:after-source', { afterSource, ...snapshot(clients) });
 
-      // Healing probe (c): a brand-new client (fresh WYSIWYG mount on the live server).
       const fresh = await createTestClient(server.port, a.docName, {
         skipInvariantWatcher: true,
       });
@@ -371,8 +342,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
           fragment: serializeFragment(fresh.fragment),
           blanks: countBlankLineNodes(fresh.fragment),
         });
-        // The user-visible contract: by the END of the probe ladder the run is
-        // visible in the WYSIWYG. Which rung healed it is diagnostic detail.
         expect(
           afterSource || freshSees,
           'run still invisible to WYSIWYG after WYSIWYG edit + source edit + fresh mount',
@@ -392,7 +361,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      // The #3132-pinned gesture: fragment edge run + Y.Text keystroke in ONE transaction.
       a.doc.transact(() => {
         a.fragment.insert(0, [para(), para()]);
         a.ytext.insert(a.ytext.toString().length - 1, '!');
@@ -405,7 +373,6 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
       const strandedAtSettle = clients.map((c) => serializeFragment(c.fragment).includes('!'));
       diag('INV-10:settled', { strandedAtSettle, ...snapshot(clients) });
 
-      // Healing probe: an unrelated source edit forces a full B re-derive.
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.toString().indexOf('Above'), 'W');
       });
@@ -426,13 +393,11 @@ describe('inverse direction: source mode -> WYSIWYG', () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      // A "blank" line carrying a single space, inside a tail run.
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.length, '\n \n');
       });
       const expected = 'Above.\n\nBelow.\n\n \n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 5000);
-      // Byte stability under two further settle windows (loop detector).
       const frag0 = clients.map((c) => serializeFragment(c.fragment));
       await wait(1500);
       const frag1 = clients.map((c) => serializeFragment(c.fragment));
@@ -487,8 +452,6 @@ describe('inverse direction on frontmatter-bearing documents', () => {
     const clients = await seedDocument(seed, 'Above.\n');
     try {
       const a = clients[0];
-      // Two blank lines authored after the separator: separator stays a
-      // boundary slot, the run rides after it.
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.toString().indexOf('Above'), '\n\n');
       });
@@ -506,7 +469,6 @@ describe('inverse direction on frontmatter-bearing documents', () => {
       diag('INV-13:gained', { gained, ...snapshot(clients) });
       expect(gained, 'source-authored FM head run reaches every WYSIWYG').toBe(true);
 
-      // Source-delete the run; the separator survives, the empties leave.
       a.doc.transact(() => {
         const idx = a.ytext.toString().indexOf('\n\n\n');
         a.ytext.delete(idx, 2);
@@ -536,10 +498,6 @@ describe('split-brain settlements converge at rest', () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      // The merge-seam gesture: fragment edge run + Y.Text keystroke in ONE
-      // transaction. The settlement merges both into Y.Text; the fragment
-      // must then converge on its own — no later edit may be required to
-      // surface the keystroke in the WYSIWYG.
       a.doc.transact(() => {
         a.fragment.insert(0, [para(), para()]);
         a.ytext.insert(a.ytext.toString().length - 1, '!');

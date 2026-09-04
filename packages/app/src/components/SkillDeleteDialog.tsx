@@ -9,20 +9,11 @@ import { tabIdsForSkill } from '@/hooks/use-reconcile-skill-tabs';
 import { deleteSkill } from '@/lib/skills-api';
 
 interface Props {
-  /** The skill to delete; `null` keeps the dialog closed. */
   skill: SkillsListEntry | null;
   onOpenChange: (open: boolean) => void;
-  /** Called after a successful delete so the parent re-fetches. */
   onDeleted: () => void;
 }
 
-/**
- * Confirm and delete a skill. Deleting removes the source under
- * `.ok/skills/<name>/` and reverse-projects: the editor host dirs it was
- * installed into are uninstalled in the same operation (reverse-projection
- * folds into delete server-side). The confirmation names the consequence for
- * agents that resolve the skill by name.
- */
 export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
   const { t } = useLingui();
   const { closeTabs, openTabs } = useDocumentContext();
@@ -38,9 +29,6 @@ export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
       return;
     }
     toast.success(t`Skill "${target.name}" deleted`);
-    // Evict every tab backed by the deleted copy in one navigation update.
-    // `closeDocument` only removes a plain document tab, so it leaves the
-    // dedicated bundle-file tab IDs behind.
     closeTabs(tabIdsForSkill(openTabs, target.scope, target.name), { force: true });
     onDeleted();
     onOpenChange(false);
@@ -59,9 +47,6 @@ export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
           isSubmitting={deleting}
           onDelete={() => handleDelete(skill)}
           customDescription={
-            // A copy made from a harness plugin: deleting it doesn't touch the
-            // plugin — the read-only original resurfaces as Detected. Saying so
-            // here keeps the reappearing row from reading as a failed delete.
             skill.origin?.source && /\/plugins\/(?:cache|marketplaces)\//.test(skill.origin.source)
               ? t`This permanently removes ${skill.path}. The plugin it was copied from is untouched — its read-only version will show up as detected again.`
               : t`This permanently removes ${skill.path}. Agents that invoke this skill by name will fail until it's recreated.`

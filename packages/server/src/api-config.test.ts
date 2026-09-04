@@ -40,7 +40,6 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
       }
     },
     end(body?: string) {
-      // Handlers that set `res.statusCode` directly (vs writeHead) surface it here.
       if (captured.status === 0) captured.status = (this as { statusCode: number }).statusCode;
       captured.body = body ?? '';
     },
@@ -124,15 +123,6 @@ describe('GET /api/config (desktop / worktree collab server)', () => {
   test('an absent Host header is refused at the read gate (flipped pin)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-config-'));
     try {
-      // Flipped pin (read-posture hardening): the universal /api read gate
-      // refuses a request carrying no Host header before the handler runs,
-      // so the handler's null-collabUrl advertisement branch (the former
-      // deliberate divergence from `ok ui`'s localhost fallback) is no
-      // longer reachable over the wire. This is NOT lost coverage: the
-      // null-on-absent-Host logic lives in the extracted
-      // `collabUrlFromRequestHeaders` and is pinned directly at the unit tier
-      // by `collab-bootstrap-url.test.ts` ("missing Host yields null"). There
-      // is no dead branch in the handler to delete — it just calls that fn.
       const result = await call(buildExtension(dir), 'GET', '/api/config', {});
       expect(result.status).toBe(403);
       const body = JSON.parse(result.body) as { type: string };

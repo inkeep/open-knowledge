@@ -12,26 +12,11 @@ import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { emitCreateTopLevelFile } from '@/lib/create-file-events';
 
 interface CreateViewProps {
-  /** Bumped to replay the OkBlob celebrate burst (post-seed). */
   readonly celebrateSignal: number;
-  /** Open the SeedDialog at step 1 (PackCardGrid) from the bottom strip. */
   readonly onAddStarterPack: () => void;
-  /** Forwarded to the mascot: fired on a second rage-click in a row. */
   readonly onRageStreak?: () => void;
 }
 
-/**
- * Post-init empty-state view (project has content, no doc open). Three
- * non-obvious behaviors worth flagging:
- *   - New files always create at root (the "or create a new file" link, like
- *     the sidebar `+`). Sticky last-folder tracking was tried and reverted
- *     (two sources of truth with the sidebar `+`).
- *   - Template rows create in each template's `source_folder` — keeps
- *     this surface consistent with `write({ template })`.
- *   - The AI surface sits at the top: `CreatePromptComposer` normally, or
- *     `CopyablePromptList` (copy-to-paste prompts) when OK runs inside
- *     Cursor/Codex/Claude, where the launch handoff would loop back to the host.
- */
 export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: CreateViewProps) {
   const { t } = useLingui();
   const isEmbedded = useIsEmbedded();
@@ -52,11 +37,7 @@ export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: 
         onRageStreak={onRageStreak}
       />
 
-      {/* AI surface up top — the primary path. Non-embedded: compose a brief and
-          hand off to a coding agent. Embedded (OK inside Cursor/Codex/Claude):
-          the handoff would loop back, so show the same starter prompts as
-          copy-to-paste rows instead. `existing-repo`: project already has
-          content, so prompts pitch spec / architecture work. */}
+      {}
       {isEmbedded ? (
         <CopyablePromptList scenario="existing-repo" />
       ) : (
@@ -73,9 +54,7 @@ export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: 
           />
         ) : null}
 
-        {/* Sit the footer links close under the block above — the templates
-            card, or the composer when there are no templates — rather than a
-            full gap-8/gap-10 away. */}
+        {}
         <div className="-mt-6 flex w-full items-center justify-between gap-4">
           <Button
             onClick={onAddStarterPack}
@@ -86,9 +65,7 @@ export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: 
             <Plus aria-hidden="true" className="size-3" />
             <Trans>Add a starter pack</Trans>
           </Button>
-          {/* Escape hatch — fires the same window-level event the sidebar
-              toolbar uses, so the new file lands with the standard inline-rename
-              flow. Mirrors OnboardingView's "or create a new file" link. */}
+          {}
           <Button
             variant="link-muted"
             className="justify-end"
@@ -130,8 +107,7 @@ function TemplatesSection({ templates, loading, error, onSelect }: TemplatesSect
           </Badge>
         )}
       </header>
-      {/* Cap the height so the footer stays in the viewport regardless of
-          template count. */}
+      {}
       <div className="w-full overflow-hidden rounded-xl border border-border/60 bg-card">
         <section
           aria-busy={loading}
@@ -178,8 +154,6 @@ function TemplateRow({ template, targetLabel, onClick }: TemplateRowProps) {
   const displayTitle = template.title?.trim() || template.name;
   const fileName = `${template.name}.md`;
   const targetIsRoot = template.source_folder === '';
-  // Explicit aria-label — the default computed name concatenates the spans
-  // into a run-on string ("Meeting Notesmeeting-notes.mdmeetings/").
   const accessibleName = targetIsRoot
     ? t`New file from template "${displayTitle}" (${fileName}) in the project root`
     : t`New file from template "${displayTitle}" (${fileName}) in ${targetLabel}`;

@@ -1,59 +1,24 @@
-/**
- * DOM tests for `CodePreviewEditModal` — pin the load-bearing UX
- * contracts:
- *   - opens with the seeded `initialValue`
- *   - Cancel and the close button discard the draft (onSave not called)
- *   - the Save button commits the current draft via `onSave`
- *   - a fresh open re-seeds from `initialValue` (no stale-draft carryover)
- *   - the preview pane mounts only when `renderPreview` is supplied
- *   - Cmd/Ctrl+Enter commits the draft and closes (the Mod-Enter save
- *     binding must beat `defaultKeymap`'s insertBlankLine)
- *
- * CodeMirror's keymap runs off a native `keydown` on `.cm-content`; a
- * jsdom `KeyboardEvent` with `key`/`code` populated reaches it (same
- * pattern as `SourceEditor.dom.test.tsx`). Esc is still exercised only in
- * Playwright — it bubbles past CodeMirror to Radix's own dialog-close
- * handler, a path jsdom's synthetic event doesn't drive.
- */
-
 import { EditorView } from '@codemirror/view';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { CodePreviewEditModal } from './CodePreviewEditModal';
 
-// jsdom preload exposes Element / MutationObserver but not NodeFilter; Radix's
-// `react-focus-scope` (Dialog's focus trap) reads it on mount. Bridge it on
-// globalThis BEFORE `render()` mounts the Dialog. Mirrors the local-bridge
-// pattern other DOM tests use for jsdom globals that the shared preload
-// doesn't cover.
 if (typeof window !== 'undefined' && !(globalThis as { NodeFilter?: unknown }).NodeFilter) {
   (globalThis as { NodeFilter?: unknown }).NodeFilter = (
     window as unknown as { NodeFilter: unknown }
   ).NodeFilter;
 }
 
-// CodeMirror's post-mount measure pass (`isScrolledToBottom`) reads the bare
-// `Window` constructor off the global scope; jsdom exposes it on `window` but
-// not `globalThis`. Bridge it so the measure rAF doesn't spew unhandled
-// `ReferenceError: Window is not defined` while the source editor lays out.
-// Mirrors `SourceEditor.dom.test.tsx`.
 if (typeof window !== 'undefined' && !(globalThis as { Window?: unknown }).Window) {
   (globalThis as { Window?: unknown }).Window = (window as unknown as { Window: unknown }).Window;
 }
 
 afterEach(() => {
-  // Unmount RTL's roots before wiping the document, so the dedicated jsdom
-  // project's own post-test cleanup doesn't try to remove nodes that this wipe
-  // already detached. Wiping the body afterward keeps the next render fresh.
   cleanup();
   document.body.innerHTML = '';
 });
 
-/**
- * Controlled wrapper — most call sites pass `open` + `onOpenChange` as
- * a controlled pair, so the test fixture does too.
- */
 function Harness(props: {
   initialValue?: string;
   renderPreview?: (value: string, setValue: (value: string) => void) => React.ReactNode;
@@ -133,7 +98,6 @@ describe('CodePreviewEditModal', () => {
         }}
       />,
     );
-    // No renderPreview → no preview slot.
     expect(screen.queryByTestId('ok-code-preview-edit-modal-preview')).toBeNull();
     unmount();
 
@@ -145,61 +109,32 @@ describe('CodePreviewEditModal', () => {
         renderPreview={(value) => <div data-testid="preview-marker">{value}</div>}
       />,
     );
-    // With renderPreview → preview slot mounts. The preview consumes the
-    // *debounced* draft; on first paint it sees the initialValue without
-    // the debounce timer having to fire.
     const preview = await screen.findByTestId('ok-code-preview-edit-modal-preview');
     expect(preview.textContent ?? '').toContain('<p>hello</p>');
     expect(saved).toBeNull();
   });
 
   test('body opts into md:flex-row-reverse so the preview renders visually left in wide viewports', async () => {
-    // Contract pin for the visual pane swap: source stays first in DOM (tab
-    // order + stacked-layout on-top position), while `md:flex-row-reverse`
-    // moves the preview visually to the left in wide viewports. A DOM-order
-    // assertion can't catch a regression to the plain `md:flex-row` shape
-    // because DOM order is intentionally unchanged; the classname pin is
-    // the load-bearing signal.
     render(
       <Harness
-        onSave={() => {
-          // no-op — this test asserts layout, not save wiring.
-        }}
+        onSave={() => {}}
         renderPreview={(value) => <div data-testid="preview-marker">{value}</div>}
       />,
     );
     const body = await screen.findByTestId('ok-code-preview-edit-modal-body');
     expect(body.className).toContain('md:flex-row-reverse');
-    // `overflow-y-auto` + `overscroll-contain` are the paired defenses
-    // against the below-`md` stack overflowing `DialogContent`'s clip; pin
-    // both so a future refactor that drops one surfaces the regression.
     expect(body.className).toContain('overflow-y-auto');
     expect(body.className).toContain('overscroll-contain');
   });
 
   test('body drops the row-reverse token when the preview pane is absent', async () => {
-    // Without a preview slot the modal collapses to a single-pane source
-    // editor — flex-direction should stay column at every width, no visual
-    // swap semantics to preserve. Pinned so a future consumer can't
-    // accidentally trigger the wide-viewport row layout by wiring the class
-    // set unconditionally.
-    render(
-      <Harness
-        onSave={() => {
-          // no-op — this test asserts layout, not save wiring.
-        }}
-      />,
-    );
+    render(<Harness onSave={() => {}} />);
     const body = await screen.findByTestId('ok-code-preview-edit-modal-body');
     expect(body.className).not.toContain('md:flex-row-reverse');
     expect(body.className).not.toContain('md:flex-row');
   });
 
   test('preview-originated edits write back into the draft and commit on Save', async () => {
-    // The Mermaid WYSIWYG canvas in the preview slot commits gestures
-    // through the `setValue` argument; the modal must fold those into the
-    // same draft that Save persists. Assert via the Save round-trip (jsdom
-    // doesn't render CodeMirror's virtual lines into queryable DOM text).
     let saved: string | null = null;
     render(
       <Harness
@@ -220,8 +155,6 @@ describe('CodePreviewEditModal', () => {
     await act(async () => {
       fireEvent.click(btn);
     });
-    // The preview re-renders with the committed value immediately — a
-    // settled gesture skips the keystroke debounce.
     await waitFor(() => {
       expect(screen.getByTestId('preview-value').textContent).toBe('<p>from-canvas</p>');
     });
@@ -258,10 +191,6 @@ describe('CodePreviewEditModal', () => {
   });
 
   test('re-opening with a new initialValue re-seeds the editor', async () => {
-    // Verify via Save round-trip (each open snapshots initialValue;
-    // Save returns the snapshot). jsdom doesn't render CodeMirror's
-    // virtual lines into queryable DOM text, so a textContent check
-    // would test cm-view's rendering, not our modal's seeding contract.
     const saved: string[] = [];
     function ReSeedHarness() {
       const [open, setOpen] = useState(true);
@@ -307,11 +236,6 @@ describe('CodePreviewEditModal', () => {
   });
 
   test('Cmd/Ctrl+Enter commits the draft via onSave and closes the modal', async () => {
-    // Regression guard for the Mod-Enter precedence bug: `@codemirror/commands`
-    // defaultKeymap binds Mod-Enter to insertBlankLine, so the modal's own save
-    // binding has to sit ahead of the spread to win. If it slips behind
-    // defaultKeymap, insertBlankLine consumes the key, onSave never fires, and
-    // the waitFor below times out.
     let saved: string | null = null;
     render(
       <Harness
@@ -327,13 +251,8 @@ describe('CodePreviewEditModal', () => {
     });
     const content = host.querySelector<HTMLElement>('.cm-content');
     if (!content) throw new Error('CodeMirror content never mounted');
-    // Confirms the EditorView is live so the dispatched key reaches its keymap.
     expect(EditorView.findFromDOM(content)).toBeTruthy();
 
-    // CodeMirror resolves `Mod` to Meta on macOS and Ctrl elsewhere, keyed off
-    // the platform captured at `@codemirror/view` import time (navigator.platform,
-    // unchanged in this file). Send whichever modifier matches so the binding
-    // fires regardless of the CI host OS.
     const modProps = /Mac/.test(navigator.platform) ? { metaKey: true } : { ctrlKey: true };
     await act(async () => {
       content.dispatchEvent(
@@ -347,12 +266,9 @@ describe('CodePreviewEditModal', () => {
       );
     });
 
-    // onSave fired with the exact draft — no blank line inserted, because our
-    // binding returned true before insertBlankLine could run …
     await waitFor(() => {
       expect(saved).toBe('graph TD; A-->B');
     });
-    // … and the modal closed.
     await waitFor(() => {
       expect(screen.queryByTestId('ok-code-preview-edit-modal-body')).toBeNull();
     });

@@ -25,7 +25,6 @@ function notionExport(): string {
       '</aside>',
       '',
     ].join('\n'),
-    // Database stub + CSV + title-only row folder.
     [`Content Plan ${ID}.md`]: `# Content Plan\n\n[Content Plan](Content%20Plan%20${ID}_all.csv)\n`,
     [`Content Plan ${ID}_all.csv`]:
       'Headline,Status,Note\n"Alpha (v1)",Done,"line1\nline2"\n"Beta",Todo,"a | b"\n',
@@ -57,7 +56,6 @@ describe('buildPlan / applyPlan', () => {
     const { report, changes } = buildPlan(root);
     expect(report.isNotionExport).toBe(true);
     expect(changes.length).toBeGreaterThan(0);
-    // Disk is untouched by a dry-run.
     const after = snapshot(root);
     expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
     for (const [k, v] of before) expect(after.get(k)?.equals(v)).toBe(true);
@@ -68,29 +66,26 @@ describe('buildPlan / applyPlan', () => {
     applyPlan(buildPlan(root));
 
     const home = read(root, `/Home ${HOME}.md`);
-    expect(home).toContain(`[Content Plan](<Content Plan ${ID}.md>)`); // link decoded + angle-wrapped
-    expect(home).toContain('> [!note]'); // callout
+    expect(home).toContain(`[Content Plan](<Content Plan ${ID}.md>)`);
+    expect(home).toContain('> [!note]');
     expect(home).toContain('> Welcome!');
-    expect(home).toMatch(/!\[]\(home-[a-z0-9-]+-inline-1\.png\)/); // image embed
+    expect(home).toMatch(/!\[]\(home-[a-z0-9-]+-inline-1\.png\)/);
     expect(home).not.toContain('data:image');
 
-    // The image transform wrote the asset file.
     const assets = walkFiles(root).filter((f) => f.endsWith('.png'));
     expect(assets).toHaveLength(1);
 
-    // Table in the stub, row pages kept.
     const stub = read(root, `/Content Plan ${ID}.md`);
     expect(stub).toContain('| Headline | Status | Note |');
-    expect(stub).toContain('line1<br>line2'); // embedded newline flattened
-    expect(stub).toContain('a \\| b'); // pipe escaped
-    expect(stub).toContain(`[Alpha (v1)](<Content Plan/Alpha v1 ${R1}.md>)`); // title link, punct-matched
-    expect(walkFiles(root).some((f) => f.endsWith(`Alpha v1 ${R1}.md`))).toBe(true); // row page kept
+    expect(stub).toContain('line1<br>line2');
+    expect(stub).toContain('a \\| b');
+    expect(stub).toContain(`[Alpha (v1)](<Content Plan/Alpha v1 ${R1}.md>)`);
+    expect(walkFiles(root).some((f) => f.endsWith(`Alpha v1 ${R1}.md`))).toBe(true);
 
-    // Frontmatter on a row page.
     const alpha = read(root, `/Content Plan/Alpha v1 ${R1}.md`);
     expect(alpha.startsWith('---\n')).toBe(true);
     expect(alpha).toContain('Status: Done');
-    expect(alpha).toContain('## Body'); // body preserved
+    expect(alpha).toContain('## Body');
   });
 
   test('is idempotent — a second apply changes nothing', () => {
@@ -154,9 +149,9 @@ describe('buildPlan / applyPlan', () => {
   test('--remove-csv deletes the CSV, keeps the table + row pages, stays idempotent', () => {
     const root = notionExport();
     applyPlan(buildPlan(root, { removeCsv: true }));
-    expect(walkFiles(root).some((f) => f.endsWith('_all.csv'))).toBe(false); // CSV gone
-    expect(read(root, `/Content Plan ${ID}.md`)).toContain('| Headline | Status | Note |'); // table kept
-    expect(walkFiles(root).some((f) => f.endsWith(`Alpha v1 ${R1}.md`))).toBe(true); // row pages kept
+    expect(walkFiles(root).some((f) => f.endsWith('_all.csv'))).toBe(false);
+    expect(read(root, `/Content Plan ${ID}.md`)).toContain('| Headline | Status | Note |');
+    expect(walkFiles(root).some((f) => f.endsWith(`Alpha v1 ${R1}.md`))).toBe(true);
 
     const second = buildPlan(root, { removeCsv: true });
     expect(second.changes).toHaveLength(0);
@@ -165,14 +160,12 @@ describe('buildPlan / applyPlan', () => {
 
   test('redirects a cross-page link to a database CSV onto the table page (no dangle after --remove-csv)', () => {
     const root = makeTree({
-      // A page that links to another database's CSV (as real Notion exports do).
       [`Hub ${HOME}.md`]: `# Hub\n\nSee [Customers](Customers%20${ID}_all.csv).\n`,
       [`Customers ${ID}_all.csv`]: 'Name,Type\nAcme,Paid\n',
       [`Customers/Acme ${R1}.md`]: '# Acme\n\nType: Paid\n',
     });
     applyPlan(buildPlan(root, { removeCsv: true }));
     const hub = read(root, `/Hub ${HOME}.md`);
-    // Link now points at the generated table page, not the deleted CSV.
     expect(hub).toContain(`[Customers](<Customers ${ID}.md>)`);
     expect(hub).not.toContain('_all.csv');
     expect(walkFiles(root).some((f) => f.endsWith(`Customers ${ID}.md`))).toBe(true);
@@ -183,7 +176,6 @@ describe('buildPlan / applyPlan', () => {
     const root = makeTree({
       [`Home ${HOME}.md`]: '# Home\n',
       [`Big ${ID}_all.csv`]: `${wideHeader}\n`,
-      // Duplicate row titles → ambiguous title-column links.
       [`Dupes ${R1}_all.csv`]: 'Title,X\nNotes,1\nNotes,2\n',
       [`Dupes/Notes ${R1}.md`]: '# Notes\n',
       [`Dupes/Notes ${R2}.md`]: '# Notes\n',

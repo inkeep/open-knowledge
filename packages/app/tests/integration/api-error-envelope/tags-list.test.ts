@@ -1,13 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleTagsList`.
- *
- * Asserts the canonical RFC 9457 wire shape for `GET /api/tags`:
- *   - happy path: 200 + flat success body parses against `TagsListSuccessSchema`
- *     (empty tags array on a fresh test contentDir; no `ok` discriminator).
- *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
- *     `Allow: GET` header.
- */
-
 import { ProblemDetailsSchema, TagsListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

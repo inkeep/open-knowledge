@@ -6,14 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 
-/**
- * `/api/link-graph` flags nodes belonging to OpenKnowledge's own skill bundles.
- * The reserved bundle names live in this package, which core and the app cannot
- * import, so the classification has to travel on the payload — the app filters
- * OK's bundles out of the fullscreen graph purely from this flag and never
- * re-derives it from doc names.
- */
-
 let tmpRoot: string;
 let booted: BootedServer;
 
@@ -29,15 +21,12 @@ beforeAll(async () => {
 
   writeFileSync(resolve(contentDir, 'alpha.md'), '# Alpha\n\nLinks to [[beta]].\n', 'utf-8');
   writeFileSync(resolve(contentDir, 'beta.md'), '# Beta\n\nBody.\n', 'utf-8');
-  // OK's own project bundle, under its reserved name.
   writeSkill(contentDir, 'open-knowledge', '---\nname: open-knowledge\n---\n\n# OK\n');
-  // A user-authored project skill whose name merely resembles a reserved one.
   writeSkill(
     contentDir,
     'open-knowledge-pack-worldbuilding',
     '---\nname: open-knowledge-pack-worldbuilding\n---\n\n# Pack\n',
   );
-  // An ordinary user-authored project skill.
   writeSkill(contentDir, 'team-notes', '---\nname: team-notes\n---\n\n# Team\n');
 
   booted = await bootCompositionRig(contentDir);
@@ -62,11 +51,6 @@ describe('/api/link-graph managed-skill flagging', () => {
         .map((n) => [n.docName, n.managed === true]),
     );
 
-    // Project skills reach the graph as ordinary content docs, linked or not.
-    // Note this content dir is not a git repo, so the `.gitignore` carve-out that
-    // normally keeps OK's project bundle out of the index does not apply and the
-    // projection is indexed — the narrow case the spec records. The managed flag
-    // is what keeps it out of the fullscreen graph there.
     expect([...flagByDocName.keys()].sort()).toEqual([
       '.claude/skills/open-knowledge-pack-worldbuilding/SKILL',
       '.claude/skills/open-knowledge/SKILL',
@@ -75,8 +59,6 @@ describe('/api/link-graph managed-skill flagging', () => {
       'beta',
     ]);
 
-    // Exactly one of them is OK's own. The pack-named skill is a real user
-    // install that merely resembles a reserved name and must stay unflagged.
     expect([...flagByDocName.entries()].filter(([, flagged]) => flagged).map(([n]) => n)).toEqual([
       '.claude/skills/open-knowledge/SKILL',
     ]);

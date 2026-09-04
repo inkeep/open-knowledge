@@ -7,21 +7,11 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-/**
- * `chars / 4` estimates read `N` up to a thousand and `N.Nk` beyond. Rounded
- * plainly — the row's job is ranking skills against each other, and an
- * approximation marker on every figure read as noise rather than honesty.
- */
 export function formatSkillTokens(tokens: number): string {
   if (tokens < 1000) return `${tokens}`;
   return `${Math.round(tokens / 100) / 10}k`;
 }
 
-/**
- * One tier's figure. Over its published budget it is marked with colour AND an
- * icon carrying the reason, so the warning never rests on colour alone. A tier
- * with no published norm passes no budget and is never marked.
- */
 function TokenFigure({ tokens, budget }: { tokens: number; budget?: number }) {
   const { t } = useLingui();
   const over = budget !== undefined && tokens > budget;
@@ -40,10 +30,6 @@ function TokenFigure({ tokens, budget }: { tokens: number; budget?: number }) {
     </span>
   );
   if (!over) return figure;
-  // The bare triangle was uninterpretable in usability testing ("what is that
-  // supposed to indicate?") — say what the mark means and what to do about it.
-  // Own provider so the figure renders anywhere (settings rows, previews,
-  // bare test mounts) without depending on the app-shell TooltipProvider.
   return (
     <TooltipProvider>
       <Tooltip>
@@ -56,13 +42,6 @@ function TokenFigure({ tokens, budget }: { tokens: number; budget?: number }) {
   );
 }
 
-/**
- * A skill's context cost, one tier per line so the figures column-scan:
- * description (frontmatter, the standing index cost every turn), SKILL.md (the
- * body loaded when the skill fires), other (bundled files, read only when
- * opened), and the total. `SKILL.md` is a filename, not copy — never
- * translated. The surrounding row's label carries the unit.
- */
 export function SkillCostValue({ size }: { size: SkillCostTiers }) {
   const total = size.alwaysOn + size.onTrigger + size.onDemand;
   return (

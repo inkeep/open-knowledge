@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -6,16 +6,6 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
-
-/**
- * Characterization for GET/PUT /api/folder-config ahead of the files/folders
- * extraction — neither method had any server-unit coverage. Pins the wire
- * contract: GET's self-only `frontmatter_local` (no ancestor cascade, null
- * when absent, {} when the YAML is a non-object, null again when malformed),
- * PUT's merge-patch outcomes (written/deleted/noop) landing in
- * `<folder>/.ok/frontmatter.yml`, the project-root-relative path gate, and
- * the single-file-mode refusal.
- */
 
 interface CapturedResponse {
   status: number;
@@ -113,10 +103,6 @@ describe('GET/PUT /api/folder-config', () => {
   });
 
   test('GET does not cascade an ancestor sidecar onto a sidecar-less child', async () => {
-    // Pins the SELF-ONLY contract against a fixture where a cascade would be
-    // observable: `docs/.ok/frontmatter.yml` exists, `docs/sub` has no
-    // sidecar of its own. An accidental reuse of the template-resolution
-    // ancestor walk would surface the parent's map here instead of null.
     mkdirSync(join(contentDir, 'docs', 'sub'), { recursive: true });
     const ext = buildExt();
     const captured = await dispatch(
@@ -156,6 +142,46 @@ describe('GET/PUT /api/folder-config', () => {
     expect(absolute.status).toBe(400);
   });
 
+  test('PUT refuses a folder that symlinks out of the content root', async () => {
+    const outside = join(tmpDir, 'outside');
+    mkdirSync(outside);
+    symlinkSync(outside, join(contentDir, 'escape'), 'dir');
+    const ext = buildExt();
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'escape/x',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(400);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(join(outside, 'x', '.ok', 'frontmatter.yml'))).toBe(false);
+  });
+
+  test('PUT refuses a REAL folder whose .ok is a symlink out of the content root', async () => {
+    const outside = join(tmpDir, 'outside-okdir');
+    mkdirSync(outside);
+    mkdirSync(join(contentDir, 'notes-real'));
+    symlinkSync(outside, join(contentDir, 'notes-real', '.ok'), 'dir');
+    const ext = buildExt();
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'notes-real',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(400);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(join(outside, 'frontmatter.yml'))).toBe(false);
+  });
+
+  test('PUT surfaces a missing content root as a 500, not a 400', async () => {
+    const ext = buildExt();
+    rmSync(contentDir, { recursive: true, force: true });
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'plain',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(500);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:internal-server-error');
+  });
+
   test('PUT writes the sidecar and reports written, then noop on an identical patch', async () => {
     const ext = buildExt();
     const first = await dispatch(ext, '/api/folder-config', 'PUT', {
@@ -170,10 +196,6 @@ describe('GET/PUT /api/folder-config', () => {
     expect(existsSync(sidecar)).toBe(true);
     expect(await readFile(sidecar, 'utf-8')).toContain('status: draft');
 
-    // No diff detection: an identical re-patch (and even a delete of a
-    // nonexistent key on an existing sidecar) rewrites and reports
-    // 'written' again. 'noop' fires only when there is nothing to do at
-    // all: a null-only patch against a folder with no sidecar.
     const second = await dispatch(ext, '/api/folder-config', 'PUT', {
       path: 'plain',
       frontmatter: { status: 'draft' },

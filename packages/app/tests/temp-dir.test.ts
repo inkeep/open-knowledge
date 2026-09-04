@@ -19,8 +19,6 @@ describe('withTempDir', () => {
   });
 
   test('removes the directory even when fn throws', async () => {
-    // Cleanup-on-throw is the helper's entire raison d'être: a failing
-    // assertion inside the callback must not leak the tmp dir.
     let captured = '';
     await expect(
       withTempDir('temp-dir-test-', (dir) => {

@@ -1,12 +1,3 @@
-/**
- * Tier-3 RTL mount tests for Settings → Search (semantic-search opt-in).
- *
- * Behavior is driven through the project-local ConfigContext (mocked binding +
- * preference) and the `/api/semantic-status` probe (mocked `fetch`), and
- * asserted on user-visible output: the toggle state, the egress confirmation
- * gate, the disable-is-immediate path, and the coverage / needs-a-key panel.
- */
-
 import {
   type Config,
   type ConfigBinding,
@@ -18,9 +9,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { describedTextOf } from './settings-a11y.test-helper';
 
-// Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
-// preload doesn't expose. Hoist the same shims the sibling settings DOM tests
-// use.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -76,7 +64,6 @@ function configWithSemantic({
   } as unknown as Config;
 }
 
-// Records every patch payload so tests can assert the exact CRDT write.
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
   const calls: unknown[] = [];
   const binding = {
@@ -130,9 +117,6 @@ describe('SearchSection', () => {
   });
 
   test('the egress disclosure is announced with the toggle, not just shown beside it', () => {
-    // The body text is the only place that says queries and page text go to an
-    // embeddings provider. Without aria-describedby a screen-reader user hears
-    // only "Enable semantic search" and never learns content leaves the machine.
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({ enabled: true });
@@ -165,7 +149,6 @@ describe('SearchSection', () => {
 
     await user.click(screen.getByTestId('settings-search-semantic-toggle'));
 
-    // Confirmation gate is open with the egress disclosure; nothing written yet.
     expect(await screen.findByText('This sends content off your machine')).toBeDefined();
     expect(calls.length).toBe(0);
 
@@ -244,8 +227,6 @@ describe('SearchSection', () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({ enabled: true });
-    // No key, and crucially NOT warmed (ready:false) — the hint must still show
-    // immediately off `keyPresent`, not wait for a warm.
     mockStatus = {
       enabled: true,
       keyPresent: false,
@@ -315,7 +296,6 @@ describe('SearchSection', () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({ enabled: true });
-    // Server hasn't picked up the toggle yet (enabled:false at the server).
     mockStatus = {
       enabled: false,
       keyPresent: false,
@@ -355,8 +335,6 @@ describe('SearchSection', () => {
 
   test('write failure keeps the confirm dialog open for retry (egress consent invariant)', async () => {
     const user = userEvent.setup();
-    // A binding whose patch always fails — the dialog must stay open so the user
-    // keeps their retry for a privacy-sensitive action.
     const failBinding = {
       ...makeBinding().binding,
       patch: () => ({ ok: false, error: { code: 'noop', message: 'fail' } }),
@@ -369,12 +347,9 @@ describe('SearchSection', () => {
     await user.click(screen.getByTestId('settings-search-semantic-toggle'));
     await user.click(await screen.findByTestId('settings-search-confirm-enable'));
 
-    // Still open (success-gated close did not fire on the failed write).
     expect(await screen.findByTestId('settings-search-confirm')).toBeDefined();
   });
 
-  // The endpoint + model now live behind a disclosure. Opening it is part of
-  // every provider test because a value the user can't reach isn't configurable.
   async function openCustomEndpoint(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByTestId('settings-search-custom-endpoint-trigger'));
     return screen.getByTestId('settings-search-base-url') as HTMLInputElement;
@@ -411,8 +386,6 @@ describe('SearchSection', () => {
 
     render(<SearchSection />);
 
-    // Auto-expanded: an override set from the CLI must not be hidden from the
-    // person who comes to Settings looking for it.
     expect((screen.getByTestId('settings-search-base-url') as HTMLInputElement).value).toBe(
       'https://my-vllm.internal/v1',
     );
@@ -443,7 +416,6 @@ describe('SearchSection', () => {
     await user.type(input, '  https://azure.example.com/openai/v1/  ');
     await user.tab();
 
-    // Nothing is written until the re-index + egress warning is accepted.
     expect(calls).toEqual([]);
     await confirmProviderChange(user);
 
@@ -571,15 +543,14 @@ describe('SearchSection', () => {
     await user.clear(input);
     await user.type(input, 'not-a-url');
 
-    // "Reward early": no error while the user is still typing (untouched).
     expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
 
-    await user.tab(); // blur commit → validate
+    await user.tab();
 
     expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(screen.queryByTestId('settings-search-provider-confirm')).toBeNull();
-    expect(calls).toEqual([]); // guaranteed-to-fail endpoint is not persisted
+    expect(calls).toEqual([]);
   });
 
   test('committing an invalid URL via Enter also errors and blocks the write', async () => {
@@ -592,7 +563,6 @@ describe('SearchSection', () => {
 
     const input = await openCustomEndpoint(user);
     await user.clear(input);
-    // Enter is the distinct commit path (preventDefault + commitProviderEdits).
     await user.type(input, 'not-a-url{Enter}');
 
     expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
@@ -648,10 +618,9 @@ describe('SearchSection', () => {
     const input = await openCustomEndpoint(user);
     await user.clear(input);
     await user.type(input, 'nope');
-    await user.tab(); // commit → error shows, field is now "touched"
+    await user.tab();
     expect(screen.getByTestId('settings-search-base-url-error')).toBeDefined();
 
-    // "Punish late": once touched, a fix clears the error live (no re-blur needed).
     await user.clear(input);
     await user.type(input, 'https://azure.example.com/openai/v1');
     expect(screen.queryByTestId('settings-search-base-url-error')).toBeNull();
@@ -695,7 +664,6 @@ describe('SearchSection', () => {
 
     await user.click(screen.getByTestId('settings-search-test-connection'));
     const result = await screen.findByTestId('settings-search-test-ok');
-    // The detected size is the readout that replaces a hand-entered field.
     expect(result.textContent).toContain('1024');
   });
 
@@ -743,7 +711,6 @@ describe('SearchSection', () => {
         transport={{
           setKey: async () => ({ ok: true }),
           clearKey: async () => ({ ok: true }),
-          // The server still has the endpoint the user just replaced.
           testConnection: async () => ({
             ok: true,
             endpoint: DEFAULT_EMBEDDINGS_BASE_URL,
@@ -776,7 +743,6 @@ describe('SearchSection', () => {
     } as unknown as SemanticIndexStatus;
 
     render(<SearchSection />);
-    // Present without opening the "Custom endpoint" disclosure.
     expect(screen.getByTestId('settings-search-key-input')).toBeDefined();
   });
 
@@ -882,7 +848,7 @@ describe('SearchSection', () => {
     await user.click(screen.getByTestId('settings-search-key-save'));
     const err = await screen.findByTestId('settings-search-key-error');
     expect(err.textContent).toContain('disk full');
-    expect((input as HTMLInputElement).value).toBe('sk-doomed'); // not wiped on failure
+    expect((input as HTMLInputElement).value).toBe('sk-doomed');
   });
 
   test('a present key shows a redacted hint + Clear, never the key', async () => {
@@ -941,7 +907,6 @@ describe('SearchSection', () => {
     await waitFor(() =>
       expect(screen.getByTestId('settings-search-key').textContent).toContain('Not required'),
     );
-    // No amber "add a key" nag when the endpoint needs none.
     expect(screen.queryByTestId('settings-search-needs-key')).toBeNull();
   });
 });

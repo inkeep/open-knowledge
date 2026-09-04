@@ -46,22 +46,15 @@ import { errorResponse } from './error-response.ts';
 type LocalApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 interface LocalApiRequestOptions {
-  /** Pre-serialized request body (JSON string, or raw bytes for multipart). */
   body?: string | Uint8Array;
-  /** `Content-Type` header value; required for multipart (carries boundary). */
   contentType?: string;
 }
 
-/** Captured wire result — what the HTTP transport would have delivered. */
 interface LocalApiResult {
   status: number;
   bodyText: string;
 }
 
-/**
- * Dispatch a request in-process. Resolves `null` when the path is outside
- * the collapsed allowlist — the caller then falls back to real HTTP.
- */
 export type LocalApiDispatch = (
   method: LocalApiMethod,
   pathWithQuery: string,
@@ -71,23 +64,10 @@ export type LocalApiDispatch = (
 type NodeHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void> | void;
 
 export interface CreateLocalApiDispatchOptions {
-  /** Allowlist-gated handler lookup (query string already stripped). */
   resolve: (pathname: string) => NodeHandler | undefined;
-  /**
-   * Upper bound on handler completion. Matches the MCP shim's HTTP fetch
-   * timeout (`mcp/tools/shared.ts`) so both transports share the same
-   * cancellation deadline and surface the same timeout error text. Like the
-   * HTTP timeout, expiry rejects the caller but does NOT abort the running
-   * handler — its side effects may still complete after the deadline.
-   */
   timeoutMs?: number;
 }
 
-/**
- * Minimal `ServerResponse` stand-in: enough surface for the sanctioned wire
- * emitters (`successResponse` / `errorResponse` / handler-local writes) to
- * run to completion, capturing status + body instead of writing a socket.
- */
 class SyntheticResponse extends EventEmitter {
   statusCode = 200;
   headersSent = false;
@@ -97,11 +77,6 @@ class SyntheticResponse extends EventEmitter {
   private readonly headers = new Map<string, string | number | readonly string[]>();
   private readonly chunks: Buffer[] = [];
   private settle: (() => void) | undefined;
-  /**
-   * Resolves when the handler ends the response. Named to avoid the real
-   * `ServerResponse.finished` (a deprecated boolean) — a handler probing
-   * that legacy flag must not find a truthy Promise here.
-   */
   readonly settled: Promise<void>;
 
   constructor(req: IncomingMessage) {
@@ -184,10 +159,6 @@ function syntheticRequest(
   const req = Readable.from(bodyBytes) as unknown as IncomingMessage;
   req.method = method;
   req.url = pathWithQuery;
-  // The full body is buffered before dispatch, so the request is complete by
-  // construction. Handlers that guard the client-disconnect race (`'close'`
-  // with `!req.complete`, e.g. the upload spine) must not read the stream's
-  // natural end-of-data close as an abort.
   req.complete = true;
   req.headers = {
     host: 'localhost',
@@ -211,23 +182,6 @@ export function createLocalApiDispatch(opts: CreateLocalApiDispatchOptions): Loc
       try {
         await handler(req, res as unknown as ServerResponse);
       } catch (err) {
-        // Mirror the admission pipeline's last-resort envelope: a throw that
-        // escaped the handler's own error boundary becomes a typed RFC 9457
-        // 500 (guarded against double-write), so the tool sees the same wire
-        // body either transport delivers. `errorResponse` logs with `cause`,
-        // covering the logging the pipeline's re-throw path provides.
-        //
-        // `BridgeMergeContentLossError` gets the SAME treatment, on purpose,
-        // and that is not a violation of the one-RECOVERY-catch STOP rule
-        // (Observer A Path B in `server-observers.ts`): this catch detects
-        // and recovers nothing — like the pipeline's terminal catch it turns
-        // the escape into the standard 500 envelope, and the `cause`-logged
-        // `errorResponse` carries the same observability signal the pipeline
-        // emits for it over HTTP. The pipeline additionally re-throws, but
-        // only because Hocuspocus request logging sits above it; no such
-        // layer exists here, and a re-throw would reach the tool's generic
-        // text catch instead — an UNlogged flatten that also breaks response
-        // parity with HTTP for exactly this class.
         if (!res.headersSent && !res.writableEnded && !res.destroyed) {
           errorResponse(
             res as unknown as ServerResponse,
@@ -241,9 +195,6 @@ export function createLocalApiDispatch(opts: CreateLocalApiDispatchOptions): Loc
       await res.settled;
     })();
 
-    // Same deadline + error text the HTTP transport produces when
-    // `AbortSignal.timeout` fires inside `fetch`, so the tool-side
-    // `Server unreachable: <message>` diagnostic is byte-identical.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {

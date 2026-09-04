@@ -1,32 +1,3 @@
-/**
- * RED contract for issue #351 (terminal-dock reload-survival) —
- * the RENDERER half.
- *
- * After a renderer reload the live PTY sessions survive in the main process, but
- * today the dock remounts empty: its session list is seeded only from the
- * `visible` prop (TerminalDock.tsx) with no mount-time query for the shells
- * that are still alive, and the terminal bridge exposes no enumeration channel to
- * ask. This pins the FIXED behavior — when the bridge reports pre-existing live
- * sessions for this window, the dock rehydrates one tab per surviving shell
- * instead of seeding a single fresh one.
- *
- * The assertion is on observable dock state (the tabs the dock surfaces), not on
- * which bridge method the fix calls: the enumeration capability is offered under
- * several plausible names so the fix keeps latitude on the exact channel.
- *
- * Scope note: dock VISIBILITY restoration is EditorPane's concern (it owns
- * `terminalVisible`, EditorPane.tsx) and is covered end-to-end by the live
- * reload smoke in packages/desktop/tests/smoke/terminal-dock.e2e.ts. This test
- * owns the dock's own responsibility — recovering its session list. The existing
- * cold-start coverage in TerminalDock.dom.test.tsx (visible=true seeds exactly
- * one session) guards against the fix over-correcting on a true fresh start.
- *
- * Mocks mirror TerminalDock.dom.test.tsx: jsdom has no layout engine, so the
- * resizable split + height store are mocked at the module boundary and
- * TerminalGate is stubbed with a session marker; the real TerminalTabStrip +
- * Radix Tabs render so the tab/active-tab a11y wiring is exercised.
- */
-
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { useEffect, useRef, useState } from 'react';
@@ -47,8 +18,6 @@ const panelHandle = {
 };
 const sharedPanelRef: { current: unknown } = { current: panelHandle };
 
-// The sessions-dock New split-button (+ catalog dialog) call react-query's
-// useQuery; stub it so this terminal-focused test needs no QueryClientProvider.
 vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
@@ -66,21 +35,9 @@ vi.doMock('@/components/ui/resizable', () => ({
   ResizableHandle: ({ onPointerDown }: any) => <div onPointerDown={onPointerDown} />,
 }));
 
-// Session stand-in: renders xterm's focus-sink marker so the dock's tab count is
-// observable. A rehydrated session adopts a surviving PTY rather than spawning a
-// new one, so the stub deliberately does NOT call bridge.terminal.create — the
-// dock's tab management (one tab per recovered session) is what this test pins;
-// the adopt-vs-spawn wiring lives in TerminalGate/TerminalPanel and the live
-// reload smoke.
 vi.doMock('./TerminalGate', () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalGate: ({ adoptPtyId, onPtyId }: any) => {
-    // Mirror the real panel's adopt path: a rehydrated session reconnects the
-    // surviving PTY and reports that adopted id up (attachSession → onPtyId), so
-    // the host's reuse map is populated for reload survivors — the path the
-    // selection-bubble Ask-AI input writes into. Latest-ref so the host's
-    // per-render onPtyId closure is
-    // reachable without re-running the report on every render.
     const onPtyIdRef = useRef(onPtyId);
     useEffect(() => {
       onPtyIdRef.current = onPtyId;
@@ -101,11 +58,6 @@ vi.doMock('@/lib/terminal-height-store', () => ({
 const { TerminalDock } = await import('./TerminalDock');
 const { SessionsHost } = await import('./SessionsHost');
 
-// Mirror EditorArea's wiring: the TerminalDock shell exposes the bottom mount, and
-// the once-mounted SessionsHost (which owns the session collection + reload
-// rehydration) portals the live sessions into it. The rehydration the
-// renderer half is responsible for lives in the host, so reload-survival is
-// asserted through this pair, not TerminalDock alone.
 function ReloadHarness({
   bridge,
   visible,
@@ -145,12 +97,6 @@ function ReloadHarness({
   );
 }
 
-/**
- * A surviving main process that already holds live PTY sessions for this window.
- * The enumeration capability the reloaded host consumes is offered under several
- * plausible names — the test asserts on the tabs surfaced, never on which alias
- * the fix calls.
- */
 function makeSurvivingMainBridge(
   preExisting: ReadonlyArray<{
     ptyId: string;
@@ -164,8 +110,6 @@ function makeSurvivingMainBridge(
     return { ok: true as const, ptyId: `fresh-pty-${freshCounter}` };
   });
   const kill = vi.fn(async (_id: string) => {});
-  // Records launch-command writes so an Ask-AI reuse into an adopted (survivor)
-  // session's live PTY is observable.
   const input = vi.fn((_id: string, _d: string) => {});
   const listLive = vi.fn(async () => preExisting);
   const setMeta = vi.fn((_ptyId: string, _meta: unknown) => {});
@@ -200,31 +144,20 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
   });
 
   test('recovers a tab per surviving session instead of seeding a single fresh one', async () => {
-    // Two shells were live in the main process before the reload.
     const { bridge } = makeSurvivingMainBridge([{ ptyId: 'pty-1' }, { ptyId: 'pty-2' }]);
 
-    // The post-reload dock mounts fresh (the parent restored visibility).
     renderDock(bridge, true);
 
-    // FIXED behavior: on mount the dock asks main for the surviving sessions and
-    // shows one tab per live shell. RED today — the dock ignores them and seeds a
-    // single fresh session from the `visible` prop (TerminalDock.tsx), so
-    // this settles at 1 tab and never reaches 2.
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(2), {
       timeout: 2000,
     });
 
-    // Exactly one of the recovered tabs is active (the dock restores a focused tab,
-    // it does not leave the strip with zero or many active).
     expect(document.querySelectorAll('[data-terminal-session][data-state="active"]')).toHaveLength(
       1,
     );
   });
 
   test("restores each survivor's custom name and the reordered tab order across reload", async () => {
-    // Main returns survivors already in the user's reordered sequence, each with
-    // the metadata it retained across the reload: a custom name on two, a bare
-    // sticky ordinal on the third.
     const { bridge } = makeSurvivingMainBridge([
       { ptyId: 'pty-3', customLabel: 'deploy', ordinal: 3 },
       { ptyId: 'pty-1', customLabel: null, ordinal: 1 },
@@ -237,9 +170,6 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
       timeout: 2000,
     });
 
-    // Tabs come back in main's returned (reordered) order with the custom names
-    // restored; the un-named survivor falls back to its RESTORED sticky ordinal
-    // (Terminal 1), not a positional renumber to Terminal 2.
     const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs.map((tab) => tab.textContent)).toEqual(['deploy', 'Terminal 1', 'logs']);
@@ -277,9 +207,6 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
       timeout: 2000,
     });
 
-    // Rename the tab: double-click -> inline input -> Enter. This is the push path
-    // that keeps the custom name alive across a future reload; it is optional-chained
-    // in production, so a mock omitting setMeta would leave it silently unverified.
     await user.dblClick(screen.getByRole('tab', { name: 'Terminal 1' }));
     const input = screen.getByRole('textbox', { name: /^Rename/ });
     await user.clear(input);
@@ -289,12 +216,6 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     await waitFor(() => expect(setMeta).toHaveBeenCalledWith('pty-1', { customLabel: 'deploy' }));
   });
 
-  // A render that can flip `visible` so the "open the dock after a reload with no
-  // prior terminal" flow is exercised: the dock starts hidden (the reload restored
-  // no visibility, since nothing was open), rehydration finds zero survivors and
-  // must SETTLE, and the subsequent user-open then cold-start-seeds exactly one.
-  // If rehydration never settled (or settled only on the survivors>0 branch), the
-  // gated open/launch effect would stay blocked and the open would seed nothing.
   function dockUi(bridge: OkDesktopBridge, visible: boolean) {
     return <ReloadHarness bridge={bridge} visible={visible} />;
   }
@@ -302,12 +223,9 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
   test('zero survivors settles so a later open still cold-starts exactly one tab', async () => {
     const { bridge, listLive } = makeSurvivingMainBridge([]);
     const { rerender } = render(dockUi(bridge, false));
-    // Rehydration ran and found nothing; flush its async settle.
     await waitFor(() => expect(listLive).toHaveBeenCalled());
     await act(async () => {});
     expect(screen.queryAllByTestId('terminal-session')).toHaveLength(0);
-    // The user opens the dock: the gated cold-start path was released by the
-    // settle, so this seeds exactly one fresh session.
     rerender(dockUi(bridge, true));
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {
       timeout: 2000,
@@ -335,8 +253,6 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
     await waitFor(() => expect(listLive).toHaveBeenCalled());
     await act(async () => {});
     rerender(dockUi(bridge, true));
-    // If settling had moved inside the try, the rejection would leave the gate
-    // closed forever and this open would seed nothing.
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {
       timeout: 2000,
     });
@@ -377,41 +293,25 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
   });
 
   test('an Ask-AI selection does NOT raw-write into a reload survivor (unknown shell type)', async () => {
-    // A reload survivor comes back with no launch descriptor, so the host cannot
-    // tell a surviving CLI TUI (safe to write) from a surviving bare shell (where a
-    // raw write of a multi-line passage runs line-by-line as shell commands). It
-    // therefore treats the survivor as non-CLI and falls the selection through to a
-    // fresh staged launch — safety over reusing a PTY of unknown type.
     const { bridge, create, input } = makeSurvivingMainBridge([{ ptyId: 'pty-1' }]);
-    // Capture `stage` too, not just the text: falling through to a launch is only
-    // half the safety property. A fallthrough that ran the passage as the CLI's
-    // prompt would auto-execute the very text this guard exists to hold back.
     const launchRequests: Array<{ text: string; cli: string; stage: boolean }> = [];
     const stopLaunch = subscribeToTerminalLaunchRequests((text, cli, opts) =>
       launchRequests.push({ text, cli, stage: opts.stage }),
     );
     render(dockUi(bridge, true));
 
-    // Rehydration recovers exactly one adopted tab, which reports its adopted PTY
-    // id up (the stub mirrors the real attachSession → onPtyId path).
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {
       timeout: 2000,
     });
-    await act(async () => {}); // flush the onPtyId report into the host's reuse map
+    await act(async () => {});
 
-    // The selection-bubble "Ask AI" fires while the recovered survivor is active.
     await act(async () => {
       requestActiveTerminalInput('explain');
     });
     stopLaunch();
 
-    // Never a raw write into the survivor's adopted PTY (the bare-shell hazard).
     expect(input).not.toHaveBeenCalled();
-    // The selection falls through to a fresh STAGED launch instead — `stage: true`
-    // is what keeps it written-and-waiting rather than run.
     expect(launchRequests).toEqual([{ text: 'explain', cli: 'claude', stage: true }]);
-    // The survivor tab is not hijacked; the fresh launch is consumed by EditorPane
-    // (not mounted in this host-only rig), so no create() fires here.
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
     expect(create).not.toHaveBeenCalled();
   });

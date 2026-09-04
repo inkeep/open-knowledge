@@ -16,10 +16,6 @@ function edit(sl: number, sc: number, el: number, ec: number, newText: string): 
   };
 }
 
-// `applyLintFixes` dispatches LINT_SOURCE_FIXED_EVENT on `window` (guarded by
-// `typeof window !== 'undefined'`). The unit tier has no DOM, so install a bare
-// EventTarget as `window` for the duration of the assertion and restore after —
-// keeping the no-DOM contract intact for every other unit-tier test.
 function withWindowStub(run: (win: EventTarget) => void): void {
   const holder = globalThis as { window?: unknown };
   const prior = holder.window;
@@ -35,7 +31,6 @@ function withWindowStub(run: (win: EventTarget) => void): void {
 describe('applyLintFixes', () => {
   test('removes a trailing-space run (MD009-style, single-line delete)', () => {
     const doc = docWith('# Title\n\nParagraph here.   \n');
-    // line 2 (0-based), delete the 3 trailing spaces at chars 15..18.
     applyLintFixes({ document: doc }, [edit(2, 15, 2, 18, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Title\n\nParagraph here.\n');
   });
@@ -47,15 +42,12 @@ describe('applyLintFixes', () => {
   });
 
   test('applies multiple edits high→low without offset drift', () => {
-    const doc = docWith('x   \ny   \n'); // trailing spaces on two lines
+    const doc = docWith('x   \ny   \n');
     applyLintFixes({ document: doc }, [edit(0, 1, 0, 4, ''), edit(1, 1, 1, 4, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('x\ny\n');
   });
 
   test('applies multiple edits in a single Y.Doc transaction', () => {
-    // Atomicity is observable as exactly one `update` event: Y.js batches all
-    // mutations inside one `transact()` into a single update regardless of edit
-    // count. Two edits landing in two transactions would fire twice.
     const doc = docWith('x   \ny   \n');
     let updates = 0;
     doc.on('update', () => {
@@ -73,50 +65,30 @@ describe('applyLintFixes', () => {
   });
 
   test('pure insertion (from === to, non-empty newText) inserts without deleting', () => {
-    // MD047 (missing trailing newline) produces a pure-insertion fix: an edit
-    // whose range is empty (start === end) with non-empty newText.
     const doc = docWith('# Heading');
     applyLintFixes({ document: doc }, [edit(0, 9, 0, 9, '\n')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Heading\n');
   });
 
   test('whole-line deletion (cross-line range) removes exactly one line', () => {
-    // fixInfoToEdit emits a cross-line range for deleteCount === -1 (MD012
-    // multiple-blank-lines): { start: { line: N, character: 0 }, end: { line:
-    // N + 1, character: 0 } }. Exercises offsetOf's newline arithmetic across
-    // a line boundary — a wrong byte count here would corrupt the shared Y.Text.
     const doc = docWith('# Title\n\npara\n\n\nextra blank\n');
     applyLintFixes({ document: doc }, [edit(3, 0, 4, 0, '')], 'doc');
     expect(doc.getText('source').toString()).toBe('# Title\n\npara\n\nextra blank\n');
   });
 
   test('applies an exact duplicate edit only once', () => {
-    // Two diagnostics (e.g. two rules flagging the same run) can carry
-    // byte-identical fixes; compounding them would delete twice.
     const doc = docWith('a\tb\n');
     applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, '  '), edit(0, 1, 0, 2, '  ')], 'doc');
     expect(doc.getText('source').toString()).toBe('a  b\n');
   });
 
   test('skips an edit swallowed by an already-applied whole-line delete', () => {
-    // A whole-line delete (MD012 shape) containing another diagnostic's
-    // same-line replace: applying both would delete bytes twice. Upstream
-    // applyFixes skips the overlapped fix; the skipped issue re-surfaces on
-    // the post-fix re-lint.
     const doc = docWith('keep\nx\ty\nkeep\n');
-    applyLintFixes(
-      { document: doc },
-      [
-        edit(1, 0, 2, 0, ''), // delete line 1 entirely
-        edit(1, 1, 1, 2, '  '), // replace the tab inside line 1
-      ],
-      'doc',
-    );
+    applyLintFixes({ document: doc }, [edit(1, 0, 2, 0, ''), edit(1, 1, 1, 2, '  ')], 'doc');
     expect(doc.getText('source').toString()).toBe('keep\nkeep\n');
   });
 
   test('applies touching (end-exclusive adjacent) edits from different diagnostics', () => {
-    // [2,3) and [1,2) touch at offset 2 but do not overlap — both must land.
     const doc = docWith('a\t\tb\n');
     applyLintFixes({ document: doc }, [edit(0, 1, 0, 2, ' '), edit(0, 2, 0, 3, ' ')], 'doc');
     expect(doc.getText('source').toString()).toBe('a  b\n');
@@ -126,12 +98,7 @@ describe('applyLintFixes', () => {
     const doc = docWith('a\tb   \n\n\npara');
     applyLintFixes(
       { document: doc },
-      [
-        edit(0, 1, 0, 2, '  '), // MD010 hard tab
-        edit(0, 3, 0, 6, ''), // MD009 trailing spaces
-        edit(2, 0, 3, 0, ''), // MD012 extra blank line
-        edit(3, 4, 3, 4, '\n'), // MD047 trailing newline
-      ],
+      [edit(0, 1, 0, 2, '  '), edit(0, 3, 0, 6, ''), edit(2, 0, 3, 0, ''), edit(3, 4, 3, 4, '\n')],
       'doc',
     );
     expect(doc.getText('source').toString()).toBe('a  b\n\npara\n');
@@ -176,10 +143,6 @@ describe('collectFixes', () => {
 });
 
 describe('applyLintFixes — preview-tab promotion', () => {
-  // The write lands straight in Y.Text under LINT_FIX_ORIGIN: the WYSIWYG
-  // editor sees it carrying sync meta, the source editor with no `userEvent`,
-  // so both origin guards reject it. Announcing from the write side is the only
-  // way clicking Fix promotes the tab.
   let unsubscribe: (() => void) | undefined;
 
   afterEach(() => {
@@ -208,10 +171,6 @@ describe('applyLintFixes — preview-tab promotion', () => {
   });
 
   test('a no-op edit still counts as applied, matching the return value', () => {
-    // An out-of-range edit clamps to a zero-width no-op. It is still counted,
-    // so the announce and the `true` return agree — a user who clicked Fix on a
-    // stale diagnostic gets a promoted tab rather than a silent divergence
-    // between what the function reports and what it announces.
     const promoted = vi.fn();
     unsubscribe = subscribePreviewTabPromotion(promoted);
     const doc = docWith('keep\n');

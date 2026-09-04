@@ -1,15 +1,3 @@
-/**
- * Live, mode-agnostic lint diagnostics for the active document. Reads the full
- * doc text from `Y.Text('source')` — which both source mode (CodeMirror) and
- * WYSIWYG mode (Server Observer A keeps it in sync) bind to — and runs the core
- * `lintDocument` engine against the effective config. Because it reads the CRDT
- * directly (not the CodeMirror view), the Problems panel and its badge stay
- * populated in WYSIWYG mode too, where there is no source editor mounted.
- *
- * Re-lints on a 300 ms trailing-edge debounce (matching the OutlinePanel
- * convention) so keystroke bursts coalesce into one pass.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   isEditableTextDocFile,
@@ -22,20 +10,6 @@ import { useEffect, useState } from 'react';
 const RELINT_DEBOUNCE_MS = 300;
 const EMPTY_DIAGNOSTICS: readonly LintDiagnostic[] = Object.freeze([]);
 
-/**
- * Live diagnostics for `provider`'s doc under `config`. Returns `[]` when either
- * is null, linting is disabled, or the doc is editable text because Markdown
- * and OKF rules do not apply to that document class. Recomputes on every
- * `Y.Text('source')` change (debounced) and whenever the provider, doc name, or
- * config VALUE changes.
- *
- * The effect keys on a serialized config hash rather than object identity:
- * callers routinely pass a freshly-built config object each render (e.g.
- * `lintConfig?.effective ?? null`), and depending on identity would re-run the
- * effect — and its `setState` — every render, looping. The empty-result branch
- * also returns the prior reference when already empty so it can't re-trigger a
- * render on its own.
- */
 export function useDocDiagnostics(
   provider: HocuspocusProvider | null,
   config: LinterConfig | null,
@@ -56,24 +30,18 @@ export function useDocDiagnostics(
     const ytext = provider.document.getText('source');
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
-    // The lint pass is async: drop a resolution that lands after this effect
-    // has been torn down (provider/config changed) so it can't clobber the
-    // next pair's diagnostics.
     const recompute = () =>
       void lintDocument(ytext.toString(), effectiveConfig, docName)
         .then((diagnostics) => {
           if (!cancelled) setDiagnostics(diagnostics);
         })
         .catch((err) => {
-          // Mirror the sibling decoration pass: a lint throw (malformed config,
-          // unexpected input) must not surface as an unhandled rejection.
           if (!cancelled) console.warn('[lint] lintDocument failed', err);
         });
     const schedule = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(recompute, RELINT_DEBOUNCE_MS);
     };
-    // Initial pass for this provider/config pair, then observe for live edits.
     recompute();
     ytext.observe(schedule);
     return () => {
@@ -83,7 +51,5 @@ export function useDocDiagnostics(
     };
   }, [provider, docName, configKey]);
 
-  // Derive emptiness during render: `configKey` goes null for no doc, disabled
-  // linting, or an editable-text doc; the effect reset lands a frame later.
   return configKey === null ? EMPTY_DIAGNOSTICS : diagnostics;
 }

@@ -1,20 +1,3 @@
-/**
- * `syncScope` caller meta-test — static analysis gate.
- *
- * The `syncScope` read-opt admits the shareable `.ok` artifact allow-list
- * (project `config.yml`, `.ok/.gitignore`, `.ok/schemas/*.json`, templates,
- * folder `frontmatter.yml`) through ContentFilter's `isExcluded` /
- * `isDirExcluded` so the sync engine can stage and deletion-track them. Every
- * other filter consumer — file index, sidebar, watcher admission, search,
- * asset serving, the merge-conflict partition — must keep these paths hidden:
- * a caller that passes `syncScope` rescopes what its surface can enumerate,
- * so the set of production sources that may even NAME the flag is pinned
- * here.
- *
- * Modeled on `showok-caller-coverage.test.ts` — same shape: scan production
- * sources for the capability, require explicit authorization.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -22,15 +5,9 @@ import { describe, expect, test } from 'vitest';
 const SERVER_SRC_ROOT = join(import.meta.dirname, '../../../server/src');
 const CLI_SRC_ROOT = join(import.meta.dirname, '../../../cli/src');
 const APP_SRC_ROOT = join(import.meta.dirname, '../../src');
-// Defines the `ContentFilterReadOpts.syncScope` opt and consumes it in the
-// shareable-artifact carve-outs of `isExcluded` / `isDirExcluded`.
 const CONTENT_FILTER_PATH = join(SERVER_SRC_ROOT, 'content-filter.ts');
-// Passes the opt on the staging paths only: the gather walk and the head
-// listing (deletion tracking), shared by the push cycle and the pre-merge
-// dirty-content commit. The engine's conflict partition stays unscoped.
 const SYNC_ENGINE_PATH = join(SERVER_SRC_ROOT, 'sync-engine.ts');
 
-/** Recursively enumerate TypeScript production files under `dir`, skipping tests. */
 function listProductionTsFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -70,8 +47,6 @@ describe('syncScope caller coverage', () => {
   });
 
   test('the sanctioned surface still exists (allowlist-rot guard)', () => {
-    // If the flag is renamed or removed, this forces the allowlist above to
-    // be revisited rather than rotting into dead authority.
     expect(readFileSync(CONTENT_FILTER_PATH, 'utf8')).toContain(
       "syncScope: { pathBase: 'content' | 'project' }",
     );
@@ -79,11 +54,6 @@ describe('syncScope caller coverage', () => {
   });
 
   test('the conflict partition inside sync-engine.ts stays unscoped', () => {
-    // The file-level allowlist admits sync-engine.ts wholesale, so it cannot
-    // stop the opt from creeping into the merge-conflict partition WITHIN the
-    // file. Conflict classification must use the ordinary unscoped content
-    // view: editor-visible templates remain content conflicts, while
-    // non-document shareable artifacts fail the markdown gate.
     const source = readFileSync(SYNC_ENGINE_PATH, 'utf8');
     const methodBody = (signature: string): string => {
       const start = source.indexOf(signature);

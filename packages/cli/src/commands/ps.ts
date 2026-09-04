@@ -1,12 +1,3 @@
-/**
- * `ok ps` — list all running open-knowledge servers across all directories.
- *
- * Config-independent global query: discovers servers by process scan rather
- * than looking at the cwd project. Uses `inspectLock` (pure read — no
- * filesystem mutations). The `preAction` hook still fires but `resolvedConfig`
- * is ignored.
- */
-
 import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -18,10 +9,6 @@ import {
   processUsage,
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 interface PsEntry {
   directory: string;
@@ -43,25 +30,9 @@ interface PsEntry {
   lockPath: string;
   binary: string | null;
   command: string | null;
-  /**
-   * True when the server is running inside an Electron utility process
-   * (i.e., spawned by the desktop app). Detected from the live process
-   * command — lock metadata can't distinguish it because both desktop and
-   * `ok start` write `kind: 'interactive'`. Falls back to false when
-   * `command` is null (process exited between scan and lookup).
-   */
   isDesktop: boolean;
 }
 
-/**
- * Identify desktop-spawned servers from the running process command.
- * `--type=utility` alone is the generic Chromium tag (VS Code, Slack,
- * Discord, Chrome helpers all carry it). Pair it with the Electron-specific
- * Mojo sub-type `node.mojom.NodeService` — that's what `utilityProcess.fork`
- * specifically registers, so any process with both substrings is an Electron
- * Node.js utility, never a renderer/GPU/audio helper from another app.
- * Stable since Electron 22+ (the API's introduction).
- */
 export function isDesktopCommand(command: string | null): boolean {
   if (command == null) return false;
   return (
@@ -70,14 +41,6 @@ export function isDesktopCommand(command: string | null): boolean {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Time formatting
-// ---------------------------------------------------------------------------
-
-/**
- * Format an ISO timestamp as a human-relative string.
- * Seconds: `Ns`, minutes: `Nm ago`, hours: `Nh ago`, days: `Nd ago`.
- */
 export function timeAgo(isoString: string, now = Date.now()): string {
   const then = new Date(isoString).getTime();
   if (Number.isNaN(then)) return '—';
@@ -92,14 +55,6 @@ export function timeAgo(isoString: string, now = Date.now()): string {
   return `${diffDay}d ago`;
 }
 
-// ---------------------------------------------------------------------------
-// Entry building
-// ---------------------------------------------------------------------------
-
-/**
- * Build a PsEntry from the inspected server lock state.
- * Returns null when the server lock is `missing` or `corrupt` (discard entry).
- */
 function buildEntry(
   _lockDir: string,
   serverState: LockState,
@@ -112,11 +67,6 @@ function buildEntry(
 
   const serverLock = serverState.lock;
 
-  // Single-listener topology: the UI is the server process itself. The ui row
-  // exists only when server.lock advertises the `ui` capability (via the shared
-  // `lockAdvertisesUi` predicate — a pre-v2 server missing `capabilities` counts
-  // as ui-capable, matching preview_url), and then it mirrors the server's own
-  // pid/port/usage. A `--only server` boot has none.
   const ui: PsEntry['ui'] =
     serverState.status === 'alive' && lockAdvertisesUi(serverLock)
       ? {
@@ -146,20 +96,8 @@ function buildEntry(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Text rendering
-// ---------------------------------------------------------------------------
-
 type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale';
 
-/**
- * Collapse the server lock state into the single label rendered in STATUS.
- *
- * - `desktop` overrides `running` / `foreign` when the process command
- *   identifies an Electron utility (see `isDesktopCommand`).
- * - `stale` covers the dead case (`dead-pid` server). Single-listener topology
- *   has no independent UI process, so there is no `ui-orphan` state to surface.
- */
 function displayStatus(entry: PsEntry): DisplayStatus {
   const serverStatus = entry.server.status;
   if (serverStatus === 'alive' || serverStatus === 'foreign-host') {
@@ -169,7 +107,6 @@ function displayStatus(entry: PsEntry): DisplayStatus {
   return 'stale';
 }
 
-/** Statuses shown in default (non-`--all`) text output. */
 const DEFAULT_VISIBLE: ReadonlySet<DisplayStatus> = new Set(['running', 'desktop', 'foreign']);
 
 function colorStatus(label: DisplayStatus): string {
@@ -194,27 +131,17 @@ function formatCombinedUsage(entry: PsEntry): string {
   return `${formatUsage(entry.server.usage)} | ${formatUsage(entry.ui?.usage ?? null)}`;
 }
 
-/**
- * Format the PORTS column: `server / ui`. The UI port shows `—` when no UI is
- * mounted (entry.ui null — a `--only server` boot, or a non-live server);
- * otherwise it mirrors the server port (single-listener topology).
- */
 function formatPorts(entry: PsEntry): string {
   const serverPort = entry.server.port === 0 ? '(starting)' : String(entry.server.port);
   const uiPort = entry.ui == null ? '—' : String(entry.ui.port);
   return `${serverPort} / ${uiPort}`;
 }
 
-/**
- * Render a table of entries to a string.
- * Uses dynamic column widths based on actual content.
- */
 export function renderTable(entries: PsEntry[]): string {
   if (entries.length === 0) {
     return 'No open-knowledge servers found.';
   }
 
-  // Compute column widths dynamically
   const headers = [
     'DIRECTORY',
     'PORTS (API/UI)',
@@ -244,21 +171,17 @@ export function renderTable(entries: PsEntry[]): string {
     }
   }
 
-  // Render header
   const headerLine = headers
     .map((h, i) => h.padEnd(widths[i] ?? 0))
     .join('  ')
     .trimEnd();
 
-  // Render rows
   const dataLines = entries.map((entry, rowIdx) => {
     const row = rows[rowIdx] ?? [];
     const cols: string[] = [];
     for (let i = 0; i < colCount; i++) {
       let cell = (row[i] ?? '').padEnd(widths[i] ?? 0);
-      // Colorize STATUS column (index 3)
       if (i === 3) {
-        // Re-apply color after padding
         const rawCell = row[i] ?? '';
         const colored = colorStatus(displayStatus(entry));
         const padding = ' '.repeat(Math.max(0, (widths[i] ?? 0) - rawCell.length));
@@ -272,10 +195,6 @@ export function renderTable(entries: PsEntry[]): string {
   const hint = pc.dim('To stop a server: ok stop <port|pid|directory|all>');
   return [headerLine, ...dataLines, '', hint].join('\n');
 }
-
-// ---------------------------------------------------------------------------
-// Core logic (injectable deps for testing)
-// ---------------------------------------------------------------------------
 
 interface RunPsDeps {
   discover?: () => Promise<string[]>;
@@ -314,26 +233,17 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   }
 
   if (deps.json) {
-    // JSON: always include all statuses (caller filters). Each entry carries
-    // the computed `displayStatus` so tooling consumers don't have to
-    // replicate the override rules (desktop/stale derivation).
     const enriched = entries.map((e) => ({ ...e, displayStatus: displayStatus(e) }));
     log(JSON.stringify(enriched, null, 2));
     return;
   }
 
-  // Text mode: filter by displayStatus. Default shows running / desktop /
-  // foreign (everything except `stale`). `--all` adds stale.
   const filtered = deps.all
     ? entries
     : entries.filter((e) => DEFAULT_VISIBLE.has(displayStatus(e)));
 
   log(renderTable(filtered));
 }
-
-// ---------------------------------------------------------------------------
-// Commander command
-// ---------------------------------------------------------------------------
 
 export function psCommand(): Command {
   return new Command('ps')

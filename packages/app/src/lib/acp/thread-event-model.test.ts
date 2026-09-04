@@ -36,7 +36,7 @@ describe('buildThreadRenderModel', () => {
     ];
     const model = buildThreadRenderModel(events, null);
     const messages = model.items.filter((i) => i.kind === 'message');
-    expect(messages).toHaveLength(2); // user + one coalesced agent message
+    expect(messages).toHaveLength(2);
     expect(messages[1]).toMatchObject({ role: 'agent', text: 'Hello world' });
     expect(model.turnActive).toBe(true);
   });
@@ -82,8 +82,6 @@ describe('buildThreadRenderModel', () => {
       chunk(8, 'All finished.'),
     ];
     const model = buildThreadRenderModel(events, null);
-    // Chronological: user, text, tool, text, tool, text — chunks coalesce only
-    // while their message is still the tail, never across a tool call.
     expect(model.items.map((i) => (i.kind === 'message' ? `${i.kind}:${i.text}` : i.kind))).toEqual(
       [
         'message:go',
@@ -165,8 +163,6 @@ describe('buildThreadRenderModel', () => {
       ts: 3,
     });
 
-    // Agents ask first and stream the call after; some do the reverse. Either
-    // order has to end up merged, or the outcome shows twice or not at all.
     for (const events of [
       [request, call, resolve],
       [call, request, resolve],
@@ -221,8 +217,6 @@ describe('buildThreadRenderModel', () => {
     ];
     const model = buildThreadRenderModel(events, null);
     const notices = model.items.filter((i) => i.kind === 'notice');
-    // A transcript recorded before the server classified failures carries only
-    // the headline string — it still renders, with nothing structured to show.
     expect(notices).toEqual([
       { kind: 'notice', text: 'boom', tone: 'error', failure: null, attempts: 1 },
       { kind: 'notice', text: 'sign in', tone: 'info', failure: null, attempts: 1 },
@@ -230,11 +224,6 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('coalesces identical adjacent error notices into one card with bumped attempt count', () => {
-    // A retried launch fires the same status:error event per attempt. Without
-    // dedup the transcript stacks three visually-identical cards for one
-    // failure — the reader has to click through each to find the retry
-    // button on the last. Same reason + agentMessage + machineDetail + tone
-    // + text is the "same failure again" heuristic.
     const failure = {
       reason: 'connect' as const,
       agentMessage: 'initialize failed: ACP connection closed',
@@ -251,12 +240,6 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a live failure after `ready` does NOT merge into the retired notice', () => {
-    // Regression guard for the coalesce/superseded interaction: without the
-    // `last.superseded !== true` guard, an identical failure arriving after
-    // `ready` retired the previous notice would coalesce into that retired
-    // notice (the spread carries `superseded: true` forward), and the view
-    // would filter the merged card out entirely — the live failure would
-    // render nowhere, with no Retry button.
     const failure = { reason: 'connect' as const, agentMessage: 'boom' };
     const model = buildThreadRenderModel(
       [
@@ -274,9 +257,6 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a genuinely different failure between two attempts gets its own card', () => {
-    // If the machineDetail changes between attempts (different stderr, e.g.
-    // attempt 1 fails on missing node, attempt 2 on install error), the two
-    // failures are genuinely distinct — reader needs to see both.
     const first = { reason: 'connect' as const, machineDetail: 'boom-A' };
     const second = { reason: 'connect' as const, machineDetail: 'boom-B' };
     const events: ThreadEvent[] = [
@@ -325,9 +305,6 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a terminal exit ends a dangling turn (crash-mid-stream transcript)', () => {
-    // The agent process exited after the turn opened but before the prompt
-    // settled, so the persisted log has `turn_started` and no `turn_ended`.
-    // On replay the turn must read as ended, not a perpetual "working" spinner.
     const events: ThreadEvent[] = [
       ev({ kind: 'user_message', content: 'ping', ts: 1 }),
       ev({ kind: 'turn_started', ts: 2 }),
@@ -341,7 +318,6 @@ describe('buildThreadRenderModel', () => {
     const events: ThreadEvent[] = [
       ev({ kind: 'turn_started', ts: 1 }),
       ev({ kind: 'status', status: 'exited', ts: 2 }),
-      // Resume respawns the agent and opens a fresh turn.
       ev({ kind: 'turn_started', ts: 3 }),
       ev({ kind: 'status', status: 'running', ts: 4 }),
     ];
@@ -380,8 +356,6 @@ describe('buildThreadRenderModel', () => {
     const model = buildThreadRenderModel([consentRequest()], null);
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
-    // The card picks its sentence off this; defaulting the other way would tell
-    // every replayed thread its interpreter is broken.
     expect(card.reason).toBe('missing');
   });
 
@@ -395,9 +369,6 @@ describe('buildThreadRenderModel', () => {
     expect(card.reason).toBe('broken');
   });
 
-  // The repair offer. Its copy is about OK's own copy being damaged, so the
-  // card must not fall back to either interpreter sentence — both describe
-  // something the user installed.
   test('a damaged-runtime request carries that through to the card', () => {
     const model = buildThreadRenderModel(
       [{ ...consentRequest(), reason: 'damaged' } as ThreadEvent],
@@ -427,7 +398,6 @@ describe('buildThreadRenderModel', () => {
     );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
-    // Progress captured, and the follow-on spawning status marks it done.
     expect(card.resolved).toBe('granted');
     expect(card.install).toBe('done');
     expect(card.progress).toEqual({ receivedBytes: 20, totalBytes: 40 });
@@ -459,7 +429,6 @@ describe('buildThreadRenderModel', () => {
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card.install).toBe('failed');
-    // The error detail still surfaces as its own notice.
     expect(model.items.some((i) => i.kind === 'notice' && i.text === 'checksum mismatch')).toBe(
       true,
     );
@@ -544,8 +513,6 @@ describe('buildThreadRenderModel', () => {
     expect(card.outcome).toEqual({ state: 'trust-failed', detail: 'EACCES' });
   });
 
-  // A status with nothing to fold onto — the foreign-file case, where nobody
-  // was asked anything — still has to reach the transcript as its own row.
   test('a prompt-less status stands alone as a limitation row', () => {
     const model = buildThreadRenderModel(
       [
@@ -567,8 +534,6 @@ describe('buildThreadRenderModel', () => {
     });
   });
 
-  // Same defense as the resolved-permission path: an answer whose question
-  // fell off the retained log must not retarget some other row.
   test('an outcome for an unknown requestId becomes its own row', () => {
     const model = buildThreadRenderModel(
       [
@@ -589,9 +554,6 @@ describe('buildThreadRenderModel', () => {
     expect(rows[1]).toMatchObject({ prompt: null, bridgePath: '/other' });
   });
 
-  // Forward compatibility for the reverse skew: a transcript written by a
-  // NEWER server replays on this client without losing the events it does
-  // understand. `as never` is the only way past the union.
   test('an event kind this client has never heard of is skipped, not fatal', () => {
     const model = buildThreadRenderModel(
       [
@@ -734,10 +696,6 @@ describe('resolvePermissionOutcome', () => {
   });
 
   test('an option whose kind is neither allow nor reject is dismissed, not approved', () => {
-    // Runtime defense-in-depth behind `PinPermissionOptionKind`: if a later ACP
-    // release adds a kind and the pin is updated without revisiting this, the
-    // label must not read "Approved" for an answer we can't classify. `as never`
-    // is the only way past the union the typelock guards.
     const item = permission({ optionId: 'escalate', auto: false });
     item.options = [{ optionId: 'escalate', name: 'Escalate', kind: 'escalate_once' as never }];
     expect(resolvePermissionOutcome(item)).toEqual({ kind: 'dismissed' });
@@ -795,8 +753,6 @@ describe('startup failures a later ready retires', () => {
     ...(reason === undefined ? {} : { failure: { reason, agentMessage: 'x' } }),
   });
 
-  // A thread that eventually started should not open on a stack of amber
-  // cards about the sign-in the user already completed.
   test('a launch that eventually worked retires the failures it took to get there', () => {
     const model = buildThreadRenderModel(
       [
@@ -808,10 +764,6 @@ describe('startup failures a later ready retires', () => {
     );
 
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(0);
-    // Two identical `auth_required` events coalesce into ONE notice with
-    // `attempts: 2` before `ready` retires it — see the coalesce test in
-    // `buildThreadRenderModel`. Positions still load-bearing: the fold
-    // replaced-in-place instead of pushing, so index maps stayed valid.
     expect(model.items).toHaveLength(1);
     const notice = model.items[0];
     if (notice?.kind !== 'notice') throw new Error('unreachable');
@@ -819,8 +771,6 @@ describe('startup failures a later ready retires', () => {
     expect(notice.superseded).toBe(true);
   });
 
-  // A prompt failure happened inside a live session, so a later `ready` says
-  // nothing about it — the user still needs to see it.
   test('a prompt failure survives a later ready', () => {
     const model = buildThreadRenderModel(
       [statusEvent('error', 'prompt'), statusEvent('ready')],
@@ -830,7 +780,6 @@ describe('startup failures a later ready retires', () => {
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
   });
 
-  // Still parked: nothing has been answered yet, so nothing is retired.
   test('failures stand while the thread has not started', () => {
     const model = buildThreadRenderModel([statusEvent('auth_required', 'auth-required')], null);
 

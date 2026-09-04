@@ -1,21 +1,5 @@
-/**
- * Renderer store for "something needs the user to sign in to GitHub".
- *
- * The AuthModal is owned locally by the surfaces that host it (EditorPane,
- * NavigatorApp) and opened from their own chrome. Surfaces that are mounted
- * elsewhere in the tree — `ShareBranchSwitchDialog` self-gates on the share
- * store under App, with no prop path to EditorPane's modal state — need a way
- * to ask for it without lifting that state through the whole tree.
- *
- * Same module-singleton + `useSyncExternalStore` shape as `miss-dialog-store`
- * and `receive-store`. `request()` arms it, the hosting surface opens its modal
- * and calls `clear()`.
- */
-
 export interface AuthPromptStore {
-  /** Ask the hosting surface to open the GitHub sign-in modal. */
   request(): void;
-  /** Called by the host once it has opened the modal. */
   clear(): void;
   getSnapshot(): boolean;
   subscribe(listener: () => void): () => void;

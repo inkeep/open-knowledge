@@ -186,10 +186,6 @@ describe('applyRenameMap — multi-entry rewrites', () => {
     expect(result.rewrites).toBe(1);
   });
 
-  // The Mirror rewrite is unit-tested in managed-rename-rewrite.test.ts
-  // (handler isolation). These tests pin the WIRING into `applyRenameMap`'s
-  // pass chain — frontmatter strip / pass ordering / placeholder cycle — so
-  // a regression in chaining-order can't silently leave Mirrors un-rewritten.
   test('rewrites Mirror src for a renamed source doc', () => {
     const result = applyRenameMap(
       '<Mirror src="api-spec" anchor="intro" />\n',
@@ -233,9 +229,6 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('self-rename recomputes a doc-relative Excalidraw src for the new location', () => {
-    // The containing doc moves; the board stays put. Pass 1 (the self-rename
-    // pass) must recompute the doc-relative src or the embed silently
-    // addresses a different board from the new folder.
     const result = applyRenameMap(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
@@ -246,9 +239,6 @@ describe('applyRenameMap — multi-entry rewrites', () => {
   });
 
   test('folder move carrying both doc and board keeps the doc-relative src stable', () => {
-    // `notes/` → `archive/`: the containing doc AND the board both move. The
-    // self pass re-anchors, the placeholder cycle then applies the board's own
-    // rename — net result, the same-folder relative spelling is preserved.
     const result = applyRenameMap(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
@@ -262,10 +252,6 @@ describe('applyRenameMap — multi-entry rewrites', () => {
 });
 
 describe('applyRenameMap — outbound link recomputation when source doc moves', () => {
-  // The doc whose body we are rewriting is itself in the renameMap and its
-  // dirname changes. Markdown links to NON-renamed targets must be
-  // re-relativized so they still point at the same doc after the move.
-
   test('recomputes outbound markdown link to non-renamed target when source moves folders', () => {
     const result = applyRenameMap(
       'See [Picasso](./picasso.md).\n',
@@ -277,9 +263,6 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('recomputes multiple outbound markdown links in one body', () => {
-    // `[C](../shared/c.md)` from 'artists/' resolves to 'shared/c'; from
-    // 'venues/' the relative path is the same '../shared/c.md', so it does
-    // NOT count as a rewrite even though the function visits it.
     const result = applyRenameMap(
       ['# Header', '', '[A](./a.md), [B](./b.md), and [C](../shared/c.md)', ''].join('\n'),
       'artists/some-file',
@@ -375,9 +358,6 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('same-folder rename leaves outbound markdown links untouched', () => {
-    // Just a basename change in the same folder — outbound paths still
-    // resolve correctly relative to the new name. The rename-target spine
-    // doesn't fire here because no link points at the renamed source.
     const result = applyRenameMap(
       'See [Picasso](./picasso.md).\n',
       'artists/some-file',
@@ -388,10 +368,6 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('source moves AND target also renamed — both rewrites compose correctly', () => {
-    // 'artists/some-file' moves to 'venues/some-file' and 'artists/picasso'
-    // is concurrently renamed to 'galleries/picasso' (folder rename of
-    // siblings). The outbound link must point at the target's NEW location
-    // from the source's NEW location.
     const result = applyRenameMap(
       'See [Picasso](./picasso.md).\n',
       'artists/some-file',
@@ -405,26 +381,17 @@ describe('applyRenameMap — outbound link recomputation when source doc moves',
   });
 
   test('moved doc with self-link resolves correctly post-move', () => {
-    // Self-link in the moved doc — pass 1 rewrites it (target == self,
-    // matches the rename), pass 2 re-relativizes the result. Final href
-    // resolves back to the doc's new location.
     const result = applyRenameMap(
       '[self](./some-file.md)\n',
       'artists/some-file',
       new Map([['artists/some-file', 'venues/some-file']]),
     );
-    // Path resolves to 'venues/some-file' from 'venues/' — valid self-link.
     expect(result.markdown).toContain('some-file.md');
     expect(result.rewrites).toBeGreaterThan(0);
-    // Sanity: no '../artists/' leakage to a stale folder.
     expect(result.markdown).not.toContain('../artists/some-file');
   });
 
   test('image refs are handled by the self-rename pass (not double-recomputed)', () => {
-    // Regression guard for the placeholder-cycle bug: feeding the image
-    // recompute through (current → placeholder) then (placeholder →
-    // newName) would corrupt the path arithmetic. The fix routes the
-    // self-rename through one direct pass with the real (old, new) pair.
     const result = applyRenameMap(
       '![first draft](first-draft.png)\n',
       'docs/meeting-notes',

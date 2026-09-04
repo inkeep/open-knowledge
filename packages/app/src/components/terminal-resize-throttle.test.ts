@@ -50,34 +50,31 @@ describe('createResizeThrottle', () => {
 
   test('requests during the interval coalesce into one trailing apply', () => {
     const h = makeHarness();
-    h.throttle.request(); // leading
+    h.throttle.request();
     h.throttle.request();
     h.throttle.request();
     expect(h.applies).toBe(1);
     h.runTimers();
-    expect(h.applies).toBe(2); // one trailing apply for the coalesced burst
+    expect(h.applies).toBe(2);
   });
 
   test('an interval that expires idle does not apply and closes the window', () => {
     const h = makeHarness();
     h.throttle.request();
-    h.runTimers(); // no request landed inside the interval
+    h.runTimers();
     expect(h.applies).toBe(1);
-    // Window closed — the next request is leading again.
     h.throttle.request();
     expect(h.applies).toBe(2);
   });
 
   test('a continuous stream applies once per interval, ending with a trailing settle', () => {
     const h = makeHarness();
-    // Simulate a drag: request, tick, request, tick, ...
-    h.throttle.request(); // leading apply
     h.throttle.request();
-    h.runTimers(); // trailing apply, window renewed
     h.throttle.request();
-    h.runTimers(); // trailing apply again
+    h.runTimers();
+    h.throttle.request();
+    h.runTimers();
     expect(h.applies).toBe(3);
-    // The renewed window with nothing pending expires silently.
     h.runTimers();
     expect(h.applies).toBe(3);
   });
@@ -85,7 +82,7 @@ describe('createResizeThrottle', () => {
   test('cancel drops the pending trailing apply and clears the timer', () => {
     const h = makeHarness();
     h.throttle.request();
-    h.throttle.request(); // pending trailing
+    h.throttle.request();
     h.throttle.cancel();
     h.runTimers();
     expect(h.applies).toBe(1);

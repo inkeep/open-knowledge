@@ -20,7 +20,6 @@ vi.doMock('../../../../lib/track.ts', () => ({
   isPrefetchRequest: () => _isPrefetch,
 }));
 
-// Flip the decoded-share outcome per test.
 let _viewKind: 'ok' | 'invalid' | 'unsupported-version' = 'ok';
 let _useRealShareContract = false;
 vi.doMock('../../../../lib/share-splash.ts', async (importOriginal) => {
@@ -86,7 +85,6 @@ describe('GET /d/[encoded]/download', () => {
       'https://openknowledge.ai/download?utm_content=share-splash',
     );
     expect(res.headers.get('set-cookie')).toContain('ok-pending-share=valid-share');
-    // Reaching the picker is not a download event.
     expect(_lastCapture).toBeNull();
   });
 
@@ -117,8 +115,6 @@ describe('GET /d/[encoded]/download', () => {
     expect(_lastCapture?.properties).toMatchObject({ os: 'linux', arch: 'arm64', format: 'rpm' });
   });
 
-  // Links minted before the picker carried `?os=` alone; they must keep working
-  // rather than silently falling back to the mac DMG on a Windows machine.
   test('a bare ?os= resolves to that OS default build', async () => {
     _viewKind = 'ok';
     _lastCapture = null;
@@ -143,8 +139,6 @@ describe('GET /d/[encoded]/download', () => {
     expect(_lastCapture?.properties).toMatchObject({ os: 'macos', arch: 'arm64', format: 'dmg' });
   });
 
-  // The share carry is the whole point of this route: a platform row that
-  // pointed anywhere else would download fine and lose the share.
   test('every platform row still sets the pairing cookie', async () => {
     _viewKind = 'ok';
     for (const query of [

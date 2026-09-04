@@ -23,7 +23,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
-// __dirname → packages/desktop/tests/integration/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx';
 
@@ -37,11 +36,7 @@ describe('no-loosely-typed-webcontents-ipc GritQL plugin', () => {
     const output = `${result.stdout}\n${result.stderr}`;
     const fires = (output.match(/Direct electron IPC primitive/g) ?? []).length;
     expect(fires).toBe(6);
-    // Diagnostic message names the fix (action verb-phrase substring).
     expect(output).toContain('route through createInvoker');
-    // Diagnostic message appends a docs URL — generic URL regex + anchor
-    // substring. The anchor check keeps the regex from being vacuously
-    // satisfied by an unrelated URL biome might surface elsewhere.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-loosely-typed-webcontents-ipcgrit');
   });

@@ -1,15 +1,3 @@
-/**
- * Acting on the toolbar's Add-properties button lands here: one pre-named
- * add-row per schema-required property the document lacks, so the user fills in
- * values instead of retyping names the schema already states.
- *
- * The load-bearing half is what does NOT happen. Staging writes nothing — a row
- * reaches the file only once it carries a value. Seeding empty placeholders
- * instead would put `status: ""` in the document and clear the very `required`
- * warning that produced the row, reporting the problem fixed while the field
- * is blank.
- */
-
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import type { LintDiagnostic, LinterConfig } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -40,14 +28,12 @@ const SCHEMA = {
   },
 };
 
-/** Same shape, with `status` given a fixed vocabulary. */
 const ENUM_SCHEMA = {
   type: 'object',
   required: ['status'],
   properties: { status: { enum: ['draft', 'published'] } },
 };
 
-/** A required `date`-format field — the widget type a staged row drafts as `date`. */
 const DATE_SCHEMA = {
   type: 'object',
   required: ['publishedAt'],
@@ -104,11 +90,6 @@ function readSource(provider: HocuspocusProvider): string {
   return provider.document.getText('source').toString();
 }
 
-/**
- * Mounts the panel beside the toolbar's dispatcher, so a batch add arrives the
- * way it does in the app — the cross-tree signal. The panel renders its own
- * inline "Add" button, so both entry points are reachable from one render.
- */
 async function renderPanel(provider: HocuspocusProvider, reservedKeys?: readonly string[]) {
   const { PropertyProvider, useProperties } = await import('./PropertyContext');
   const { PropertyPanel } = await import('./PropertyPanel');
@@ -172,7 +153,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await waitFor(() => expect(addRows()).toHaveLength(2));
     expect(nameValueOf(rowFor('status'))).toBe('status');
     expect(nameValueOf(rowFor('tags'))).toBe('tags');
-    // The whole point: a staged row is a draft, not a write.
     expect(readSource(provider)).toBe(before);
   });
 
@@ -185,17 +165,10 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(screen.getByTestId('toolbar-add-properties'));
 
     await waitFor(() => expect(addRows()).toHaveLength(1));
-    // `tags` is declared `array`, so it drafts as a chip list rather than the
-    // text box a type-blind stage would produce.
     expect(within(rowFor('tags')).getByTestId('list-widget')).toBeTruthy();
   });
 
   test('a staged required date row opens empty, not committable with today', async () => {
-    // A date field seeded with today's date is committable without the user
-    // choosing anything: one Add click writes a plausible-but-unchosen date and
-    // clears the required warning that produced the row. It must open empty so
-    // the commit gate stays shut until the user picks the real date — the same
-    // block text/list rows already get from their empty defaults.
     lintConfig = configWithSchema(DATE_SCHEMA);
     diagnostics = [missingDiagnostic('publishedAt')];
     const provider = makeProvider('staged-date-empty');
@@ -206,9 +179,7 @@ describe('PropertyPanel — staging schema-required properties', () => {
 
     await waitFor(() => expect(addRows()).toHaveLength(1));
     const row = rowFor('publishedAt');
-    // The date input opens with no value…
     expect(within(row).getByTestId('date-widget').querySelector('input')?.value).toBe('');
-    // …so the Add button stays disabled until a date is chosen.
     expect(within(row).getByTestId<HTMLButtonElement>('add-property-commit').disabled).toBe(true);
   });
 
@@ -227,16 +198,12 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(within(row).getByTestId('add-property-commit'));
 
     await waitFor(() => expect(readSource(provider)).toContain('status: draft'));
-    // `tags` was never filled, so it must not have been written alongside.
     expect(readSource(provider)).not.toContain('tags:');
     expect(addRows()).toHaveLength(1);
     expect(nameValueOf(rowFor('tags'))).toBe('tags');
   });
 
   test('a property the document already has is not staged', async () => {
-    // The count is rendered from a debounced pass, so the doc can gain the
-    // property between the badge and the click. Re-staging it would offer to
-    // add a property that is already there and fail on commit.
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('staged-already-present');
     seedYTextFm(provider, '---\nstatus: draft\n---\n');
@@ -260,9 +227,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('a reserved property is never staged', async () => {
-    // The skill panel reserves `name` as the skill's folder identity — renamed
-    // by moving the folder, never patched — so a schema that requires `name`
-    // must not stage a row that would add it as a plain property.
     lintConfig = configWithSchema({
       type: 'object',
       required: ['name', 'status'],
@@ -276,7 +240,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(screen.getByTestId('toolbar-add-properties'));
 
     await waitFor(() => expect(addRows()).toHaveLength(1));
-    // Only `status` stages; `name` is reserved and gets no row.
     expect(nameValueOf(addRows()[0] as HTMLElement)).toBe('status');
     expect(document.querySelector('[data-key="staged-name"]')).toBeNull();
   });
@@ -294,10 +257,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test("the panel's own Add opens one blank row even when properties are missing", async () => {
-    // Batch staging is the toolbar button's affordance. This control's object
-    // is a single property — its label says "Add property", singular — so a
-    // user reaching for it wants a row to name, not the schema's backlog. It
-    // must stay singular however many required properties the doc lacks.
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('inline-add-blank');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -308,13 +267,10 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await waitFor(() => expect(addRows()).toHaveLength(1));
     const row = addRows()[0] as HTMLElement;
     expect(nameValueOf(row)).toBe('');
-    // A blank row has nothing to fill in yet, so it opens in its name field.
     expect(document.activeElement).toBe(within(row).getByTestId('add-property-name-input'));
   });
 
   test('a present-but-invalid property is not staged', async () => {
-    // Only absent properties are this affordance's business; a wrong value has
-    // a row of its own to correct.
     diagnostics = [
       {
         range: { start: { line: 1, character: 0 }, end: { line: 1, character: 5 } },
@@ -350,8 +306,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('the first staged row starts in its value, not its name', async () => {
-    // "Add it and send me to edit it": the name is already filled in, so the
-    // value is the only thing left to type.
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('staged-focus');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -367,8 +321,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('only the first staged row claims focus', async () => {
-    // `autoFocus` is last-one-wins: without the per-row gate the caret would
-    // land on the bottom row of the batch.
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('staged-focus-single');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -381,10 +333,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('picking a suggestion applies its type, and siblings stop offering it', async () => {
-    // Two mechanisms meet here and are only covered in isolation elsewhere:
-    // `pickAddField` applies name + type + value as one update (so the widget
-    // changes), and `suggestionsFor` withholds a name a sibling row already
-    // claims (so a batch can't point two rows at one property).
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('staged-pick-and-dedup');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -392,27 +340,19 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(screen.getByTestId('toolbar-add-properties'));
     await waitFor(() => expect(addRows()).toHaveLength(2));
 
-    // Clear the `tags` row's name so its picker opens (an exact-match name
-    // closes the list — there is nothing left to choose).
     const row = rowFor('tags');
     const nameInput = within(row).getByTestId('add-property-name-input');
     await userEvent.clear(nameInput);
-    // The popup portals to document.body, so it is queried at screen level —
-    // only the focused row's list is open at a time.
     await waitFor(() =>
       expect(screen.queryAllByTestId('add-property-field-suggestion').length).toBeGreaterThan(0),
     );
 
-    // `status` is claimed by the sibling staged row, so this row must not offer
-    // it — otherwise a batch could point two rows at one property.
     const offered = screen
       .queryAllByTestId('add-property-field-suggestion')
       .map((el) => el.getAttribute('data-key'));
     expect(offered).not.toContain('status');
     expect(offered).toContain('tags');
 
-    // Picking `tags` (declared `array`) swaps the widget to the chip list — the
-    // schema's type rides along with the name, in one update.
     await userEvent.click(
       document.querySelector(
         '[data-testid="add-property-field-suggestion"][data-key="tags"]',
@@ -427,8 +367,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('a staged enum field offers its vocabulary instead of free text', async () => {
-    // The row exists because a schema demands the property; handing the user a
-    // free-text box for a fixed vocabulary invites the next violation.
     lintConfig = configWithSchema(ENUM_SCHEMA);
     diagnostics = [missingDiagnostic('status')];
     const provider = makeProvider('staged-enum');
@@ -457,10 +395,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('typing a name in a blank row does not move the caret to the value', async () => {
-    // The focus target describes where a row OPENS. Re-deriving it from the
-    // live draft made the blank row want its name at `''` and its value at
-    // `'a'`, so the first keystroke re-fired the focus effect and every
-    // character after it went into the value widget instead.
     diagnostics = [];
     const provider = makeProvider('staged-typing-keeps-focus');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -485,7 +419,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(screen.getByTestId('toolbar-add-properties'));
     await waitFor(() => expect(addRows()).toHaveLength(1));
 
-    // The row opened in its value; moving to the name and typing must stick.
     const nameInput = within(rowFor('status')).getByTestId<HTMLInputElement>(
       'add-property-name-input',
     );
@@ -496,8 +429,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
   });
 
   test('staged rows carry their own error target', async () => {
-    // One hardcoded id across sibling rows would point every row's
-    // `aria-describedby` at the same node.
     diagnostics = [missingDiagnostic('status'), missingDiagnostic('tags')];
     const provider = makeProvider('staged-error-ids');
     seedYTextFm(provider, '---\ntitle: Doc\n---\n');
@@ -505,8 +436,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
     await userEvent.click(screen.getByTestId('toolbar-add-properties'));
     await waitFor(() => expect(addRows()).toHaveLength(2));
 
-    // Enter in the name field commits past the Add button's disabled state, so
-    // both rows raise their own "Value is required".
     for (const name of ['status', 'tags']) {
       const nameInput = within(rowFor(name)).getByTestId('add-property-name-input');
       await userEvent.click(nameInput);
@@ -518,7 +447,6 @@ describe('PropertyPanel — staging schema-required properties', () => {
     const ids = errors.map((el) => el.getAttribute('id'));
     expect(ids.every((id) => id !== null && id !== '')).toBe(true);
     expect(new Set(ids).size).toBe(2);
-    // And each row points at its own.
     for (const name of ['status', 'tags']) {
       const row = rowFor(name);
       const describedBy = within(row)

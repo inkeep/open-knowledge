@@ -13,7 +13,6 @@ const INDEX_CANDIDATES = [
   '/.well-known/skills/index.json',
 ] as const;
 const MAX_INDEX_BYTES = 1024 * 1024;
-/** Concurrent file downloads within ONE website skill bundle. */
 const SITE_FILE_CONCURRENCY = 8;
 
 export interface WellKnownSourceSpec {
@@ -28,7 +27,6 @@ interface LegacySkillEntry {
   readonly files: readonly string[];
 }
 
-/** A website's parsed skill index — its base path plus every declared skill. */
 export interface WellKnownIndex {
   readonly basePath: string;
   readonly skills: readonly LegacySkillEntry[];
@@ -37,12 +35,6 @@ export interface WellKnownIndex {
 export interface WellKnownFetchOptions {
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
-  /**
-   * An index already read for this origin. Fetching N skills from one site
-   * otherwise re-reads (and re-probes both candidate paths for) the same index
-   * once per skill. Callers that already hold it — a bulk import over one
-   * origin — pass it here; everyone else keeps the single-fetch behavior.
-   */
   readonly index?: WellKnownIndex;
 }
 
@@ -56,20 +48,8 @@ export interface WellKnownSkillSummary {
   readonly description: string;
 }
 
-/** Redirect hops allowed before a website-skill fetch gives up. */
 const MAX_REDIRECTS = 5;
 
-/**
- * Fetch, following redirects ourselves so every hop is re-checked.
- *
- * The origin gate only ever saw the FIRST url. `fetch` follows redirects on its
- * own, so an https origin could bounce the request to http, to another host, or
- * to a link-local address, and the gate would never see it — the check passed
- * while the request went somewhere else entirely.
- *
- * Each hop must stay https and on the origin the caller validated. Anything
- * else is refused rather than followed.
- */
 async function fetchWithinOrigin(
   fetchImpl: typeof fetch,
   url: string,
@@ -196,7 +176,6 @@ async function readIndex(
   throw new SkillFetchError(`No usable website skill index at ${origin} (${failures.join('; ')})`);
 }
 
-/** Read website skill metadata without downloading any bundle files. */
 export async function discoverWellKnownSkills(
   rawOrigin: string,
   opts: WellKnownFetchOptions = {},
@@ -205,11 +184,6 @@ export async function discoverWellKnownSkills(
   return skills.map(({ name, description }) => ({ name, description }));
 }
 
-/**
- * Read a website's skill index once, for a caller about to fetch SEVERAL skills
- * from that origin — pass the result back as `opts.index` so each fetch skips
- * its own index round trip.
- */
 export async function readWellKnownIndex(
   rawOrigin: string,
   opts: WellKnownFetchOptions = {},
@@ -220,10 +194,6 @@ export async function readWellKnownIndex(
   return readIndex(origin, fetchImpl, opts.timeoutMs ?? 15_000);
 }
 
-/**
- * Fetch one legacy well-known skill bundle and materialize every declared file
- * into a temporary skill directory consumed by the normal acquisition parser.
- */
 export async function fetchWellKnownSkill(
   spec: WellKnownSourceSpec,
   opts: WellKnownFetchOptions = {},
@@ -245,10 +215,6 @@ export async function fetchWellKnownSkill(
   const skillDir = join(tmp, entry.name);
   let totalBytes = 0;
   try {
-    // Files download CONCURRENTLY. A skill's bundle is routinely 20+ small
-    // reference files, and one-at-a-time made a single skill a 20-round-trip
-    // wait — the whole visible cost of installing from a website source. Bounded
-    // so a large bundle cannot open a connection per file against one host.
     const pending = [...entry.files];
     const fetchOne = async (file: string): Promise<void> => {
       const url = childUrl(origin, basePath, entry.name, file);
@@ -270,10 +236,6 @@ export async function fetchWellKnownSkill(
           `Website skill file exceeds ${SKILL_IMPORT_MAX_FILE_BYTES} bytes: ${file}`,
         );
       }
-      // The running total is still exact — single-threaded, and each worker adds
-      // its whole file before yielding. Concurrency only means the breach is
-      // noticed with up to WORKERS-1 other files already counted, which is why
-      // the per-file cap above is the real bound on what one response can add.
       totalBytes += bytes.byteLength;
       if (totalBytes > SKILL_IMPORT_MAX_TOTAL_BYTES) {
         throw new SkillFetchError(
@@ -289,9 +251,6 @@ export async function fetchWellKnownSkill(
         await fetchOne(file);
       }
     };
-    // `Promise.all` rejects on the first failure while the other workers run to
-    // completion; the catch below removes the temp dir either way, so a partial
-    // bundle is never returned.
     await Promise.all(
       Array.from({ length: Math.min(SITE_FILE_CONCURRENCY, pending.length) }, worker),
     );

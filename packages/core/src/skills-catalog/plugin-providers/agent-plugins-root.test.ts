@@ -66,9 +66,6 @@ describe('enumerateAgentPluginsRoot', () => {
   });
 
   it('requires the agent-plugins $schema — a bare name-only manifest is not claimed', () => {
-    // The spec forbids component fields in the manifest, so `$schema` is the
-    // discriminator; without it a common `plugin.json` filename must not be
-    // mislabeled as an Agent Plugin.
     seedPlugin('unclaimed', { name: 'unclaimed' });
     expect(enumerateAgentPluginsRoot(root, 'agent-plugins', { scope: 'user' })).toHaveLength(0);
   });

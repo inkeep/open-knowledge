@@ -1,26 +1,3 @@
-/**
- * Typed comment syntax must stay visible in the WYSIWYG.
- *
- * The comment promoter claims a literal `<!-- … -->` / `%%…%%` run on the
- * next re-derivation, so prose a user typed becomes a `comment` mark or a
- * `commentBlock` node. When those bindings render `display: none` the text
- * leaves the editing surface entirely while the bytes on disk stay perfect:
- * the author sees their sentence delete itself and has no way to get it back
- * from the WYSIWYG. Comments are annotation, not deletion — the editing
- * surface shows them dimmed (Obsidian live-preview behaviour) and only
- * reading surfaces hide them.
- *
- * The rig is the production re-derivation, not a re-implementation of it:
- * Observer A serializes the fragment into Y.Text, Observer B splits the
- * frontmatter region off and re-parses the body with `parseWithFallback`.
- * A test that only checked `parse()` would miss the composition that
- * actually re-derives a live document.
- *
- * Visibility is read off the rendered ProseMirror DOM rather than the node
- * tree, because "the text is still in the document" is exactly the property
- * that held while the bug was live.
- */
-
 import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';
@@ -55,17 +32,11 @@ function mount(content?: JSONContent): { editor: Editor; container: HTMLDivEleme
   return entry;
 }
 
-/** Observer A serialize into Observer B's frontmatter-stripped re-parse. */
 function rederive(doc: JSONContent): { bytes: string; next: JSONContent } {
   const bytes = mdManager.serialize(doc);
   return { bytes, next: mdManager.parseWithFallback(stripFrontmatter(bytes).body) };
 }
 
-/**
- * Text a reader can actually see. Skips any subtree the renderer hid with an
- * inline `display: none` or `hidden`, which is what made the typed run
- * vanish. `textContent` would report the hidden run as present and pass.
- */
 function visibleText(root: HTMLElement): string {
   let out = '';
   const walk = (node: ChildNode): void => {
@@ -86,7 +57,6 @@ function visibleText(root: HTMLElement): string {
   return out;
 }
 
-/** Type a literal run with the input-rule pipeline bypassed, as paste does. */
 function insertLiteral(editor: Editor, text: string): void {
   editor.view.dispatch(editor.state.tr.insertText(text));
 }
@@ -115,9 +85,6 @@ describe('typed comment syntax survives re-derivation visibly', () => {
       const { editor } = mount();
       insertLiteral(editor, typed);
 
-      // Iterate the re-derivation on its own rather than through the editor:
-      // a mounted editor appends a TrailingNode, which adds a newline that
-      // belongs to the editor's affordance rather than to the round-trip.
       let doc: JSONContent = editor.getJSON();
       for (let iteration = 0; iteration < 4; iteration += 1) {
         const step = rederive(doc);

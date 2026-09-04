@@ -1,13 +1,3 @@
-/**
- * The wiring around {@link threadAtValueOffset}: a real click on a real
- * `<textarea>` in a real property row.
- *
- * The matcher's own rules are pinned in `property-anchor-click.test.ts`. What
- * needs a DOM is everything the matcher cannot see — that the listener finds
- * the row, reads the caret the browser placed, and leaves the click otherwise
- * alone.
- */
-
 import { cleanup, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -21,8 +11,6 @@ vi.doMock('./store', () => ({
   emitOpenThread: (id: string | null) => {
     opened.push(id);
   },
-  // The double IS the store's state here: the listener reads it to decide
-  // whether a click on an uncommented value has anything to stand down.
   getOpenThread: () => (opened.length === 0 ? null : opened[opened.length - 1]),
   getThreads: () => threads,
 }));
@@ -49,8 +37,7 @@ function Panel() {
   usePropertyAnchorClick(ref, 'recipes/chicken-alfredo-pasta');
   return (
     <div ref={ref}>
-      {/* The real row markup this listener keys off — `FrontmatterRow`'s testid
-          and key attribute, around the value widget it renders. */}
+      {}
       <div data-testid="property-row" data-key="cuisine">
         <Textarea aria-label="cuisine" defaultValue="Italian-American" />
       </div>
@@ -61,7 +48,6 @@ function Panel() {
   );
 }
 
-/** Click at a caret offset, the way a pointer would: mousedown, then click. */
 function clickAt(field: HTMLTextAreaElement, offset: number) {
   field.setSelectionRange(offset, offset);
   field.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -95,10 +81,6 @@ describe('clicking a commented property value', () => {
   });
 
   test('a click into an uncommented value stands the open thread down', () => {
-    // Same gesture the body reads as "I have moved on": with a comment open,
-    // clicking text that carries none has to clear it, or the highlight stays
-    // lit for a passage the reader has left. The two tests above pin the other
-    // half — with nothing open, the same click says nothing at all.
     const { getByLabelText } = render(<Panel />);
     clickAt(getByLabelText('cuisine') as HTMLTextAreaElement, 8);
     clickAt(getByLabelText('protein') as HTMLTextAreaElement, 3);

@@ -1,10 +1,3 @@
-/**
- * Wire-contract tests for the MCP CRUD-verb shared leaves. The MCP
- * `FrontmatterArg` reuses `FrontmatterValueSchema` from core — a regression in
- * either source widens or narrows what `write` / `edit` / `delete` / `move`
- * accept. These tests pin the wire-level acceptance so a future schema
- * rewrite can't silently re-introduce the "flat-only" contract.
- */
 import { describe, expect, test } from 'vitest';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
 import { DocExtensionArg, FrontmatterArg, resolveSkillFilePath } from './verb-schemas.ts';
@@ -68,9 +61,6 @@ describe('FrontmatterArg — recursive value contract (PRD-6947)', () => {
   });
 
   test('description text reflects recursive value contract (no stale "flat mapping" claim)', () => {
-    // Zod v4 exposes `.describe()` content directly on `.description`. The
-    // MCP SDK emits this verbatim into the JSON Schema the model reads, so
-    // it is part of the agent-facing wire contract.
     const description = FrontmatterArg.description ?? '';
     expect(description).toContain('nested');
     expect(description).not.toContain('flat key→value');
@@ -91,8 +81,6 @@ describe('DocExtensionArg — explicit on-create file format', () => {
   });
 
   test('enum is single-sourced from SUPPORTED_DOC_EXTENSIONS (no drift)', () => {
-    // The wire enum must equal the canonical list the engine writes from, so
-    // adding/removing a supported extension can never leave the MCP field stale.
     expect(DocExtensionArg.options).toEqual([...SUPPORTED_DOC_EXTENSIONS]);
   });
 
@@ -114,7 +102,6 @@ describe('resolveSkillFilePath — bundle-file path allowlist', () => {
     const script = resolveSkillFilePath('scripts/run.sh');
     expect(script.ok).toBe(true);
     if (script.ok) expect(script.kind).toBe('script');
-    // Nested one level deeper still resolves (kind from the top segment).
     const nested = resolveSkillFilePath('references/topic/deep.md');
     expect(nested.ok).toBe(true);
     if (nested.ok) expect(nested.kind).toBe('reference');
@@ -127,17 +114,12 @@ describe('resolveSkillFilePath — bundle-file path allowlist', () => {
       'references/../scripts/../../x',
       '/abs/path.md',
       'C:\\windows\\system32',
-      // Authored via `body`; a second write path would validate differently.
       'SKILL.md',
     ]) {
       expect(resolveSkillFilePath(bad).ok).toBe(false);
     }
   });
 
-  // Acquisition captures a skill's whole directory byte-for-byte, so a
-  // two-root allowlist here meant OK could write a file on import that it then
-  // refused to let an agent read or edit. Real published skills ship exactly
-  // these shapes (`mattpocock/skills/grill-me` carries `agents/openai.yaml`).
   test('accepts bundle roots beyond references/ and scripts/', () => {
     for (const good of ['assets/img.png', 'agents/openai.yaml', '.claude-plugin/plugin.json']) {
       const r = resolveSkillFilePath(good);

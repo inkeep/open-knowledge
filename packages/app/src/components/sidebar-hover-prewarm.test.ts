@@ -33,7 +33,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   test('quick mouse trail (dismiss before 80ms) fires no prewarm', async () => {
     const prewarm = vi.fn((): string | null => null);
     scheduleHoverPrewarm('doc-a', prewarm);
-    // Mouse leaves after 30ms, well before the 80ms intent threshold.
     await wait(30);
     cancelHoverPrewarm('doc-a');
     await wait(120);
@@ -43,9 +42,7 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   test('system docs are refused (__system__)', () => {
     const prewarm = vi.fn((): string | null => null);
     scheduleHoverPrewarm('__system__', prewarm);
-    // No timer scheduled — cancel is a no-op.
     cancelHoverPrewarm('__system__');
-    // Nothing fires even at the timer horizon.
     expect(prewarm).not.toHaveBeenCalled();
   });
 
@@ -54,7 +51,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
     scheduleHoverPrewarm('doc-b', prewarm);
     await wait(120);
     expect(prewarm).toHaveBeenCalledTimes(1);
-    // Second hover on the same doc — no re-fire.
     scheduleHoverPrewarm('doc-b', prewarm);
     await wait(120);
     expect(prewarm).toHaveBeenCalledTimes(1);
@@ -71,7 +67,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
     expect(successMark?.properties?.docName).toBe('doc-c');
     expect(successMark?.properties?.poolEventId).toBe('pool-event-x');
     expect(typeof successMark?.properties?.t).toBe('number');
-    // Correlation seed recorded for later click-side join.
     expect(__peekPrewarmRecord('doc-c')?.poolEventId).toBe('pool-event-x');
   });
 
@@ -88,16 +83,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
   });
 
   test('throwing prewarm callback (synchronous error from pool ctor / WS / etc.) emits ok/sidebar/prewarm-failed and does not propagate to window.onerror', async () => {
-    // The prewarm callback is a real R7 trust boundary — provided by
-    // ProviderPool; HocuspocusProvider construction or WebSocket creation
-    // can throw synchronously. The catch block in scheduleHoverPrewarm's
-    // setTimeout body emits a `prewarm-failed` mark and swallows the
-    // throw so a sidebar hover never takes down the page (no React
-    // boundary catches setTimeout/drainQueue exceptions). Without this
-    // test, a future removal or narrowing of that catch would silently
-    // regress: production hovers would surface as `window.onerror`
-    // notifications. Pattern B test — real failure-inducing input
-    // through the public interface.
     const failureMessage = 'synthetic ProviderPool ctor failure';
     const prewarm = vi.fn(() => {
       throw new Error(failureMessage);
@@ -117,7 +102,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
         .find((m) => m.name === 'ok/sidebar/prewarm-failed');
       expect(failMark?.properties?.docName).toBe('doc-throw');
       expect(failMark?.properties?.message).toBe(failureMessage);
-      // No success mark + no correlation seed for a failed prewarm.
       const successMark = getCollector()
         ?.marks.toArray()
         .find(
@@ -125,7 +109,6 @@ describe('sidebar-hover-prewarm (review Major #7 + V2 FR12 Option G)', () => {
         );
       expect(successMark).toBeUndefined();
       expect(__peekPrewarmRecord('doc-throw')).toBeUndefined();
-      // Verify the catch swallowed: no uncaught exception escaped.
       expect(uncaughtCount).toBe(0);
     } finally {
       process.off('uncaughtException', onError);

@@ -16,7 +16,6 @@ import { DESCRIPTION, type RestoreVersionDeps, register } from './restore-versio
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
-// See version.test.ts predecessor: skip on CI (simple-git child-reap hang).
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 const SHA = '0123456789abcdef0123456789abcdef01234567';
@@ -79,8 +78,6 @@ beforeAll(async () => {
       if (url.pathname === '/api/rollback' && req.method === 'POST') {
         return Response.json({
           ok: true,
-          // Mirrors the production handler: the deprecated single `warning`
-          // and the unified `warnings` array emit in parallel.
           ...(mockRollbackWarning !== undefined
             ? { warning: mockRollbackWarning, warnings: [mockRollbackWarning] }
             : {}),
@@ -120,7 +117,6 @@ describe('restore_version — registration + behavior', () => {
     expect(seenBodies.at(-1)?.commitSha).toBe(SHA);
     expect(seenBodies.at(-1)?.docName).toBe('notes/x');
     expect(result.content[0]?.text).toContain('Restored "notes/x"');
-    // Structured output echoes what was restored, in the shared `version` vocabulary.
     expect(result.structuredContent?.document).toBe('notes/x');
     expect(result.structuredContent?.version).toBe(SHA);
   });

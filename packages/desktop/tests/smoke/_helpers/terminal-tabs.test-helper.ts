@@ -1,13 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect } from './smoke-test';
 
-/**
- * Scope terminal-tab queries to their named tablist. The editor sidebar and
- * Agents panel also render tabs, so whole-page role or row locators are
- * ambiguous. `data-tab-id` is renderer-lifetime identity: rehydration re-mints
- * IDs from the survivor-array index, so assertions across reload or app restart
- * must use labels rather than IDs.
- */
 export const terminalTabs = (page: Page): Locator =>
   page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
 
@@ -43,8 +36,6 @@ export function findNewTerminalTabId(
   return created[0] as string;
 }
 
-/** Create a bare terminal and wait until that new tab, rather than the old
- * running tab, is active before applying the caller's shell-ready gate. */
 export async function openBareTerminalTab(
   page: Page,
   waitUntilReady: () => Promise<void>,

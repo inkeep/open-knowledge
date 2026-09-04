@@ -21,8 +21,6 @@ describe('gitSpawnEnv', () => {
   it('reflects SSH_AUTH_SOCK changes made after a prior call', () => {
     process.env.SSH_AUTH_SOCK = '/tmp/before.sock';
     expect(gitSpawnEnv().SSH_AUTH_SOCK).toBe('/tmp/before.sock');
-    // The startup harvest patches process.env once; a frozen snapshot here
-    // would pin every later git spawn to the pre-harvest socket.
     process.env.SSH_AUTH_SOCK = '/tmp/after.sock';
     expect(gitSpawnEnv().SSH_AUTH_SOCK).toBe('/tmp/after.sock');
   });

@@ -15,7 +15,6 @@ import {
 const DOC_A_NAME = 'doc-a';
 const DOC_B_NAME = 'doc-b';
 
-// Distinct countable markers — structural duplication duplicates whole baseline body.
 const DOC_A_FIXTURE = `# Doc A
 
 AA-CROSS-STALE-UUq3 Doc A baseline for epoch-scoped IDB naming.
@@ -126,7 +125,3 @@ describe('Cross-document stale cache (epoch-scoped IDB)', () => {
     }
   }, 35_000);
 });
-
-// Manual regression verifier: if client persistence builds DB names without a server-instance
-// segment (historic ok-ydoc:branch:docName shape), hydrating doc-b after doc-a synced can replay
-// stale CRDT baseline into disk — this assertion set fails. CI keeps the epoch-scoped name only.

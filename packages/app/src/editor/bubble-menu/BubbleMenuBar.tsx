@@ -32,13 +32,6 @@ export function BubbleMenuBar({
   const [tooltipKey, setTooltipKey] = useState(0);
   const stopAutoUpdateRef = useRef<(() => void) | null>(null);
 
-  // When an image / file is NodeSelected we swap the bar's contents to
-  // per-type controls (alignment buttons for images, download for
-  // files). The text-style controls (block-type / inline-format / link)
-  // are inappropriate for a leaf media block — they'd target the wrong
-  // selection or no-op. The selectors watch `selection` so the bar
-  // swaps content live as the user moves between text and media blocks
-  // without dismount.
   const isImageMode = useEditorState({
     editor,
     selector: (ctx) => isImageNodeSelected(ctx.editor),
@@ -48,9 +41,6 @@ export function BubbleMenuBar({
     selector: (ctx) => isFileNodeSelected(ctx.editor),
   });
 
-  // Virtual element whose getBoundingClientRect always reflects the current
-  // selection position. contextElement lets autoUpdate discover scroll ancestors
-  // (including the overflow-y-auto editor container) automatically.
   const virtualEl = {
     getBoundingClientRect: () => {
       try {
@@ -63,18 +53,8 @@ export function BubbleMenuBar({
     contextElement: editor.view.dom,
   };
 
-  // Clips placement to the editor's visible content region and hides the bar
-  // when the selection scrolls behind the toolbar / bottom composer / footer —
-  // see editor-visible-region.ts for why the viewport alone is the wrong boundary.
   const clipOptions = deriveEditorClipOptions(editor);
-  // The clamp that keeps the bar inside that region. The boundary alone only
-  // detects the overflow.
   const shiftOptions = deriveEditorShiftOptions(editor);
-  // The clamp can only place a bar that FITS. This bar is the widest surface
-  // anchored in the pane (~450px with every control up), so against a pane
-  // narrowed by a docked terminal it overhangs from any coordinate — see
-  // `deriveEditorSizeOptions`. Capping its width is what leaves the clamp
-  // something it can satisfy; `flex-wrap` below is what the cap costs.
   const sizeOptions = deriveEditorSizeOptions(editor);
 
   const onShow = () => {
@@ -89,14 +69,6 @@ export function BubbleMenuBar({
           offset(SELECTION_SURFACE_GAP_PX),
           flip(clipOptions),
           shift(shiftOptions),
-          // After the clamp, which is the same RELATIVE slot tiptap's plugin
-          // fixes `size` in — after the clamp, before `hide`. The full chains
-          // still differ in where `offset` runs, which is what
-          // `pendingOffsetPx` below compensates for; `deriveEditorSizeOptions`
-          // is indifferent to that because it measures the region rather than
-          // reading floating-ui's position-dependent `availableWidth`.
-          // `size()` resets the pass when it narrows the bar, so the clamp
-          // above re-runs against the width it actually has.
           size(sizeOptions),
           hide(clipOptions),
         ],
@@ -106,15 +78,10 @@ export function BubbleMenuBar({
             popup.style.position = 'fixed';
             popup.style.left = `${x}px`;
             popup.style.top = `${y}px`;
-            // Hide rather than clamp once the selection is fully occluded — a
-            // clamped bar floats over the footer/composer with no visible
-            // selection anchoring it.
             popup.style.visibility = middlewareData.hide?.referenceHidden ? 'hidden' : 'visible';
           }
         })
         .catch((error: unknown) => {
-          // computePosition is deferred third-party work, so teardown can win
-          // the race. Live popups need a diagnostic; autoUpdate will retry.
           if (popup.isConnected) {
             console.warn('[bubble-menu] computePosition failed', error);
           }
@@ -125,8 +92,6 @@ export function BubbleMenuBar({
   const onHide = () => {
     stopAutoUpdateRef.current?.();
     stopAutoUpdateRef.current = null;
-    // Bump key to force remount of tooltip-bearing children — prevents "rogue tooltips"
-    // that stay open after the bubble menu hides due to portal/z-index timing.
     setTooltipKey((k) => k + 1);
   };
 
@@ -138,17 +103,6 @@ export function BubbleMenuBar({
       appendTo={() => document.body}
       shouldShow={shouldShowBubbleMenu}
       updateDelay={250}
-      // flip/shift/size/hide mirror the autoUpdate loop above: the plugin runs
-      // its own computePosition on editor transactions (remote CRDT edits
-      // included), so both paths must agree on clipping, on the clamp that
-      // keeps the bar inside the clip region, on the width cap that leaves the
-      // clamp something it can place, and on when the selection counts as
-      // occluded — the plugin applies `referenceHidden` itself.
-      //
-      // `placement` and `offset` are stated rather than inherited from the
-      // plugin's defaults because `pendingOffsetPx` below compensates for this
-      // chain applying its gap AFTER the clamp — that compensation is only
-      // correct while the gap matches the loop's, so both paths name it.
       options={{
         onShow,
         onHide,
@@ -162,12 +116,6 @@ export function BubbleMenuBar({
         size: sizeOptions,
         hide: clipOptions,
       }}
-      // `flex-wrap` is the cap's other half: `max-width` alone bounds the box,
-      // not the row inside it, so a nowrap bar would keep painting its tail
-      // controls past a pane-width cap and nothing would have changed on
-      // screen. Wrapping spends height — which the clamp already bounds — to
-      // keep every control reachable, rather than scrolling them behind an
-      // affordance nobody would look for on a toolbar.
       className="z-50 flex flex-wrap items-center gap-0.5 rounded-lg border bg-background p-1 shadow-md"
     >
       {isImageMode ? (

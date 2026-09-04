@@ -1,17 +1,3 @@
-/**
- * Reopening puts a comment back in the batch.
- *
- * A send clears `queued` on its way to `resolved`, and reopening is the
- * correction for a send that did not settle the thing — so the server reopens it
- * queued and the next send carries it without a second click.
- *
- * The case worth pinning is the one the server cannot see. "Checked" is `queued`
- * minus a LOCAL unticked set, so a comment the reviewer unticked before it went
- * out still has its veto recorded here. Left in place, the server would report
- * queued while the panel rendered unchecked — exactly the second click reopening
- * exists to avoid, and with nothing on screen explaining it.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { CommentThreadMeta } from './comments-client';
 
@@ -45,7 +31,6 @@ vi.mock('./comments-client', () => ({
     if (found) found.queued = false;
     return found;
   }),
-  // The server's contract: reopening comes back anchored AND queued.
   reopenThread: vi.fn(async (threadId: string) => {
     const found = corpus.find((m) => m.threadId === threadId);
     if (found) {
@@ -90,8 +75,6 @@ describe('reopenThread', () => {
     const store = await import('./store');
     await store.refresh();
 
-    // Untick it while it is still open, then send it and reopen it. The local
-    // veto is what would otherwise outlive the round trip.
     store.toggleSending('t1');
     await settle();
     expect(store.getSelectedQueue()).not.toContain('t1');

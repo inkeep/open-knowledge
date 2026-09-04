@@ -1,34 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * TimelinePanel — document edit history content for the DocPanel timeline tab.
- *
- * Fetches GET /api/history on mount, polls every 10s while mounted. The
- * timeline surfaces actor/system commits — WIP writes from agents, principals,
- * the file watcher, the service, plus upstream syncs — as a flat
- * reverse-chronological list, PLUS the recovered-content rescue checkpoints the
- * shared kind registry marks `visibility: 'surfaced'` (rendered as ordinary
- * "Recovered content" versions). The rest of the checkpoints stay out: routine
- * cleanup / auto-consolidation (registry `hidden`) and Save-Version / MCP
- * `checkpoint`-tool restore points (no parsed kind) are not user-facing edit
- * history. Whether a checkpoint surfaces is driven by
- * `isSurfacedCheckpointKind` so this panel never drifts from the server's
- * timeline-query + GC partition. The WIP commits any dropped checkpoint folds
- * over remain visible (the server walks their ancestry), so dropping them loses
- * no edit history.
- *
- * Per-row UX:
- *   - Click a row → open the version's "what changed" diff in the main editor
- *     pane (full-pane overlay, `TimelineDiffPane`), driven by `timeline-diff-store`.
- *     The active row is highlighted while its diff is open. There is no inline
- *     expand and no mode toggle — a version always shows what it changed vs the
- *     previous version.
- *   - The per-row Restore icon (lucide Undo2, ghost variant, hover-destructive)
- *     sits in the row header. Restore rolls back to that version via
- *     POST /api/rollback; the confirm dialog names how many later edits it
- *     undoes (`laterEdits` = the row's index). For the latest version
- *     (`laterEdits === 0`) there is nothing to roll back, so restore is instant
- *     with no confirm. Cancel aborts the in-flight fetch via AbortController.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import {
@@ -81,21 +51,9 @@ import {
   useTimelineDiffView,
 } from '@/lib/timeline-diff-store';
 
-// History poll cadence. The loop is SELF-SCHEDULING: the
-// next poll is armed only after the previous one settles, so a slow query on a
-// degraded repo can never stack requests into a self-inflicted load storm.
 const TIMELINE_POLL_BASE_MS = 10_000;
-// Errors back off exponentially up to this cap (no tight error loop); a success
-// resets the cadence to the base interval.
 const TIMELINE_POLL_MAX_BACKOFF_MS = 60_000;
 
-/**
- * Run one history poll. Lives at module scope — NOT nested in the component —
- * because the React Compiler cannot lower a `try`/`finally` (it errors on the
- * finalizer clause) and it compiles every function nested inside a component.
- * The `finally`-based loading cleanup is legal here; the component passes its
- * state setters and the localized error string in via `handlers`.
- */
 async function pollHistoryOnce(
   docName: string,
   signal: AbortSignal,
@@ -119,35 +77,19 @@ async function pollHistoryOnce(
     handlers.setError(null);
     return 'ok';
   } catch (e) {
-    // Re-throw an abort (unmount / doc-nav) so the loop treats it as a
-    // cancellation, not an error to back off from.
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     handlers.setError(handlers.unavailableMessage);
     console.error('[timeline]', e);
     return 'error';
   } finally {
-    // Guard against setState after the poll was aborted (unmount).
     if (!signal.aborted) handlers.setLoading(false);
   }
 }
-
-// ─── Public props ────────────────────────────────────────────────────────────
 
 interface TimelineContentProps {
   docName: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * A row belongs in the timeline unless it is a checkpoint the shared kind
- * registry does not surface. A recovered-content rescue checkpoint (a parsed
- * surfaced kind) renders as an ordinary version; Save-Version / MCP-checkpoint
- * restore points (no parsed kind) and registry-`hidden` kinds stay out of edit
- * history. Guarding `checkpoint !== null` is load-bearing: `isSurfacedCheckpointKind`
- * treats a null kind as surfaced (its callers include non-checkpoint rows), so
- * the null-kind checkpoints must be excluded here rather than by the registry.
- */
 function showsInTimeline(entry: TimelineEntry): boolean {
   if (entry.type !== 'checkpoint') return true;
   return entry.checkpoint !== null && isSurfacedCheckpointKind(entry.checkpoint.kind);
@@ -184,12 +126,6 @@ function formatAbsoluteTime(isoString: string): string {
   });
 }
 
-/**
- * Classify a timeline entry from its commit subject into a friendly descriptor,
- * so the row shows "Restored to the version from …" / "Renamed …" instead of the
- * raw `rollback: doc to a1b2c3d` / `rename: a -> b` subject. `edit` is the
- * default — those rows fall back to the agent summary / doc list as before.
- */
 type EntryDescriptor =
   | { kind: 'restore'; targetSha7: string }
   | { kind: 'rename'; from: string; to: string }
@@ -199,9 +135,6 @@ type EntryDescriptor =
   | { kind: 'edit' };
 
 function classifyEntry(entry: TimelineEntry): EntryDescriptor {
-  // Only surfaced rescue checkpoints reach the render (showsInTimeline drops
-  // the rest), so any checkpoint here is recovered content — labeled generically
-  // rather than by its internal kind.
   if (entry.type === 'checkpoint') return { kind: 'recovered' };
   if (entry.type === 'upstream') return { kind: 'upstream' };
   const msg = entry.message;
@@ -214,37 +147,19 @@ function classifyEntry(entry: TimelineEntry): EntryDescriptor {
   return { kind: 'edit' };
 }
 
-/** Basename of a doc path, for compact rename labels. */
 function docLeaf(path: string): string {
   return path.split('/').pop() ?? path;
 }
 
-/** Map internal author names to user-friendly display names. Uses structured contributors when available. */
 function displayAuthor(entry: TimelineEntry): string {
-  // Rescue checkpoints are service-authored; the recovery framing is the title,
-  // never the raw service author or the internal checkpoint label.
   if (entry.type === 'checkpoint') return t`Recovered content`;
   if (entry.type === 'upstream') return t`Upstream sync`;
   if (entry.contributors.length === 1) return entry.contributors[0].name;
   if (entry.contributors.length > 1) return entry.contributors.map((c) => c.name).join(', ');
-  // Pre-attribution fallback
   if (entry.author === 'openknowledge-server' || entry.author === 'server') return t`Auto-save`;
   return entry.author;
 }
 
-/**
- * Which icon family a contributor's display name belongs to.
- *
- * Split out from rendering because the interesting property is a NEGATIVE one:
- * no system writer may reach `person`. A writer that falls through shows a human
- * icon beside content no human wrote, which is the confusion the classified
- * writer ids exist to prevent — and it fails silently, since the fallback
- * renders perfectly well.
- *
- * Names come from `SYSTEM_WRITER_DISPLAY_NAMES` — the same constants the server
- * writes into commits — so adding a system writer cannot leave this matching on
- * a string that no longer exists.
- */
 export function contributorIconKind(
   name: string,
 ): 'file-system' | 'upstream' | 'generated' | 'person' {
@@ -255,7 +170,6 @@ export function contributorIconKind(
   return 'person';
 }
 
-/** Icon for a timeline entry contributor. Brand icons for agents, lucide icons for system writers. */
 function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: boolean }) {
   const iconClass = 'size-3.5 shrink-0 text-muted-foreground';
 
@@ -271,7 +185,6 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
       : AGENT_ICON_COLORS[icon];
     const color = brandColor ?? colorFromSeed(seed);
 
-    // Known agent brand → brand icon with brand color (dark override when available)
     if (icon !== 'bot') {
       return (
         <AgentIcon icon={icon} width={14} height={14} className="shrink-0" style={{ color }} />
@@ -290,7 +203,6 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
     }
   }
 
-  // Pre-attribution fallback
   if (
     entry.authorEmail.includes('agent') ||
     entry.author.includes('agent') ||
@@ -305,19 +217,6 @@ function ContributorIcon({ entry, isDark }: { entry: TimelineEntry; isDark: bool
   return <User className={iconClass} />;
 }
 
-// ─── Summary bullets ──────────────────────────────────────────────────────────
-//
-// Agent-provided summaries render as a collapsible bullet list under the author
-// line. First bullet inline, further bullets behind a "Show N more" expander.
-// The doc-list line ALWAYS renders alongside — it stays ground truth;
-// bullets enrich, they don't replace.
-
-/**
- * Flatten summaries across contributors (flat shape) preserving insertion
- * order. Multi-contributor commits coalesce into one flat list — per-bullet
- * contributor identity is deliberately deferred. Exported so the test suite
- * can lock the flatten invariant without touching React.
- */
 export function allSummariesFor(entry: TimelineEntry): string[] {
   const out: string[] = [];
   for (const c of entry.contributors) {
@@ -331,36 +230,8 @@ interface SummaryBulletsProps {
   summaries: string[];
 }
 
-/**
- * Collapsible bullet renderer. Default is collapsed so coalesced-heavy rows
- * don't dominate the panel. The expander is a real `<button>` — this works
- * because EntryRow is a `<div role="button">` (nested `<button>` inside a
- * `<button>` is invalid HTML; see EntryRow comment). The expander's
- * onClick stops propagation so the row's onSelect doesn't also fire.
- *
- * Markup shape: a SINGLE `<ul>` containing the always-visible first bullet
- * AND the expanded rest (conditionally rendered) — screen-reader list
- * navigation (VoiceOver rotor, JAWS list mode, NVDA) treats every bullet as
- * part of the same list instead of seeing the first as a free-floating
- * paragraph. The expander lives OUTSIDE the `<ul>` because `<button>` is not
- * a valid `<ul>` child per HTML spec.
- *
- * Keys combine the bullet's positional index with its text. The contributor
- * accumulator explicitly permits duplicate summaries within a debounce window
- * (`contributor-tracker.ts:87-91` — "No dedup: an agent may legitimately log
- * the same summary twice"), so a text-only key would collide on duplicates
- * and trigger React's "two children with the same key" warning + subtly wrong
- * reconciliation. The list is append-only with no reorder within a row, so a
- * positional component is safe.
- */
 function SummaryBullets({ summaries }: SummaryBulletsProps) {
   const [expanded, setExpanded] = useState(false);
-  // `useId` is React 19's idiomatic source for associating the expander
-  // `<button aria-controls>` with its `<ul>` — each row instance gets its own
-  // unique id, so multiple TimelinePanel rows mounted on one page don't
-  // collide. NVDA and JAWS use this association to announce which region
-  // just grew/shrank when the user activates "Show N more"; without it the
-  // user only hears "expanded" with no cue about what changed.
   const listId = useId();
   if (summaries.length === 0) return null;
   const [first, ...rest] = summaries;
@@ -400,15 +271,6 @@ function SummaryBullets({ summaries }: SummaryBulletsProps) {
   );
 }
 
-// ─── Entry row ────────────────────────────────────────────────────────────────
-
-/**
- * Row-2 detail line, chosen by the entry's classified kind. A restore renders
- * "Restored to the version from <date>" and — when the target version is on the
- * loaded page — links to it (click scrolls + flashes that row). Other kinds get
- * a friendly label instead of the raw commit subject; ordinary edits fall back
- * to the doc list.
- */
 function EntryDetail({
   descriptor,
   allDocs,
@@ -469,9 +331,6 @@ function EntryDetail({
     return <p className="truncate text-xs text-muted-foreground">{t`Synced from disk`}</p>;
   }
 
-  // A recovered row's title ("Recovered content") is the whole label; it has no
-  // contributor doc list, so render no second line rather than the "Edited"
-  // fallback below (which would misdescribe a system rescue as a user edit).
   if (descriptor.kind === 'recovered') return null;
 
   if (allDocs.length > 0) {
@@ -482,8 +341,6 @@ function EntryDetail({
     );
   }
 
-  // Upstream syncs already say "Upstream sync" on the author line (displayAuthor)
-  // — a detail line would just repeat it, so render none.
   if (descriptor.kind === 'upstream') return null;
 
   return <p className="truncate text-xs text-muted-foreground">{t`Edited`}</p>;
@@ -493,16 +350,11 @@ interface EntryRowProps {
   entry: TimelineEntry;
   isDark: boolean;
   docName: string;
-  /** Number of newer versions above this row — what a restore rolls back. */
   laterEdits: number;
   onRestoreSuccess: () => void;
-  /** Resolve a 7-char SHA to the version it points at (for restore-row labels). */
   versionBySha7: Map<string, TimelineEntry>;
-  /** Scroll to + flash the version a restore row points at. */
   onJumpToVersion: (sha7: string) => void;
-  /** Register this row's element so a jump can scroll it into view. */
   registerRowRef: (el: HTMLDivElement | null) => void;
-  /** True while this row is the flash target of a just-clicked jump. */
   flashing: boolean;
 }
 
@@ -527,19 +379,13 @@ function EntryRow({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  // Highlight the row whose diff is currently open in the main pane.
   const activeDiff = useTimelineDiffView();
   const isActive = activeDiff?.docName === docName && activeDiff.sha === entry.sha;
 
-  // Aborting an in-flight restore on unmount avoids state writes on a
-  // disposed component if the response lands after the user navigated away.
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
 
-  // Open the full-pane "what changed" diff in the main editor pane. The two
-  // full-pane diffs share one overlay slot — close the agent diff so they
-  // can't both paint.
   const handleActivate = () => {
     closeAgentDiff();
     openTimelineDiff({
@@ -554,8 +400,6 @@ function EntryRow({
   };
 
   function handleCancelDialog() {
-    // Cancel honors the user's intent: any in-flight rollback is aborted so
-    // the document is not silently rewritten after they "Cancel".
     abortRef.current?.abort();
     abortRef.current = null;
     setRestoring(false);
@@ -604,9 +448,7 @@ function EntryRow({
       try {
         const problem = ProblemDetailsSchema.safeParse(await res.json());
         if (problem.success) detail = problem.data.title;
-      } catch {
-        // non-JSON body; keep status detail
-      }
+      } catch {}
       console.error('[timeline] rollback failed', {
         docName,
         sha: entry.sha,
@@ -648,11 +490,11 @@ function EntryRow({
             }
           }}
         >
-          {/* mt-0.5 aligns the icon to the center of the first text line rather than the full content block */}
+          {}
           <span className="mt-0.5 shrink-0">{leadingIcon}</span>
 
           <div className="min-w-0 flex-1 space-y-0.5">
-            {/* Row 1: title + date + Restore icon, vertically centered with the icon */}
+            {}
             <div className="flex items-center gap-1.5">
               <span className="truncate text-xs text-foreground">{authorName}</span>
               <time
@@ -662,7 +504,7 @@ function EntryRow({
               >
                 {relative}
               </time>
-              {/* Visual separator anchors the destructive Restore action as its own region. */}
+              {}
               <span aria-hidden="true" className="h-3 w-px shrink-0 bg-border" />
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -690,7 +532,7 @@ function EntryRow({
               </Tooltip>
             </div>
 
-            {/* Row 2: details, aligned with title start */}
+            {}
             {allSummaries.length > 0 && <SummaryBullets summaries={allSummaries} />}
             <EntryDetail
               descriptor={descriptor}
@@ -745,8 +587,6 @@ function EntryRow({
   );
 }
 
-// ─── Main content (no Sheet wrapper) ─────────────────────────────────────────
-
 export function TimelineContent({ docName }: TimelineContentProps) {
   const { t } = useLingui();
   const { resolvedTheme } = useTheme();
@@ -754,14 +594,10 @@ export function TimelineContent({ docName }: TimelineContentProps) {
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Row elements keyed by full SHA, so a restore row can scroll its target into
-  // view; `flashSha` briefly rings that target after the jump.
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const [flashSha, setFlashSha] = useState<string | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 7-char SHA → version, so a `rollback: … to <sha7>` row can name and link the
-  // version it restored (only versions on the loaded page resolve).
   const versionBySha7 = new Map<string, TimelineEntry>();
   for (const e of entries) versionBySha7.set(e.sha.slice(0, 7), e);
 
@@ -777,8 +613,6 @@ export function TimelineContent({ docName }: TimelineContentProps) {
   }
 
   function handleRestoreSuccess() {
-    // A restore made the open diff's baseline stale — close the pane. (Doc nav
-    // is handled by EditorArea, which closes the diff when the open doc changes.)
     closeTimelineDiff();
   }
 
@@ -792,7 +626,6 @@ export function TimelineContent({ docName }: TimelineContentProps) {
     const loop = createSelfSchedulingPoll({
       baseMs: TIMELINE_POLL_BASE_MS,
       maxBackoffMs: TIMELINE_POLL_MAX_BACKOFF_MS,
-      // Hidden tab issues zero requests — the loop parks until re-shown.
       isPaused: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
       poll: (signal) =>
         pollHistoryOnce(docName, signal, {
@@ -819,16 +652,15 @@ export function TimelineContent({ docName }: TimelineContentProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Panel header. The diff layout (unified/split) toggle moved to the
-          full-pane diff view, where the diff actually renders. */}
+      {}
       <PanelHeader>
         <PanelTitle>
           <Trans>Timeline</Trans>
         </PanelTitle>
       </PanelHeader>
-      {/* Scrollable entry list */}
+      {}
       <div className="flex-1 overflow-y-auto subtle-scrollbar scroll-fade-mask">
-        {/* Loading skeleton */}
+        {}
         {loading && (
           <div
             className="flex flex-col gap-1 p-2"
@@ -848,14 +680,14 @@ export function TimelineContent({ docName }: TimelineContentProps) {
           </div>
         )}
 
-        {/* Error state */}
+        {}
         {!loading && error && (
           <div className="px-4 py-3">
             <p className="text-xs text-destructive">{error}</p>
           </div>
         )}
 
-        {/* Empty state */}
+        {}
         {!loading && !error && entries.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-xs text-muted-foreground">
@@ -864,7 +696,7 @@ export function TimelineContent({ docName }: TimelineContentProps) {
           </div>
         )}
 
-        {/* Flat reverse-chronological list of actor/system commits. */}
+        {}
         {!loading && !error && entries.length > 0 && (
           <div className="flex flex-col gap-1 p-2">
             {entries.map((entry, index) => (

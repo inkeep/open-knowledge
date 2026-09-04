@@ -26,10 +26,6 @@ export function SystemDocSubscriber() {
     refreshServerInfo,
   } = useDocumentContext();
 
-  // Ref pattern: dispatchers are re-created per-render in DocumentContext's `value`
-  // literal. Capturing them by closure inside `onStateless` would tie the main
-  // effect's lifecycle to every render. One ref over an object holds all five
-  // dispatchers; a no-deps effect refreshes the snapshot after every render.
   const handlersRef = useRef({
     updateServerInstanceId,
     onBranchSwitched,
@@ -50,23 +46,21 @@ export function SystemDocSubscriber() {
   useEffect(() => {
     if (collabUrl === null) return;
     const doc = new Y.Doc();
-    // STOP: this provider must stay token-less. It is the only channel by
-    // which a live client learns that the server rotated its instance id,
-    // and it can only be that channel because it carries no epoch claim for
-    // the server to reject. Giving it a claim-bearing token makes it fail
-    // authentication after every restart; it has no `authenticationFailed`
-    // handler and this effect does not re-run, so `refreshServerInfo` would
-    // never fire and the pool would never learn the new epoch — turning an
-    // intermittent single-doc stall into a deterministic total one.
+    /*
+     * STOP: this provider must stay token-less. It is the only channel by
+     * which a live client learns that the server rotated its instance id,
+     * and it can only be that channel because it carries no epoch claim for
+     * the server to reject. Giving it a claim-bearing token makes it fail
+     * authentication after every restart; it has no `authenticationFailed`
+     * handler and this effect does not re-run, so `refreshServerInfo` would
+     * never fire and the pool would never learn the new epoch — turning an
+     * intermittent single-doc stall into a deterministic total one.
+     */
     const provider = new HocuspocusProvider({
       url: collabUrl,
       name: SYSTEM_DOC_NAME,
       document: doc,
       onStateless: ({ payload }: { payload: string }) => {
-        // CC1 stateless channel multiplexes payload-bearing shapes via
-        // the shared dispatcher in `@/lib/cc1` — adding a new channel
-        // is a one-place edit there, not parallel updates here + the
-        // integration harness's `attachSystemDocSubscriber`.
         dispatchCC1Stateless(payload, {
           onServerInfo: (info) => {
             handlersRef.current.updateServerInstanceId(info.serverInstanceId);
@@ -79,9 +73,6 @@ export function SystemDocSubscriber() {
           },
           onDiskAck: (p) => {
             handlersRef.current.observeDiskAck(p.docName, p.sv);
-            // Relay the docName for validation freshness: disk-ack is the one
-            // per-doc CC1 channel, so it is the "this doc changed" signal the
-            // per-doc re-validate keys off.
             emitDocPersisted(p.docName);
           },
           onDerivedView: (p) => {
@@ -119,40 +110,19 @@ export function SystemDocSubscriber() {
         void queryClient.invalidateQueries({ queryKey: ['orphans'] });
         void queryClient.invalidateQueries({ queryKey: ['hubs'] });
       }
-      // Server-side signal that the DISK-derived effective lint config
-      // changed (project config.yml persisted, or a schema file was
-      // written/deleted by any client). Re-fetch + re-lint through the same
-      // window event local writes use.
       if (channels.includes('lint-config')) {
         emitLintConfigChanged();
       }
     });
 
-    // Track first-sync vs subsequent-sync via the shared
-    // `createSyncedReconnectGate` helper — same semantics as the
-    // integration harness's `attachSystemDocSubscriber`, single
-    // source of truth for the "fire-on-reconnect-only" wire-up. The
-    // boot fetch (DocumentContext) already covers the initial sync,
-    // so we skip the first one to avoid a redundant request. After
-    // that, every `synced` is a real WebSocket reconnect — re-fetch
-    // /api/server-info to recover any disk-ack / server-info /
-    // branch-switched frames missed during the WS drop.
     const onReconnectSynced = createSyncedReconnectGate(() => {
       void handlersRef.current.refreshServerInfo();
     });
     provider.on('synced', () => {
-      // Recover any derived-view frames emitted while this connection was
-      // opening. In particular, a local file can appear or disappear after the
-      // audit's initial fetch but before CC1 is ready, so local targets must be
-      // refreshed on the first sync as well as reconnects.
       emitDocumentsChanged(['files', 'backlinks', 'graph', 'local-targets']);
       onReconnectSynced();
     });
 
-    // One-shot per-clientID warning when a stale bundled client still publishes
-    // `user.type === 'agent'`. `AwarenessUser.type` is narrowed to `'human'`
-    // — anything else is a rollout drift signal. Gated on
-    // NODE_ENV !== 'test' to avoid test-environment noise.
     const warnedStaleAgentClients = new Set<number>();
     const handleAwarenessChange = (): void => {
       if (process.env.NODE_ENV === 'test' || !provider.awareness) return;
@@ -168,9 +138,6 @@ export function SystemDocSubscriber() {
       }
     };
     provider.awareness?.on('change', handleAwarenessChange);
-    // Lift the provider into DocumentContext so presence-bar consumers
-    // (use-presence) can read the __system__ awareness without
-    // re-materializing a second provider.
     setSystemProvider(provider);
 
     return () => {

@@ -16,8 +16,6 @@ const PROJECT: TerminalWindowProject = {
   apiOrigin: 'http://localhost:5200',
 };
 
-/** A fake window exposing only what the factory touches; `closed` handlers are
- *  captured so a test can fire the lifecycle event. */
 function makeFakeWindow(id: number) {
   const closedHandlers: Array<() => void> = [];
   const window = {
@@ -74,8 +72,6 @@ function makeDeps(opts: {
 const CREATED_IDS = [70_001, 70_002, 70_003];
 
 afterEach(() => {
-  // The registry is a module-global Map — drop anything a test registered (most
-  // tests fire `closed` which unregisters; this covers the ones that do not).
   for (const id of CREATED_IDS) unregisterTerminalWindow(id);
 });
 
@@ -146,8 +142,6 @@ describe('createTerminalWindow', () => {
     const b = makeDeps({ id: 70_003, project: PROJECT });
     createTerminalWindow(b.deps);
 
-    // Each call created its own window + registry entry — terminal windows are
-    // not deduped by project the way windowsByPath editor windows are.
     expect(a.createWindow).toHaveBeenCalledTimes(1);
     expect(b.createWindow).toHaveBeenCalledTimes(1);
     expect(getTerminalWindowContext(70_001)).not.toBeUndefined();
@@ -176,15 +170,10 @@ describe('createTerminalWindow', () => {
     const failing = vi.fn(async () => {
       throw new Error('renderer boom');
     });
-    // Override the happy-path loadURL with one that rejects, exercising the
-    // factory's `.catch` handler rather than the resolve path the tests above hit.
     (h.fake.window as unknown as { loadURL: typeof failing }).loadURL = failing;
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     createTerminalWindow(h.deps);
-    // The factory attaches its `.catch` synchronously; the rejected promise queues
-    // that handler as a microtask. Flush the microtask queue so it has run before
-    // asserting — deterministic, no timer wait.
     await Promise.resolve();
     await Promise.resolve();
 
@@ -260,9 +249,6 @@ describe('resolveTerminalWindowProject', () => {
   });
 
   test('chaining from a terminal window with no collab/api fields falls back to empty strings', () => {
-    // The registry's collabUrl/apiOrigin are optional; the resolver's `?? ''`
-    // fallbacks must keep argv as `--ok-collab-url=` (empty) rather than letting
-    // `undefined` through and producing `--ok-collab-url=undefined`.
     expect(
       resolveTerminalWindowProject({
         editor: null,
@@ -287,9 +273,6 @@ describe('resolveTerminalWindowProject', () => {
   });
 
   test('a focused note window contributes its project instead of opening project-less', () => {
-    // A pop-out is in neither windowsByPath nor the terminal registry, so
-    // without this arm New Terminal Window from a focused pop-out silently
-    // opened a home-directory shell.
     expect(
       resolveTerminalWindowProject({
         editor: null,

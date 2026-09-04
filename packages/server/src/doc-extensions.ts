@@ -1,30 +1,3 @@
-/**
- * Supported markdown-family file extensions for content files.
- *
- * Ordered by precedence — earlier entries win when the same docName exists
- * with multiple extensions on disk. Precedence matches the industry convention
- * (Next.js, Astro, Fumadocs): `.mdx` is a strict superset of `.md`, so a
- * co-located `.mdx` is presumed to intentionally override the `.md`.
- *
- * The extension-less docName is what normally flows through the CRDT layer,
- * MCP tools, wiki-link resolution, and the backlink index. When a Show All
- * disk walk sees same-stem `.md` and `.mdx` files, it can surface an
- * extension-qualified docName for those ambiguous rows so both files remain
- * independently addressable. Persistence writes extension-qualified docNames
- * to that exact file; otherwise it uses `getDocExtension()` to decide which
- * file extension to write to.
- *
- * Casing preservation: extensions are matched case-insensitively (`.MD` and
- * `.md` both qualify), but the actual on-disk casing observed at registration
- * time is stored verbatim and returned by `getDocExtension`. Persistence
- * therefore writes back to the same filename the user has on disk —
- * preventing a duplicate `Foo.md` from appearing alongside an existing
- * `Foo.MD` on case-sensitive filesystems (Linux ext4, APFS-case-sensitive).
- *
- * This module is intentionally small and free of I/O — it's consumed by the
- * file watcher, content filter, persistence, and API layers.
- */
-
 import { extname } from 'node:path';
 import {
   DEFAULT_DOC_EXTENSION,
@@ -35,35 +8,20 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 
-// Re-export the canonical core list so existing server-side importers
-// (`./doc-extensions.ts`) keep working unchanged; core is the single source.
 export { SUPPORTED_DOC_EXTENSIONS };
 
 const DEFAULT_EXTENSION: DocExtension = DEFAULT_DOC_EXTENSION;
 
-/** True when a path ends with any supported doc extension. */
 export function isSupportedDocFile(path: string): boolean {
   const ext = extname(path).toLowerCase();
   return (SUPPORTED_DOC_EXTENSIONS as readonly string[]).includes(ext);
 }
 
-/**
- * True when a path's extension matches the passed-in asset-extensions set.
- * Used by the file-watcher to admit asset files into the live event stream
- * without conflating them with markdown docs.
- *
- * The file-watcher passes `LINKABLE_ASSET_EXTENSIONS` (walk/index/watch gate),
- * which is a strict superset of `ASSET_EXTENSIONS` (serve gate).
- */
 export function isSupportedAssetFile(path: string, assetExtensions: ReadonlySet<string>): boolean {
   const ext = extname(path).slice(1).toLowerCase();
   return ext.length > 0 && assetExtensions.has(ext);
 }
 
-/**
- * Strip a supported doc extension from a path. Returns the input unchanged if
- * no supported extension is present (so plain docNames pass through).
- */
 export function stripDocExtension(path: string): string {
   const lower = path.toLowerCase();
   for (const ext of SUPPORTED_DOC_EXTENSIONS) {
@@ -72,11 +30,6 @@ export function stripDocExtension(path: string): string {
   return path;
 }
 
-/**
- * Canonicalize an extension string for precedence comparison.
- * Returns null when the input doesn't match any supported extension after
- * case-folding, so callers can reject early rather than store junk.
- */
 function canonicalize(ext: string): DocExtension | null {
   const lower = ext.toLowerCase();
   if (lower === '.mdx') return '.mdx';
@@ -84,53 +37,14 @@ function canonicalize(ext: string): DocExtension | null {
   return null;
 }
 
-/**
- * Return the precedence rank of an extension (lower = higher precedence).
- * Returns `Infinity` for unknown extensions so they never win.
- */
 function rank(ext: DocExtension): number {
   return SUPPORTED_DOC_EXTENSIONS.indexOf(ext);
 }
 
-/**
- * In-memory map from extension-less docName to the on-disk extension as
- * observed (with original casing).
- *
- * Populated by the file watcher on initial scan and on create events. Read by
- * persistence, rescue-buffer, timeline query, and backlink-index when they
- * need to materialize a filesystem path from a docName.
- *
- * Scope: module-global singleton. Worktree isolation is enforced at the
- * content-dir boundary — each server process owns its own content dir and
- * therefore its own map.
- */
 const docExtensionByName = new Map<string, string>();
 
-/**
- * The LOSING extension when a docName has both `.md` and `.mdx` on disk.
- *
- * `docExtensionByName` records only the winner, so without this the fact that
- * a second file exists under the same stem is computed at registration and
- * then discarded. That fact is what makes an extension-qualified docName
- * meaningful: `foo.md` addresses a real, distinct file only while `foo`
- * resolves to `foo.mdx`.
- */
 const shadowedExtByName = new Map<string, string>();
 
-/**
- * Record the on-disk extension for a docName. The caller passes the actual
- * observed extension (e.g. `.MD` or `.mdx`); the casing is preserved verbatim
- * so a later `getDocExtension` round-trip yields the same path on disk.
- *
- * Precedence is computed against the canonical (case-folded) form: `.mdx`
- * always wins over `.md` regardless of how either was cased on disk.
- *
- * Returns the effective extension after the call (with its original casing),
- * whether the stored mapping changed, and the shadowed extension if any.
- *
- * Throws when `observedExt` does not canonicalize to a supported extension —
- * callers must guard with `isSupportedDocFile` before calling.
- */
 export function registerDocExtension(
   docName: string,
   observedExt: string,
@@ -147,18 +61,13 @@ export function registerDocExtension(
   }
   const existingCanonical = canonicalize(existing);
   if (!existingCanonical) {
-    // Defensive: an entry stored without going through this function. Replace
-    // it with the freshly observed (well-formed) extension and report change.
     docExtensionByName.set(docName, observedExt);
     shadowedExtByName.set(docName, existing);
     return { effective: observedExt, changed: true, shadowed: existing };
   }
   if (existingCanonical === canonical) {
-    // Same canonical extension — keep the first-observed casing untouched.
-    // (Shouldn't normally drift since the watcher walks the same path.)
     return { effective: existing, changed: false, shadowed: null };
   }
-  // Different canonical extensions — apply precedence.
   if (rank(canonical) < rank(existingCanonical)) {
     docExtensionByName.set(docName, observedExt);
     shadowedExtByName.set(docName, existing);
@@ -168,53 +77,15 @@ export function registerDocExtension(
   return { effective: existing, changed: false, shadowed: observedExt };
 }
 
-/**
- * Get the recorded extension for a docName, or the default (`.md`) when no
- * file has been observed for it yet (e.g. new-page creation via the API).
- *
- * Returns the actual on-disk casing — `Foo.MD` round-trips back to `.MD`,
- * so the persistence layer writes to the same filename rather than creating
- * a lowercase duplicate.
- */
 export function getDocExtension(docName: string): string {
   return docExtensionByName.get(docName) ?? DEFAULT_EXTENSION;
 }
 
-/**
- * True when the extension index has RECORDED this docName as a markdown
- * document — i.e. a file like `notes.ts.md` exists, whose docName strips to
- * `notes.ts`. The editable-text doc class must yield to that recording:
- * without the check, the string-shaped predicate would classify `notes.ts`
- * as a text doc and read/write the phantom `notes.ts` path instead of the
- * markdown file the docName actually names. No-default lookup on purpose —
- * an unregistered docName is NOT a markdown twin.
- */
 export function isRegisteredMarkdownDocName(docName: string): boolean {
   const recorded = docExtensionByName.get(docName);
   return recorded === '.md' || recorded === '.mdx';
 }
 
-/**
- * Collapse an extension-qualified markdown docName onto its extension-less
- * twin unless the extension is load-bearing.
- *
- * Extension-qualified markdown docNames are legitimate for exactly one case:
- * same-stem `.md` and `.mdx` files that both exist on disk, which the disk
- * walk registers so each stays independently addressable. Those are the names
- * `isRegisteredMarkdownDocName` knows about, and they pass through untouched.
- *
- * Every other extension-carrying markdown name is a stray that would resolve
- * to the same file as its extension-less twin while keying a SEPARATE
- * collaboration room. Two rooms over one file diverge permanently and both
- * write to it, so the loser's edits are overwritten with no merge and no
- * conflict. Collapsing here is what keeps one file backed by one document.
- *
- * Non-markdown docNames (mermaid, excalidraw, editable-text) carry their
- * extension as part of their identity and are returned unchanged.
- *
- * Strips repeatedly so `foo.md.md` collapses to `foo` rather than to the
- * still-qualified `foo.md`.
- */
 export function canonicalDocName(docName: string): string {
   if (!isSupportedDocFile(docName)) return docName;
   if (addressesShadowedSibling(docName)) return docName;
@@ -225,16 +96,6 @@ export function canonicalDocName(docName: string): string {
   return candidate;
 }
 
-/**
- * True when `docName`'s extension addresses a file that would otherwise be
- * unreachable: the SHADOWED half of a same-stem `.md` + `.mdx` pair.
- *
- * The extension-less stem resolves to the winning file, so only the loser
- * needs its extension to stay addressable. Consulting the recorded shadow is
- * what ties this to files that actually exist — the registry keys stems, not
- * qualified names, so asking whether the qualified name is "registered" can
- * never be true for anything the watcher produced.
- */
 function addressesShadowedSibling(docName: string): boolean {
   const stem = stripDocExtension(docName);
   if (stem === docName) return false;
@@ -243,15 +104,7 @@ function addressesShadowedSibling(docName: string): boolean {
   return docName.slice(stem.length).toLowerCase() === shadowed.toLowerCase();
 }
 
-/**
- * Materialize the content-tree relative path for a docName. Callers still own
- * traversal validation against their target root after resolving the result.
- */
 export function docNameToRelativePath(docName: string): string {
-  // Mermaid, Excalidraw, and editable-text docs retain their extension in
-  // the docName, so — like `.md`/`.mdx` supported docs — the docName IS
-  // already the full filename; only extension-less markdown docNames get
-  // an extension appended.
   return isSupportedDocFile(docName) ||
     isMermaidDocFile(docName) ||
     isExcalidrawDocFile(docName) ||
@@ -260,21 +113,6 @@ export function docNameToRelativePath(docName: string): string {
     : `${docName}${getDocExtension(docName)}`;
 }
 
-/**
- * The extension-less twin of a resolved content-tree path.
- *
- * Full-tree checkpoints (Save Version, auto-consolidation, pre-rollback) store
- * a doc's blob at the extension-full disk path (`<root>/foo.md`). The silent
- * single-blob checkpoint trees `saveInMemoryCheckpoint` writes instead store it
- * at the extension-LESS docName path (`<root>/foo`), because the Hocuspocus doc
- * name that flows through the CRDT layer is already extension-less. A restore
- * probe therefore has to try both shapes.
- *
- * Returns the path with `getDocExtension(docName)` stripped, or null when the
- * path does not carry that appended extension (managed-artifact `.ok/...` keys
- * and mermaid docNames already hold their own suffix — those are full-tree only
- * and have no extension-less twin).
- */
 export function extensionlessDocTreePath(fullPath: string, docName: string): string | null {
   const ext = getDocExtension(docName);
   if (ext.length > 0 && fullPath.endsWith(ext)) {
@@ -284,13 +122,11 @@ export function extensionlessDocTreePath(fullPath: string, docName: string): str
   return null;
 }
 
-/** Clear the recorded extension for a docName (e.g. on file delete). */
 export function forgetDocExtension(docName: string): void {
   shadowedExtByName.delete(docName);
   docExtensionByName.delete(docName);
 }
 
-/** Test hook — reset the map between tests that share the module scope. */
 export function _resetDocExtensionsForTests(): void {
   shadowedExtByName.clear();
   docExtensionByName.clear();

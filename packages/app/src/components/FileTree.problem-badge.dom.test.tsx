@@ -1,18 +1,3 @@
-/**
- * Full-mount DOM test for the seam between FileTree's problem-indicator pass
- * and the doc-panel bus: activating a row's problem badge has to open that
- * row's doc and ask the panel for that doc's problems.
- *
- * Pierre's tree is mocked down to the only part of the host the pass reads — a
- * shadow root holding Pierre-shaped rows — and that host is nested inside the
- * element carrying `onClickCapture`, exactly as Pierre nests it, because the
- * capture-phase row handler is what a badge click has to stay clear of.
- *
- * The validation store and the doc-panel event bus are the real modules; they
- * are the boundaries under test, so mocking either would leave the wiring
- * unproven.
- */
-
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode, useLayoutEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -26,10 +11,8 @@ const PROBLEM_DOC_NAME = 'notes/source';
 const PROBLEM_ROW_PATH = 'notes/source.mdx';
 const CLEAN_ROW_PATH = 'notes/clean.mdx';
 const ASSET_ROW_PATH = 'notes/diagram.png';
-/** A row the tree renders that no document entry backs — a path the resolver must refuse. */
 const GHOST_ROW_PATH = 'notes/ghost.mdx';
 
-/** Ordered activation log — assertions here are about sequence, not just counts. */
 let events: string[] = [];
 let mergedConfig: unknown = null;
 
@@ -192,8 +175,6 @@ vi.doMock('@/editor/DocumentContext', () => ({
 
 vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
-    // Logged so a page registration neither path should make would break the
-    // exact-sequence assertions rather than passing unnoticed.
     addPage: (docName: string) => events.push(`addPage:${docName}`),
     pageMeta: new Map(),
     pages: [],
@@ -278,11 +259,6 @@ vi.doMock('@pierre/trees', () => ({
   themeToTreeStyles: () => ({}),
 }));
 
-/**
- * The host element whose shadow root the indicator pass walks. Rows carry the
- * `data-type` / `data-item-path` / action-section shape Pierre gives them,
- * which is the whole contract between the two.
- */
 function PierreTreeShadowRows() {
   const hostRef = useRef<HTMLElement | null>(null);
 
@@ -349,8 +325,6 @@ async function clickBadge(badge: HTMLElement): Promise<void> {
     badge.dispatchEvent(
       new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }),
     );
-    // The row's own capture-phase handler defers its navigation to a
-    // microtask, so a same-turn assertion would miss a double-fire.
     await Promise.resolve();
   });
 }
@@ -426,9 +400,6 @@ describe('FileTree problem badge', () => {
 
     await clickBadge(badge as HTMLElement);
 
-    // Order is the requirement, not just the pair: the panel renders against
-    // the active doc, so a request that lands first would open the previous
-    // file's problems.
     expect(events).toEqual([`open:${PROBLEM_DOC_NAME}:preview`, 'tab:problems:doc:no-focus']);
   });
 
@@ -445,9 +416,6 @@ describe('FileTree problem badge', () => {
 
     await clickBadge(findBadge(PROBLEM_ROW_PATH) as HTMLElement);
 
-    // The row resolves a click into its own activation from the capture phase,
-    // one microtask behind the badge's. Both open the same doc, so the count is
-    // what separates "the badge answered" from "both did".
     expect(events.filter((entry) => entry.startsWith('open:'))).toHaveLength(1);
   });
 
@@ -464,7 +432,6 @@ describe('FileTree problem badge', () => {
       await Promise.resolve();
     });
 
-    // Guarding the badge must not cost the rest of the row its own click.
     expect(events).toEqual([`open:${PROBLEM_DOC_NAME}:preview`]);
   });
 
@@ -496,10 +463,6 @@ describe('FileTree problem badge', () => {
 
     await clickBadge(findBadge(GHOST_ROW_PATH) as HTMLElement);
 
-    // The tree can render a row ahead of the document index. Minting a doc open
-    // from the badge's own path would create an empty CRDT doc for a file the
-    // app has never heard of, so the badge resolves through the same guard the
-    // row does and declines with a breadcrumb.
     expect(events).toEqual([]);
     expect(debug).toHaveBeenCalled();
     debug.mockRestore();
@@ -557,8 +520,6 @@ describe('FileTree problem badge', () => {
 
   test('a badge re-applied by a later validation update still activates exactly once', async () => {
     await renderTreeWithProblems();
-    // A store update re-runs the whole indicator pass over the same badge,
-    // which is where a listener-per-pass implementation would start stacking.
     setProblemCounts(5);
     setProblemCounts(3);
 
@@ -569,8 +530,6 @@ describe('FileTree problem badge', () => {
 
   test('activation reads the latest render, not the one that installed it', async () => {
     const view = await renderTreeWithProblems();
-    // The pass runs from an effect that does not re-run per render, so the
-    // handler it installed has to resolve settings as of the click.
     mergedConfig = { editor: { previewTabs: false } };
     view.rerender(<FileTree />);
 

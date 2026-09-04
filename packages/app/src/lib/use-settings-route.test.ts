@@ -1,8 +1,3 @@
-/**
- * Pure unit tests for the hash → settings-open parser. Runtime behavior
- * of `useSettingsRoute` itself lives in `use-settings-route.dom.test.tsx`.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   isSettingsHashOpen,
@@ -31,11 +26,6 @@ describe('isSettingsHashOpen', () => {
   });
 
   test('section deep-links open (unknown sections fall back to the default)', () => {
-    // `#settings/<section>` opens Settings to that sidebar section — the
-    // launcher dropdowns' "Settings" row uses `#settings/configure-agents`.
-    // An unrecognized section (e.g. the pre-redesign `project`/`user` scope
-    // hashes) still opens; the shell falls back to Preferences for an id that
-    // matches no sidebar item.
     expect(isSettingsHashOpen('#settings/configure-agents')).toBe(true);
     expect(isSettingsHashOpen('#settings/project')).toBe(true);
     expect(isSettingsHashOpen('#settings/user')).toBe(true);
@@ -44,7 +34,6 @@ describe('isSettingsHashOpen', () => {
 
   test('typo / unrecognized hash → false', () => {
     expect(isSettingsHashOpen('#settings-typo')).toBe(false);
-    // A bare `#settings/` (empty section) does not count as open.
     expect(isSettingsHashOpen('#settings/')).toBe(false);
     expect(settingsHashSection('#settings/')).toBeNull();
     expect(settingsHashSection('#settings')).toBeNull();
@@ -65,9 +54,6 @@ describe('settingsHashSection', () => {
   });
 
   test('round-trips a `plugin:<id>` section (the colon survives the parse)', () => {
-    // Plugin panels are the one sidebar family whose ids are not plain slugs —
-    // the enable toast deep-links to them, so the colon must reach the shell
-    // intact or the jump silently falls back to Preferences.
     const hash = `#settings/${pluginSettingsSectionId('frontmatter')}`;
     expect(isSettingsHashOpen(hash)).toBe(true);
     expect(settingsHashSection(hash)).toBe('plugin:frontmatter');

@@ -37,18 +37,11 @@ export const JsxInline = Node.create({
 
   addAttributes() {
     return {
-      // JSX tag name (e.g., 'Callout'). Empty string = legacy thin-shape path
-      // (children carry raw source, WYSIWYG renders as text).
       componentName: { default: '' },
-      // Shape parity with jsxComponent — currently always 'element' for inline.
       kind: { default: 'element' },
-      // Preserved mdast MdxJsxAttribute[] for serialize reconstruct.
       attributes: { default: [] },
-      // Byte-exact source from parse for the pristine serialization path.
       sourceRaw: { default: '' },
-      // false = pristine (serialize via sourceRaw); true = edited (reconstruct).
       sourceDirty: { default: false },
-      // Structured props destructured via descriptor.props.
       props: { default: {} },
     };
   },

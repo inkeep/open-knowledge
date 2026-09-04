@@ -12,13 +12,6 @@ import {
 import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { cn } from '@/lib/utils';
 
-/**
- * A skill's level (scope) picker, rendered in the editor toolbar next to the
- * install state (`SkillEditorActions`). Presentational only — picking a level
- * calls `onRequestMove`; the staging/confirm/commit flow lives in
- * `useSkillScopeMove` (shared with the narrow-width overflow submenu). The Select
- * stays bound to `value`, so a cancelled pick leaves the shown level unchanged.
- */
 export function SkillLevelSelect({
   value,
   onRequestMove,

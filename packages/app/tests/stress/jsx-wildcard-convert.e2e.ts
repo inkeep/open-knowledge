@@ -59,8 +59,6 @@ async function setupDoc(page: Page, api: ApiHelpers, markdown: string): Promise<
   return docName;
 }
 
-// ── wildcard auto-convert on mount ───────────────────────────────
-
 test('S20: unregistered <UnknownWidget> auto-converts to rawMdxFallback on mount', async ({
   page,
   api,
@@ -71,9 +69,6 @@ test('S20: unregistered <UnknownWidget> auto-converts to rawMdxFallback on mount
     '<UnknownWidget foo="bar">\n\nchildren remain editable\n\n</UnknownWidget>\n',
   );
 
-  // Wait for the auto-convert to land. Condition-based — no wall-clock sleep.
-  // The rAF fires next frame after mount; StrictMode adds one extra
-  // mount-cleanup-remount cycle, so up to a few event-loop turns.
   await page.waitForFunction(
     () => {
       const ed = window.__activeEditor;
@@ -96,9 +91,6 @@ test('S20: unregistered <UnknownWidget> auto-converts to rawMdxFallback on mount
     { timeout: 5_000 },
   );
 
-  // Final assertion — identical shape to the waitForFunction predicate, so
-  // a failure on this line means the post-condition wasn't stable at read
-  // time (not that the wait itself timed out).
   const summary = await page.evaluate(() => {
     const ed = window.__activeEditor;
     if (!ed) return null;

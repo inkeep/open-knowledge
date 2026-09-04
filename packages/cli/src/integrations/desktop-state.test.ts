@@ -53,7 +53,6 @@ describe('desktopUserDataDir', () => {
         productName: DESKTOP_LEGACY_PRODUCT_NAME,
       }),
     ).toBe('/Users/x/Library/Application Support/Open Knowledge');
-    // Sanity: the two product names differ.
     expect(DESKTOP_PRODUCT_NAME).not.toBe(DESKTOP_LEGACY_PRODUCT_NAME);
   });
 });
@@ -121,8 +120,8 @@ describe('readDesktopRecentProjects', () => {
         recentProjects: [
           { path: '/a', name: 'A', lastOpenedAt: 't' },
           { path: '/b', name: 'B' },
-          { path: 123, name: 'bad' }, // dropped — non-string path
-          'garbage', // dropped
+          { path: 123, name: 'bad' },
+          'garbage',
         ],
         lastOpenedProject: '/a',
       });
@@ -138,10 +137,10 @@ describe('readDesktopRecentProjects', () => {
   test('returns [] for an absent, malformed, or foreign-shaped state.json', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-state-'));
     try {
-      expect(readDesktopRecentProjects(dir)).toEqual([]); // absent
+      expect(readDesktopRecentProjects(dir)).toEqual([]);
       writeFileSync(join(dir, 'state.json'), 'not json');
-      expect(readDesktopRecentProjects(dir)).toEqual([]); // malformed
-      writeState(dir, { somethingElse: true }); // foreign — no recentProjects array
+      expect(readDesktopRecentProjects(dir)).toEqual([]);
+      writeState(dir, { somethingElse: true });
       expect(readDesktopRecentProjects(dir)).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -153,8 +152,8 @@ describe('stateDirIsOurs', () => {
   test('true only when state.json parses as our AppState shape', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-state-'));
     try {
-      expect(stateDirIsOurs(dir)).toBe(false); // absent
-      writeState(dir, { recentProjects: [] }); // our shape (even if empty)
+      expect(stateDirIsOurs(dir)).toBe(false);
+      writeState(dir, { recentProjects: [] });
       expect(stateDirIsOurs(dir)).toBe(true);
       writeState(dir, { recentProjects: [{ path: '/p', name: 'P', lastOpenedAt: 't' }] });
       expect(stateDirIsOurs(dir)).toBe(true);
@@ -166,7 +165,6 @@ describe('stateDirIsOurs', () => {
   test('false for a FOREIGN vendor’s same-named dir (no recentProjects array)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-state-'));
     try {
-      // Another app literally named "Open Knowledge" with its own state format.
       writeState(dir, { windows: [], preferences: { theme: 'dark' } });
       expect(stateDirIsOurs(dir)).toBe(false);
       writeFileSync(join(dir, 'state.json'), '{ broken json');

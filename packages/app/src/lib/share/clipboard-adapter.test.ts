@@ -1,8 +1,3 @@
-/**
- * Tests for `scheduleClipboardWrite` — Electron IPC bridge with browser
- * `navigator.clipboard.writeText` fallback.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { isPermissionsPolicyRefusal, scheduleClipboardWrite } from './clipboard-adapter';
 
@@ -327,7 +322,6 @@ describe('scheduleClipboardWrite — document.execCommand("copy") fallback', () 
     await expect(scheduleClipboardWrite('https://openknowledge.ai/d/FFF')).rejects.toThrow(
       /permissions policy/,
     );
-    // The throwing path must still clean up the scratch textarea.
     expect(created[0]?.removed).toBe(true);
   });
 

@@ -122,8 +122,6 @@ describe('readMarkdownLinkAt', () => {
   });
 
   test('empty angle destination falls to the bare-form alternative', () => {
-    // `<...>` requires one char, so `<>` matches as a bare destination and
-    // unwraps to ''.
     expect(readMarkdownLinkAt('[doc](<>)', 0)).toMatchObject({ hrefRaw: '<>', href: '' });
   });
 
@@ -174,9 +172,6 @@ describe('readMarkdownLinkAt', () => {
   });
 
   test('badge nesting at position 0 matches the inner image destination', () => {
-    // The label runs `![alt` up to the inner `]`, so the match carries the
-    // INNER destination. matchMarkdownLinks({ nestedBracketLabels }) is the
-    // outer-destination variant.
     expect(readMarkdownLinkAt('[![alt](./inner.png)](./outer.pdf)', 0)).toMatchObject({
       image: false,
       label: '![alt',
@@ -385,16 +380,8 @@ describe('readHtmlImgAt / matchHtmlImgs', () => {
   });
 });
 
-/**
- * Characterization ledger for the pre-consolidation recognizer divergences.
- * Each entry pins how the shared grammar decided a case where the four
- * original per-consumer recognizers disagreed, exercised through the
- * consumers' own exported surfaces so a regression in either direction
- * fails here first.
- */
 describe('cross-consumer divergence ledger', () => {
   test('paren and apostrophe titles: asset extraction now agrees with the backlink indexer', () => {
-    // Pre-consolidation asset-references missed both title forms entirely.
     for (const md of ['[doc](./t.pdf (title))', '[doc](./t.pdf "it\'s here")']) {
       expect(extractLocalAssetHrefs(md)).toEqual(['./t.pdf']);
       expect(extractMarkdownLinksFromMarkdown(md.replace('.pdf', '.md'), 'src')).toHaveLength(1);
@@ -402,15 +389,11 @@ describe('cross-consumer divergence ledger', () => {
   });
 
   test('mismatched title quotes: asset extraction now rejects, agreeing with the indexer', () => {
-    // Pre-consolidation asset-references matched `"t'` as a title.
     expect(extractLocalAssetHrefs('[a](./x.pdf "t\')')).toEqual([]);
     expect(extractMarkdownLinksFromMarkdown('[a](./x.md "t\')', 'src')).toEqual([]);
   });
 
   test('wiki targets in asset extraction are now trimmed and whitespace-only targets drop', () => {
-    // Pre-consolidation asset-references collected the raw untrimmed target;
-    // downstream href decoration stripping trimmed it anyway, so resolution
-    // is unchanged.
     expect(extractLocalAssetHrefs('[[ spaced.png ]]')).toEqual(['spaced.png']);
     expect(extractLocalAssetHrefs('[[ ]]')).toEqual([]);
   });
@@ -420,9 +403,6 @@ describe('cross-consumer divergence ledger', () => {
   });
 
   test('escape handling is a scanner concern, not a grammar concern', () => {
-    // Cursor-based consumers (backlink indexer, rename rewriter) honor a
-    // leading backslash escape before dispatching into the grammar; the
-    // regex-scan consumer (asset-references) never did and still does not.
     const md = '\\[[not-wiki.png]]';
     expect(extractWikiLinksFromMarkdown(md, 'src')).toEqual([]);
     expect(rewriteWikiLinksForDocumentRename(md, 'not-wiki.png', 'renamed')).toMatchObject({
@@ -432,16 +412,9 @@ describe('cross-consumer divergence ledger', () => {
   });
 
   test('deliberate residual: the observer bare-text strip is looser than the grammar', () => {
-    // Characterization copy of `markdownBareText`'s strip regex in
-    // server-observers.ts. That reduction deliberately over-matches
-    // (whitespace destinations, no title handling) because attribution
-    // only needs a stable common form — see link-syntax.ts. WARN: if the
-    // strip regex in server-observers.ts changes, re-pin here.
     const observerStrip = (line: string) => line.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1');
-    // The loose strip reduces a whitespace destination the grammar rejects.
     expect(observerStrip('[a](two words)')).toBe('a');
     expect(readMarkdownLinkAt('[a](two words)', 0)).toBeNull();
-    // The loose strip truncates at the first `)` inside a quoted title.
     expect(observerStrip('[doc](./t.md "ti)tle")')).toBe('doctle")');
     expect(readMarkdownLinkAt('[doc](./t.md "ti)tle")', 0)).toMatchObject({ href: './t.md' });
   });

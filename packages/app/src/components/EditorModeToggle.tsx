@@ -9,35 +9,13 @@ import { Textbox } from './icons/textbox';
 interface EditorModeToggleProps {
   isSourceMode: boolean;
   onModeChange: (mode: EditorModeValue) => void;
-  /** Disables the Markdown (source) option (e.g. doc editor when offline). */
   sourceDisabled?: boolean;
-  /**
-   * Disables the Visual (wysiwyg) option (e.g. the lint-config editor when the
-   * opened file is not the governing root config the rule writer can target).
-   */
   wysiwygDisabled?: boolean;
-  /**
-   * Overrides the default segment labels ("Visual" / "Markdown"), applied to
-   * both the tooltip and the accessible name. The lint-config editor passes
-   * "Rules" / "Source". Pass an already-translated string so message extraction
-   * stays at the call site.
-   */
   wysiwygLabel?: string;
   sourceLabel?: string;
-  /**
-   * Tooltip shown on the Visual segment while `wysiwygDisabled` — explains why
-   * the option is unavailable so a pointer user learns the reason.
-   */
   wysiwygDisabledReason?: string;
 }
 
-/**
- * Visual ⇄ Markdown editor-mode toggle — the segmented control shared by the
- * document editor toolbar (`EditorToolbar`), the skill editor, and the
- * lint-config editor, so all three read identically. Labels default to
- * Visual/Markdown; a caller may relabel the two segments and disable the visual
- * one without affecting the others.
- */
 export function EditorModeToggle({
   isSourceMode,
   onModeChange,
@@ -50,8 +28,6 @@ export function EditorModeToggle({
   const { t } = useLingui();
   const wysiwygName = wysiwygLabel ?? t`Visual editor`;
   const sourceName = sourceLabel ?? t`Markdown source`;
-  // Stable id so the disabled Visual segment can point `aria-describedby` at a
-  // visually-hidden element carrying its reason.
   const wysiwygReasonId = useId();
   const describeWysiwyg = wysiwygDisabled && wysiwygDisabledReason ? wysiwygDisabledReason : null;
   return (
@@ -69,16 +45,11 @@ export function EditorModeToggle({
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled <button> doesn't fire pointer events; wrap so the tooltip still triggers. */}
+          {}
           <div>
             <ToggleGroupItem
               value="wysiwyg"
               aria-label={wysiwygName}
-              // A disabled <button> is skipped by the toggle's roving tabindex,
-              // so its tooltip (pointer-only) never reaches keyboard / screen-
-              // reader users. Point `aria-describedby` at a visually-hidden
-              // element carrying the reason: `aria-describedby` has broad SR
-              // support where the ARIA 1.3 `aria-description` attribute does not.
               aria-describedby={describeWysiwyg ? wysiwygReasonId : undefined}
               disabled={wysiwygDisabled}
               className="size-7 px-0 dark:data-[state=on]:bg-foreground/15"
@@ -104,7 +75,7 @@ export function EditorModeToggle({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* Disabled <button> doesn't fire pointer events; wrap so the tooltip still triggers. */}
+          {}
           <div>
             <ToggleGroupItem
               value="source"

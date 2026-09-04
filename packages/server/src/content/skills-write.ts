@@ -1,28 +1,3 @@
-/**
- * Filesystem writers for skill artifacts at `<skillsRoot>/<name>/SKILL.md`.
- *
- * Mirrors `templates-write.ts` (the spine) for the new skill artifact
- * type. Differences from templates:
- *   - A skill is a DIRECTORY (`<skillsRoot>/<name>/`) holding `SKILL.md` plus
- *     optional `references/` and `scripts/` — not a single file. The directory
- *     name IS the skill name (load-bearing: it becomes the projected dir name
- *     and the agent-facing identity).
- *   - Frontmatter is the Agent Skills schema verbatim: `name` (required, ==dir,
- *     `^[a-z0-9-]+$`, ≤64) + `description` (string, empty allowed for drafts, ≤1024). NO `version`
- *     field; NO XML tags anywhere in `name`/`description` (breaks Claude Cowork
- *     and the skill loader). OK must NOT inject its own descriptive frontmatter.
- *
- * Scope-agnostic: the caller computes `skillsRoot` from scope —
- *   - project: `<projectDir>/.ok/skills`
- *   - global: `<userOkDir>/skills`
- * so this module stays free of scope/home resolution.
- *
- * Atomicity matches templates: write goes through tmp+rename for `SKILL.md`;
- * delete removes the whole skill dir; move renames the dir (relocation injected
- * so this module stays git-agnostic — the `git mv` primitive lives server-side,
- * exactly as `applyTemplateMove`).
- */
-
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { isAbsolute, join, normalize, sep } from 'node:path';
 import {
@@ -31,9 +6,10 @@ import {
   type SkillFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { stringify as stringifyYaml } from 'yaml';
-// STOP rule: every server-side disk write carries an `fs.*` span. This module
-// predated the rule and was converted wholesale rather than only where new
-// call sites landed, so the next writer here inherits the traced set.
+/*
+ * STOP: every disk write in this module goes through `fs-traced.ts` so it
+ * carries an `fs.*` span. A bare `node:fs` call here drops the span.
+ */
 import {
   tracedMkdirSync,
   tracedRenameSync,
@@ -43,26 +19,16 @@ import {
   tracedWriteFileSync,
 } from '../fs-traced.ts';
 
-// ── Schema constants (Agent Skills standard) ──────────────────────────────
 const NAME_MAX = 64;
 const DESCRIPTION_MAX = 1024;
-/** Anthropic's authoring guidance discourages these in `name` — but real
- *  loaders (Claude Code included) accept them, and the marketplace is full of
- *  `claude-*` skills, so this is a WARNING, never a hard block: a hard block
- *  made every such downloaded skill fail import with nothing to open, and
- *  also broke rename / scope-move / duplicate for any skill already named
- *  that way (every write path funnels through validateName). */
 const DISCOURAGED_NAME_WORDS = ['anthropic', 'claude'];
-/** Soft body-length guidance (warning, not error) — progressive disclosure. */
 const BODY_SOFT_MAX_LINES = 500;
-/** SKILL.md entrypoint filename (load-bearing for editor discovery). */
 const SKILL_FILE = 'SKILL.md';
 
 type SkillWriteResult =
   | { ok: true; path: string; created: boolean; warnings: string[] }
   | { ok: false; error: { code: string; message: string } };
 
-/** Result of {@link composeSkillContent} — validated SKILL.md bytes, no disk I/O. */
 export type SkillContentResult =
   | { ok: true; content: string; warnings: string[] }
   | { ok: false; error: { code: string; message: string } };
@@ -76,11 +42,8 @@ type SkillMoveResult =
   | { ok: false; error: { code: string; message: string } };
 
 interface WriteSkillInput {
-  /** Absolute path to the `.ok/skills` dir for the target scope. */
   skillsRoot: string;
-  /** Skill name (== directory). Validated against SKILL_NAME_REGEX + reserved words. */
   name: string;
-  /** SKILL.md body (markdown, no frontmatter — frontmatter is built here). */
   body: string;
   frontmatter: SkillFrontmatter;
 }
@@ -94,23 +57,9 @@ interface MoveSkillInput {
   skillsRoot: string;
   fromName: string;
   toName: string;
-  /**
-   * Relocate the skill dir on disk. Injected so this module stays git-agnostic
-   * (the `git mv` primitive lives server-side, as in `applyTemplateMove`).
-   * Returns `true` for a tracked `git mv` (history-preserving), `false` for a
-   * plain rename fallback.
-   */
   relocate: (fromAbs: string, toAbs: string) => Promise<boolean>;
 }
 
-/**
- * Validate a skill's name + frontmatter and serialize the full SKILL.md bytes
- * (`---\n<fm>---\n<body>`) — WITHOUT touching disk. This is the frontmatter-
- * composition + validation core shared by the fs writer (`applySkillWrite`) and
- * the CRDT write path (the `skill-put` handler routes the returned `content`
- * through the doc's Y.Text). Keeping composition here preserves purity: OK
- * builds `name`+`description` server-side; callers never inject frontmatter.
- */
 export function composeSkillContent(input: {
   name: string;
   body: string;
@@ -119,7 +68,6 @@ export function composeSkillContent(input: {
   const nameCheck = validateName(input.name);
   if (!nameCheck.ok) return { ok: false, error: nameCheck.error };
 
-  // `name` frontmatter must equal the directory name (skill-loader contract).
   const fmCheck = validateFrontmatter(input.frontmatter, input.name);
   if (!fmCheck.ok) return { ok: false, error: fmCheck.error };
 
@@ -170,7 +118,6 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
 
   const created = !existsSync(filePath);
 
-  // Atomic write: tmp + rename so the file-watcher sees one event.
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
     tracedWriteFileSync(tmpPath, content, 'utf-8');
@@ -178,9 +125,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   } catch (err) {
     try {
       tracedUnlinkSync(tmpPath);
-    } catch {
-      // Best effort — tmp may not exist or already moved.
-    }
+    } catch {}
     return {
       ok: false,
       error: {
@@ -193,24 +138,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   return { ok: true, path: relPathOf(input.skillsRoot, filePath), created, warnings };
 }
 
-// ── Bundle files (references/** + scripts/**) ──────────────────────────────
-// fs-direct writer/deleter for the non-SKILL.md files of a skill bundle. Used
-// for global-scope `.md` references and ALL scripts (project `.md` references
-// route through the CRDT content-doc path instead — they are graph citizens).
-// The relative path is validated by the verb layer (`resolveSkillFilePath`);
-// this module re-checks the cheap invariants (containment, allowed root) so the
-// helper is safe to call independently. Atomicity matches `applySkillWrite`
-// (tmp + rename); a write into a non-existent skill dir is refused (the skill's
-// SKILL.md must exist first).
-
-/** Per-file byte cap for a skill bundle file. Single source — the API handler
- *  (`/api/skill-file` PUT) imports this rather than re-stating the literal. */
 export const BUNDLE_FILE_MAX_BYTES = 256 * 1024;
-/** Max bundle files (excl. SKILL.md) a single skill may hold. Single source —
- *  enforced by BOTH the fs-direct write (below) and the API handler's content
- *  branch (project `.md` references route through the CRDT content path, not
- *  this writer, so they import this + `countBundleFiles` to enforce the same
- *  cap). */
 export const BUNDLE_MAX_FILES = 50;
 
 export interface BundleFileWriteLimits {
@@ -220,9 +148,7 @@ export interface BundleFileWriteLimits {
 
 interface BundleFileInput {
   skillsRoot: string;
-  /** Skill name (== directory). */
   name: string;
-  /** Skill-relative POSIX path under `references/` or `scripts/`. */
   relPath: string;
 }
 
@@ -234,10 +160,6 @@ type BundleFileDeleteResult =
   | { ok: true; path: string; existed: boolean }
   | { ok: false; error: { code: string; message: string } };
 
-/**
- * Re-validate a skill-relative bundle path lexically (allowed root +
- * containment) and resolve it to an absolute path inside the skill dir.
- */
 function resolveBundleFileAbs(
   skillDir: string,
   relPath: string,
@@ -249,9 +171,6 @@ function resolveBundleFileAbs(
     .replace(/\\/g, '/')
     .split('/')
     .filter((s) => s !== '' && s !== '.');
-  // Any file in the skill directory is a legitimate bundle file (root files,
-  // `assets/`, `.claude-plugin/`, `scripts/`, `references/`, any subdir) — full
-  // directory fidelity. `SKILL.md` is written through its own path, not here.
   if (segments.length === 0 || segments.some((s) => s === '..')) {
     return {
       ok: false,
@@ -268,7 +187,6 @@ function resolveBundleFileAbs(
     };
   }
   const abs = join(skillDir, ...segments);
-  // Defense in depth: the lexical join must stay inside the skill dir.
   if (abs !== skillDir && !abs.startsWith(skillDir + sep)) {
     return {
       ok: false,
@@ -278,7 +196,6 @@ function resolveBundleFileAbs(
   return { ok: true, abs };
 }
 
-/** Count existing bundle files (everything beside SKILL.md), bounded scan. */
 export function countBundleFiles(skillDir: string): number {
   let count = 0;
   const walk = (dir: string): void => {
@@ -304,11 +221,6 @@ export function countBundleFiles(skillDir: string): number {
   return count;
 }
 
-/**
- * Write one bundle file (fs-direct, atomic tmp+rename). Refuses a write into a
- * skill whose `SKILL.md` does not exist (a bundle file is meaningless without
- * its skill), an over-cap file, and a per-skill file-count overflow.
- */
 export function applySkillBundleFileWrite(
   input: BundleFileInput & {
     content: string | null;
@@ -316,9 +228,6 @@ export function applySkillBundleFileWrite(
     limits?: BundleFileWriteLimits;
   },
 ): BundleFileWriteResult {
-  // Text files carry `content`; binary files carry raw `bytes`. Exactly one is
-  // the payload (a text file has `content: string`; a binary file `content: null`
-  // + `bytes`). `payload` is what lands on disk.
   const payload: string | Uint8Array = input.bytes ?? input.content ?? '';
   const base = validateBase(input.skillsRoot);
   if (!base.ok) return { ok: false, error: base.error };
@@ -383,9 +292,7 @@ export function applySkillBundleFileWrite(
   } catch (err) {
     try {
       tracedUnlinkSync(tmpPath);
-    } catch {
-      // Best effort — tmp may not exist or already moved.
-    }
+    } catch {}
     return {
       ok: false,
       error: {
@@ -401,23 +308,10 @@ export function applySkillBundleFileWrite(
   };
 }
 
-/**
- * Delete one bundle file (fs-direct). A no-op (file absent) reports
- * `existed: false`. Prunes a now-empty `references/`/`scripts/` dir; never
- * touches SKILL.md or the skill dir itself.
- */
 export type BundleFileRenameResult =
   | { ok: true }
   | { ok: false; error: { code: string; message: string } };
 
-/**
- * Rename/move ONE bundle file inside a skill dir. Both paths run the same
- * allowlist + containment gate as write/delete (`resolveBundleFileAbs`), so a
- * rename can move between allowed roots (`references/` ↔ `scripts/`) but never
- * escape the skill dir or touch `SKILL.md`. Refuses to clobber: an existing
- * destination is an error, never an overwrite. Prunes a now-empty source root
- * dir, mirroring delete.
- */
 export function applySkillBundleFileRename(
   input: BundleFileInput & { toRelPath: string },
 ): BundleFileRenameResult {
@@ -463,9 +357,7 @@ export function applySkillBundleFileRename(
   if (parent !== skillDir && isEmpty(parent)) {
     try {
       tracedRmdirSync(parent);
-    } catch {
-      // Non-fatal: an unprunable empty dir is cosmetic.
-    }
+    } catch {}
   }
   return { ok: true };
 }
@@ -484,8 +376,6 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
   const existed = existsSync(abs);
   if (existed) {
     try {
-      // A directory row deletes like any other folder — recursively. The
-      // caller owns closing any live docs beneath it first.
       if (statSync(abs).isDirectory()) tracedRmSync(abs, { recursive: true, force: true });
       else tracedUnlinkSync(abs);
     } catch (err) {
@@ -497,15 +387,11 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
         },
       };
     }
-    // Prune a now-empty top-level dir (references/ or scripts/), leaving the
-    // skill dir + SKILL.md intact.
     const parent = join(abs, '..');
     if (parent !== skillDir && isEmpty(parent)) {
       try {
         tracedRmdirSync(parent);
-      } catch {
-        // race / non-empty — leave it.
-      }
+      } catch {}
     }
   }
   return { ok: true, path: relPathOf(input.skillsRoot, abs), existed };
@@ -523,7 +409,6 @@ export function applySkillDelete(input: DeleteSkillInput): SkillDeleteResult {
   const existed = existsSync(skillDir);
   if (existed) {
     try {
-      // Remove the whole skill dir (SKILL.md + references/ + scripts/).
       tracedRmSync(skillDir, { recursive: true, force: true });
     } catch (err) {
       return {
@@ -535,20 +420,11 @@ export function applySkillDelete(input: DeleteSkillInput): SkillDeleteResult {
       };
     }
   }
-  // Auto-clean an empty `.ok/skills` then `.ok/` left behind.
   cleanEmptyDirs(skillsRoot);
 
   return { ok: true, path: relPathOf(input.skillsRoot, skillDir), existed };
 }
 
-/**
- * Rename a skill `fromName` → `toName` (changes its identity == dir name).
- * Refuses a no-op, a missing source, and a destination collision. The dir
- * relocation is delegated to `input.relocate` (git mv with fs fallback). The
- * SKILL.md body's `name` frontmatter is NOT rewritten here — the caller layers
- * an `applySkillWrite` at the destination to keep `name`==dir (atomic
- * move+edit), exactly as the template move spine does.
- */
 export async function applySkillMove(input: MoveSkillInput): Promise<SkillMoveResult> {
   const base = validateBase(input.skillsRoot);
   if (!base.ok) return { ok: false, error: base.error };
@@ -603,8 +479,6 @@ export async function applySkillMove(input: MoveSkillInput): Promise<SkillMoveRe
   };
 }
 
-// ── Validation ────────────────────────────────────────────────────────────
-
 function validateBase(
   skillsRoot: string,
 ): { ok: true; skillsRoot: string } | { ok: false; error: { code: string; message: string } } {
@@ -641,15 +515,6 @@ function validateName(
   return { ok: true };
 }
 
-/**
- * Validate the skill frontmatter against the Agent Skills schema:
- *   - `name` non-empty, ==dir name, no XML tags.
- *   - `description` a string (empty allowed for drafts), ≤1024, no XML tags.
- *   - NO `version` (or other unknown) keys — the loader ignores them and a
- *     KB-injected `version` would mislead; reject so authors don't rely on it.
- * The no-XML-tag rule is load-bearing: `<...>` in name/description breaks the
- * Claude Cowork parser and the skill loader.
- */
 function validateFrontmatter(
   fm: SkillFrontmatter,
   dirName: string,
@@ -687,11 +552,6 @@ function validateFrontmatter(
       },
     };
   }
-  // An empty description is a valid DRAFT: "Start blank" and the New Skill
-  // dialog create with no description and the author fills it in the live
-  // editor. Symmetric with skill-get, which tolerates a missing description so
-  // the editor can load and fix it rather than 500. A non-string is still a
-  // hard error.
   if (typeof fm.description !== 'string') {
     return {
       ok: false,
@@ -730,28 +590,17 @@ function skillPaths(skillsRoot: string, name: string): { skillDir: string; fileP
   return { skillDir, filePath };
 }
 
-/**
- * Auto-clean the now-possibly-empty `.ok/skills` then its parent `.ok/` after a
- * delete/move-out. A non-empty dir (other skills, or `.ok/` still holding
- * templates/frontmatter/local) is left intact. Mirrors `cleanEmptyOkDirs` in
- * templates-write.ts.
- */
 function cleanEmptyDirs(skillsRoot: string): void {
   if (existsSync(skillsRoot) && isEmpty(skillsRoot)) {
     try {
       tracedRmdirSync(skillsRoot);
-    } catch {
-      // race / permission — leave it
-    }
+    } catch {}
   }
-  // skillsRoot is `<...>/.ok/skills`; its parent is `<...>/.ok`.
   const okDir = normalize(join(skillsRoot, '..'));
   if (okDir.endsWith(`${sep}.ok`) && existsSync(okDir) && isEmpty(okDir)) {
     try {
       tracedRmdirSync(okDir);
-    } catch {
-      // non-empty (frontmatter.yml / templates / local) — leave it
-    }
+    } catch {}
   }
 }
 
@@ -761,12 +610,6 @@ function relPathOf(base: string, abs: string): string {
 }
 
 function serializeFrontmatter(fm: SkillFrontmatter): string {
-  // Order: name, description, then the one upstream-owned key OK carries rather
-  // than authors — `metadata.pack`, a starter pack's identity. It is the witness
-  // the provenance retrofit needs to tell our `write-a-spec` from the user's, and
-  // writing it back is the difference between a re-importable pack and one that
-  // can never be recognised again. Nothing else upstream survives: version lives
-  // in the lockfile, and OK still injects no descriptive frontmatter of its own.
   return stringifyYaml({
     name: fm.name,
     description: fm.description,

@@ -14,11 +14,10 @@ import {
   selectPromotion,
 } from './select-beta-to-promote.mjs';
 
-// Fixed clock so tests never call Date.now().
 const NOW = Date.parse('2026-07-08T20:00:00Z');
-const SOAK = 86400; // 24h
-const SOAKED = '2026-07-07T14:00:00Z'; // 30h before NOW
-const FRESH = '2026-07-08T17:00:00Z'; // 3h before NOW
+const SOAK = 86400;
+const SOAKED = '2026-07-07T14:00:00Z';
+const FRESH = '2026-07-08T17:00:00Z';
 
 function meta({ isDraft = false, publishedAt = SOAKED, dmg = true, manifest = true } = {}) {
   const assets = [];
@@ -27,8 +26,6 @@ function meta({ isDraft = false, publishedAt = SOAKED, dmg = true, manifest = tr
   return { isDraft, publishedAt, assets };
 }
 
-// Build a fetchReleaseMeta from a tag->meta map. Unknown tag === 404 (null);
-// the sentinel "THROW" simulates a non-404 infra error.
 function fetcher(map) {
   return (tag) => {
     if (!(tag in map)) return null;
@@ -80,9 +77,6 @@ describe('selectPromotion', () => {
   });
 
   test('selects the newest soaked UNSHIPPED beta, even across a version boundary', () => {
-    // Catch-up shape: a fresh head, then several soaked betas spanning two X.Y.Z
-    // lines, none shipped yet -> pick the newest soaked (promote-stable batches
-    // the whole changeset delta over the latest stable into one bump).
     const r = select({
       betaTags: ['v0.31.0-beta.1', 'v0.31.0-beta.0', 'v0.30.1-beta.8'],
       fetchReleaseMeta: fetcher({
@@ -97,9 +91,9 @@ describe('selectPromotion', () => {
   test('stops at the first already-shipped beta and never reaches an older cycle', () => {
     const r = select({
       betaTags: ['v0.10.0-beta.6', 'v0.9.0-beta.3'],
-      isAlreadyShipped: shippedIn('v0.10.0-beta.6'), // beta.6 is contained in the latest stable
+      isAlreadyShipped: shippedIn('v0.10.0-beta.6'),
       fetchReleaseMeta: fetcher({
-        'v0.9.0-beta.3': meta({ publishedAt: SOAKED }), // soaked but must NOT be chosen
+        'v0.9.0-beta.3': meta({ publishedAt: SOAKED }),
       }),
     });
     expect(r).toEqual({ kind: 'none' });
@@ -142,7 +136,6 @@ describe('selectPromotion', () => {
     const r = select({
       betaTags: ['v0.10.0-beta.6', 'v0.10.0-beta.5'],
       fetchReleaseMeta: fetcher({
-        // beta.6 unknown -> 404 -> null
         'v0.10.0-beta.5': meta(),
       }),
     });
@@ -165,8 +158,8 @@ describe('selectPromotion', () => {
       select({
         betaTags: ['v0.10.0-beta.6', 'v0.10.0-beta.5'],
         fetchReleaseMeta: fetcher({
-          'v0.10.0-beta.6': 'THROW', // auth/network/rate-limit on the newest candidate
-          'v0.10.0-beta.5': meta(), // would otherwise be wrongly promoted as latest
+          'v0.10.0-beta.6': 'THROW',
+          'v0.10.0-beta.5': meta(),
         }),
       }),
     ).toThrow(/infra error/);
@@ -174,9 +167,6 @@ describe('selectPromotion', () => {
 });
 
 describe('fast tier (FR5a) — DMG-smoke-gated early promotion', () => {
-  // Two under-soaked betas over one soaked one. Without the fast tier the
-  // evaluator descends past both and picks beta.4; with it, an under-soaked
-  // beta can be promoted early, but only on a passing DMG smoke.
   const TAGS = ['v0.10.0-beta.6', 'v0.10.0-beta.5', 'v0.10.0-beta.4'];
   const metas = fetcher({
     'v0.10.0-beta.6': meta({ publishedAt: FRESH }),
@@ -205,7 +195,6 @@ describe('fast tier (FR5a) — DMG-smoke-gated early promotion', () => {
 
   test('is inert by default: same selection as today, and the smoke is never invoked', () => {
     const { result, smokeCalls } = run({ smokeBeta: () => 'pass' });
-    // No predicate supplied -> nothing qualifies -> descends to the soaked beta.
     expect(result).toEqual({ kind: 'select', target: 'v0.10.0-beta.4', tier: 'soak' });
     expect(smokeCalls).toEqual([]);
   });
@@ -239,8 +228,6 @@ describe('fast tier (FR5a) — DMG-smoke-gated early promotion', () => {
   });
 
   test('a thrown smoke never fails the job — it degrades to an error refusal', () => {
-    // FR5a: the selection gate must never block a release. Unlike
-    // fetchReleaseMeta, whose non-404 throws must propagate.
     const { result, logs } = run({
       qualifiesForFastTier: fastTierOn,
       smokeBeta: () => {
@@ -276,22 +263,12 @@ describe('fast tier (FR5a) — DMG-smoke-gated early promotion', () => {
   });
 });
 
-// --- soak-tier predicate ---
-//
-// A different axis from the DMG-smoke fast tier above. That one asks whether an
-// under-soaked beta may promote early; this one asks how long a cut should have
-// to soak at all. They never share a variable.
-
 const FAST_CANDIDATE = 'v0.30.2-beta.3';
 const STANDARD_TARGET = 'v0.30.1-beta.9';
 const PR_URL = 'https://github.com/inkeep/agents-private/pull/2767';
 const SHA_BETA = 'a'.repeat(40);
 const SHA_STABLE = 'b'.repeat(40);
 
-// A computeStablePromotion-shaped result. Kept structural (not a re-derivation)
-// so the seam is exercised with the same fields the real function returns; the
-// "consumes computeStablePromotion output directly" test below pins that shape
-// against the real implementation.
 function deltaOf({ bump = 'patch', deltaIds = ['fix-a'] } = {}) {
   return {
     skip: false,
@@ -305,8 +282,6 @@ function deltaOf({ bump = 'patch', deltaIds = ['fix-a'] } = {}) {
   };
 }
 
-// changeset id -> pull-request URL. An unknown id === the adding commit's
-// subject carried no `(#N)`; the sentinel 'THROW' simulates a git failure.
 function prUrls(map) {
   return (id) => {
     if (map[id] === 'THROW') throw new Error('simulated git failure');
@@ -314,8 +289,6 @@ function prUrls(map) {
   };
 }
 
-// URL -> issues. An unknown URL === zero attachments. 'THROW' simulates an
-// HTTP / network / rate-limit failure; 'UNRESOLVABLE' simulates a missing key.
 function issueResolver(map) {
   return async (url) => {
     const entry = map[url];
@@ -338,8 +311,6 @@ const soakTier = (over) =>
     ...over,
   });
 
-// The tier an ARMED workflow would land on. Kept separate from `qualifies` so
-// the three-case matrix reads as a tier decision rather than a boolean.
 const armedTier = (verdict) =>
   resolveTier({ armed: true, verdict, standardTarget: STANDARD_TARGET, fastTarget: FAST_CANDIDATE })
     .tier;
@@ -474,7 +445,7 @@ describe('evaluateFastTier (soak tier)', () => {
       resolveChangesetPrUrl: prUrls({ 'fix-a': PR_URL, 'fix-b': otherUrl }),
       resolveIssuesForUrl: issueResolver({
         [PR_URL]: [{ identifier: 'PRD-1', labels: ['Feature'] }],
-        [otherUrl]: [{ identifier: 'PRD-2', labels: ['bug'] }], // label match is case-insensitive
+        [otherUrl]: [{ identifier: 'PRD-2', labels: ['bug'] }],
       }),
     });
     expect(r.deltaCount).toBe(2);
@@ -483,9 +454,6 @@ describe('evaluateFastTier (soak tier)', () => {
   });
 
   test('consumes computeStablePromotion output directly, so no second delta implementation exists', async () => {
-    // Drives the predicate with a delta produced by the REAL function that
-    // decides the published version. If that function's returned shape changes,
-    // this fails instead of the two silently disagreeing about what is in a cut.
     const fakeGit = {
       revParse: (ref) => (ref.startsWith('v0.30.2-beta') ? SHA_BETA : SHA_STABLE),
       newestStableTag: () => 'v0.30.1',
@@ -546,7 +514,6 @@ describe('resolveTier (soak tier)', () => {
         fastTarget: FAST_CANDIDATE,
       }),
     ).toEqual({ tier: 'fast', target: STANDARD_TARGET, candidate: FAST_CANDIDATE });
-    // A truthy-but-not-true verdict must not be read as qualifying.
     expect(
       resolveTier({
         armed: true,
@@ -558,10 +525,6 @@ describe('resolveTier (soak tier)', () => {
   });
 
   test('a qualifying verdict never moves the direct-dispatch target off the 24h selection', () => {
-    // The fast candidate promotes only through the DMG-smoke leg. Even armed
-    // and fully qualified, the hours-gated direct dispatch must keep promoting
-    // the soaked selection — an unsmoked 1h cut reaching `target` is the
-    // failure the arming prerequisites exist to prevent.
     const { target, candidate } = resolveTier({
       armed: true,
       verdict: { qualifies: true },
@@ -573,15 +536,6 @@ describe('resolveTier (soak tier)', () => {
   });
 });
 
-// --- real boundaries ---
-//
-// Every test above injects the three seams, which is right for the pure
-// predicate but leaves the actual git and HTTP implementations uncovered. These
-// drive the real functions: the git hop against a throwaway repository, the
-// Linear hop against a stubbed global fetch. They are the only tests here that
-// would notice if a real boundary stopped behaving the way the predicate
-// assumes.
-
 const tempRepos = [];
 const realFetch = globalThis.fetch;
 
@@ -592,16 +546,9 @@ afterEach(() => {
   }
 });
 
-// A repository with one commit per changeset, so the adding-commit lookup has
-// something real to walk. Identity and signing are pinned so this does not
-// depend on the developer's or runner's git config.
 function makeRepoWithChangesets(commits) {
   const dir = mkdtempSync(join(tmpdir(), 'ok-fast-tier-'));
   tempRepos.push(dir);
-  // gitCleanEnv: git hooks export GIT_DIR, which overrides `cwd` repo
-  // discovery — without the scrub, this helper's `git init` re-initialises
-  // the CALLING hook's repo admin dir and corrupts its shared .git/config
-  // (core.bare=true). Same bug class as the bridge suite's helper.
   const git = (...args) =>
     execFileSync(
       'git',
@@ -640,7 +587,6 @@ describe('makeResolveChangesetPrUrl (real git)', () => {
       process.chdir(dir);
       const resolve = makeResolveChangesetPrUrl('inkeep/agents-private');
       expect(resolve('fix-the-thing')).toBe('https://github.com/inkeep/agents-private/pull/2767');
-      // Picks the commit that added THAT file, not simply the newest commit.
       expect(resolve('older-change')).toBe('https://github.com/inkeep/agents-private/pull/1000');
     } finally {
       process.chdir(cwd);
@@ -650,7 +596,6 @@ describe('makeResolveChangesetPrUrl (real git)', () => {
   test('returns null rather than throwing when the subject carries no PR reference', () => {
     const dir = makeRepoWithChangesets([
       { id: 'hand-authored', subject: 'chore: hand-authored commit with no pull request' },
-      // A number that is not the trailing squash reference must not be picked up.
       { id: 'mid-subject', subject: 'fix: handle (#12) in prose but land without a reference' },
     ]);
     const cwd = process.cwd();
@@ -659,7 +604,6 @@ describe('makeResolveChangesetPrUrl (real git)', () => {
       const resolve = makeResolveChangesetPrUrl('inkeep/agents-private');
       expect(resolve('hand-authored')).toBeNull();
       expect(resolve('mid-subject')).toBeNull();
-      // A changeset that does not exist produces empty git output, not a throw.
       expect(resolve('never-existed')).toBeNull();
     } finally {
       process.chdir(cwd);
@@ -705,7 +649,6 @@ describe('makeResolveIssuesForUrl (real HTTP handling)', () => {
     await makeResolveIssuesForUrl('lin_api_secret')(URL_UNDER_TEST);
     expect(calls).toHaveLength(1);
     expect(calls[0].init.headers.authorization).toBe('lin_api_secret');
-    // The URL is passed as a GraphQL variable, not interpolated into the query.
     expect(JSON.parse(calls[0].init.body).variables).toEqual({ url: URL_UNDER_TEST });
   });
 
@@ -763,7 +706,6 @@ describe('makeResolveIssuesForUrl (real HTTP handling)', () => {
   });
 
   test('a degrading real resolver still leaves the predicate on the standard tier', async () => {
-    // The seams under test, wired together the way main() wires them.
     stubFetch(() =>
       jsonResponse(400, { errors: [{ message: 'nope', extensions: { code: 'RATELIMITED' } }] }),
     );

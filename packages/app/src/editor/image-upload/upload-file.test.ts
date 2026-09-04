@@ -1,11 +1,3 @@
-/**
- * Unit tests for `uploadFile` — POSTs a File to the unified `/api/upload`
- * endpoint and unwraps the response into `{ url }`.
- *
- * Uses dependency-injection (the optional `deps` arg) to pass mock fetch +
- * docName directly. No `globalThis.fetch =` mutation — the prior pattern
- * proved flaky on Linux Bun. DI tests are platform-stable.
- */
 import { describe, expect, test } from 'vitest';
 import { UploadFailedError } from './upload-failure.ts';
 import { uploadFile } from './upload-file.ts';
@@ -88,9 +80,6 @@ describe('uploadFile', () => {
   });
 
   test('upload uses /api/upload regardless of MIME prefix (server is sole policy point)', async () => {
-    // The client does not gate on MIME prefix; the unified endpoint is
-    // accept-all by extension (ASSET_EXTENSIONS), so PDFs etc. travel
-    // through identically. The server is the sole policy point.
     const { fetch, calls } = captureFetch(() =>
       jsonResponse(200, { ok: true, src: 'doc.pdf', path: 'doc.pdf', deduped: false }),
     );
@@ -103,10 +92,6 @@ describe('uploadFile', () => {
   });
 
   test('returns server-absolute { url } from the server path field on success', async () => {
-    // `path` is contentDir-relative (no leading slash from `relative()`);
-    // upload-file.ts prefixes `/` so the URL is rooted at origin and
-    // resolves correctly under hash routing for any subdir doc. Mirror of
-    // the drop path's `resolvedSrc = `/${assetContentPath}``.
     const { fetch } = captureFetch(() =>
       jsonResponse(200, {
         ok: true,
@@ -132,8 +117,6 @@ describe('uploadFile', () => {
   });
 
   test('preserves an already-server-absolute path without double-slashing', async () => {
-    // Defensive: if the server starts emitting `/`-prefixed paths in a
-    // future iteration, the client must not produce `//foo.png`.
     const { fetch } = captureFetch(() =>
       jsonResponse(200, { ok: true, src: 'photo.png', path: '/docs/photo.png' }),
     );
@@ -179,22 +162,16 @@ describe('uploadFile', () => {
     });
     const file = new File(['x'], 'x.png', { type: 'image/png' });
 
-    // The file is readable, so the failure is genuinely the transport.
     await expect(
       uploadFile(file, ['image/png'], { fetch, docName: TEST_DOC_NAME }),
     ).rejects.toMatchObject({ name: 'UploadFailedError', kind: 'network' });
   });
 
   test('a network failure on an unreadable file is reported as the file, not the server', async () => {
-    // Drives the classification through the public entry point: with the
-    // classification removed this test fails, where a readable-file test would
-    // still pass.
     const { fetch } = captureFetch(() => {
       throw new TypeError('Failed to fetch');
     });
     const file = new File(['xxxxx'], 'shot.png', { type: 'image/png' });
-    // Model an OS read denial on bytes that were present when the file was
-    // picked: the upload fails, and re-reading the head then fails too.
     Object.defineProperty(file, 'slice', {
       value: () => ({
         arrayBuffer: () => Promise.reject(new DOMException('denied', 'NotReadableError')),

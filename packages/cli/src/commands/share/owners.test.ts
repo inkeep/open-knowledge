@@ -1,9 +1,3 @@
-/**
- * Unit tests for `listShareOwners` — covers the per-owner filter, pagination,
- * and the auth-required / network error mapping. The Octokit instance is
- * stubbed; no network or token-store work happens in this file.
- */
-
 import type { Octokit } from '@octokit/rest';
 import { describe, expect, test } from 'vitest';
 import { listShareOwners } from './owners.ts';
@@ -21,11 +15,6 @@ interface FakeOctokitOptions {
   memberships?: OrgMembershipFixture[] | { __throw: { status?: number; message?: string } };
 }
 
-/**
- * Build an Octokit-shaped fake with just the methods `listShareOwners`
- * touches. The `paginate.iterator` returns one page per call to mirror the
- * iterator-protocol the real Octokit exposes.
- */
 function makeFakeOctokit(opts: FakeOctokitOptions): Octokit {
   const memberships = opts.memberships;
   const user = opts.user ?? { login: 'octocat', avatar_url: 'https://avatar/octocat' };
@@ -126,10 +115,6 @@ describe('listShareOwners', () => {
   });
 
   test('includes admin-role orgs even when permissions block is absent', async () => {
-    // Realistic scenario: OAuth token with default `repo` scope does not get
-    // the `permissions.can_create_repository` field populated by GitHub.
-    // For admin-role memberships, the role itself is a sufficient signal
-    // that the user can create repos — drop fail-closed in this case.
     const result = await listShareOwners(
       makeFakeOctokit({
         memberships: [{ organization: { login: 'my-admin-org' }, role: 'admin' }],
@@ -141,9 +126,6 @@ describe('listShareOwners', () => {
   });
 
   test('includes admin-role orgs even when permissions explicitly says false', async () => {
-    // Defense-in-depth: if GitHub's permissions block disagrees with role,
-    // role wins for admins (org admins can always create repos in their
-    // own org by policy regardless of repository creation restrictions).
     const result = await listShareOwners(
       makeFakeOctokit({
         memberships: [

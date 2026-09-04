@@ -72,9 +72,6 @@ async function fetchBacklinks(docName: string): Promise<BacklinkEntry[]> {
   return success.data.backlinks;
 }
 
-// Returns the whole success body so the Outgoing and Local files sections share
-// one `/api/forward-links` fetch (React Query dedupes on the query key). Outgoing
-// reads `forwardLinks`; Local files reads the additive `localTargets` sibling.
 async function fetchForwardLinks(docName: string): Promise<ForwardLinksSuccess> {
   const res = await fetch(`/api/forward-links?docName=${encodeURIComponent(docName)}`);
   const body = (await res.json().catch(() => null)) as unknown;
@@ -155,44 +152,17 @@ function ShowMoreButton({
 interface LinkRowProps {
   icon: ReactNode;
   iconColorClass?: string;
-  /** Tooltip shown on hover/focus of the entire row. Use for state hints that should be discoverable from anywhere in the row. */
   rowTooltip?: string;
   title: string;
-  /** Secondary mono path line. Omitted when equal to title. */
   path?: string;
   anchor?: string | null;
   snippet?: string | null;
-  /** Native title attribute on the title line — used for browser tooltip on truncation. */
   titleHover?: string;
   ariaLabel?: string;
-  /**
-   * If set, the row's primary action is navigation: renders an `<a href>`. The link's
-   * `::after` pseudo-element expands its hit area to cover the whole row (linkbox
-   * pattern), so the user gets native browser features (Cmd/Ctrl-click → new tab,
-   * right-click → context menu, drag-and-drop URL, visited state) without nested
-   * interactive elements.
-   *
-   * If unset, the row's primary action is treated as a non-navigation action (e.g. opening
-   * a dialog) and renders a `<button>` instead.
-   */
   href?: string;
-  /** When `href` is external, opens in a new tab with `rel="noopener noreferrer"`. */
   external?: boolean;
   disabled?: boolean;
-  /**
-   * Primary action handler. Required when `href` is unset (button mode); optional when
-   * `href` is set (called alongside native navigation, useful for telemetry). Native
-   * link semantics handle navigation on their own — don't `preventDefault` from this
-   * handler unless you intentionally mean to suppress navigation.
-   */
   onClick?: () => void;
-  /**
-   * Optional right-aligned content (e.g. a status badge). Rendered in normal
-   * flow beneath the primary interactive's hit-area overlay, so it stays visible
-   * but a click on it still triggers the row's primary action. Keep it
-   * non-interactive — an interactive trailing control would need `relative z-10`
-   * to escape the overlay, like the secondary buttons elsewhere in this file.
-   */
   trailing?: ReactNode;
 }
 
@@ -217,11 +187,6 @@ function LinkRow({
     <span className={cn('mt-0.5 shrink-0', iconColorClass ?? 'text-muted-foreground')}>{icon}</span>
   );
 
-  // The primary interactive sits inside the title slot. Its `::after` expands the
-  // clickable hit area to fill the relatively-positioned row container, so clicking
-  // anywhere in the row triggers the action. The visible content (path, snippet) lives
-  // in normal flow; the secondary [+] button uses `relative z-10` to stack above the
-  // overlay and remain independently clickable.
   const overlayClassName =
     'block w-full truncate text-left font-medium text-foreground no-underline outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring';
   const primaryInteractive = href ? (
@@ -434,10 +399,6 @@ function ForwardLinksSection({ docName }: { docName: string }) {
     const titleEqualsDocName = link.title === link.docName;
     const displayTitle = titleEqualsDocName ? path : link.title;
     const key = `doc:${link.docName}:${link.anchor ?? ''}`;
-    // Resolved & folder rows navigate; missing rows fall back to the raw docName which
-    // never produces a usable href (we render as a button instead). A
-    // skill-file target carries a kind-aware viewer hash (`#/__skill-file__/…`) that
-    // can't be expressed as a docName hash, so prefer it when present.
     const navigateHashDocName =
       linkIntent.kind === 'navigate' ? linkIntent.hashDocName : link.docName;
     const navigateHref =
@@ -536,14 +497,6 @@ function ForwardLinksSection({ docName }: { docName: string }) {
   );
 }
 
-/**
- * Local file and image references the document authors, kept in their own
- * section so a resource is never presented as a document graph edge (Outgoing)
- * or a backlink. Rows come from the server's local-target assessment — the
- * additive `localTargets` sibling of the forward-links response — not from
- * reclassified graph rows. One row per authored occurrence, so two references to
- * the same file stay individually navigable to their own source position.
- */
 function LocalFilesSection({ docName }: { docName: string }) {
   const { t } = useLingui();
   const { pages, loading: pagesLoading } = usePageList();
@@ -558,20 +511,11 @@ function LocalFilesSection({ docName }: { docName: string }) {
     setPrevDocName(docName);
     setExpanded(false);
   }
-  // Undefined (not `[]`) when the server predates the localTargets sibling: a
-  // partial response whose document relationships are known but whose
-  // local-target assessment is not. Kept distinct from the empty case so the
-  // section says "unavailable" rather than a confident "none".
   const localTargets = data?.localTargets;
   const rows = localTargets ?? [];
   const visible = expanded ? rows : rows.slice(0, INITIAL_VISIBLE);
 
   function navigateToOccurrence(target: ForwardLinkLocalTarget): void {
-    // Occurrence line/column are 0-based; the source-navigation contract is
-    // 1-based. Bank the intent and fire it live, the same way Problems jumps to a
-    // finding — the visible editor consumes it now, or source mode replays it on
-    // its next activation. The row navigates to where the reference is authored,
-    // never opening the (possibly absent) target itself.
     const detail: LintNavDetail = {
       docName,
       line: target.line + 1,
@@ -586,13 +530,7 @@ function LocalFilesSection({ docName }: { docName: string }) {
     const isImage = target.role === 'image';
     const resolved = target.status === 'exact' || target.status === 'fallback';
     const identity = target.resolvedTarget ?? target.href;
-    // Non-color status cue: a text badge for a failing reference (plus an amber
-    // icon as redundant reinforcement), nothing for a resolved one. A proven
-    // absence reads "Missing"; a reference whose target can't be located in the
-    // project (e.g. an image path escaping the root) reads "Unresolvable".
     const statusWord = target.status === 'missing' ? t`Missing` : t`Unresolvable`;
-    // Complete messages let translators reorder kind, identity, status, and
-    // action naturally instead of inheriting English concatenation order.
     const ariaLabel = resolved
       ? isImage
         ? t`Image ${identity}. Go to reference.`

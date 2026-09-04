@@ -1,13 +1,3 @@
-/**
- * Behavioral proof that the retry wrapper retries the right failures and
- * refuses the wrong ones.
- *
- * These drive REAL child processes rather than a stubbed spawn: the value of
- * this wrapper is entirely in what it decides after a real command exits
- * non-zero, and a fake spawn would let the classification pass while the
- * process plumbing was broken.
- */
-
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,7 +22,6 @@ const desktopRelease = readFileSync(
 const scratch = mkdtempSync(join(tmpdir(), 'retry-transient-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** Silence the streamed child output; the assertions read the log lines instead. */
 beforeEach(() => {
   vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -41,7 +30,6 @@ beforeEach(() => {
 
 const nodeCmd = (src) => ['node', '-e', src];
 
-/** Retry without the real 30s/60s waits. */
 const run = (overrides) => {
   const lines = [];
   return runWithRetry({
@@ -59,8 +47,6 @@ describe('the retry decision', () => {
   });
 
   test('a NON-transient failure fails loud on the first attempt', async () => {
-    // The whole safety property: a real signing/build error must not be
-    // retried into looking like a flake.
     const r = await run({
       command: nodeCmd('console.error("notarization status: Invalid");process.exit(1)'),
     });
@@ -71,8 +57,6 @@ describe('the retry decision', () => {
   });
 
   test('a transient failure is retried and can succeed', async () => {
-    // A real counter file, so "it failed then it passed" is genuinely
-    // exercised across two separate processes.
     const counter = join(scratch, 'flaky-count');
     writeFileSync(counter, '0');
     const r = await run({
@@ -102,7 +86,6 @@ describe('the retry decision', () => {
   test('a command that cannot be spawned at all is not retried forever', async () => {
     const r = await run({ command: ['definitely-not-a-real-binary-xyz'], maxAttempts: 2 });
     expect(r.ok).toBe(false);
-    // ENOENT is not an infra flake — it is a broken invocation.
     expect(r.reason).toBe('non-transient');
   });
 
@@ -114,7 +97,6 @@ describe('the retry decision', () => {
 
 describe('the transient allowlist', () => {
   test('matches the signature that blocked the 0.52.2 and 0.52.3 cuts', () => {
-    // Verbatim from the failed Linux packaging step.
     expect(isTransient('⨯ socket hang up  failedTask=build stackTrace=RequestError: socket hang up')).toBe(
       true,
     );
@@ -126,7 +108,6 @@ describe('the transient allowlist', () => {
   });
 
   test('does NOT match real build, cert, or notarization failures', () => {
-    // Each of these must fail the release loudly rather than be retried.
     for (const real of [
       'error TS2345: Argument of type string is not assignable',
       'The specified item could not be found in the keychain',
@@ -149,7 +130,6 @@ describe('the transient allowlist', () => {
   test('every signature is a real regex and none is so broad it matches bare text', () => {
     for (const sig of TRANSIENT_SIGNATURES) {
       expect(() => new RegExp(sig)).not.toThrow();
-      // A signature matching an ordinary build line would defeat the gate.
       expect(new RegExp(sig, 'i').test('Building desktop app')).toBe(false);
     }
   });
@@ -162,7 +142,6 @@ describe('backoff', () => {
     const total = [...Array(DEFAULT_MAX_ATTEMPTS - 1).keys()]
       .map((i) => backoffSeconds(i + 1))
       .reduce((a, b) => a + b, 0);
-    // Must stay well inside the packaging jobs' timeout-minutes budget.
     expect(total).toBeLessThan(10 * 60);
   });
 });
@@ -196,10 +175,7 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  /** The `- name:` block of a step, up to the next sibling step. */
   const step = (needle) => {
-    // Throw rather than slice(-1), which returns the file's last character and
-    // makes every negative assertion below pass vacuously on a renamed step.
     const start = desktopRelease.indexOf(`- name: ${needle}`);
     if (start === -1) throw new Error(`desktop-release.yml has no step named ${needle}`);
     const rest = desktopRelease.slice(start);
@@ -207,16 +183,10 @@ describe('workflow wiring', () => {
     return end === -1 ? rest : rest.slice(0, end);
   };
 
-  // Pins the guard above. Every other call names a step that exists, so the
-  // throw is otherwise dead code and a later simplification drops it silently,
-  // returning every negative assertion in this describe to passing against one
-  // character.
   test('step() throws on a missing name instead of returning a degenerate slice', () => {
     expect(() => step('This step does not exist')).toThrow(/has no step named/);
   });
 
-  // Every platform that packages an installer. The 0.52.2/0.52.3 incident was
-  // Linux; the same un-retried exposure existed on Windows.
   const PACKAGING_STEPS = [
     'Build + sign + notarize DMG/ZIP',
     'Package NSIS installers',
@@ -228,9 +198,6 @@ describe('workflow wiring', () => {
   });
 
   test.each(PACKAGING_STEPS)('%s defines its packaging command exactly once', (name) => {
-    // One definition, executed either through the wrapper or through the
-    // explicit no-retry fallback. A second `pnpm exec electron-builder` line
-    // would be an un-wrapped invocation reopening the gap for that platform.
     const invocations = step(name)
       .split('\n')
       .filter((l) => !/^\s*#/.test(l))
@@ -246,9 +213,6 @@ describe('workflow wiring', () => {
   });
 
   test.each(PACKAGING_STEPS)('%s still packages when the wrapper is absent', (name) => {
-    // The packaging jobs check out the RELEASE TAG, which can predate this
-    // wrapper — promote-stable tags stable at the soaked beta's SHA. Blocking
-    // on a missing CI helper would make every already-cut tag unreleasable.
     const body = step(name);
     expect(body).toContain('git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA"');
     expect(body).toContain('bash -c "$PKG_CMD"');
@@ -256,18 +220,9 @@ describe('workflow wiring', () => {
   });
 
   test('the retry allowlist is not duplicated back into the workflow', () => {
-    // The point of extracting it is one source of truth; an inline copy would
-    // drift from the tested one.
     expect(desktopRelease).not.toContain('transient_signatures=');
   });
 
-  /**
-   * The assertions above read YAML TEXT, so they pass whether or not the
-   * fallback is reachable. Actions runs every step under errexit, and bash
-   * exempts only the NON-final commands of an `&&` list — so a failing
-   * `git checkout` at the end of one exits the shell before the fallback runs,
-   * silently (the checkout is `2>/dev/null`). These execute the real snippet.
-   */
   const preamble = (name) => {
     const body = step(name);
     const start = body.indexOf('WRAPPER="');
@@ -277,16 +232,12 @@ describe('workflow wiring', () => {
     return body.slice(start, end);
   };
 
-  /** Runs a snippet the way Actions does, with git stubbed to the failure shape. */
   let snippetSeq = 0;
   const runUnderErrexit = (snippet) => {
     const file = join(scratch, `preamble-${(snippetSeq += 1)}.sh`);
     writeFileSync(
       file,
       [
-        // The reachable real-world shape: on a rebuild of an old tag the commit
-        // is already present so `fetch` succeeds, while `checkout` fails because
-        // the path does not exist at that ref.
         'git() { case "$*" in *checkout*) return 1 ;; *) return 0 ;; esac; }',
         'GITHUB_WORKSPACE=/nonexistent-workspace',
         'GITHUB_SHA=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
@@ -306,8 +257,6 @@ describe('workflow wiring', () => {
   });
 
   test('the errexit harness actually discriminates (mutation control)', () => {
-    // The pre-fix shape, inline. If this passed, the tests above would prove
-    // nothing — they would be satisfied by a snippet that aborts the step.
     const unExempt = [
       'WRAPPER="/nonexistent/retry-transient.mjs"',
       'if [[ ! -f "$WRAPPER" ]]; then',

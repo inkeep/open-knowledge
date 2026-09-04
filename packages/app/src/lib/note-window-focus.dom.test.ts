@@ -33,8 +33,6 @@ describe('claimNoteWindowInitialFocus', () => {
     stubMode('note');
     claimNoteWindowInitialFocus();
 
-    // An Activity reveal, a mode flip, a remount: all of these re-run the
-    // editor mount path within one window.
     expect(claimNoteWindowInitialFocus()).toBe(false);
     expect(claimNoteWindowInitialFocus()).toBe(false);
   });

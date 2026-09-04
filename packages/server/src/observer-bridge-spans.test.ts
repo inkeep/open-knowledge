@@ -1,19 +1,3 @@
-/**
- * Integration tests for server-bridge spans.
- *
- * Registers a `BasicTracerProvider` with an `InMemorySpanExporter`,
- * exercises a representative bridge cycle (composeAndWriteRawBody under
- * a transact + observer A/B settlement dispatch), and asserts:
- *   - bridge.composeAndWriteRawBody appears with surface + body.bytes + doc.name
- *   - md.parseWithFallback appears with body.bytes + doc.name
- *   - observer.runASync / runBSync / dispatch appear with the expected
- *     enum-only attributes
- *   - no unbounded-cardinality attribute names slip in
- *
- * Bounded-enum + pre-validated string attributes only (STOP
- * rule: no raw paths, no doc content, no free-form user strings).
- */
-
 import { context, metrics, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -94,7 +78,6 @@ describe('FR6 / AC10 — server bridge spans', () => {
     composeAndWriteRawBody(doc, '---\nfoo: bar\n---\nbody\n', 'agent');
     const parse = spansByName('md.parseWithFallback')[0];
     expect(parse).toBeDefined();
-    // body excludes frontmatter, so byte count is just 'body\n' (5).
     expect(parse?.attributes['body.bytes']).toBe(5);
   });
 
@@ -112,7 +95,6 @@ describe('FR6 / AC10 — server bridge spans', () => {
       docName: 'README',
     });
     try {
-      // A non-paired Y.Text mutation forces Observer B to run on dispatch.
       doc.transact(() => {
         ytext.insert(0, '# Hi\n');
       });
@@ -120,7 +102,6 @@ describe('FR6 / AC10 — server bridge spans', () => {
       expect(dispatch).toBeDefined();
       const obDispatch = dispatch?.attributes['observer.dispatch'];
       expect(['a', 'b', 'a-then-b', 'none']).toContain(obDispatch as string);
-      // runBSync should fire because the Y.Text mutation triggers Observer B.
       const runB = spansByName('observer.runBSync')[0];
       expect(runB).toBeDefined();
       expect(runB?.attributes['doc.name']).toBe('README');
@@ -138,7 +119,6 @@ describe('FR6 / AC10 — server bridge spans', () => {
     for (const span of [compose, parse]) {
       if (!span) continue;
       for (const key of Object.keys(span.attributes)) {
-        // Allow well-known telemetry-base attrs (otel.* / sdk.*) through.
         if (key.startsWith('otel.') || key.startsWith('sdk.')) continue;
         expect(ALLOWED_BRIDGE_ATTRIBUTE_KEYS.has(key)).toBe(true);
       }

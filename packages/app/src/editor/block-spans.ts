@@ -25,11 +25,7 @@
  * decoration plugin's module graph.
  */
 
-import {
-  computeSourceBlocks,
-  type MarkdownManager,
-  MIN_CARRIED_EDGE_EMPTIES,
-} from '@inkeep/open-knowledge-core';
+import { computeSourceBlocks, type MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
 export {
@@ -110,7 +106,7 @@ export function comparableChildCount(doc: PmNode): number {
     if (child.type.name !== 'paragraph' || child.content.size !== 0) break;
     trailingEmpty++;
   }
-  return trailingEmpty < MIN_CARRIED_EDGE_EMPTIES ? doc.childCount - trailingEmpty : doc.childCount;
+  return trailingEmpty === doc.childCount ? 0 : doc.childCount;
 }
 
 /**

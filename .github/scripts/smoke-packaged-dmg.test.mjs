@@ -12,7 +12,6 @@ import {
 
 const report = (stats) => ({ stats });
 
-/** A mount stub that hands the callback a fixed app path. */
 const mountOk = async (_dmg, cb) => cb('/tmp/copy/OpenKnowledge.app');
 const mountThrows = (err) => async () => {
   throw err;
@@ -54,8 +53,6 @@ describe('classifyRun', () => {
   });
 
   test('zero executed tests is an error, never a pass', () => {
-    // The adversarial case: a DMG so broken Electron never launches makes every
-    // test skip, and a naive "no failures" reading would call that green.
     const v = classifyRun({
       runExitCode: 0,
       report: report({ expected: 0, unexpected: 0, flaky: 0, skipped: 16 }),
@@ -246,9 +243,6 @@ describe('runDriver', () => {
 });
 
 describe('defensive defaults are pinned, not incidental', () => {
-  // These `?? 0` fallbacks read as dead code to anyone tidying up. They are
-  // the difference between "Playwright renamed a field" surfacing as an error
-  // verdict and surfacing as a silent pass.
   test('a report with no stats key is an error, not a pass', () => {
     expect(classifyRun({ runExitCode: 0, report: {} }).verdict).toBe(VERDICT.error);
   });

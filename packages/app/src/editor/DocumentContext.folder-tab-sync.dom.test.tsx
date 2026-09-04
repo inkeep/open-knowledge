@@ -15,12 +15,6 @@ vi.doMock('@/lib/use-collab-url', () => ({
 const { DocumentProvider, useDocumentContext } = await import('./DocumentContext');
 const { folderTabId, docTabId, localTabSessionStorageKey } = await import('./editor-tabs');
 
-/**
- * Drives the real `syncOpenTabsWithKnownTargets` on the real provider, so the
- * derivation that decides whether an exemption exists at all is under test, not
- * just the predicate it feeds. A literal `keepFolderPaths` would leave that
- * derivation free to return nothing and still look green.
- */
 function Harness() {
   const ctx = useDocumentContext();
   return (
@@ -73,8 +67,6 @@ function Harness() {
       <button
         type="button"
         onClick={() =>
-          // The lag window: the folder exists on disk but the server listing has
-          // not caught up, so `folderPaths` is empty.
           ctx.syncOpenTabsWithKnownTargets({
             pages: new Set<string>(),
             folderPaths: new Set<string>(),
@@ -123,9 +115,6 @@ describe('folder tab survives a stale page-list sync', () => {
   });
 
   test('a restored session keeps its folder tab through a stale sync', async () => {
-    // The session-restore path, distinct from the openTarget path above: the
-    // tab comes back from storage rather than from a navigation. Kept because
-    // the restore resolves the pane's target, which is what the exemption reads.
     window.localStorage.setItem(
       localTabSessionStorageKey(window.location.origin),
       JSON.stringify({
@@ -157,11 +146,6 @@ describe('folder tab survives a stale page-list sync', () => {
   });
 
   test('a renamed folder keeps its tab through a stale sync', async () => {
-    // The traced scenario end to end: the sidebar creates a folder, the inline
-    // rename commits, and a refresh lands before the server listing catches up.
-    // `remapWorkspaceTabs` NULLS `activeTarget` when a tab id changes, so this
-    // only holds because the commit re-derives it from `activeTabId` (see
-    // `paneWithResolvedTarget`) before anything can observe the pane.
     window.location.hash = '#/notes/';
     const user = userEvent.setup();
     await renderHarness();
@@ -179,9 +163,6 @@ describe('folder tab survives a stale page-list sync', () => {
   });
 
   test('a folder the user is not on is still pruned', async () => {
-    // Separates the exemption from a blanket folder carve-out. `stale` is open
-    // but no pane displays it and the hash does not name it, so the prune must
-    // still take it while the doc the hash points at survives.
     window.location.hash = '#/readme';
     const user = userEvent.setup();
     await renderHarness();

@@ -1,22 +1,20 @@
 import type { InferPageType } from 'fumadocs-core/source';
+import { escapeInlineProse, escapeRawHtml, serializeMdx } from '@/lib/mdx-serializer';
+import { DOCS_SERIALIZER_REGISTRY } from '@/lib/mdx-serializer-registry';
+import { absoluteSiteUrl } from '@/lib/site';
 import type { source } from '@/lib/source';
 
-/**
- * Render a single docs page as a clean Markdown document for agent / LLM
- * consumption: a title + canonical-URL header, the description, then the
- * processed Markdown body (snippets resolved, MDX components reduced to plain
- * Markdown). The processed body requires `includeProcessedMarkdown` on the
- * `docs` collection (see source.config.ts).
- *
- * Shared by `/llms-full.txt` (whole corpus) and the per-page `…/<slug>.md`
- * route so the two presentations never drift.
- */
 export async function getLLMText(page: InferPageType<typeof source>): Promise<string> {
-  const processed = await page.data.getText('processed');
+  const canonicalUrl = absoluteSiteUrl(page.url);
+  const mdx = await page.data.getText('raw');
+  const { body } = serializeMdx(mdx, {
+    registry: DOCS_SERIALIZER_REGISTRY,
+    pageUrl: canonicalUrl,
+  });
 
-  return `# ${page.data.title} (${page.url})
+  return `# ${escapeInlineProse(page.data.title)} (${canonicalUrl})
 
-${page.data.description || ''}
+${escapeRawHtml(page.data.description || '')}
 
-${processed}`;
+${body}`;
 }

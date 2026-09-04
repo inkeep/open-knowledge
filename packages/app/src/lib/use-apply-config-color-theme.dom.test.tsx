@@ -18,16 +18,12 @@ import {
   useApplyConfigColorTheme,
 } from './use-apply-config-color-theme';
 
-// The jsdom preload installs `window` but not a top-level `localStorage`
-// global; production runs in a real browser where it is global. Bridge it so
-// the FOUC-cache writes are observable here.
 beforeAll(() => {
   if (typeof localStorage === 'undefined') {
     (globalThis as { localStorage?: Storage }).localStorage = window.localStorage;
   }
 });
 
-/** A selection with the same palette in both slots — the pre-pair shape. */
 function both(id: ColorThemeSelection['light']): ColorThemeSelection {
   return { light: id, dark: id };
 }
@@ -156,9 +152,6 @@ describe('useApplyConfigColorTheme', () => {
   });
 
   test("caches the mode preference, not next-themes' possibly-forced value", () => {
-    // A palette forces its own variant through `setTheme`, so `ok-theme-v1` can
-    // read 'dark' while the user's preference is still 'system'. Picking a slot
-    // from that would strand the app in one mode.
     render(
       <Harness
         selection={{ light: 'catppuccin-latte', dark: 'dracula' }}
@@ -184,8 +177,6 @@ describe('useApplyConfigColorTheme', () => {
   });
 
   test('a dark palette assigned to light mode still paints dark', () => {
-    // Any palette may sit in either slot; it keeps forcing its own variant so
-    // Tailwind `dark:` variants resolve against the tokens actually on screen.
     render(<Harness selection={{ light: 'dracula', dark: 'dracula' }} slotMode="light" />);
     expect(readSelectionCache().light).toEqual({ id: 'dracula', dark: true });
   });
@@ -229,8 +220,6 @@ describe('useApplyConfigColorTheme — Themes plugin disabled', () => {
 
     rerender(<Harness selection={both('catppuccin-frappe')} enabled={false} />);
     expect(document.documentElement.hasAttribute(COLOR_THEME_ATTRIBUTE)).toBe(false);
-    // The FOUC mirror carries the disabled state — a reload's pre-paint script
-    // finds no cached palette, so it cannot flash the palette back.
     expect(localStorage.getItem(COLOR_THEME_PAIR_STORAGE_KEY)).toBeNull();
   });
 
@@ -274,8 +263,6 @@ describe('applyColorThemeToDom', () => {
   });
 
   test('retires the pre-pair single-palette cache', () => {
-    // Left behind, it would shadow a reset back to `default` on the next
-    // pre-paint — the fallback branch only runs when the pair is absent.
     localStorage.setItem(COLOR_THEME_STORAGE_KEY, 'monokai');
     apply({ selection: both('gruvbox') });
     expect(localStorage.getItem(COLOR_THEME_STORAGE_KEY)).toBeNull();
@@ -297,9 +284,6 @@ describe('applyColorThemeToDom', () => {
   });
 
   test('a default slot caches the mode it resolves to, so pre-paint needs no palette table', () => {
-    // `default` carries no palette, so its cached flag is just the slot's own
-    // mode — which is what lets the pre-paint script set the `dark` class
-    // without knowing a single theme id.
     apply({ selection: { light: 'default', dark: 'dracula' } });
     expect(readSelectionCache().light).toEqual({ id: 'default', dark: false });
     apply({ selection: { light: 'dracula', dark: 'default' } });
@@ -330,8 +314,6 @@ describe('applyColorThemeToDom — custom palette', () => {
   });
 
   test('caches the custom CSS while custom sits in the OTHER slot, without injecting it', () => {
-    // The OS can flip while the app is closed, so the reload that lands in the
-    // custom slot has to be able to replay the stylesheet pre-paint.
     apply({
       selection: { light: 'custom', dark: 'dracula' },
       slotMode: 'dark',

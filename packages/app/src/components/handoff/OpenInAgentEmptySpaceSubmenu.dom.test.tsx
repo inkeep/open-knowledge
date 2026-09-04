@@ -15,8 +15,6 @@ import type { HandoffDispatchInput } from './useHandoffDispatch';
 vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   t: renderLinguiTemplate,
-  // A transitively-imported module uses the `msg` macro; the whole-module mock
-  // must expose it too or the file fails to link.
   msg: renderLinguiTemplate,
 }));
 
@@ -150,9 +148,6 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     launchCalls.length = 0;
     threadLaunchCalls.length = 0;
     threadLaunchOpts.length = 0;
-    // jsdom preload exposes no global localStorage — the store falls back to
-    // in-memory state there, so the reload alone resets it; clear the real
-    // storage when an environment provides one.
     if (typeof localStorage !== 'undefined') localStorage.clear();
     reloadRegisteredAgentsFromStorage();
     reloadEnabledAgentsFromStorage();
@@ -190,8 +185,6 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
   });
 
   test('hides the In-app section when nothing is enabled, keeping the Configure agents row', async () => {
-    // Web-host path (no terminal), everything uninstalled, no agents enabled:
-    // empty sections are hidden and the Configure agents footer stays reachable.
     await renderSubmenu({
       states: installStates({
         'claude-code': { installed: false, lastChecked: 1 },
@@ -249,7 +242,6 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     window.location.hash = '';
     await userEvent.click(screen.getByTestId('empty-space-open-in-settings'));
     expect(window.location.hash).toBe('#settings/configure-agents');
-    // No thread launch — the Settings row only navigates.
     expect(threadLaunchCalls).toEqual([]);
   });
 
@@ -259,20 +251,16 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
 
     expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // Separator divides the two populated sections.
     expect(document.querySelector('[data-slot="context-menu-separator"]')).toBeTruthy();
 
     const terminalRow = screen.getByTestId('empty-space-open-in-terminal-claude');
-    // Visible text is the brand "Claude"; accessible name is "Claude CLI".
     expect(terminalRow.textContent).toContain('Claude');
     expect(terminalRow.textContent).not.toContain('CLI');
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI');
-    // Codex + Cursor rows sit alongside, each with its own "<Brand> CLI" name.
     expect(
       screen.getByTestId('empty-space-open-in-terminal-codex').getAttribute('aria-label'),
     ).toBe('Codex CLI');
@@ -296,8 +284,6 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     await openEmptySpaceSubmenu();
 
     const terminalRow = screen.getByTestId('empty-space-open-in-terminal-claude');
-    // WCAG 2.5.3: the accessible name must contain the visible label "Claude";
-    // when input is missing the hint is appended in this exact order.
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI, No workspace');
     expect(terminalRow.getAttribute('data-disabled')).toBe('');
 
@@ -330,7 +316,6 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     expect(screen.queryByText('External apps')).toBeNull();
     expect(screen.queryByText('In app')).toBeNull();
     expect(screen.getByTestId('empty-space-open-in-terminal-claude')).toBeTruthy();
-    // A single separator sits before the Configure agents footer.
     expect(document.querySelectorAll('[data-slot="context-menu-separator"]').length).toBe(1);
   });
 });

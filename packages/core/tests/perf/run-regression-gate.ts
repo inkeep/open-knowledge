@@ -1,16 +1,3 @@
-/**
- * Orchestrator: run the bench harness, find the freshest results
- * file it wrote, and feed it to the regression gate against the
- * committed baseline.
- *
- * Used by the `test:perf:regression` npm script and the matching turbo
- * task. Fails non-zero on gate regression (propagates the CLI exit code).
- *
- * Kept as a thin wrapper — the real work is in:
- *   - `markdown-bench.test.ts` (measurement)
- *   - `regression-gate.ts` (comparison logic)
- */
-
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -38,7 +25,6 @@ function findFreshestResults(): string {
 }
 
 async function main(): Promise<void> {
-  // 1) run the bench
   const bench = spawnSync(
     'pnpm',
     ['exec', 'vitest', 'run', resolve(HERE, 'markdown-bench.test.ts')],
@@ -52,18 +38,10 @@ async function main(): Promise<void> {
     process.exit(bench.status ?? 1);
   }
 
-  // 2) gate against baseline
   const freshPath = findFreshestResults();
   const baseline = loadBaseline(BASELINE_PATH);
   const fresh = loadFreshResults(freshPath);
 
-  // Soft warning on runner-class mismatch. The threshold formula
-  // (`max(2σ, 10% × p99)`) absorbs some cross-runner variance but anchors
-  // to p99 numbers measured on the baseline's hardware class; σ on shared
-  // CI runners can be 5-20× larger than on the M-series calibration box
-  // When the mismatch is real, operators
-  // need the signal — but blocking the gate on it would be a step backward
-  // until a CI-class baseline is captured.
   const freshRunnerClass =
     process.env.BENCH_RUNNER_CLASS ??
     (fresh.runner as { runnerClass?: string } | undefined)?.runnerClass ??
@@ -75,10 +53,6 @@ async function main(): Promise<void> {
     );
   }
 
-  // Methodology mismatch is the silent-invalidation case: `globalThis.gc()`
-  // only forces a collection under `--expose-gc`, so a run launched without it
-  // measures a different allocation regime than a forced-GC baseline while
-  // still producing a comparable-looking number.
   for (const warning of checkMethodologyMismatches(baseline, fresh)) {
     console.warn(`[r4-gate] ${warning}`);
   }

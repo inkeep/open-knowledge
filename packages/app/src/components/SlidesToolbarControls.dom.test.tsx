@@ -1,14 +1,3 @@
-/**
- * DOM tests for the lazy Slides toolbar action. The component is mounted past
- * its cheap host gate, so these cover the two conditions it owns — the doc
- * declares `slides: true`, and `slidev` resolved — plus activation and the
- * failure surface.
- *
- * The provider is a fake wrapping a real `Y.Doc` (so the frontmatter flag runs
- * through the real `bindFrontmatterDoc` parse), and `window.okDesktop.slides` is
- * a stub — the IPC boundary is the one system boundary these tests fake.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -22,9 +11,20 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkSlidesOpenResult, OkSlidesStatusResult } from '@/lib/desktop-bridge-types';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-const { toastErrorSpy } = vi.hoisted(() => ({ toastErrorSpy: vi.fn() }));
+const { toastDismissSpy, toastErrorSpy, toastLoadingSpy } = vi.hoisted(() => ({
+  toastDismissSpy: vi.fn(),
+  toastErrorSpy: vi.fn(),
+  toastLoadingSpy: vi.fn(() => 'slides-opening'),
+}));
 vi.mock('sonner', () => ({
-  toast: { error: toastErrorSpy, success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+  toast: {
+    dismiss: toastDismissSpy,
+    error: toastErrorSpy,
+    info: vi.fn(),
+    loading: toastLoadingSpy,
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
 }));
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -54,8 +54,6 @@ function makeProvider(initial = ''): FakeProvider {
   };
 }
 
-/** Mutate the shared frontmatter the way a property-panel edit would, so the
- *  hook's own observer fires. */
 function patchSlides(provider: FakeProvider, value: boolean | string | null): void {
   const writer = bindFrontmatterDoc(provider);
   writer.patch({ slides: value });
@@ -112,8 +110,6 @@ describe('SlidesToolbarControls — visibility', () => {
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
-    // The control renders an icon with no visible text, so assistive tech has
-    // only the accessible name to go on — query by role+name, not by testid.
     expect(await screen.findByRole('button', { name: 'Open in Slidev' })).toBeTruthy();
   });
 
@@ -133,11 +129,7 @@ describe('SlidesToolbarControls — visibility', () => {
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
     await waitFor(() => expect(statusSpy).toHaveBeenCalledTimes(1));
-    // A rejected probe degrades to "unavailable" (action hidden), never a crash.
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
-    // …and is logged with the rejection, so a broken bridge is distinguishable
-    // from "not installed" — a content match, not bare existence (which an
-    // ambient warn could satisfy).
     expect(warnSpy).toHaveBeenCalledWith('[slides] availability probe failed:', expect.any(Error));
     warnSpy.mockRestore();
   });
@@ -166,9 +158,6 @@ describe('SlidesToolbarControls — visibility', () => {
   });
 
   test('a mid-session install reveals the action on window focus, without remount', async () => {
-    // The first-run path: open a deck before slidev is installed (no action),
-    // install it in a terminal, switch back. That switch is the focus event —
-    // the toolbar re-probes and the action appears without reopening the doc.
     let available = false;
     const { statusSpy } = installBridge({
       status: () =>
@@ -183,10 +172,6 @@ describe('SlidesToolbarControls — visibility', () => {
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
 
     available = true;
-    // Focus re-probes are throttled so a never-installed slidev cannot spawn a
-    // login shell on every alt-tab. Installing takes far longer than that
-    // window, so advance the clock rather than firing focus instantly — the
-    // real path this covers is minutes long, not milliseconds.
     const realNow = Date.now();
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 60_000);
     act(() => {
@@ -199,15 +184,10 @@ describe('SlidesToolbarControls — visibility', () => {
   });
 
   test('stops re-probing on focus once slidev has resolved available', async () => {
-    // Each status() runs a login-shell PATH probe for a global install, and a
-    // resolvable slidev rarely disappears mid-session — so once found, further
-    // window-focus events must not spawn another probe.
     const { statusSpy } = installBridge({
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
-    // Awaiting the action guarantees the resolving probe's `.then` ran — which is
-    // where the focus listener unsubscribes.
     expect(await screen.findByTestId('slides-toolbar-action')).toBeTruthy();
     await waitFor(() => expect(statusSpy).toHaveBeenCalledTimes(1));
 
@@ -218,7 +198,6 @@ describe('SlidesToolbarControls — visibility', () => {
       window.dispatchEvent(new Event('focus'));
     });
 
-    // Still 1: the focus listener was removed once availability resolved.
     expect(statusSpy).toHaveBeenCalledTimes(1);
   });
 });
@@ -238,7 +217,7 @@ describe('SlidesToolbarControls — activation', () => {
     await waitFor(() => expect(openSpy).toHaveBeenCalledWith('/proj/talks/Deck.md'));
   });
 
-  test('activating the action emits the ok.slides.opened marker', async () => {
+  test('one in-flight open reports busy progress and suppresses duplicate activation', async () => {
     const spanNames: string[] = [];
     const getTracerSpy = vi.spyOn(trace, 'getTracer').mockImplementation(
       () =>
@@ -251,14 +230,30 @@ describe('SlidesToolbarControls — activation', () => {
     );
     try {
       const user = userEvent.setup();
-      installBridge({
+      let resolveOpen: ((result: OkSlidesOpenResult) => void) | undefined;
+      const pendingOpen = new Promise<OkSlidesOpenResult>((resolve) => {
+        resolveOpen = resolve;
+      });
+      const { openSpy } = installBridge({
         status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
+        open: () => pendingOpen,
       });
       await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
 
-      await user.click(await screen.findByTestId('slides-toolbar-action'));
+      const action = await screen.findByTestId('slides-toolbar-action');
+      await user.click(action);
+      await user.click(action);
 
-      await waitFor(() => expect(spanNames).toContain('ok.slides.opened'));
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(spanNames.filter((name) => name === 'ok.slides.opened')).toHaveLength(1);
+      expect(action.getAttribute('aria-busy')).toBe('true');
+      expect(toastLoadingSpy).toHaveBeenCalledWith('Opening...', {
+        duration: Number.POSITIVE_INFINITY,
+      });
+
+      resolveOpen?.({ kind: 'open', ok: true });
+      await waitFor(() => expect(action.getAttribute('aria-busy')).toBe('false'));
+      expect(toastDismissSpy).toHaveBeenCalledWith('slides-opening');
     } finally {
       getTracerSpy.mockRestore();
     }
@@ -275,13 +270,14 @@ describe('SlidesToolbarControls — activation', () => {
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
     await waitFor(() =>
-      expect(toastErrorSpy).toHaveBeenCalledWith('Slidev timed out while starting. Try again.'),
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        'Slidev timed out while starting. Try again.',
+        expect.objectContaining({ id: 'slides-opening' }),
+      ),
     );
   });
 
   test('a deck that crashes Slidev on boot gets a message distinct from a timeout', async () => {
-    // The discriminated reason drives distinct, actionable copy: a crashed boot
-    // (exited-early) is not the same problem as a hung boot (timeout).
     const user = userEvent.setup();
     installBridge({
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
@@ -292,8 +288,127 @@ describe('SlidesToolbarControls — activation', () => {
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
     await waitFor(() =>
-      expect(toastErrorSpy).toHaveBeenCalledWith("Slidev couldn't render this document."),
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        "Slidev couldn't render this document.",
+        expect.objectContaining({
+          action: expect.objectContaining({ label: 'Try again' }),
+          id: 'slides-opening',
+        }),
+      ),
     );
+  });
+
+  test('retry keeps the failed path without blocking another deck', async () => {
+    const spanNames: string[] = [];
+    const getTracerSpy = vi.spyOn(trace, 'getTracer').mockImplementation(
+      () =>
+        ({
+          startSpan: (name: string) => {
+            spanNames.push(name);
+            return { end: () => undefined };
+          },
+        }) as unknown as Tracer,
+    );
+    try {
+      const user = userEvent.setup();
+      const providerA = makeProvider('---\nslides: true\n---\nA\n');
+      const providerB = makeProvider('---\nslides: true\n---\nB\n');
+      let resolveRetry: ((result: OkSlidesOpenResult) => void) | undefined;
+      let resolveDeckB: ((result: OkSlidesOpenResult) => void) | undefined;
+      let attempts = 0;
+      const { openSpy } = installBridge({
+        status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
+        open: (docPath) => {
+          attempts += 1;
+          if (attempts === 1) {
+            return Promise.resolve({ kind: 'open', ok: false, reason: 'renderer-failed' });
+          }
+          return new Promise<OkSlidesOpenResult>((resolve) => {
+            if (docPath.endsWith('/A.md')) resolveRetry = resolve;
+            else resolveDeckB = resolve;
+          });
+        },
+      });
+      const rendered = await renderControls(providerA, 'talks/A');
+
+      await user.click(await screen.findByTestId('slides-toolbar-action'));
+      await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledTimes(1));
+      const retry = (
+        toastErrorSpy.mock.calls[0]?.[1] as { action?: { onClick?: () => void } } | undefined
+      )?.action?.onClick;
+      expect(retry).toBeTypeOf('function');
+
+      const { SlidesToolbarControls } = await import('./SlidesToolbarControls');
+      rendered.rerender(
+        <TooltipProvider>
+          <SlidesToolbarControls
+            provider={providerB as unknown as HocuspocusProvider}
+            docName="talks/B"
+          />
+        </TooltipProvider>,
+      );
+      act(() => retry?.());
+
+      const action = await screen.findByTestId('slides-toolbar-action');
+      expect(action.getAttribute('aria-busy')).toBe('false');
+      await user.click(action);
+
+      expect(openSpy).toHaveBeenCalledTimes(3);
+      expect(openSpy.mock.calls.map(([docPath]) => docPath)).toEqual([
+        '/proj/talks/A.md',
+        '/proj/talks/A.md',
+        '/proj/talks/B.md',
+      ]);
+      expect(toastLoadingSpy).toHaveBeenCalledTimes(3);
+      expect(spanNames.filter((name) => name === 'ok.slides.opened')).toHaveLength(2);
+      expect(action.getAttribute('aria-busy')).toBe('true');
+
+      await act(async () => {
+        resolveRetry?.({ kind: 'open', ok: true });
+      });
+      expect(action.getAttribute('aria-busy')).toBe('true');
+      resolveDeckB?.({ kind: 'open', ok: true });
+      await waitFor(() => expect(action.getAttribute('aria-busy')).toBe('false'));
+    } finally {
+      getTracerSpy.mockRestore();
+    }
+  });
+
+  test('a shell that never renders a deck surfaces the render-failure message', async () => {
+    const user = userEvent.setup();
+    installBridge({
+      status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
+      open: () => Promise.resolve({ kind: 'open', ok: false, reason: 'renderer-failed' }),
+    });
+    await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
+
+    await user.click(await screen.findByTestId('slides-toolbar-action'));
+
+    await waitFor(() =>
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        "Slidev couldn't render this document.",
+        expect.objectContaining({
+          action: expect.objectContaining({ label: 'Try again' }),
+          id: 'slides-opening',
+        }),
+      ),
+    );
+  });
+
+  test('closing the hidden window cancels progress without showing an error', async () => {
+    const user = userEvent.setup();
+    installBridge({
+      status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
+      open: () => Promise.resolve({ kind: 'open', ok: false, reason: 'cancelled' }),
+    });
+    await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
+
+    const action = await screen.findByTestId('slides-toolbar-action');
+    await user.click(action);
+
+    await waitFor(() => expect(toastDismissSpy).toHaveBeenCalledWith('slides-opening'));
+    expect(toastErrorSpy).not.toHaveBeenCalled();
+    expect(action.getAttribute('aria-busy')).toBe('false');
   });
 
   test('a foreign or too-old server on the port surfaces the unsupported-version message', async () => {
@@ -307,7 +422,10 @@ describe('SlidesToolbarControls — activation', () => {
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
     await waitFor(() =>
-      expect(toastErrorSpy).toHaveBeenCalledWith("This isn't a supported version of Slidev."),
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        "This isn't a supported version of Slidev.",
+        expect.objectContaining({ id: 'slides-opening' }),
+      ),
     );
   });
 
@@ -321,7 +439,12 @@ describe('SlidesToolbarControls — activation', () => {
 
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
-    await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledWith("Couldn't start Slidev."));
+    await waitFor(() =>
+      expect(toastErrorSpy).toHaveBeenCalledWith(
+        "Couldn't start Slidev.",
+        expect.objectContaining({ id: 'slides-opening' }),
+      ),
+    );
   });
 
   test('an open that rejects at the IPC boundary surfaces an error and logs the cause', async () => {
@@ -336,8 +459,6 @@ describe('SlidesToolbarControls — activation', () => {
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledTimes(1));
-    // …and the rejection is logged, so a broken bridge stays distinguishable in
-    // diagnostics from a returned not-ok result — both surface the same toast.
     expect(warnSpy).toHaveBeenCalledWith('[slides] open dispatch failed:', expect.any(Error));
     warnSpy.mockRestore();
   });
@@ -345,9 +466,6 @@ describe('SlidesToolbarControls — activation', () => {
 
 describe('SlidesToolbarControls — focus re-probe is bounded', () => {
   test('rapid window focus does not re-probe on every event', async () => {
-    // Each status() runs a login-shell PATH probe on the desktop side. A deck
-    // open with slidev absent keeps the focus listener attached, so without a
-    // throttle every alt-tab would spawn a shell, indefinitely.
     const { statusSpy } = installBridge({
       status: () => Promise.resolve({ kind: 'status', available: false }),
     });
@@ -358,7 +476,6 @@ describe('SlidesToolbarControls — focus re-probe is bounded', () => {
       for (let i = 0; i < 20; i++) window.dispatchEvent(new Event('focus'));
     });
 
-    // Still just the mount probe — twenty focus events, no extra shells.
     expect(statusSpy).toHaveBeenCalledTimes(1);
   });
 });

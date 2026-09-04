@@ -1,13 +1,3 @@
-/**
- * The audit walk must not hold the event loop, and a walk whose world (lint
- * configuration, or the branch whose content is on disk) changed underneath it
- * must not return a half-old-half-new plane.
- *
- * Both properties are observed through real event-loop behavior rather than
- * instrumentation: a `setInterval` that only ticks if the loop is serviced,
- * and a `setTimeout` that only fires if the walk yields before it finishes.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,15 +15,9 @@ const base: LinterConfig = {
   },
 };
 
-/**
- * Big enough that an unyielding walk visibly stalls the loop (measured at
- * ~300ms, ~30 missed ticks of a 10ms interval), small enough to stay a unit
- * test. Every line carries a hard tab so markdownlint has real work per doc.
- */
 const DOC_COUNT = 100;
 const LINE_COUNT = 150;
 
-/** Fires early enough to land mid-walk, late enough that the walk has started. */
 const MID_WALK_MS = 20;
 
 function seedCorpus(): void {
@@ -69,22 +53,13 @@ describe('auditProject event-loop liveness', () => {
     } finally {
       clearInterval(interval);
     }
-    // A synchronous walk services zero ticks over its whole duration. The
-    // floor is far below the ~30 a 10ms interval would get across this
-    // corpus, so a loaded machine cannot push it under.
     expect(ticks).toBeGreaterThanOrEqual(5);
   });
 });
 
 describe('auditProject generation supersession', () => {
-  // The walk compares the injected token for equality and nothing else, so
-  // which half of it moved — lint config or branch — is invisible here. The
-  // branch half is pinned end-to-end through the HTTP surface instead, in
-  // `audit-branch-generation.test.ts`.
   test('abandons the walk when the generation moves mid-walk', async () => {
     let generation = '0 main';
-    // A real timer, not a counting stub: it can only fire before the walk
-    // finishes if the walk actually yields to the loop.
     const bump = setTimeout(() => {
       generation = '1 main';
     }, MID_WALK_MS);

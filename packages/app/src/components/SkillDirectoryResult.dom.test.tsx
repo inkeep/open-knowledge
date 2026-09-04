@@ -1,13 +1,3 @@
-/**
- * RTL tests for the skills.sh directory card's hover-resolved context cost.
- *
- * The figure costs a server-side clone to produce, so the load-bearing property
- * is not "it renders" but "it is never fetched for a card nobody pointed at".
- * These assert both halves, plus the failure path (a card whose source cannot be
- * fetched must render exactly as it does today) and the session memo that keeps
- * a re-hover from re-fetching.
- */
-
 import type { SkillSearchResult } from '@inkeep/open-knowledge-core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -30,7 +20,6 @@ const RESULT: SkillSearchResult = {
   publisher: 'acme',
 };
 
-/** A preview payload whose name + description price out to a known always-on. */
 function previewOk(description: string) {
   return {
     ok: true as const,
@@ -65,7 +54,6 @@ describe('SkillDirectoryResult context cost', () => {
     renderCard();
     fireEvent.mouseEnter(screen.getByRole('listitem'));
     const figure = await screen.findByTestId('skill-card-always-on');
-    // name (6) + description (200) = 206 chars -> ~52 tokens at chars/4.
     expect(figure.textContent).toContain('52');
     expect(fetchSkillPreview).toHaveBeenCalledTimes(1);
   });
@@ -84,7 +72,6 @@ describe('SkillDirectoryResult context cost', () => {
     fireEvent.mouseEnter(screen.getByRole('listitem'));
     await waitFor(() => expect(fetchSkillPreview).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId('skill-card-always-on')).toBeNull();
-    // The rest of the meta line is untouched.
     expect(screen.getByText('acme')).toBeTruthy();
   });
 
@@ -104,7 +91,6 @@ describe('SkillDirectoryResult context cost', () => {
     unmount();
 
     renderCard();
-    // Seeded from the session memo — present without any further fetch.
     expect(screen.getByTestId('skill-card-always-on')).toBeTruthy();
     fireEvent.mouseEnter(screen.getByRole('listitem'));
     expect(fetchSkillPreview).toHaveBeenCalledTimes(1);

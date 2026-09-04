@@ -173,7 +173,7 @@ function isSelfClosingTagAt(
   const tagClose = greaterThanOffsets[gtIdx];
   const pbIdx = lowerBound(paragraphBreaks, offset);
   const nextBlankLine = pbIdx < paragraphBreaks.length ? paragraphBreaks[pbIdx] : result.length;
-  if (tagClose >= nextBlankLine) return false; // tag never closes before a blank line
+  if (tagClose >= nextBlankLine) return false;
   return result[tagClose - 1] === '/';
 }
 
@@ -236,7 +236,7 @@ function isOffsetInsideAnyRegion(offset: number, regions: Array<[number, number]
     const [start, end] = regions[mid];
     if (offset <= start) hi = mid - 1;
     else if (offset > end) lo = mid + 1;
-    else return true; // strict-start, inclusive-end: a tag's OWN `<` at start
+    else return true;
   }
   return false;
 }
@@ -344,7 +344,7 @@ function forEachBrace(
     if (escapeAware) {
       let bs = 0;
       for (let j = i - 1; j >= 0 && source[j] === '\\'; j--) bs++;
-      if (bs % 2 === 1) continue; // escaped — not a brace remark-mdx acts on
+      if (bs % 2 === 1) continue;
     }
     visitor.onBrace(i, char);
   }
@@ -410,7 +410,7 @@ export function protectFromMdx(source: string): string {
 
     if (lookahead[1] === '/') {
       if (/^<\/[a-zA-Z][a-zA-Z0-9.]*[ \t]*>/.test(lookahead)) return match;
-      return GUARD_OPEN; // Incomplete close tag — protect
+      return GUARD_OPEN;
     }
 
     const lowercaseNameMatch = /^<([a-z][a-z0-9]*)/.exec(lookahead);
@@ -446,14 +446,14 @@ export function protectFromMdx(source: string): string {
 
     const scanStart = offset + 1 + tagName.length;
     if (isUppercaseJsxSelfClosingAt(scanStart, result, nextBlankLine)) {
-      return match; // Self-closing — safe for mdx-jsx
+      return match;
     }
 
     const positions = closeTagOffsets.get(tagName);
     if (positions) {
       const idx = lowerBound(positions, offset);
       if (idx < positions.length) {
-        return match; // Has matching close tag — safe for mdx-jsx
+        return match;
       }
     }
 

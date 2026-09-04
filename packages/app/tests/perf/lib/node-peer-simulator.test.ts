@@ -1,21 +1,3 @@
-/**
- * Unit tests for the Node-side peer simulator.
- *
- * Strategy: peers point at a dummy non-existent URL (`ws://localhost:1`).
- * The HocuspocusProvider stays in 'connecting' state, but Y.Doc transactions
- * are local-only — `transact()` does not require a connected provider — so
- * the simulator's writes still succeed and getFireCounts() increments.
- *
- * What we pin:
- *   - Factory shape: count peers spawned, count visible on handle.
- *   - start() begins traffic and getFireCounts() reflects writes.
- *   - stop() cleanly cancels timers (no late writes after the resolved
- *     promise), is idempotent, and disposes provider + Y.Doc resources.
- *   - human + agent profile pacing parameters are honored relative to one
- *     another (we don't assert wall-clock timing — that's flake-prone —
- *     but we DO assert relative count ordering at a fixed window).
- */
-
 import { afterEach, describe, expect, test } from 'vitest';
 import { createNodePeerSimulator, type NodePeerSimulatorHandle } from './node-peer-simulator.ts';
 
@@ -80,7 +62,7 @@ describe('createNodePeerSimulator — start() drives writes', () => {
       typingProfile: { kind: 'agent', writeIntervalMs: 30, chunkChars: 5 },
     });
     active.start();
-    await wait(120); // ~3-4 fires per peer
+    await wait(120);
     const counts = active.getFireCounts();
     expect(counts[0]).toBeGreaterThan(0);
     expect(counts[1]).toBeGreaterThan(0);
@@ -94,7 +76,7 @@ describe('createNodePeerSimulator — start() drives writes', () => {
       typingProfile: { kind: 'human', iki: 25, burstMs: 200, pauseMs: 500 },
     });
     active.start();
-    await wait(120); // mid-burst — peer should have fired several keystrokes
+    await wait(120);
     const counts = active.getFireCounts();
     expect(counts[0]).toBeGreaterThan(0);
   });
@@ -107,11 +89,9 @@ describe('createNodePeerSimulator — start() drives writes', () => {
       typingProfile: { kind: 'agent', writeIntervalMs: 30, chunkChars: 1 },
     });
     active.start();
-    active.start(); // no-op
+    active.start();
     await wait(120);
     const counts = active.getFireCounts();
-    // With a single schedule, ~3-4 fires in 120ms. Doubled would be ~6-8.
-    // Allow some scheduler jitter — we just assert NOT-double:
     expect(counts[0]).toBeLessThan(8);
   });
 });
@@ -130,7 +110,6 @@ describe('createNodePeerSimulator — stop() teardown', () => {
     expect(beforeStop).toBeGreaterThan(0);
     await active.stop();
     const justAfter = active.getFireCounts()[0] ?? 0;
-    // Wait significantly longer than the interval — no NEW fires should occur.
     await wait(150);
     const wellAfter = active.getFireCounts()[0] ?? 0;
     expect(wellAfter).toBe(justAfter);
@@ -146,7 +125,6 @@ describe('createNodePeerSimulator — stop() teardown', () => {
     active.start();
     await wait(60);
     await active.stop();
-    // Second stop must not throw; should resolve quickly.
     const t0 = Date.now();
     await active.stop();
     expect(Date.now() - t0).toBeLessThan(50);

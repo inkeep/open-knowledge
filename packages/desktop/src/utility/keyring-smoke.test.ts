@@ -91,7 +91,6 @@ describe('runKeyringSmoke', () => {
     const result = await runKeyringSmoke({ loadKeyring: () => Promise.resolve(mod) });
     expect(result.ok).toBe(false);
     expect(result.error).toBe('entry construct failed');
-    // Entry ctor ran once but threw; no subsequent methods called
     expect(calls.setPassword).toHaveLength(0);
     expect(calls.getPassword).toBe(0);
     expect(calls.deletePassword).toBe(0);
@@ -103,7 +102,6 @@ describe('runKeyringSmoke', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('read mismatch');
     expect(result.error).toContain('wrong-value');
-    // Cleanup runs in finally even on mismatch
     expect(calls.deletePassword).toBe(1);
   });
 
@@ -112,7 +110,6 @@ describe('runKeyringSmoke', () => {
     const result = await runKeyringSmoke({ loadKeyring: () => Promise.resolve(mod) });
     expect(result.ok).toBe(false);
     expect(result.error).toBe('setPassword failed');
-    // Constructor succeeded, so finally block runs deletePassword for cleanup
     expect(calls.deletePassword).toBe(1);
   });
 

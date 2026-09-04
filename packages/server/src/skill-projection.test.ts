@@ -70,20 +70,15 @@ describe('validateSkillForInstall', () => {
       'name: open-knowledge-mine\ndescription: d',
     );
     expect(validateSkillForInstall(dir, 'open-knowledge-mine').ok).toBe(false);
-    // OK's own shipped bundle opts in.
     expect(
       validateSkillForInstall(dir, 'open-knowledge-mine', { allowReservedName: true }).ok,
     ).toBe(true);
   });
 
   test('the exact LEGACY pack names stay installable; unknown pack-prefixed names stay rejected', () => {
-    // Existing installs are never renamed, so every pre-rename install
-    // keeps its reserved-prefix name indefinitely — add-to-host/repair for
-    // those must keep working.
     const legacy = 'open-knowledge-pack-knowledge-base';
     const legacyDir = makeSkill(legacy, '# x', `name: ${legacy}\ndescription: d`);
     expect(validateSkillForInstall(legacyDir, legacy).ok).toBe(true);
-    // Anything else under the prefix is still reserved.
     const unknown = 'open-knowledge-pack-something-else';
     const unknownDir = makeSkill(unknown, '# x', `name: ${unknown}\ndescription: d`);
     expect(validateSkillForInstall(unknownDir, unknown).ok).toBe(false);
@@ -131,12 +126,6 @@ describe('projectSkill / reverseProjectSkill', () => {
     expect(readFileSync(join(dir, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
   });
 
-  // The shape that destroyed a real skill: `.claude/skills` is a FOLDER symlink
-  // to `.agents/skills`, which is where the canonical lives. Writing the claude
-  // projection resolves onto the canonical itself — the rm deletes the real
-  // bundle and the symlink replacing it points at its own path. Every later host
-  // then re-destroys it, because once the canonical is a self-link `realpathSync`
-  // throws and the per-destination `sameEntry` check can no longer see it.
   test('never writes through a host root that ALIASES the canonical root', () => {
     const agentsSkills = join(root, '.agents', 'skills');
     mkdirSync(agentsSkills, { recursive: true });
@@ -144,7 +133,6 @@ describe('projectSkill / reverseProjectSkill', () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'SKILL.md'), '---\nname: aliased\ndescription: d\n---\n\n# Keep me\n');
 
-    // `.claude/skills` and `.cursor/skills` both alias the canonical root.
     mkdirSync(join(root, '.claude'), { recursive: true });
     mkdirSync(join(root, '.cursor'), { recursive: true });
     symlinkSync('../.agents/skills', join(root, '.claude', 'skills'), 'dir');
@@ -152,24 +140,16 @@ describe('projectSkill / reverseProjectSkill', () => {
 
     projectSkill(dir, 'aliased', root, ['claude', 'cursor', 'codex']);
 
-    // The canonical is still a real directory holding its real bytes.
     expect(lstatSync(dir).isSymbolicLink()).toBe(false);
     expect(lstatSync(dir).isDirectory()).toBe(true);
     expect(readFileSync(join(dir, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
-    // And it did not become self-referential.
     expect(existsSync(join(dir, 'SKILL.md'))).toBe(true);
 
-    // A NON-aliased host still gets its link.
     const codexLink = join(root, '.codex', 'skills', 'aliased');
     expect(lstatSync(codexLink).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(codexLink, 'SKILL.md'), 'utf-8')).toContain('# Keep me');
   });
 
-  // The shape that dangled a real skill: the canonical is itself a SYMLINK,
-  // because `source` was pointed at another location. cpSync defaults to
-  // dereference:false, so a "copy" projection would write a link to that other
-  // location — and the host then holds nothing of its own. A copy must stand
-  // alone; that is the entire difference from link mode.
   test('copy mode materializes bytes even when the canonical is a symlink', () => {
     const realDir = join(root, 'elsewhere', 'aliased-src');
     mkdirSync(realDir, { recursive: true });
@@ -177,7 +157,6 @@ describe('projectSkill / reverseProjectSkill', () => {
       join(realDir, 'SKILL.md'),
       '---\nname: aliased-src\ndescription: d\n---\n\n# Real bytes\n',
     );
-    // The canonical path is a link to it — what `source` leaves behind.
     const canonical = join(root, '.agents', 'skills', 'aliased-src');
     mkdirSync(join(root, '.agents', 'skills'), { recursive: true });
     symlinkSync(realDir, canonical, 'dir');
@@ -185,12 +164,10 @@ describe('projectSkill / reverseProjectSkill', () => {
     projectSkill(canonical, 'aliased-src', root, ['claude'], 'copy');
 
     const dest = join(root, '.claude', 'skills', 'aliased-src');
-    // A real directory holding real bytes — NOT a link back to the source.
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
     expect(lstatSync(dest).isDirectory()).toBe(true);
     expect(readFileSync(join(dest, 'SKILL.md'), 'utf-8')).toContain('# Real bytes');
 
-    // Deleting the original tree must not empty the copy.
     rmSync(realDir, { recursive: true, force: true });
     expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
   });
@@ -204,14 +181,11 @@ describe('projectSkill / reverseProjectSkill', () => {
       'pi',
       'claude-desktop',
     ]);
-    // claude-desktop has no skill surface → skipped.
     expect(written.sort()).toEqual(['claude', 'codex', 'cursor', 'pi']);
     for (const host of ['.claude', '.cursor', '.codex', '.pi']) {
       const link = join(root, host, 'skills', 'trip-log');
-      // It's a symlink, not a copied dir, and it resolves to the source.
       expect(lstatSync(link).isSymbolicLink()).toBe(true);
       expect(existsSync(join(link, 'SKILL.md'))).toBe(true);
-      // Source is inside the project → the link target is relative (portable).
       expect(readlinkSync(link).startsWith('..')).toBe(true);
     }
 
@@ -219,26 +193,20 @@ describe('projectSkill / reverseProjectSkill', () => {
     expect(removed.sort()).toEqual(['claude', 'codex', 'cursor', 'pi']);
     expect(existsSync(join(root, '.claude', 'skills', 'trip-log'))).toBe(false);
     expect(existsSync(join(root, '.pi', 'skills', 'trip-log'))).toBe(false);
-    // Uninstall removes only the link — the source is untouched.
     expect(existsSync(join(dir, 'SKILL.md'))).toBe(true);
   });
 
   test('reverse removes a DANGLING projection symlink (source already gone) — B4', () => {
-    // Reproduce the cross-scope-move residue: project, then delete the SOURCE so
-    // the host-dir symlinks dangle. `existsSync` follows the link → false, so the
-    // pre-fix `reverseProjectSkill` skipped them and left orphans (the registry
-    // "duplicate"). The lstat-based check must still remove them.
     const dir = makeSkill('orphan', '# Steps');
     projectSkill(dir, 'orphan', root, ['claude', 'cursor', 'codex']);
-    rmSync(dir, { recursive: true, force: true }); // links now dangle
+    rmSync(dir, { recursive: true, force: true });
     const link = join(root, '.claude', 'skills', 'orphan');
-    expect(lstatSync(link).isSymbolicLink()).toBe(true); // still on disk
-    expect(existsSync(link)).toBe(false); // ...but follows to a missing target
+    expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    expect(existsSync(link)).toBe(false);
 
     const removed = reverseProjectSkill('orphan', root, ['claude', 'cursor', 'codex']);
     expect(removed.sort()).toEqual(['claude', 'codex', 'cursor']);
     for (const host of ['.claude', '.cursor', '.codex']) {
-      // The dangling link is gone — lstat throws now (no entry at all).
       expect(() => lstatSync(join(root, host, 'skills', 'orphan'))).toThrow();
     }
   });
@@ -246,13 +214,11 @@ describe('projectSkill / reverseProjectSkill', () => {
   test('install is authoritative — replaces a legacy real-dir copy with a symlink', () => {
     const dir = makeSkill('s', '# v1');
     const dest = skillHostDir(root, 'claude', 's') as string;
-    // Simulate a legacy copy-install: a real directory at the host path.
     mkdirSync(dest, { recursive: true });
     writeFileSync(join(dest, 'stale.md'), 'leftover', 'utf-8');
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
 
     projectSkill(dir, 's', root, ['claude']);
-    // Now a symlink to the source; the stale real-dir contents are gone.
     expect(lstatSync(dest).isSymbolicLink()).toBe(true);
     expect(existsSync(join(dest, 'stale.md'))).toBe(false);
     expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
@@ -272,11 +238,9 @@ describe('readSkillBundledFiles', () => {
     mkdirSync(join(dir, 'reference'), { recursive: true });
     writeFileSync(join(dir, 'scripts', 'run.py'), 'print("hi")\n', 'utf-8');
     writeFileSync(join(dir, 'reference', 'notes.md'), '# Notes', 'utf-8');
-    // A binary file (contains a NUL byte) → text is null, never executed/served.
     writeFileSync(join(dir, 'logo.bin'), Buffer.from([0x89, 0x00, 0x01, 0x02]));
 
     const files = readSkillBundledFiles(dir);
-    // SKILL.md is excluded; the rest are sorted by POSIX path.
     expect(files.map((f) => f.path)).toEqual(['logo.bin', 'reference/notes.md', 'scripts/run.py']);
     expect(files.find((f) => f.path === 'scripts/run.py')?.text).toBe('print("hi")\n');
     expect(files.find((f) => f.path === 'reference/notes.md')?.text).toBe('# Notes');
@@ -287,12 +251,8 @@ describe('readSkillBundledFiles', () => {
     expect(readSkillBundledFiles(join(root, 'nope'))).toEqual([]);
   });
 
-  // Root bypasses file permissions, so chmod 000 wouldn't deny the read there.
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
   test.skipIf(isRoot)('a genuine IO error THROWS rather than masquerading as binary', () => {
-    // A read error must NOT surface as `text: null`: the cross-scope move skips
-    // null-text files as "binary" and then deletes the source, so a swallowed
-    // read error would be silent data loss. It must throw so the move aborts.
     const dir = makeSkill('locked', '# Body');
     mkdirSync(join(dir, 'reference'), { recursive: true });
     const secret = join(dir, 'reference', 'secret.md');
@@ -301,7 +261,7 @@ describe('readSkillBundledFiles', () => {
     try {
       expect(() => readSkillBundledFiles(dir)).toThrow();
     } finally {
-      chmodSync(secret, 0o644); // restore so afterEach can clean up
+      chmodSync(secret, 0o644);
     }
   });
 });
@@ -326,7 +286,6 @@ describe('hostSkillsRootEscapes', () => {
 });
 
 describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guards)', () => {
-  /** Author a real skill bundle at any root-relative dir. */
   function makeAt(rel: string, body: string): string {
     const dir = join(root, rel);
     mkdirSync(dir, { recursive: true });
@@ -348,9 +307,6 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
       cwd: root,
       targets: ['claude', 'codex', 'opencode'],
     });
-    // Every checked editor gets a real copy in its own dir — the vendor
-    // capability table is deleted; writes are only skipped for the canonical
-    // host itself and for aliased roots (observable facts).
     expect(r.conflicted).toEqual([]);
     expect(r.hosts.sort()).toEqual(['claude', 'codex', 'opencode']);
     expect(lstatSync(join(root, '.claude/skills/foo')).isDirectory()).toBe(true);
@@ -378,10 +334,6 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
   });
 
   test("replaces a built-in's DRIFTED projection — it is stale, not a fork", () => {
-    // OK ships these bytes and nothing may edit them here, so a same-named dir
-    // whose content drifted is an older projection of this skill. Refusing it
-    // as a fork is what left an unresolvable CONFLICT badge on the picker for a
-    // directory OK wrote itself.
     const canonical = makeAt('.agents/skills/open-knowledge', '# Current');
     makeAt('.cursor/skills/open-knowledge', '# An OLD release of the same skill');
     const r = projectInPlaceSkill({
@@ -400,9 +352,6 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
   });
 
   test('a drifted dir for an ORDINARY skill is still untouchable', () => {
-    // The exemption is keyed on OK's own bundle names and nothing else: for any
-    // other skill a diverged dir is user content, and this is the guard that
-    // says so.
     const canonical = makeAt('.agents/skills/open-knowledge-ish', '# Current');
     makeAt('.cursor/skills/open-knowledge-ish', '# MINE');
     const r = projectInPlaceSkill({
@@ -420,8 +369,6 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
   });
 
   test("uninstall removes a built-in's drifted projection too", () => {
-    // Leaving it behind is what made an uninstall look like it worked and then
-    // hand the next install a conflict over OK's own leftovers.
     const canonical = makeAt('.agents/skills/open-knowledge', '# Current');
     makeAt('.cursor/skills/open-knowledge', '# An OLD release');
     const removed = removeInPlaceSkillCopies({
@@ -438,7 +385,6 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
   test('remove deletes only lossless occurrences; canonical + forks survive', () => {
     const canonical = makeAt('.claude/skills/foo', '# Canonical');
     const hash = hashOf(canonical);
-    // Same-hash copy (lossless) + a fork (must survive) + an old symlink projection.
     const copy = makeAt('.cursor/skills/foo', '# Canonical');
     writeFileSync(
       join(root, '.cursor/skills/foo/SKILL.md'),
@@ -456,27 +402,19 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
       targets: ['claude', 'cursor', 'codex', 'opencode'],
     });
     expect(removed.sort()).toEqual(['cursor', 'opencode']);
-    expect(existsSync(canonical)).toBe(true); // NEVER the canonical
-    expect(existsSync(fork)).toBe(true); // NEVER a differing dir
+    expect(existsSync(canonical)).toBe(true);
+    expect(existsSync(fork)).toBe(true);
     expect(existsSync(copy)).toBe(false);
     expect(existsSync(join(root, '.opencode/skills/foo'))).toBe(false);
   });
 
-  // The re-point sweep after a removal walks EVERY host, not just `targets`,
-  // so it decides the fate of links it was never asked about. Dangling ones are
-  // adopted back onto the canonical; ones still aimed at something real were
-  // aimed there on purpose. Relocation claims a wider set, and this pins the
-  // narrower one so sharing the loop between them cannot quietly widen it.
   test('remove re-points a DANGLING sibling but leaves one aimed elsewhere alone', () => {
     const canonical = makeAt('.claude/skills/foo', '# Canonical');
-    // The occurrence actually being removed (a link, so removal is lossless).
     mkdirSync(join(root, '.cursor/skills'), { recursive: true });
     symlinkSync(canonical, join(root, '.cursor/skills/foo'), 'dir');
-    // A sibling deliberately aimed at an unrelated bundle, NOT in `targets`.
     const unrelated = makeAt('vendor/other', '# Someone else');
     mkdirSync(join(root, '.codex/skills'), { recursive: true });
     symlinkSync(unrelated, join(root, '.codex/skills/foo'), 'dir');
-    // A sibling pointing at nothing, NOT in `targets`.
     mkdirSync(join(root, '.opencode/skills'), { recursive: true });
     symlinkSync(join(root, 'gone'), join(root, '.opencode/skills/foo'), 'dir');
 
@@ -493,30 +431,14 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
     expect(realpathSync(join(root, '.codex/skills/foo'))).toBe(realpathSync(unrelated));
   });
 
-  // The symmetric half of the test above, and it has to use `leaveLinkBehind`
-  // to bite at all. Without it relocation RENAMES the old source away, so a
-  // sibling aimed there simply dangles and the unconditional dangling rule
-  // already claims it — `alsoClaim` changes nothing and a test written that way
-  // passes with `alsoClaim: []`. The claim only does work when the old source
-  // still RESOLVES: the leave-behind link makes the sibling chain through it to
-  // `dest`, which is live, so only `alsoClaim` collapses that chain.
-  //
-  // Asserted on the link's DIRECT target, since `realpathSync` follows the chain
-  // and reports the same answer either way.
   test('relocate collapses a sibling chained through the leave-behind link', () => {
     const canonical = makeAt('.agents/skills/foo', '# Canonical');
-    // Aimed at the old source, which survives as a link to `dest`.
     mkdirSync(join(root, '.cursor/skills'), { recursive: true });
     symlinkSync(canonical, join(root, '.cursor/skills/foo'), 'dir');
-    // Aimed at an unrelated bundle: nobody asked about it, leave it be.
     const unrelated = makeAt('vendor/other', '# Someone else');
     mkdirSync(join(root, '.codex/skills'), { recursive: true });
     symlinkSync(unrelated, join(root, '.codex/skills/foo'), 'dir');
 
-    // `cwd` must be the REAL root. `mkdtemp` hands back `/var/...` on macOS while
-    // the primitive realpaths its canonical to `/private/var/...`, and the claim
-    // set compares those two spellings of one path — so under a raw tmpdir root
-    // the chain claim silently never matches and this test cannot see it.
     const realRoot = realpathSync(root);
     const moved = relocateInPlaceCanonical({
       canonicalAbs: canonical,
@@ -530,15 +452,11 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
     expect(moved.ok).toBe(true);
     const dest = join(realRoot, '.claude/skills/foo');
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
-    // The swap: the old source is now a link standing in for the moved folder.
     expect(lstatSync(canonical).isSymbolicLink()).toBe(true);
 
-    // The claim under test: re-pointed DIRECTLY at dest, not left chained
-    // through the old source. Zero `alsoClaim` and this reads as `canonical`.
     const cursorLink = join(realRoot, '.cursor/skills/foo');
     expect(resolve(dirname(cursorLink), readlinkSync(cursorLink))).toBe(dest);
 
-    // Aimed elsewhere on purpose: untouched, so the claim did not widen.
     expect(realpathSync(join(root, '.codex/skills/foo'))).toBe(realpathSync(unrelated));
   });
 });

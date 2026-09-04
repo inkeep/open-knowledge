@@ -1,6 +1,3 @@
-/**
- * Re-export flash constants and utilities from core.
- */
 export {
   evictStaleEntries,
   FLASH_DEBOUNCE_MS,

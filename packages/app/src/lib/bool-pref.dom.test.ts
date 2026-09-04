@@ -51,7 +51,6 @@ describe('bool-pref', () => {
     });
 
     test("a value written by the older 'true'-only writer still reads true", () => {
-      // Existing installs carry keys written before defaults were supported.
       entries.set(KEY, 'true');
       expect(loadBoolPref(KEY)).toBe(true);
     });

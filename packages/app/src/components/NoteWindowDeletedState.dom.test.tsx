@@ -28,8 +28,6 @@ describe('NoteWindowDeletedState', () => {
     render(<NoteWindowDeletedState docName="notes/alpha" />);
     const button = screen.getByRole('button', { name: 'Close window' });
 
-    // Reachable by Tab and activatable by Enter/Space purely by being a button
-    // that is not disabled and not removed from the tab order.
     expect(button.tagName).toBe('BUTTON');
     expect((button as HTMLButtonElement).disabled).toBe(false);
     expect(button.getAttribute('tabindex')).not.toBe('-1');
@@ -57,7 +55,6 @@ describe('note-window deleted store', () => {
   });
 
   test('records the deleted document and reports it handled', () => {
-    // Returning true is what tells the removal reconciler to skip navigate-home.
     expect(markNoteWindowDocDeleted('notes/alpha')).toBe(true);
     expect(getNoteWindowDeletedDoc()).toBe('notes/alpha');
   });
@@ -69,9 +66,6 @@ describe('note-window deleted store', () => {
   });
 
   test('notifies a subscriber on mark, and its cleanup stops further notifications', () => {
-    // This subscribe→emit→cleanup contract is what drives the window's ONLY
-    // recovery surface (the deleted state) via `useSyncExternalStore`; a
-    // regression in `emit()`/subscription would silently strand the user.
     const listener = vi.fn();
     const unsubscribe = subscribeNoteWindowDeleted(listener);
 
@@ -79,15 +73,12 @@ describe('note-window deleted store', () => {
     expect(listener).toHaveBeenCalledTimes(1);
 
     unsubscribe();
-    // A different doc emits again; the unsubscribed listener must not fire.
     markNoteWindowDocDeleted('notes/beta');
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('note-window deleted store — subscriber re-render', () => {
-  // The exact consumer shape `EditorWorkspace` uses, isolated to a probe so the
-  // recovery path is provable without mounting the full editor surface.
   function DeletedProbe() {
     const deletedDocName = useSyncExternalStore(
       subscribeNoteWindowDeleted,

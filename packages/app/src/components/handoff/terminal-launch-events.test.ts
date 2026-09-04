@@ -26,11 +26,6 @@ describe('terminal-launch-events', () => {
     expect(received).toHaveLength(1);
   });
 
-  // `stage` picks which slot the text lands in downstream: unset (the default,
-  // used by "Open in terminal" and the Ask AI surfaces) bakes it as the CLI's
-  // prompt so it RUNS; set (the ⌘J/⇧⌘J selection sends) routes it to `stagePaste`
-  // so it is written and waits. Defaulting this the wrong way would auto-run a
-  // passage the user merely highlighted.
   test.each([
     { options: undefined, expected: false, label: 'defaults to running the prompt' },
     { options: { stage: false }, expected: false, label: 'explicit stage:false runs' },

@@ -6,11 +6,6 @@ import {
   TERMINAL_SUPPORT_FILE_NOTICE_REASONS,
 } from './desktop-bridge.ts';
 
-// Spelled out here rather than read back from the module. The set and the union
-// cannot disagree - both derive from one `as const` vocabulary tuple in the
-// source - so there is no agreement left to test; what is worth pinning is the
-// vocabulary itself, which the renderer's notice handling is written against.
-// A rename or removal then has to be a deliberate edit on both sides.
 const WIRE_REASONS = [
   'config-unreadable',
   'invalid-value',

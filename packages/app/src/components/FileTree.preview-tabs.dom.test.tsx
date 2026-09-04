@@ -261,8 +261,7 @@ vi.doMock('@pierre/trees/react', () => ({
       onClickCapture={onClickCapture}
       onDoubleClickCapture={onDoubleClickCapture}
     >
-      {/* `aria-label` pins the row's accessible name so the nested rename
-          field's value can't change how the tests address it. */}
+      {}
       <div
         role="treeitem"
         aria-label="note.md"
@@ -272,8 +271,7 @@ vi.doMock('@pierre/trees/react', () => ({
         tabIndex={-1}
       >
         note.md
-        {/* Pierre renders the inline rename field inside the row, so it
-            inherits the row's `data-item-path`. */}
+        {}
         <input data-testid="rename-input" defaultValue="note.md" />
       </div>
       <div
@@ -285,7 +283,7 @@ vi.doMock('@pierre/trees/react', () => ({
       >
         docs/
       </div>
-      {/* Pierre's pinned folder header: same row, no role and no aria-selected. */}
+      {}
       <div
         data-testid="sticky-docs"
         data-item-path="docs/"
@@ -369,9 +367,6 @@ describe('FileTree preview-tab activation', () => {
 
     fireEvent.click(screen.getByTestId('sticky-docs'));
 
-    // The pre-fix path reached navigation through `queueMicrotask`, so one
-    // flush is all it takes to catch it. A `waitFor` would pass on its first
-    // synchronous check and prove nothing.
     await Promise.resolve();
     expect(openTargetMock).not.toHaveBeenCalled();
     expect(window.location.hash).toBe('');
@@ -409,7 +404,6 @@ describe('FileTree double-click promotes the previewed row', () => {
 
     fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }));
 
-    // The row is `note.md`; the tab is the extension-less `note`.
     await waitFor(() => expect(promoteTabMock).toHaveBeenCalledWith('note'));
   });
 
@@ -423,8 +417,6 @@ describe('FileTree double-click promotes the previewed row', () => {
   });
 
   test('double-clicking a folder row promotes nothing', async () => {
-    // Two clicks on a folder are two expand toggles — a gesture about the tree,
-    // not a commitment to the folder overview.
     await renderTree();
 
     fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'docs/' }));
@@ -441,8 +433,6 @@ describe('FileTree double-click promotes the previewed row', () => {
   });
 
   test('a modified-key double-click promotes nothing', async () => {
-    // Cmd/Ctrl/Shift-click are selection and open-elsewhere gestures; they must
-    // not be read as a commitment to the row.
     await renderTree();
 
     fireEvent.doubleClick(screen.getByRole('treeitem', { name: 'note.md' }), { metaKey: true });
@@ -460,9 +450,6 @@ describe('FileTree double-click promotes the previewed row', () => {
   });
 
   test('double-clicking inside the inline rename field promotes nothing', async () => {
-    // The field is a descendant of the row and inherits its `data-item-path`,
-    // so double-clicking to select a word while renaming would otherwise read
-    // as a commit to the row.
     await renderTree();
 
     fireEvent.doubleClick(screen.getByTestId('rename-input'));

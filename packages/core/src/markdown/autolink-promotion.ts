@@ -22,8 +22,8 @@ export function promoteInParent(parent: Parent, source: string = ''): void {
     for (;;) {
       const match = AUTOLINK_IN_TEXT_RE.exec(text);
       if (match === null) break;
-      const fullMatch = match[0]; // `<scheme:uri>`
-      const uri = match[1]; // `scheme:uri`
+      const fullMatch = match[0];
+      const uri = match[1];
       const matchStart = match.index;
 
       if (matchStart > lastIndex) {

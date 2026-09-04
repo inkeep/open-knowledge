@@ -1,59 +1,3 @@
-/**
- * POST /api/handoff — unified server-side orchestration for the
- * Open-in-Agent dropdown.
- *
- * Owns the entire "open this doc in app X" recipe per target, including
- * shell-outs that the renderer can't do directly (the OS protocol opener,
- * `osascript ... to quit` on macOS, `cursor <path>`). Used by both web-host
- * and Electron-host renderers — the renderer's `fetch` works against this
- * endpoint identically in both modes because Electron embeds the same
- * Hocuspocus/Vite server the CLI serves on web.
- *
- * Cross-platform: handoff dispatch works on macOS, Windows, and Linux, at
- * parity with the cross-platform install detection in `./handoff-api.ts`
- * (which probes scheme registration via `osascript` / `reg query HKCR` /
- * `xdg-mime`). This file owns the dispatch step; that file owns the "which
- * targets to render in the dropdown" probe.
- *
- * Recipe-per-target architecture (the final "open the protocol URL" step is
- * platform-resolved by `resolveUrlOpenInvocation`: macOS `/usr/bin/open`,
- * Windows `rundll32`, Linux `xdg-open`):
- *   - **app-bundle** (Claude / Codex):
- *       - macOS: `[osascript-quit?] → sleep → open -a <AppName> → sleep →
- *         open URL`. `open -a` doubles as the availability gate (a missing
- *         app surfaces as `not-installed`) and the activation that warms the
- *         URL dispatcher. The quit-first step is empirically required for
- *         Codex; Claude inherits the shape (no quit) for safety.
- *       - Windows / Linux: `probe scheme registration → open URL`. There is
- *         no `open -a` equivalent, and the OS protocol dispatch launches +
- *         foregrounds the registered handler on its own — so the explicit
- *         scheme probe (the same one `/api/installed-agents` uses) stands in
- *         for the `open -a` ENOENT availability signal. Without it, a target
- *         the user hasn't installed would dispatch a no-op the renderer
- *         reports as a successful launch.
- *   - **cli-binary** (Cursor): `<cursor> <workspacePath> → sleep → open URL`
- *     on every platform. The resolved `cursor` binary's presence is the
- *     availability gate (no scheme probe needed); the CLI handles workspace
- *     switching directly and the URL just seeds the prompt.
- *
- * Security model:
- *   - Loopback-only gating applied by the caller (`checkLocalOpSecurity`
- *     in `api-extension.ts`'s route wrapper).
- *   - App-name allowlist (`'Claude' | 'Codex'`) and binary allowlist
- *     (`'cursor'` via `resolveCursorBinaryDefault`) bound the set of
- *     processes the renderer can spawn.
- *   - URL scheme must match the target's expected scheme (claude:// for
- *     Claude, codex:// for Codex, cursor:// for Cursor).
- *   - Cursor's `workspacePath` is validated against `contentDir`
- *     (`isPathWithinDir`) to prevent steering Cursor at arbitrary
- *     filesystem locations.
- *   - All spawns use `shell: false` + argv-array + `detached: true` +
- *     `stdio: 'ignore'` + `unref()`. The Windows URL opener is `rundll32`
- *     (a real executable), never `cmd /c start`, so the literal `&` between
- *     URL query params can't be parsed as a shell command separator — see
- *     `resolveUrlOpenInvocation`.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sleep as defaultSleep, type HandoffTarget } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
@@ -81,24 +25,11 @@ const QUIT_SETTLE_MS = 3_000;
 const APP_BUNDLE_SETTLE_MS = 5_000;
 const CURSOR_SETTLE_MS = 1_500;
 
-/**
- * Recipe table — one entry per `HandoffTarget`. Drives the dispatch loop
- * below. Adding a 5th target is a 3-step change:
- *   (1) Add the target to `HandoffTarget` in `packages/core/src/handoff/types.ts`.
- *   (2) Append the recipe here — TypeScript fails the build until done
- *       because of the `Record<HandoffTarget, Recipe>` exhaustiveness gate.
- *   (3) Add a URL builder + switch case in renderer-side `dispatch.ts`.
- *
- * Two recipe shapes today — `app-bundle` (Claude, Codex) and `cli-binary`
- * (Cursor); per-platform step ordering is documented in the file header.
- */
 type Recipe =
   | {
       readonly type: 'app-bundle';
       readonly appName: 'Claude' | 'Codex';
       readonly urlScheme: 'claude:' | 'codex:';
-      /** Scheme name (no colon) for the Windows/Linux availability probe —
-       *  the `InstalledAgentScheme` key `/api/installed-agents` keys off. */
       readonly probeScheme: InstalledAgentScheme;
       readonly quitFirst: boolean;
     }
@@ -128,11 +59,6 @@ const RECIPES = {
     appName: 'Codex',
     urlScheme: 'codex:',
     probeScheme: 'codex',
-    // Codex's URL handler only honors workspace switches reliably on a
-    // freshly-launched instance. A plain `open -a` against a still-running
-    // or recently-quit-but-lingering instance leaves the dispatcher in a
-    // state where the workspace URL gets ignored. The quit-first step
-    // forces a clean cold-start; empirically required (user-verified).
     quitFirst: true,
   },
   cursor: {
@@ -140,18 +66,11 @@ const RECIPES = {
     binaryName: 'cursor',
     urlScheme: 'cursor:',
   },
-  // `copilot`, `opencode`, `pi`, `antigravity`, `openclaw`, and `hermes` are
-  // intentionally absent: terminal-only targets with no URL scheme, dispatched via
-  // the terminal-CLI path (`requestTerminalLaunch`), never this deep-link endpoint.
 } as const satisfies Record<
   Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity' | 'openclaw' | 'hermes'>,
   Recipe
 >;
 
-// Narrowed to the URL-dispatchable subset: `RECIPES` omits the terminal-only
-// `copilot` / `opencode` / `pi` / `antigravity` / `openclaw` / `hermes` targets,
-// so its keys (and the parsed `target`) exclude them, keeping the `RECIPES[target]`
-// lookup below exhaustive at the type level.
 const TARGET_VALUES = Object.keys(RECIPES) as [
   Exclude<HandoffTarget, 'copilot' | 'opencode' | 'pi' | 'antigravity' | 'openclaw' | 'hermes'>,
   ...Exclude<
@@ -165,42 +84,21 @@ const HandoffRequestSchema = z.object({
   workspacePath: z.string().optional(),
 });
 
-// `.loose()` so future additive fields (e.g. an echo of the dispatched
-// target / duration / detected-app-version) don't break the response shape
-// or strip data on parse. Body is `{}` today; the laxity is forward-compat
-// insurance, not a current consumer.
 const HandoffSuccessSchema = z.object({}).loose();
 
 export interface HandleHandoffDispatchDeps {
   readonly contentDir: string;
   readonly platform: NodeJS.Platform;
-  /** Test seam — defaults to wall-clock setTimeout. */
   readonly sleep?: (ms: number) => Promise<void>;
-  /** Test seam — defaults to detached `child_process.spawn` + unref. */
   readonly spawnDetached?: (
     exec: string,
     args: ReadonlyArray<string>,
     timeoutMs: number,
   ) => Promise<SpawnDetachedOutcome>;
-  /** Test seam — defaults to `resolveCursorBinaryDefault`. */
   readonly resolveCursorBinary?: (timeoutMs: number) => Promise<string | null>;
-  /**
-   * Windows/Linux availability gate for `app-bundle` targets: does the OS have
-   * a registered handler for the scheme? Defaults to `createOsProbe(platform)`
-   * (the same `reg query HKCR` / `xdg-mime` probe `/api/installed-agents`
-   * uses). `api-extension.ts` wires the shared cached probe instance so the
-   * dispatch gate agrees with the dropdown's render gate and reuses its TTL.
-   * Unused on macOS — there `open -a`'s ENOENT is the availability signal.
-   */
   readonly isSchemeRegistered?: (scheme: InstalledAgentScheme) => Promise<boolean>;
 }
 
-/**
- * Re-export the shared spawn outcome so consumers (renderer tests, fixture
- * mocks) keep importing from this module without depending directly on
- * `./spawn-detached.ts`. The renderer maps these to `HandoffOutcome` at the
- * wire boundary via HTTP status; this is the in-process internal shape.
- */
 export type { SpawnDetachedOutcome as SpawnOutcome } from './spawn-detached.ts';
 
 export async function handleHandoffDispatch(
@@ -264,8 +162,6 @@ export async function handleHandoffDispatch(
   }
   const { target, url, workspacePath } = reqResult.data;
 
-  // Lookup is exhaustive — `RECIPES: Record<HandoffTarget, Recipe>` plus
-  // Zod-validated target above means the entry is always present at runtime.
   const recipe = RECIPES[target];
   if (!url.startsWith(recipe.urlScheme)) {
     errorResponse(
@@ -284,14 +180,7 @@ export async function handleHandoffDispatch(
 
   if (recipe.type === 'app-bundle') {
     if (deps.platform === 'darwin') {
-      // macOS fuses availability-detection and activation into `open -a`: a
-      // missing app surfaces as `not-installed`, and a present one is brought
-      // to the foreground so the subsequent URL dispatch lands on a warm
-      // dispatcher.
       if (recipe.quitFirst) {
-        // Best-effort quit — if the app wasn't running, `to quit` no-ops cleanly.
-        // Don't abort the recipe on quit failure; spawn handles a still-running
-        // app gracefully (it activates instead of relaunching).
         await spawnDetached(
           '/usr/bin/osascript',
           ['-e', `tell application "${recipe.appName}" to quit`],
@@ -311,12 +200,6 @@ export async function handleHandoffDispatch(
       }
       await sleep(APP_BUNDLE_SETTLE_MS);
     } else {
-      // Windows / Linux have no `open -a` equivalent, and the OS protocol
-      // dispatch below launches + foregrounds the registered handler on its
-      // own — so there is no separate activation step. The explicit scheme
-      // probe stands in for the availability signal macOS gets for free from
-      // `open -a`'s ENOENT: without it, dispatching to an unregistered scheme
-      // is a silent no-op the renderer reports as a successful launch.
       const registered = await isSchemeRegistered(recipe.probeScheme);
       if (!registered) {
         errorResponse(
@@ -340,7 +223,6 @@ export async function handleHandoffDispatch(
     return;
   }
 
-  // recipe.type === 'cli-binary' (Cursor)
   if (!workspacePath) {
     errorResponse(
       res,
@@ -385,27 +267,6 @@ export async function handleHandoffDispatch(
   successResponse(res, 200, HandoffSuccessSchema, {}, { handler: HANDLER });
 }
 
-/**
- * Resolve the `exec` + argv for opening a protocol URL via the OS's registered
- * handler, per platform. Mirrors `resolveCursorSpawnInvocation`'s shape so the
- * two platform-dispatch helpers read the same way.
- *
- *   - **macOS** — `/usr/bin/open <url>`: Launch Services routes the scheme to
- *     its registered handler.
- *   - **Windows** — `rundll32.exe url.dll,FileProtocolHandler <url>`: invokes
- *     `ShellExecute` on the URL, which resolves the handler from
- *     `HKCR\<scheme>\shell\open\command`. Chosen over `cmd /c start "" <url>`
- *     deliberately: `start` is a `cmd` builtin, so it would require spawning
- *     `cmd.exe`, and `cmd` treats the literal `&` that separates URL query
- *     params as a command separator — both a correctness break (the URL is
- *     truncated at the first `&`) and a shell-injection footgun. `rundll32` is
- *     a real executable, so `spawn(..., { shell: false })` passes the URL as a
- *     single inert argv element with no shell parsing.
- *   - **Linux / other** — `xdg-open <url>`: the freedesktop opener. Unknown
- *     platforms fall through here, matching `createOsProbe`'s convention.
- *
- * Exported for unit assertions.
- */
 export function resolveUrlOpenInvocation(
   url: string,
   platform: NodeJS.Platform,

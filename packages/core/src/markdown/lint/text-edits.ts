@@ -32,7 +32,7 @@ function offsetAt(text: string, lineStarts: number[], position: LintPosition): n
   const lineStart = lineStarts[position.line] as number;
   const lineEnd =
     position.line + 1 < lineStarts.length
-      ? (lineStarts[position.line + 1] as number) - 1 // before the '\n'
+      ? (lineStarts[position.line + 1] as number) - 1
       : text.length;
   return Math.min(lineStart + Math.max(0, position.character), lineEnd);
 }

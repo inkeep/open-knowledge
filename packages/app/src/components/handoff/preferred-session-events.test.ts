@@ -15,7 +15,6 @@ describe('preferred-session-events', () => {
     requestPreferredSession(target);
     expect(received).toBe(1);
 
-    // Two presses are two sessions — the channel does not dedupe.
     requestPreferredSession(target);
     expect(received).toBe(2);
 
@@ -32,8 +31,6 @@ describe('preferred-session-events', () => {
     requestPreferredSession(target);
     unsub();
 
-    // A payload here would let a caller smuggle in an agent opinion, which is
-    // what let the old CLI-only resolution ignore a preferred agent.
     expect(args).toEqual([[]]);
   });
 });

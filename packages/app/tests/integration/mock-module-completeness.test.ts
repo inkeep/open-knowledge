@@ -1,36 +1,9 @@
-/**
- * Meta-test: every `vi.doMock` factory in a plain (non-.dom) app test file
- * must spread the real module (`...actual`) or carry an explicit allowlist
- * entry below.
- *
- * When a factory registers before the real module loads, its export table
- * contains only the factory's keys. A later import of an omitted export within
- * the same test module graph then fails during linking. Detonation case: a partial
- * `@/editor/DocumentContext` mock (1 of its exports) broke
- * `EditorArea.test.ts`'s module-load smoke on two PR runs while passing
- * everywhere else.
- *
- * The spread-real pattern keeps every unmocked export bound while preserving
- * the targeted override.
- *
- * Scope: plain `*.test.ts(x)` under src/ — the files sharing the unit-task
- * process. `*.dom.test.tsx` files run in the separate test:dom process and
- * carry the same class among themselves; expanding this sweep to them is
- * tracked (App.dom.test.tsx alone holds ~23 factories).
- */
-
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const APP_ROOT = join(import.meta.dir, '..', '..');
 
-/**
- * Files allowed to keep a partial factory, with the reason it is safe.
- * Adding an entry requires the same justification bar as a drift-allowlist
- * addition: the omitted exports must have NO other importer in the unit-task
- * process, or the file must guarantee the real module is loaded first.
- */
 const ALLOWLIST: Record<string, string> = {
   'src/components/EditorActivityPool.lazy.test.ts::@/editor/SourceEditor':
     'The factory COUNTS module loads to assert lazy non-loading — spreading the real module would ' +
@@ -43,9 +16,6 @@ function extractDoMockCalls(src: string): Array<{ specifier: string; factory: st
   const re = /vi\.doMock\(\s*(['"])([^'"]+)\1\s*,/g;
   let m: RegExpExecArray | null = re.exec(src);
   while (m !== null) {
-    // Capture the factory body: scan forward to the matching close of the
-    // vi.doMock(...) call by paren depth. Good enough for the repo's
-    // factory shapes (object-literal arrow functions).
     let depth = 1;
     let i = re.lastIndex;
     while (i < src.length && depth > 0) {
@@ -60,12 +30,6 @@ function extractDoMockCalls(src: string): Array<{ specifier: string; factory: st
   return calls;
 }
 
-/**
- * Does this factory body spread the real module under the `...actual*` naming
- * convention every fixed site uses? Deliberately requires the `actual` prefix:
- * a bare any-identifier spread would let rest params (`...args`) or unrelated
- * object spreads (`...localConfig`) satisfy the guard and silently disable it.
- */
 function factoryHasActualSpread(factory: string): boolean {
   return /\.\.\.\s*actual[A-Za-z_$]?[\w$]*/.test(factory);
 }
@@ -97,12 +61,6 @@ describe('vi.doMock factory completeness', () => {
 });
 
 describe('guard self-test (bidirectional + planted-positive)', () => {
-  // This guard passes by finding NOTHING in the live tree, so it can rot into
-  // a vacuous no-op if the extractor or the spread predicate is weakened.
-  // These fixtures pin that it still FIRES (planted-positive) and does not
-  // over-fire (adjacent negatives), exercising the SAME functions the guard
-  // uses so the two cannot drift apart.
-
   test('extractDoMockCalls: finds every call (planted-positive), nothing in clean source', () => {
     const twoCalls = [
       "vi.doMock('sonner', () => ({ toast }));",
@@ -126,11 +84,8 @@ describe('guard self-test (bidirectional + planted-positive)', () => {
   });
 
   test('factoryHasActualSpread: rejects partial and non-actual spreads (adjacent negatives)', () => {
-    // partial factory — the detonation class
     expect(factoryHasActualSpread('() => ({ useDocumentContext: () => ({}) })')).toBe(false);
-    // rest param in the body — the exact false-positive the tightened regex closes
     expect(factoryHasActualSpread('() => ({ wrap: (...args) => fn(...args) })')).toBe(false);
-    // unrelated object spread — satisfies a bare /.../ but not the ...actual* convention
     expect(factoryHasActualSpread('() => ({ ...localConfig, toast })')).toBe(false);
   });
 

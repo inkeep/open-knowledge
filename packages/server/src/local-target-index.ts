@@ -1,35 +1,3 @@
-/**
- * Server-owned local-target assessment index — a sibling to `BacklinkIndex`
- * and `TagIndex` behind `DerivedDocumentIndex`. It holds one assessment per
- * authored local-target occurrence and the reverse dependencies that let a
- * target mutation heal or break only the sources that reference it, never the
- * whole project.
- *
- * Two maps form the narrow waist:
- *   - source → occurrence assessments (what each document authored)
- *   - target → sources (who depends on each document/ordinary-file identity)
- *
- * A source edit replaces only that source's occurrence memberships and drops
- * the reverse-dependency edges it no longer authors. A target create/delete
- * reassesses exactly the reverse dependents of that identity — the authored
- * hrefs are unchanged, so only each occurrence's `exact`/`missing` status
- * flips; work is O(reverse dependents), not O(project).
- *
- * Existence is owned here, unlike `BacklinkIndex` (which takes an admitted set
- * per query): a document exists once it has been recorded as a source, and an
- * ordinary file exists once the watcher's all-files inventory reports it. That
- * keeps the inventory and the occurrences on one generation so a restart or
- * branch switch can withhold a `ready` result rather than publish a falsely
- * clean one against a half-seeded inventory.
- *
- * Recognition, resolution, and existence policy live upstream
- * (`local-target-occurrences.ts`, `local-target-assessment.ts`); this module
- * owns only membership, reverse dependencies, and lifecycle. Classification
- * upstream is total, but this index stores only what the local-target surfaces
- * project — wiki forms keep their graph-backed validation, so `BacklinkIndex`
- * semantics are untouched and a wiki-only edit stays silent here.
- */
-
 import { type Dirent, existsSync, realpathSync } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
@@ -52,18 +20,6 @@ import {
 import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
 import { toPosix } from './path-utils.ts';
 
-/**
- * Narrow a total classification to the subset this index backs.
- *
- * Classification is total — every recognized form gets a canonical answer, so
- * no surface has to guess. This index, though, is the store behind the
- * local-target SURFACES specifically, and wiki forms do not project there: a
- * wiki document link is a graph edge `forwardLinks` already carries, and a
- * file-shaped wiki embed resolves by vault-wide basename under its own
- * contract. Storing what it does not serve would move this index's generation —
- * and fire the `local-targets` signal — for edits that change nothing any
- * consumer of it can see.
- */
 function projectableAssessments(
   assessments: readonly LocalTargetAssessment[],
 ): LocalTargetAssessment[] {
@@ -72,54 +28,36 @@ function projectableAssessments(
   );
 }
 
-/** One source and its assessed occurrences — the unit of project/scope enumeration. */
 export interface LocalTargetSourceAssessments {
   source: string;
   assessments: readonly LocalTargetAssessment[];
 }
 
-/** Bounded-cardinality snapshot for telemetry and freshness assertions — counts only, never paths. */
 export interface LocalTargetIndexStats {
-  /** Sources carrying at least one assessed occurrence. */
   sources: number;
-  /** Total assessed occurrences across all sources. */
   occurrences: number;
-  /** Distinct document target identities with at least one reverse dependent. */
   documentTargets: number;
-  /** Distinct ordinary-file target identities with at least one reverse dependent. */
   fileTargets: number;
 }
 
 export interface LocalTargetIndexOptions {
   contentDir: string;
   contentFilter?: ContentFilter;
-  /** Test seam for fail-closed rebuild coverage. Production uses `readFile(path, 'utf-8')`. */
   readDocument?: (filePath: string) => Promise<string>;
-  /** Test seam for fail-closed directory-walk coverage. */
   readDirectory?: (dir: string) => Promise<Dirent[]>;
 }
 
-/** Outcome of a rebuild — bounded counts for telemetry (`instrumentIndexRebuild`). */
 export interface LocalTargetRebuildResult {
   sources: number;
   occurrences: number;
 }
 
-/** Authoritative existence identities supplied by the watcher/coordinator. */
 export interface LocalTargetRebuildInventory {
   documentTargets: Iterable<string>;
   fileTargets: Iterable<string>;
-  /** Watcher folder inventory (every non-excluded directory); optional so
-   *  doc-only harnesses keep working — absent means "no injected folders". */
   folderTargets?: Iterable<string>;
 }
 
-/**
- * Every target identity an occurrence's assessment depends on for its verdict.
- * The authored (possibly missing) identity is what flips `exact`/`missing`; a
- * tolerant fallback identity (document-only) is
- * included so that if it later disappears the dependent reassesses.
- */
 function assessmentTargetDeps(
   assessment: LocalTargetAssessment,
   sourceDocName: string,
@@ -133,18 +71,6 @@ function assessmentTargetDeps(
     if (assessment.targetKind === 'document') docs.push(assessment.resolvedTarget);
     else if (assessment.targetKind === 'file') files.push(assessment.resolvedTarget);
   }
-  // Extension-less links are inventory-disambiguated. Retain both candidate
-  // edges even while one wins so a file delete/recreate or document
-  // create/delete can move the verdict back in either direction.
-  //
-  // Markdown plane throughout: only `markdown-inline` / `markdown-reference` /
-  // `html-img` occurrences are projected onto this index at all
-  // (`isProjectableToLocalTargetSurfaces` drops the wiki forms), so every href
-  // reaching here is a URI whose escapes decode — the same reading
-  // `classifyMarkdownHref` just applied to it two lines up. Re-check that
-  // projection filter before admitting a wiki form here; a literal target
-  // resolved with this decode would key the candidate under a path nothing
-  // else looks up.
   if (assessment.occurrence.role === 'link') {
     const classified = classifyMarkdownHref(assessment.occurrence.href, sourceDocName);
     if (classified?.kind === 'doc') {
@@ -155,8 +81,6 @@ function assessmentTargetDeps(
       if (filePath === classified.docName) files.push(filePath);
     }
   }
-  // A fallback is always a document identity (ordinary files have no tolerant
-  // navigation affordance), so its deletion is a document-target change.
   if (assessment.fallbackTarget !== null) docs.push(assessment.fallbackTarget);
   return { docs, files };
 }
@@ -197,11 +121,6 @@ function documentMutationKeys(docName: string): string[] {
   const leaf = docName.slice(docName.lastIndexOf('/') + 1);
   const leafSlug = toWikiLinkSlug(leaf);
   if (leafSlug) keys.push(`basename:${leafSlug}`);
-  // Every ancestor folder, not just an index-like parent: adding a doc can
-  // bring a folder into existence at any depth and removing one can take the
-  // folder with it, and folder existence is itself an assessment input since
-  // folder targets became exact destinations. Sources holding a
-  // `folder:` dependency on any of these ancestors must re-run.
   let slash = docName.indexOf('/');
   while (slash !== -1) {
     keys.push(`folder:${docName.slice(0, slash)}`);
@@ -250,25 +169,16 @@ export class LocalTargetIndex {
   private readonly readDocument: (filePath: string) => Promise<string>;
   private readonly readDirectory: (dir: string) => Promise<Dirent[]>;
 
-  /** docName → its assessed occurrences (only sources with ≥1 occurrence are kept). */
   private sourceAssessments = new Map<string, LocalTargetAssessment[]>();
-  /** docName → document identities it currently depends on (for O(deps) ghost removal). */
   private sourceDocDeps = new Map<string, Set<string>>();
-  /** docName → ordinary-file identities it currently depends on. */
   private sourceFileDeps = new Map<string, Set<string>>();
-  /** document identity → sources whose assessment depends on it. */
   private reverseByDoc = new Map<string, Set<string>>();
-  /** ordinary-file identity → sources whose assessment depends on it. */
   private reverseByFile = new Map<string, Set<string>>();
-  /** Tolerant-resolution key → sources that could gain/lose that fallback. */
   private reverseByTolerant = new Map<string, Set<string>>();
-  /** docName → tolerant-resolution keys currently authored by that source. */
   private sourceTolerantDeps = new Map<string, Set<string>>();
 
-  /** Admitted live documents — the `hasDocument` oracle. A source's own identity is added when it is recorded. */
   private documents = new Set<string>();
   private tolerantDocumentResolver: (docName: string) => string | null = () => null;
-  /** Admitted ordinary files (watcher all-files inventory) — the `hasFile` oracle. */
   private files = new Set<string>();
 
   private generationValue = 0;
@@ -276,22 +186,9 @@ export class LocalTargetIndex {
   private readyValue = false;
   private closed = false;
 
-  /**
-   * Ancestor folders of every admitted document — the derived half of the
-   * `hasFolder` oracle (covers CRDT-live docs the watcher has not indexed).
-   * Rebuilt with the tolerant indexes (every `documents` mutation site calls
-   * `refreshTolerantDocumentIndexes`), so it can never go stale independently.
-   */
   private folderPaths = new Set<string>();
-  /**
-   * Watcher folder inventory (every non-excluded directory, including empty
-   * and asset-only folders) — the injected half of the `hasFolder` oracle.
-   * Seeded by `populateFromDisk`, replaced by `reconcileFolderTargets`, and
-   * swapped with the other staged fields in `rebuildOnce`.
-   */
   private injectedFolderPaths = new Set<string>();
 
-  /** Existence oracle backed by this index's own inventory sets. */
   private readonly inventory: LocalTargetInventory = {
     hasDocument: (docName) => this.documents.has(docName),
     hasFile: (relativePath) => this.files.has(relativePath),
@@ -312,42 +209,27 @@ export class LocalTargetIndex {
     this.readDirectory = options.readDirectory ?? ((dir) => readdir(dir, { withFileTypes: true }));
   }
 
-  /** Monotonic generation; consumers diff it to detect staleness without a full refetch. */
   get generation(): number {
     return this.generationValue;
   }
 
-  /**
-   * Whether the index has settled against a seeded inventory. Queries served
-   * before this is true would be against a half-seeded inventory — the
-   * coordinator withholds them rather than publish a falsely clean result.
-   */
   isReady(): boolean {
     return this.readyValue;
   }
 
-  /** Preserve the last complete snapshot but prevent it from being published. */
   markUnavailable(): void {
     if (this.readyValue) this.freshnessEpoch++;
     this.readyValue = false;
   }
 
-  /** Equality token for work that must be abandoned across lifecycle changes. */
   get freshnessToken(): string {
     return `${this.generationValue}:${this.freshnessEpoch}`;
   }
 
-  /** Assessments for one source, or an empty array. The occurrence range travels on each assessment. */
   getAssessments(docName: string): readonly LocalTargetAssessment[] {
     return this.sourceAssessments.get(docName) ?? [];
   }
 
-  /**
-   * Assessments for every source, optionally narrowed to a source set — the
-   * project/folder-scope enumeration a validator drives. Only sources carrying
-   * ≥1 occurrence are held, so iteration is O(sources with occurrences); each
-   * occurrence's range travels on its assessment for positioned diagnostics.
-   */
   getAssessmentsForSources(sourceDocNames?: readonly string[]): LocalTargetSourceAssessments[] {
     const filter = sourceDocNames && sourceDocNames.length > 0 ? new Set(sourceDocNames) : null;
     const out: LocalTargetSourceAssessments[] = [];
@@ -358,7 +240,6 @@ export class LocalTargetIndex {
     return out;
   }
 
-  /** Sources whose assessment depends on this document identity's existence (sorted). */
   getDocumentDependents(docName: string): string[] {
     const sources = new Set(this.reverseByDoc.get(docName) ?? []);
     for (const key of documentMutationKeys(docName)) {
@@ -367,7 +248,6 @@ export class LocalTargetIndex {
     return [...sources].sort((a, b) => a.localeCompare(b));
   }
 
-  /** Sources whose assessment depends on this ordinary-file identity's existence (sorted). */
   getFileDependents(relativePath: string): string[] {
     return [...(this.reverseByFile.get(relativePath) ?? [])].sort((a, b) => a.localeCompare(b));
   }
@@ -387,16 +267,6 @@ export class LocalTargetIndex {
     this.closed = true;
   }
 
-  /**
-   * Record a source's markdown: extract its occurrences, assess them against
-   * the current inventory, and replace this source's memberships. The source's
-   * own identity becomes an existing document; when that flips a previously
-   * absent identity to present, the documents referencing it are healed.
-   *
-   * Returns whether a local-target-relevant change occurred, so the coordinator
-   * pushes the `local-targets` signal only when an assessment moved — a
-   * wiki-only or occurrence-free edit is silent.
-   */
   setSource(docName: string, markdown: string): boolean {
     if (isLinkIndexExcludedDoc(docName)) return false;
     const update = instrumentIndexUpdate(
@@ -432,11 +302,6 @@ export class LocalTargetIndex {
     return update.changed;
   }
 
-  /**
-   * Forget a source and its identity as a document. Reference-holders that
-   * pointed at this now-absent identity are broken. Idempotent. Returns whether
-   * an assessment moved.
-   */
   removeSource(docName: string): boolean {
     if (isLinkIndexExcludedDoc(docName)) return false;
     const update = instrumentIndexUpdate(
@@ -465,30 +330,13 @@ export class LocalTargetIndex {
     return update.changed;
   }
 
-  /**
-   * Rename a source atomically: the old identity's occurrences and existence
-   * drop, the new identity's are recorded from the post-rename content. Both
-   * identities' reverse dependents are reassessed, so links to the old name
-   * break and links to the new name heal in one settled step.
-   */
   renameSource(oldDocName: string, newDocName: string, markdown: string): boolean {
     const removed = this.removeSource(oldDocName);
     const set = this.setSource(newDocName, markdown);
     return removed || set;
   }
 
-  /**
-   * Reflect an ordinary-file target's existence and reassess only its reverse
-   * dependents. A no-op when existence did not flip (a content-only file-update
-   * event), so churn stays proportional to real create/delete transitions.
-   * Returns the number of sources reassessed (bounded telemetry).
-   */
   setFileTarget(relativePath: string, exists: boolean): number {
-    // Deliberately ahead of the span: the dependent-file repair sweep re-checks
-    // every referenced target on a fixed interval, so instrumenting the unflipped
-    // case bills one span per referenced file per sweep on a project that is
-    // doing nothing. Left inside, that volume recycles the local span ring faster
-    // than a user can file a report about anything else.
     if (this.files.has(relativePath) === exists) return 0;
     const update = instrumentIndexUpdate(
       'local-target',
@@ -498,8 +346,6 @@ export class LocalTargetIndex {
         else this.files.delete(relativePath);
         const occurrences = this.countFileOccurrences(relativePath);
         const affected = this.reassessFileDependents(relativePath);
-        // Existence moved, but only a reassessed dependent is consumer-visible; an
-        // unreferenced file create/delete changes no assessment, so hold generation.
         if (affected > 0) this.generationValue++;
         return { affected, occurrences };
       },
@@ -511,7 +357,6 @@ export class LocalTargetIndex {
     return update.affected;
   }
 
-  /** Replace document existence from an authoritative alias-complete snapshot. */
   reconcileDocumentTargets(documentTargets: Iterable<string>): number {
     const next = new Set(documentTargets);
     const changedIdentities = new Set<string>();
@@ -540,13 +385,6 @@ export class LocalTargetIndex {
     return reassessed;
   }
 
-  /**
-   * Replace the injected (watcher) folder inventory from an authoritative
-   * snapshot. Sources whose assessments hold a `folder:` dependency on a
-   * folder that appeared or disappeared are reassessed, so an empty or
-   * asset-only folder coming or going flips its links between exact and
-   * missing without waiting for a doc edit.
-   */
   reconcileFolderTargets(folderTargets: Iterable<string>): number {
     const next = new Set(folderTargets);
     const changedFolders = new Set<string>();
@@ -573,7 +411,6 @@ export class LocalTargetIndex {
     return reassessed;
   }
 
-  /** Replace ordinary-file existence from an authoritative alias-complete snapshot. */
   reconcileFileTargets(fileTargets: Iterable<string>): number {
     const next = new Set(fileTargets);
     const changedIdentities = new Set<string>();
@@ -583,11 +420,6 @@ export class LocalTargetIndex {
     for (const relativePath of next) {
       if (!this.files.has(relativePath)) changedIdentities.add(relativePath);
     }
-    // Same discipline as `setFileTarget`: a re-published identical inventory
-    // moved no identity, so it is not an update and is not instrumented as one.
-    // Deciding that ahead of the span also puts the diff outside the timed
-    // region, so the duration histogram measures the reassessment tail rather
-    // than the whole call. Read it that way — as full-call cost it under-reports.
     if (changedIdentities.size === 0) return 0;
 
     return instrumentIndexUpdate(
@@ -615,12 +447,6 @@ export class LocalTargetIndex {
     ).affected;
   }
 
-  /**
-   * Repair watcher events that the host filesystem backend dropped. The sweep
-   * is bounded to identities with reverse dependents, so an unreferenced
-   * workspace file never adds polling work. Admission and realpath containment
-   * mirror the watcher boundary before disk existence can affect an assessment.
-   */
   async reconcileDependentFileTargetsFromDisk(
     onChange?: (relativePath: string, exists: boolean) => void,
   ): Promise<number> {
@@ -669,13 +495,6 @@ export class LocalTargetIndex {
     return occurrences;
   }
 
-  /**
-   * Rebuild from disk: seed the document inventory from the content-dir walk,
-   * the file inventory from the watcher's authoritative all-files snapshot,
-   * then assess every source against the complete inventory. Replaces all
-   * state and marks the index ready. This is the startup / branch-switch /
-   * content-scope reconciliation.
-   */
   rebuildFromDisk(inventory: LocalTargetRebuildInventory): Promise<LocalTargetRebuildResult> {
     return instrumentIndexRebuild(
       'local-target',
@@ -712,11 +531,6 @@ export class LocalTargetIndex {
     this.sourceTolerantDeps = staged.sourceTolerantDeps;
     this.documents = staged.documents;
     this.tolerantDocumentResolver = staged.tolerantDocumentResolver;
-    // folderPaths must swap with `documents` — it is derived from it. Missing
-    // this line was a live bug: boot assessments (computed inside `staged`,
-    // folder-aware) were clean, then the FIRST live reassessment on this
-    // instance ran against an empty folder set and flipped folder-exact
-    // targets back to missing.
     this.folderPaths = staged.folderPaths;
     this.injectedFolderPaths = staged.injectedFolderPaths;
     this.files = staged.files;
@@ -741,9 +555,6 @@ export class LocalTargetIndex {
     }
 
     const docs = await this.listDocsWithPaths();
-    // Source bodies are still discovered locally, but target existence comes
-    // from the injected canonical inventory. Unioning walked sources keeps a
-    // just-authored document self-consistent before its watcher event settles.
     for (const { docName } of docs) this.documents.add(docName);
     this.refreshTolerantDocumentIndexes();
 
@@ -772,12 +583,6 @@ export class LocalTargetIndex {
     return { sources: this.sourceAssessments.size, occurrences: occurrenceCount };
   }
 
-  /**
-   * Install a source's assessments and reconcile its reverse-dependency edges:
-   * edges it no longer authors are removed (ghost removal), new ones added.
-   * The occurrences are unchanged for a pure reassessment and replaced for a
-   * source edit — either way the dependency set is recomputed from the result.
-   */
   private applySourceAssessments(docName: string, assessments: LocalTargetAssessment[]): void {
     const nextDocDeps = new Set<string>();
     const nextFileDeps = new Set<string>();
@@ -789,12 +594,6 @@ export class LocalTargetIndex {
       if (
         assessment.targetKind === 'document' &&
         assessment.resolvedTarget !== null &&
-        // Non-exact targets need every tolerant edge (a slug/basename/folder
-        // mutation can heal them). An exact target normally needs none — its
-        // reverseByDoc edge covers it — EXCEPT a folder-backed exact,
-        // whose existence is a property of the folder, not of any
-        // one document: it keeps its `folder:` edge so deleting the folder's
-        // last doc re-runs the assessment.
         (assessment.status !== 'exact' || !this.documents.has(assessment.resolvedTarget))
       ) {
         for (const key of tolerantDependencyKeys(assessment.resolvedTarget)) {
@@ -846,7 +645,6 @@ export class LocalTargetIndex {
     this.sourceTolerantDeps.set(docName, nextTolerantDeps);
   }
 
-  /** Reassess one source against the current inventory without re-extracting its occurrences. */
   private reassessSource(docName: string): boolean {
     const assessments = this.sourceAssessments.get(docName);
     if (!assessments) return false;
@@ -858,7 +656,6 @@ export class LocalTargetIndex {
   }
 
   private reassessDocumentDependents(docName: string): number {
-    // Snapshot the union before reassessment mutates the reverse sets.
     const affected = new Set(this.reverseByDoc.get(docName) ?? []);
     for (const key of documentMutationKeys(docName)) {
       for (const source of this.reverseByTolerant.get(key) ?? []) affected.add(source);
@@ -895,7 +692,6 @@ export class LocalTargetIndex {
   private async listDocsWithPaths(): Promise<Array<{ docName: string; filePath: string }>> {
     const out: Array<{ docName: string; filePath: string }> = [];
     await this.walkContentDir(this.contentDir, out);
-    // Same-stem `.md`/`.mdx` dedupe with `.mdx` precedence, mirroring TagIndex.
     out.sort((a, b) =>
       a.docName === b.docName
         ? b.filePath.localeCompare(a.filePath)

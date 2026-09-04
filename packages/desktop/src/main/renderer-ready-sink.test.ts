@@ -6,13 +6,6 @@ const CHANNELS = ['ok:mcp-wiring:renderer-ready', 'ok:onboarding:renderer-ready'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 
-/**
- * Minimal ipcMain stub mirroring Electron's semantics: `handle` throws on a
- * second registration for the same channel; `invoke` simulates a renderer
- * `ipcRenderer.invoke` landing on main — rejecting with the exact "No handler
- * registered" error Electron raises (the packaged-startup stderr warning this
- * sink exists to eliminate).
- */
 function createIpcMainStub() {
   const handlers = new Map<string, Handler>();
   return {
@@ -52,8 +45,6 @@ describe('createRendererReadySink', () => {
 
   test('an ack with no armed flow resolves undefined instead of "No handler registered"', async () => {
     createRendererReadySink(real, CHANNELS);
-    // Before the sink, this exact invoke rejected and Electron logged the
-    // packaged-startup warning; with it, the invoke settles cleanly.
     await expect(real.invoke('ok:mcp-wiring:renderer-ready')).resolves.toBeUndefined();
     await expect(real.invoke('ok:onboarding:renderer-ready')).resolves.toBeUndefined();
   });
@@ -65,7 +56,6 @@ describe('createRendererReadySink', () => {
     await expect(real.invoke('ok:mcp-wiring:renderer-ready')).resolves.toBeUndefined();
     expect(listener).toHaveBeenCalledTimes(1);
     expect((listener.mock.calls[0]?.[0] as IpcMainInvokeEvent).sender.id).toBe(7);
-    // The sibling channel stays unarmed and keeps absorbing.
     await expect(real.invoke('ok:onboarding:renderer-ready')).resolves.toBeUndefined();
   });
 

@@ -1,15 +1,3 @@
-/**
- * Unit tests for resolveGitIdentity() — chain order + fallback logic.
- * Uses injected GitConfigReader so no actual git or simple-git calls are made.
- *
- * Chain: effective merged git config → tokenStore → null
- *
- * Scope precedence (system < global < local < worktree) and include / includeIf
- * resolution are delegated to git's own merged read; that behavior is covered by
- * the real-git integration tests in git-identity.worktree.test.ts and
- * git-identity.includes.test.ts.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   type GitConfigReader,
@@ -17,22 +5,16 @@ import {
   resolveGitIdentity,
 } from './git-identity.ts';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Build a mock GitConfigReader that returns pre-defined effective values per key. */
 function mockReader(values: Partial<Record<string, string | null>>): GitConfigReader {
   return (_dir, key) => values[key] ?? null;
 }
 
-/** A minimal TokenStore stub. */
 function makeTokenStore(entry: { login: string; name?: string; email?: string } | null) {
   const store: GitIdentityTokenStore = {
     get: async (_host: string) => entry,
   };
   return store;
 }
-
-// ─── Chain order tests ────────────────────────────────────────────────────────
 
 describe('resolveGitIdentity chain order', () => {
   test('Step 1: returns the effective git config identity when name + email are both set', async () => {
@@ -87,7 +69,7 @@ describe('resolveGitIdentity chain order', () => {
 
   test('Step 2: synthesizes noreply email when entry.email is absent', async () => {
     const reader = mockReader({});
-    const store = makeTokenStore({ login: 'octocat' }); // no email
+    const store = makeTokenStore({ login: 'octocat' });
     const result = await resolveGitIdentity('/fake/repo', store, 'github.com', reader);
     expect(result).toEqual({
       name: 'octocat',
@@ -115,7 +97,6 @@ describe('resolveGitIdentity chain order', () => {
       name: 'The Octocat',
       email: 'cat@github.com',
     });
-    // host not provided — token step skipped even with a valid store
     const result = await resolveGitIdentity('/fake/repo', store, null, reader);
     expect(result).toBeNull();
   });

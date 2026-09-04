@@ -1,9 +1,3 @@
-/**
- * Tests for the standard bug-report capture. Real disk fixtures (no fs
- * mocks) since the module's job is filesystem-shaped; the user-level logs
- * directory is injected so tests never touch the real `~/.ok`.
- */
-
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -42,8 +36,6 @@ function writeAt(baseDir: string, relPath: string, body: string): void {
   writeFileSync(full, body);
 }
 
-// yazl writes; the standard parser pair is yauzl. Avoid adding it as a
-// dep for tests — use `unzip` (BSD/Linux ships it) instead.
 function listZipEntries(zipPath: string): string[] {
   const out = execSync(`unzip -Z1 ${JSON.stringify(zipPath)}`, { encoding: 'utf-8' });
   return out.split('\n').filter(Boolean);
@@ -62,6 +54,38 @@ function makeProjectDir(slug = 'bundle-proj'): string {
   writeAt(projectDir, '.ok/config.yml', `name: ${slug}\n`);
   return projectDir;
 }
+
+describe('collectStandardBundle — diagnostic-report staging count', () => {
+  test('counts what reached the zip, not what the sweep selected', async () => {
+    const projectDir = makeProjectDir();
+    const reportsDir = makeTmpDir();
+    const present = join(reportsDir, 'OpenKnowledge-present.ips');
+    writeFileSync(
+      present,
+      `${JSON.stringify({ name: 'OpenKnowledge' })}\n{"procName":"OpenKnowledge"}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      diagnosticReports: {
+        files: [present, join(reportsDir, 'OpenKnowledge-vanished.ips')],
+        outcome: 'collected',
+        foreignIgnored: 0,
+        unparseable: 0,
+        droppedOverCap: 0,
+        windowDays: 7,
+      },
+    });
+
+    expect(listZipEntries(zipPath)).toContain('diagnostic-reports/OpenKnowledge-present.ips');
+    expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+      '1 collected (7d; 0 other-process report(s) ignored; 0 unparseable; 1 vanished before staging)\n',
+    );
+  });
+});
 
 describe('collectStandardBundle — project bundle', () => {
   test('packages lock/spawn-error, local sink logs, and sysinfo into the zip', async () => {
@@ -190,11 +214,6 @@ describe('collectStandardBundle — redaction', () => {
   });
 });
 
-// Record shapes of the three writers that share `~/.ok/logs`. Only the CLI
-// logger's pino base carries a `project` field. The desktop logger's base has
-// no such key, and the MCP stderr mirror is plain text rather than JSON — so a
-// slug predicate is *inapplicable* to those two families, not false for them,
-// and cannot decide whether they belong in a bundle.
 const CLI_LOG_MATCHING_SLUG =
   '{"level":30,"time":"2026-08-05T10:00:00.000Z","pid":51000,"runtime":"cli","project":"bundle-proj","name":"cli","command":"start"}\n';
 const CLI_LOG_OTHER_PROJECT =
@@ -202,11 +221,6 @@ const CLI_LOG_OTHER_PROJECT =
 const DESKTOP_LOG_LINE =
   '{"level":30,"time":"2026-08-05T10:00:00.000Z","pid":46323,"runtime":"desktop","name":"desktop","subsystem":"boot","event":"desktop.boot","version":"0.48.7"}\n';
 const MCP_MIRROR_LINE = '2026-08-05T10:00:00.000Z [mcp] stdio server ready\n';
-// The desktop log is the only sink for the captured renderer console, which can
-// serialize arbitrary application data — including another project's slug in the
-// exact shape the CLI predicate looks for. That coincidence must not reclassify
-// the file, so taggability is decided from the writer that owns the filename and
-// never from the bytes.
 const DESKTOP_LOG_WITH_FOREIGN_SLUG_IN_CONSOLE = `${DESKTOP_LOG_LINE}{"level":30,"time":"2026-08-05T10:00:01.000Z","pid":46323,"runtime":"desktop","name":"desktop","subsystem":"renderer","event":"renderer.console","args":[{"project":"someone-else"}]}\n`;
 
 describe('collectStandardBundle — user-level logs', () => {
@@ -283,9 +297,6 @@ describe('collectStandardBundle — user-level logs', () => {
     expect(entries).toContain('logs/desktop.2026-08-05.log');
     expect(entries).toContain('logs/mcp.2026-08-05.log');
 
-    // The MANIFEST is the triager's inventory and records only what was
-    // written, so a family missing here is indistinguishable from one that
-    // never existed.
     const manifest = JSON.parse(readZipEntry(zipPath, 'MANIFEST.json'));
     expect(manifest.files).toEqual(summary.files);
     expect(manifest.files).toContain('logs/desktop.2026-08-05.log');
@@ -382,9 +393,6 @@ describe('collectStandardBundle — user-level logs', () => {
 
   test('an unreadable taggable entry does not drop its siblings', async () => {
     const userLogsDir = makeTmpDir();
-    // A directory named like a log: readdirSync lists it and the extension
-    // filter admits it, but reading it throws EISDIR. Portable and unprivileged,
-    // unlike chmod 000, which no-ops when the suite runs as root.
     mkdirSync(join(userLogsDir, 'cli.2026-08-04.log'));
     writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
     writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
@@ -407,10 +415,6 @@ describe('collectStandardBundle — user-level logs', () => {
 
   test('an unreadable taggable entry does not suppress the keep-all fallback', async () => {
     const userLogsDir = makeTmpDir();
-    // Same unreadable-directory trick, but now nothing readable carries the
-    // slug. Retaining the undecidable file must not read as a match: if it
-    // does, the "no match keeps everything" fallback never fires and the one
-    // readable CLI log is discarded on a slug decision nobody could make.
     mkdirSync(join(userLogsDir, 'cli.2026-08-03.log'));
     writeFileSync(join(userLogsDir, 'cli.2026-08-04.log'), CLI_LOG_OTHER_PROJECT);
     writeFileSync(join(userLogsDir, 'desktop.2026-08-05.log'), DESKTOP_LOG_LINE);
@@ -431,9 +435,6 @@ describe('collectStandardBundle — user-level logs', () => {
 });
 
 describe('collectUserLogFiles — shared collector', () => {
-  // The full bundle tier reaches the same file set through this exported
-  // collector rather than through collectStandardBundle, so a fix applied at
-  // the bundle call site alone would leave that tier still dropping families.
   test('keeps log families that cannot carry a project slug', () => {
     const userLogsDir = makeTmpDir();
     writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
@@ -447,10 +448,6 @@ describe('collectUserLogFiles — shared collector', () => {
     expect(names).toEqual(['cli.2026-08-05.log', 'desktop.2026-08-05.log', 'mcp.2026-08-05.log']);
   });
 
-  // Retention alone is satisfied by a collector that ignores the slug
-  // entirely, which would leak another project's command history into a
-  // bundle the user forwards to support. Only an exclusion at this tier
-  // proves the slug argument still reaches the shared filter.
   test('still narrows the taggable family to the requested project', () => {
     const userLogsDir = makeTmpDir();
     writeFileSync(join(userLogsDir, 'cli.2026-08-05.log'), CLI_LOG_MATCHING_SLUG);
@@ -466,9 +463,6 @@ describe('collectUserLogFiles — shared collector', () => {
 });
 
 describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
-  // ShipIt swaps the bundle after the app exits, so its own log is the only
-  // artifact that records why an install did not take. Without it a bundle can
-  // report the failure but never explain it.
   test('collects the desktop app ShipIt logs', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'Installation failed\n');
@@ -481,9 +475,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(names).toEqual(['ShipIt_stderr.log', 'ShipIt_stdout.log']);
   });
 
-  // Every Squirrel app on the machine keeps its install history in a sibling
-  // directory. A `*.ShipIt` glob would forward unrelated software's update
-  // history to support, so the match must be anchored to our own bundle id.
   test('never harvests another application ShipIt logs', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'ours\n');
@@ -495,9 +486,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(bodies).toEqual(['ours\n']);
   });
 
-  // `userLogFiles` stages by basename alone, so a sub-bundle id whose dir also
-  // holds a `ShipIt_stderr.log` would collide with the app's own in the zip.
-  // Exact-match keeps one writer per staged name.
   test('ignores sub-bundle ShipIt directories that would collide when staged', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'app\n');
@@ -508,19 +496,10 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(bodies).toEqual(['app\n']);
   });
 
-  // Non-macOS hosts have no such directory at all; collection is a no-op there
-  // rather than a platform branch at every call site.
   test('returns empty when the caches directory does not exist', () => {
     expect(collectShipItLogFiles(join(makeTmpDir(), 'absent'))).toEqual([]);
   });
 
-  // Squirrel opens both logs with `ensureWritable`: when the existing file is
-  // not writable it appends `.1`, `.2`, … (up to `.100`) and writes THERE
-  // instead. Its own source names the cause — the log can end up owned by root,
-  // which previously stopped ShipIt launching at all — so the suffixed file is
-  // exactly what a machine whose installs run privileged writes to. Collecting
-  // only the two base names silently harvests the stale, un-writable original
-  // and misses every line of the run being reported.
   test('collects the numeric-suffixed logs Squirrel falls back to', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'stale root-owned\n');
@@ -534,10 +513,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(names).toEqual(['ShipIt_stderr.log', 'ShipIt_stderr.log.1', 'ShipIt_stdout.log.2']);
   });
 
-  // The suffix is the only thing separating a fallback log from an unrelated
-  // neighbour, so the match is anchored rather than a prefix test. `.plist` is
-  // the binary state file the collector deliberately omits, and `.bak` stands
-  // for anything a user or another tool parked in the directory.
   test('ignores neighbours that merely start with a ShipIt log name', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.1`, 'ours\n');
@@ -550,10 +525,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(bodies).toEqual(['ours\n']);
   });
 
-  // Squirrel will walk to `.100`, and each file can be megabytes. A bundle must
-  // not scale with how long a machine has been failing to install, so the
-  // fallbacks are capped — lowest suffix first, because Squirrel takes the
-  // FIRST writable candidate, making the low numbers the live ones.
   test('bounds how many fallback logs one stream contributes', () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'base\n');
@@ -571,8 +542,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     ]);
   });
 
-  // The collector existing is not the deliverable — reaching the zip is. This
-  // is the assertion a triager's experience actually depends on.
   test('stages the ShipIt log into the bundle under logs/', async () => {
     const userLogsDir = makeTmpDir();
     const cachesDir = makeTmpDir();
@@ -595,11 +564,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(listZipEntries(zipPath)).toContain('logs/ShipIt_stderr.log');
   });
 
-  // ShipIt logs record every app-bundle swap on the machine, so a
-  // project-scoped bundle carrying them is no longer project-scoped. The
-  // recipient has to be told — but in its own paragraph: the daily-rotation
-  // sentence that describes the user-wide app logs is not true of an installer
-  // log, so filing it there would disclose it under a false description.
   test('discloses the ShipIt log in its own paragraph, not the daily user-wide list', async () => {
     const userLogsDir = makeTmpDir();
     const cachesDir = makeTmpDir();
@@ -616,8 +580,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
       shipItLogFiles: collectShipItLogFiles(cachesDir),
     });
 
-    // Scoped to the Privacy section: the Contents list names every file, so a
-    // whole-README assertion would pass whatever the notes actually said.
     const readme = readZipEntry(zipPath, 'README.md');
     const privacy = readme.slice(readme.indexOf('## Privacy'));
     const scopeNote = privacy.slice(
@@ -631,11 +593,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(privacy.match(/^- logs\/ShipIt_stderr\.log$/gm)).toHaveLength(1);
   });
 
-  // The scope note is deliberately silent on an unscoped bundle — nothing was
-  // narrowed, so there is no narrower reading to correct. What the installer
-  // log needs disclosed is not its scope but what it is, so that disclosure
-  // cannot ride on the scope note: the unscoped bundle is the one most likely
-  // to be attached to a public issue under "safe to attach".
   test('discloses the installer log in an unscoped bundle too', async () => {
     const cachesDir = makeTmpDir();
     writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'swap\n');
@@ -654,8 +611,6 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(readme).toContain('- logs/ShipIt_stderr.log');
   });
 
-  // The disclosure names files; a bundle with no installer log must not claim
-  // one is present.
   test('omits the installer disclosure when no ShipIt log was collected', async () => {
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -691,10 +646,6 @@ describe('collectStandardBundle — narrowing diagnostics', () => {
 
     await collectStandardBundle({ projectDir, redact: true, outputPath, userLogsDir, logger });
 
-    // The bundled MANIFEST records only what was written, so this count is the
-    // only signal separating "the slug excluded them" from "they never existed".
-    // The retained desktop log must not inflate it: an untaggable family was
-    // never a candidate for exclusion.
     const collected = infoPayloads.find((p) => 'logFilesExcludedByProjectSlug' in p);
     expect(collected?.logFilesExcludedByProjectSlug).toBe(2);
     expect(collected?.logFileCount).toBe(2);
@@ -717,16 +668,9 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
       userLogsDir,
     });
 
-    // The README header names a single project, so a reader would otherwise
-    // take the whole bundle to be scoped to it. The two families the slug
-    // cannot narrow are per-machine singletons and must say so next to the
-    // "safe to attach" claim they qualify.
     const readme = readZipEntry(zipPath, 'README.md');
     expect(readme).toContain('user-wide rather than project-scoped');
 
-    // Scope the entry assertions to the disclosure block: the Contents section
-    // lists every file including the cli log, so asserting over the whole
-    // README would pass whatever the note actually said.
     const scopeNote = readme.slice(readme.indexOf('Scope: some collected logs'));
     const listed = scopeNote
       .split('\n')
@@ -753,13 +697,6 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     expect(readme).not.toContain('user-wide rather than project-scoped');
   });
 
-  // A sidecar records the project ITS OWN report was filed from, so a bundle
-  // filed from project A ships the slugs of B, C and D. The `Project:` header
-  // names one project, and the "safe to attach" claim sits a few lines below —
-  // so a reader who is not told would reasonably take the whole zip to be
-  // scoped to the project named at the top. Filtering by slug is not the fix:
-  // a system-wide report carries no slug and is routinely the record being
-  // reported on, so narrowing would drop exactly the evidence this collects.
   test('discloses the send ledger as machine-wide, naming its entries', async () => {
     const reportsDir = makeTmpDir('ok-bugreport-ledger-');
     writeFileSync(
@@ -776,8 +713,6 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
       bugReportLedgerFiles: collectBugReportLedgerFiles(reportsDir),
     });
 
-    // Scoped to the Privacy section: the Contents list names every file, so a
-    // whole-README assertion would pass whatever the notes actually said.
     const readme = readZipEntry(zipPath, 'README.md');
     const privacy = readme.slice(readme.indexOf('## Privacy'));
     expect(privacy).toContain('Send history:');
@@ -787,10 +722,6 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     ).toHaveLength(1);
   });
 
-  // The unscoped bundle is the one most likely to be attached to a public issue
-  // under "safe to attach", and it is exactly the case a slug-based filter
-  // would have handled worst — so the disclosure cannot ride on the scope note,
-  // which stays silent when nothing was narrowed.
   test('discloses the send ledger in an unscoped bundle too', async () => {
     const reportsDir = makeTmpDir('ok-bugreport-ledger-');
     writeFileSync(
@@ -812,10 +743,6 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     expect(privacy).toContain('Send history:');
   });
 
-  // Disclosure is intersected with what was actually written, so a sidecar that
-  // vanished between listing and staging is not announced as present. A README
-  // that over-claims is its own privacy defect: it tells a reader to look for
-  // something, and its absence reads as the collector having hidden it.
   test('does not disclose a sidecar that failed to stage', async () => {
     const reportsDir = makeTmpDir('ok-bugreport-ledger-');
     const ghost = join(reportsDir, '2026-08-19T16-42-03-547Z-bugreport.yaml');
@@ -837,12 +764,6 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     expect(listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'))).toEqual([]);
   });
 
-  // The `sent` marker's `.yaml` extension is load-bearing on THIS end: the
-  // desktop store names it that way precisely so this allowlist carries it
-  // without a second rule. For a report whose sidecar could not be read when
-  // its send landed, the marker is the ONLY readable send record in the
-  // bundle — narrowing the filter would drop exactly the evidence for the
-  // failure class it exists to make diagnosable, and nothing else would notice.
   test('stages a sent marker alongside the sidecar it stands in for', async () => {
     const reportsDir = makeTmpDir('ok-bugreport-ledger-');
     const base = '2026-08-19T16-42-03-547Z-bugreport';
@@ -864,22 +785,12 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     const staged = listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'));
     expect(staged).toContain(`state/bug-reports/${base}.sent.yaml`);
     expect(staged).toContain(`state/bug-reports/${base}.yaml`);
-    // And the reference survives staging, which is the point of carrying the
-    // marker rather than only the sidecar that could not record it.
     expect(readZipEntry(zipPath, `state/bug-reports/${base}.sent.yaml`)).toContain('OK-4821');
   });
 
-  // Slicing a sorted FILE list cuts at a fixed index, and nothing aligns that
-  // index to a report boundary — adjacency does not prevent a split. The half
-  // it would drop is the marker, which sorts first, so the bundle would ship
-  // the corrupt sidecar that proves nothing and drop the only readable record
-  // of the send, for exactly the population the marker exists to make
-  // diagnosable.
   test('the ledger cap evicts whole reports, never half of a marker pair', () => {
     const reportsDir = makeTmpDir('ok-bugreport-ledger-');
     const bases: string[] = [];
-    // Two reports past the cap, every one carrying BOTH files, so a file-counting
-    // slice necessarily cuts between a marker and its own sidecar.
     for (let i = 1; i <= MAX_BUNDLED_LEDGER_REPORTS + 2; i += 1) {
       const base = `2026-08-19T16-42-${String(i).padStart(2, '0')}-000Z-bugreport`;
       bases.push(base);
@@ -892,14 +803,12 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     for (const base of bases) {
       expect(listed.includes(`${base}.sent.yaml`)).toBe(listed.includes(`${base}.yaml`));
     }
-    // And the cap still bounds the bundle: the two oldest reports are gone whole.
     expect(listed).toHaveLength(MAX_BUNDLED_LEDGER_REPORTS * 2);
     expect(listed).not.toContain(`${nthBase(bases, 0)}.yaml`);
     expect(listed).toContain(`${nthBase(bases, -1)}.yaml`);
   });
 });
 
-/** Indexed access that asserts presence (the test controls the array). */
 function nthBase(bases: readonly string[], index: number): string {
   const value = bases.at(index);
   if (value === undefined) throw new Error(`no base at index ${index}`);
@@ -929,9 +838,6 @@ describe('collectStandardBundle — system-wide (no projectDir)', () => {
     const readme = readZipEntry(zipPath, 'README.md');
     expect(readme).toContain('Project: (unscoped)');
 
-    // The scope note exists to correct a narrower reading of the bundle. An
-    // unscoped bundle narrows nothing, so there is no such reading to correct
-    // and the note would contradict the header directly above it.
     expect(readme).not.toContain('user-wide rather than project-scoped');
   });
 });
@@ -947,8 +853,6 @@ describe('defaultBugReportZipPath', () => {
 });
 
 describe('collectStandardBundle — document names are a Detailed-diagnostics field', () => {
-  // One renderer breadcrumb per document activation, in the wire shape both
-  // capture transports produce: `docName` lifted to a top-level pino key.
   const scrollLog = [
     '{"level":30,"msg":"ok-outline-nav-dispatch","docName":"notes/salary-negotiation.md","index":3}',
     '{"level":30,"msg":"ok-scroll-restore","docName":"notes/salary-negotiation.md","top":120}',
@@ -964,15 +868,11 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
 
     const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
 
-    // The names are gone — checked as substrings, so a partial replacement that
-    // left a stem behind cannot pass.
     expect(staged).not.toContain('salary-negotiation');
     expect(staged).not.toContain('board-deck');
     expect(staged).not.toContain('notes/');
     expect(staged).not.toContain('private/');
 
-    // Every record still parses and still carries the field, because triage
-    // reads these as JSON.
     const records = staged
       .trim()
       .split('\n')
@@ -983,13 +883,9 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
     expect(records).toHaveLength(3);
     expect(records.every((r) => /^doc#[0-9a-f]{12}$/.test(r.docName))).toBe(true);
 
-    // The correlation the outline-click playbook needs survives: two marks on
-    // one document share a digest, and a different document gets a different one.
     expect(records[0].docName).toBe(records[1].docName);
     expect(records[0].docName).not.toBe(records[2].docName);
 
-    // Sibling keys are intact — a body that ran past the closing quote would
-    // have eaten them.
     expect(records[0].index).toBe(3);
     expect(records[1].top).toBe(120);
   });
@@ -1008,7 +904,6 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
 
   test('a name carrying an escaped quote is replaced whole, not up to the escape', async () => {
     const userLogsDir = makeTmpDir();
-    // `notes/she said "hi".md` as it appears on the wire.
     writeAt(
       userLogsDir,
       'desktop.2026-08-27.log',
@@ -1037,9 +932,6 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
   });
   test('masks the same name where it is interpolated into a message body', async () => {
     const userLogsDir = makeTmpDir();
-    // The renderer's success-path line, which fires on EVERY document open, next
-    // to the breadcrumb that fields the same name. Before the sweep, the field
-    // was digested and this line shipped the name in full.
     writeAt(
       userLogsDir,
       'desktop.2026-08-27.log',
@@ -1058,8 +950,6 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { msg: string; docName?: string });
-    // Same digest in both shapes, so a triager can still join the message to the
-    // breadcrumb that names the document.
     const digest = records[0].docName as string;
     expect(digest).toMatch(/^doc#[0-9a-f]{12}$/);
     expect(records[1].msg).toBe(`[syncPromise] ${digest} resolved synchronously (warm provider)`);
@@ -1099,8 +989,6 @@ describe('collectStandardBundle — document names are a Detailed-diagnostics fi
 
     const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
     expect(staged).not.toContain('notes/plan');
-    // Longest-first: had the shorter name been swept first, the longer line would
-    // read `doc#<short>-b` and leak the suffix.
     expect(staged).not.toContain('-b"');
     const records = staged
       .trim()

@@ -1,15 +1,7 @@
-/**
- * Property: incrementally sync()ing an event log in arbitrary batch splits
- * yields exactly the same model as one-shot folding the whole log. This is
- * the correctness contract that lets the store fold O(new events) per update
- * instead of re-folding the transcript on every streamed chunk.
- */
-
 import type { SessionUpdate, ThreadEvent } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { describe, expect, test } from 'vitest';
 import { buildThreadRenderModel, ThreadRenderModelBuilder } from './thread-event-model';
 
-/** Deterministic LCG so failures reproduce. */
 function makeRng(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -31,8 +23,6 @@ function generateEvents(rng: () => number, count: number): ThreadEvent[] {
   for (let i = 0; i < count; i++) {
     const roll = rng();
     if (roll < 0.35) {
-      // Streamed message chunk — the hot path. Vary role and messageId
-      // presence to exercise tail-coalescing vs fresh-block starts.
       const role = rng() < 0.7 ? 'agent' : rng() < 0.5 ? 'thought' : 'user';
       const update = {
         sessionUpdate: `${role}_message_chunk`,
@@ -170,7 +160,6 @@ describe('incremental fold equivalence', () => {
         ts: 3,
       },
     ]);
-    // New snapshot object, but the two untouched rows are the same objects.
     expect(after).not.toBe(before);
     expect(after.items[0]).toBe(before.items[0]);
     expect(after.items[1]).toBe(before.items[1]);

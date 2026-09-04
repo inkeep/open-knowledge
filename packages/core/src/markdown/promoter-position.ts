@@ -35,7 +35,7 @@ export function escapedValueOffsets(source: string, node: Text): ReadonlySet<num
   );
   let hasBackslash = false;
   for (let i = start; i < spanEnd; i++) {
-    if (source.charCodeAt(i) === 92 /* \ */) {
+    if (source.charCodeAt(i) === 92) {
       hasBackslash = true;
       break;
     }

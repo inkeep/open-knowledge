@@ -19,13 +19,13 @@ describe('folderOfGlob', () => {
   });
 
   test('rejects everything the picker should not claim', () => {
-    expect(folderOfGlob('blog')).toBeNull(); // exact doc, not a folder
-    expect(folderOfGlob('!blog/**')).toBeNull(); // negation
-    expect(folderOfGlob('blog/*')).toBeNull(); // direct children only
-    expect(folderOfGlob('**')).toBeNull(); // everything
-    expect(folderOfGlob('**/blog/**')).toBeNull(); // folder-anywhere
-    expect(folderOfGlob('{a,b}/**')).toBeNull(); // brace set
-    expect(folderOfGlob('b*g/**')).toBeNull(); // glob chars in folder
+    expect(folderOfGlob('blog')).toBeNull();
+    expect(folderOfGlob('!blog/**')).toBeNull();
+    expect(folderOfGlob('blog/*')).toBeNull();
+    expect(folderOfGlob('**')).toBeNull();
+    expect(folderOfGlob('**/blog/**')).toBeNull();
+    expect(folderOfGlob('{a,b}/**')).toBeNull();
+    expect(folderOfGlob('b*g/**')).toBeNull();
     expect(folderOfGlob('')).toBeNull();
   });
 });
@@ -123,8 +123,6 @@ describe('countMatchingDocs', () => {
   });
 
   test('multiple folder patterns match their union, not their intersection', () => {
-    // Exactly what picking two folders authors. Under intersection semantics
-    // no doc can live in both folders, so matched would read 0.
     const docs = ['blog/a', 'blog/nested/b', 'guides/c', 'root-doc'];
     expect(countMatchingDocs(['blog/**', 'guides/**'], docs)).toEqual({ matched: 3, total: 4 });
   });

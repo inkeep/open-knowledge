@@ -1,8 +1,3 @@
-/**
- * This resolver IS the user's opt-out. Its three branches — absent file,
- * explicit `false`, unreadable file — decide whether anything leaves the
- * machine, so each one is pinned here rather than left to inspection.
- */
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,7 +9,6 @@ function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-report-config-'));
 }
 
-/** Write a user config with the given YAML body. */
 function writeUserConfig(home: string, yaml: string): string {
   const path = resolveConfigPath('user', home, home);
   mkdirSync(dirname(path), { recursive: true });
@@ -45,13 +39,9 @@ describe('resolveSkillInstallReportSettings', () => {
     expect(resolveSkillInstallReportSettings(home).enabled).toBe(true);
   });
 
-  // The safe-fail direction for a setting that governs what leaves the machine.
-  // A file that EXISTS but cannot be read may hold an explicit decline, and
-  // assuming consent because we couldn't check is the wrong way to be wrong.
   test('a config that exists but cannot be read → OFF, not the default', () => {
     const home = freshHome();
     const path = resolveConfigPath('user', home, home);
-    // A directory where the file belongs: every read fails with EISDIR.
     mkdirSync(path, { recursive: true });
     expect(resolveSkillInstallReportSettings(home).enabled).toBe(false);
   });

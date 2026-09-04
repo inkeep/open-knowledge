@@ -1,11 +1,3 @@
-/**
- * DOM tests for the frontmatter plugin settings panel — the schema BROWSER:
- * every discovered schema file renders as a toggleable row, toggling writes
- * `enabled` mappings to `contentRules` without ever discarding the row's
- * globs, search filters the list, and the Edit button navigates to the file
- * via hash nav.
- */
-
 import type { Config, ConfigBinding, ConfigPatch } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -19,7 +11,6 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   }
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
-// jsdom does not implement scrollIntoView; cmdk (the folder picker) calls it.
 if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
   HTMLElement.prototype.scrollIntoView = () => {};
 }
@@ -79,9 +70,6 @@ vi.doMock('@/editor/lint-config-client', () => ({
   },
 }));
 
-// Null (no provider) by default so the folder picker and match-count line stay
-// out of the frame for the browser-behavior tests; the picker-wiring tests set
-// a value.
 let mockPageListValue: { pages: Set<string>; folderPaths: Set<string> } | null = null;
 vi.doMock('@/components/PageListContext', () => ({
   useOptionalPageList: () => mockPageListValue,
@@ -90,11 +78,6 @@ vi.doMock('@/components/PageListContext', () => ({
 const { FrontmatterPluginSection } = await import('./LintingSection.tsx');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
-/**
- * The real app mounts a single TooltipProvider at the root (`main.tsx`), so a
- * flagged pill's tooltip has a provider in production; rendering the section
- * bare does not. Wrap here rather than in each test.
- */
 function renderSection() {
   return render(
     <TooltipProvider>
@@ -102,8 +85,6 @@ function renderSection() {
     </TooltipProvider>,
   );
 }
-// Real module on purpose: the tests assert the banked Fields-view intent the
-// schema editor consumes on mount.
 const { consumeSchemaFieldsView } = await import('@/lib/schema-fields-view-intent');
 
 function configWithMappings(
@@ -141,8 +122,6 @@ beforeEach(() => {
 
 describe('FrontmatterPluginSection — schema browser', () => {
   test('links its docs page from the panel header', () => {
-    // The standing counterpart to the enable-time toast: the panel itself says
-    // where to read up on schema authoring.
     render(<FrontmatterPluginSection />);
     const docs = screen.getByTestId(
       'settings-plugin-frontmatter-title-docs-link',
@@ -150,8 +129,6 @@ describe('FrontmatterPluginSection — schema browser', () => {
     expect(docs.getAttribute('href')).toBe(
       'https://openknowledge.ai/docs/advanced/content-rules/frontmatter',
     );
-    // The accessible name is built from the panel title — a wrong `title` would
-    // silently say "markdownlint" here, which only this assertion catches.
     expect(docs.getAttribute('aria-label')).toBe('Learn more about Frontmatter schemas');
   });
 
@@ -165,7 +142,6 @@ describe('FrontmatterPluginSection — schema browser', () => {
       'frontmatter-schema-toggle-.ok/schemas/doc.schema.json',
     ) as HTMLButtonElement;
     expect(onToggle.getAttribute('aria-checked')).toBe('true');
-    // The enabled row shows its appliesTo pills.
     expect(within(mapped).getByText('docs/**')).toBeTruthy();
   });
 
@@ -205,9 +181,6 @@ describe('FrontmatterPluginSection — schema browser', () => {
   });
 
   test('a mapping with no enabled field reads as on, and toggling off pins enabled: false', () => {
-    // Hand-authored / pre-toggle configs omit `enabled`; the toggle-only surface
-    // treats absent as on. A regression here would silently show a validating
-    // schema as toggled off.
     mockProjectConfig = configWithMappings([
       { appliesTo: ['docs/**'], file: '.ok/schemas/doc.schema.json' },
     ]);
@@ -319,14 +292,12 @@ describe('FrontmatterPluginSection — schema browser', () => {
     expect(box.textContent).toContain('doc.schema.json');
     expect(box.textContent).not.toContain('unmapped.json');
     expect(box.textContent).not.toContain('markdownlint config');
-    // Glob findings are shown on the glob, never here — see the suite below.
     expect(box.textContent).not.toContain('matches no docs');
   });
 
   test('the trash affordance confirms, deletes the file, and wipes its mapping', async () => {
     renderSection();
     fireEvent.click(screen.getByTestId('frontmatter-schema-delete-.ok/schemas/doc.schema.json'));
-    // Nothing happens until the dialog confirms.
     expect(deleted).toEqual([]);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await Promise.resolve();
@@ -386,7 +357,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
     const flagged = row.querySelectorAll('[data-tag-problem="true"]');
     expect(flagged).toHaveLength(1);
     expect(flagged[0]?.textContent).toContain('docs/**');
-    // Shown on the glob, so the list that couldn't say WHICH glob is gone.
     expect(screen.queryByTestId('frontmatter-config-problems')).toBeNull();
   });
 
@@ -406,8 +376,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
   });
 
   test('a glob finding never falls back to the list when its row is off screen', () => {
-    // One home per finding. Search is transient and author-driven — clearing
-    // it brings the pill (and its warning) straight back.
     mockLintData = { effective: null, configProblems: [UNMATCHED_DOCS] };
     renderSection();
     fireEvent.change(screen.getByTestId('frontmatter-schema-search'), {
@@ -419,12 +387,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
   });
 
   test('a finding for a glob that is no longer authored stays out of the list', () => {
-    // The reported bug: deleting a red glob removed the pill, and the finding
-    // — still live because the config channel is composed from the on-disk
-    // config.yml and lags the CRDT write — surfaced in the list for a moment
-    // before the next lint cleared it. It read as a warning about a pattern
-    // that no longer existed. This is that window: config already has the
-    // glob gone, the server has not caught up.
     mockProjectConfig = configWithMappings([
       { appliesTo: ['other/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
     ]);
@@ -437,8 +399,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
   });
 
   test('a stale finding does not redden whichever glob happens to remain', () => {
-    // Matching is by exact pattern, so the surviving entry must not inherit a
-    // deleted sibling's warning.
     mockProjectConfig = configWithMappings([
       { appliesTo: ['other/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
     ]);
@@ -470,8 +430,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
     renderSection();
 
     const row = screen.getByTestId('frontmatter-schema-row-.ok/schemas/doc.schema.json');
-    // Not `[data-slot="badge"] span`: a flagged pill is wrapped in a Radix
-    // TooltipTrigger with `asChild`, whose own data-slot replaces the badge's.
     const pill = [...row.querySelectorAll('[data-slot="tag-pill-input"] button')].find(
       (el) => el.textContent === 'blog',
     ) as HTMLElement;
@@ -492,10 +450,6 @@ describe('FrontmatterPluginSection — glob problems ride on the glob', () => {
 });
 
 describe('FrontmatterPluginSection — findings with no pill to land on', () => {
-  // A row binds to the FIRST mapping for its file and only mounts the glob
-  // input when that mapping is enabled, but the server reports problems per
-  // mapping entry. These shapes have no pill that can ever carry the finding,
-  // so suppressing them would silently unvalidate docs that are governed.
   const UNMATCHED_B =
     'unmatched appliesTo glob "b/**" — matches no docs in this project (frontmatter mapping for .ok/schemas/doc.schema.json)';
 
@@ -516,7 +470,6 @@ describe('FrontmatterPluginSection — findings with no pill to land on', () => 
   });
 
   test('an enabled mapping behind a disabled first one keeps its finding in the list', () => {
-    // The row binds to the disabled mapping, so the glob input never mounts.
     mockProjectConfig = configWithMappings([
       { file: '.ok/schemas/doc.schema.json', enabled: false },
       { appliesTo: ['b/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
@@ -532,8 +485,6 @@ describe('FrontmatterPluginSection — findings with no pill to land on', () => 
   });
 
   test('a pattern the bound enabled mapping carries stays out of the list', () => {
-    // The pill is where this finding lives — including while search hides the
-    // row, which is the trade-off this surface deliberately keeps.
     mockProjectConfig = configWithMappings([
       { appliesTo: ['b/**'], file: '.ok/schemas/doc.schema.json', enabled: true },
     ]);
@@ -577,7 +528,6 @@ describe('FrontmatterPluginSection — folder picker + live match count', () => 
     renderSection();
     fireEvent.click(screen.getByTestId(`frontmatter-schema-pick-folders-${FILE}`));
     fireEvent.click(screen.getByTestId(`frontmatter-schema-folder-item-${FILE}-docs`));
-    // The mapping's only glob is gone — appliesTo drops entirely (every doc).
     expect(lastSchemas()[0]?.appliesTo).toBeUndefined();
   });
 

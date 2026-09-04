@@ -12,9 +12,6 @@ import {
 } from './guarded-fetch.ts';
 import { isPublicUnicastIp } from './ip-classifier.ts';
 
-// Force a hostname to a chosen address so the real validator can be exercised
-// without touching DNS. Anything that isn't a named internal host resolves to
-// the loopback rig.
 const forceResolve =
   (map: Record<string, string>): HostResolver =>
   async (hostname) => {
@@ -38,7 +35,6 @@ describe('guardedFetch admission (real classifier, no network reached)', () => {
     'http://10.0.0.1/',
     'http://192.168.1.1/',
     'http://[::1]/',
-    // Encoded loopback spellings the classifier canonicalizes before deciding.
     'http://0x7f000001/',
     'http://2130706433/',
     'http://0177.0.0.1/',
@@ -187,18 +183,8 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
   const HUGE_PAGE_HEAD =
     '<html><head><title>Huge Page</title><meta name="description" content="streams forever"></head>';
   let hugeStream = { closedEarly: false, finishedAll: false };
-  // Resolves when the huge-streaming socket closes, so the test waits on that
-  // event instead of polling a flag. Reassigned per request, with the resolver
-  // captured in that request's own close handler, so a late close from an
-  // earlier run resolves its own promise rather than the current run's (keeps
-  // the rig correct if this suite ever gains test.retry or test.concurrent).
   let hugeClosed: Promise<void> = Promise.resolve();
 
-  // The rig binds loopback; a public hostname resolves to it via the injected
-  // resolver, and the guard is told to treat that one loopback address as
-  // public so post-admission behavior can be exercised over a real socket.
-  // Every OTHER address (including redirect targets) still runs the real
-  // classifier, so the SSRF property is decided by the real guard.
   const rigResolver = forceResolve({ 'internal.example': '10.0.0.1' });
   const allowRigLoopback = (ip: string) => ip === '127.0.0.1' || isPublicUnicastIp(ip);
   const withRig = { resolve: rigResolver, isAddressAllowed: allowRigLoopback };
@@ -260,8 +246,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
         return;
       }
       if (path === '/gzip-bomb') {
-        // Tiny on the wire, far past the cap once decompressed — the guard
-        // must count DECOMPRESSED bytes to catch it.
         res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip' });
         res.end(gzipSync('x'.repeat(64 * 1024)));
         return;
@@ -277,8 +261,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
         return;
       }
       if (path === '/huge-streaming') {
-        // GitHub-shaped page: the head arrives in the first write, then a body
-        // far past the byte cap keeps streaming until the client hangs up.
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.write(HUGE_PAGE_HEAD);
         const observed = { closedEarly: false, finishedAll: false };
@@ -306,9 +288,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
         return;
       }
       if (path === '/marker-in-head-script') {
-        // A </head> spelled inside a head-level <script> string, then the REAL
-        // head. A context-blind byte scan stops at the script-internal marker
-        // and loses the title; the extractor-shared boundary skips the script.
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(
           `<html><head><script>var s='</head><body>';</script>` +
@@ -317,9 +296,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
         return;
       }
       if (path === '/head-end-past-cap-multichunk') {
-        // A non-marker preamble in one write, then the head-end in a later
-        // write. Only counting the preamble (`received`) pushes the total past
-        // the cap, so the guard must add it to the in-chunk offset.
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.write('a'.repeat(80));
         setTimeout(() => res.end(`${'b'.repeat(37)}</head>tail`), 20);
@@ -357,9 +333,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
         return;
       }
       if (path === '/gzip-huge-head-first') {
-        // Tiny on the wire; decompressed far past the cap used by the test —
-        // but the head ends early, so the scan (which runs on DECOMPRESSED
-        // bytes) must admit it where the old whole-body read rejected it.
         res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip' });
         res.end(
           gzipSync(`<html><head><title>Zipped</title></head><body>${'w'.repeat(200 * 1024)}`),
@@ -399,8 +372,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
     lastRequest = null;
     const result = await guardedFetch(`http://rig.example:${port}/ok`, withRig);
     expect(result.ok).toBe(true);
-    // The socket connected to the validated IP but the Host header carries the
-    // original name — proof the pin swapped the connect target, not the identity.
     expect(lastRequest?.host).toBe(`rig.example:${port}`);
     expect(lastRequest?.ua).toBe('OpenKnowledge-LinkPreview/1.x');
     expect(lastRequest?.cookie).toBeUndefined();
@@ -430,8 +401,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
   });
 
   test('caps the DECOMPRESSED size, not the wire size (gzip-bomb guard)', async () => {
-    // The compressed payload is well under the cap; only decompressed
-    // accounting can reject it.
     const result = await guardedFetch(`http://rig.example:${port}/gzip-bomb`, {
       ...withRig,
       maxBytes: 8 * 1024,
@@ -513,13 +482,8 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
     const result = await guardedFetch(`http://rig.example:${port}/huge-streaming`, withRig);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // The body is the exact head prefix — nothing past head-end is buffered,
-    // regardless of how the runtime coalesced the filler into chunks.
     expect(new TextDecoder().decode(result.body)).toBe(HUGE_PAGE_HEAD);
     expect(result.body.byteLength).toBeLessThanOrEqual(DEFAULT_MAX_BYTES);
-    // The reader hung up on the still-streaming remainder rather than consuming
-    // the multi-MB body: wait for the socket-close event, failing loudly if it
-    // never arrives instead of polling a flag on a fixed interval.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<'timeout'>((resolve) => {
       timer = setTimeout(() => resolve('timeout'), 2000);
@@ -535,12 +499,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
     const result = await guardedFetch(`http://rig.example:${port}/marker-in-head-script`, withRig);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // The returned prefix is EXACTLY the real head (reaching past the
-    // script-internal `</head>` to the real one), so the metadata extractor
-    // still sees the title. An exact match kills both mutants: truncated-too-early
-    // (stopping at the script-internal marker drops the title) and
-    // truncated-too-late (the whole 1 KB-body response also contains both the
-    // title and the script string, so a substring check would pass on it too).
     const body = new TextDecoder().decode(result.body);
     expect(body).toBe(
       "<html><head><script>var s='</head><body>';</script><title>RealTitle</title></head>",
@@ -564,7 +522,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // 64KB of body filler against a 4KB cap: only head-end termination admits it.
     expect(new TextDecoder().decode(result.body)).toBe('<html><head><title>NoClose</title><body ');
   });
 
@@ -587,10 +544,6 @@ describe('guardedFetch against a loopback rig (real socket)', () => {
   });
 
   test('rejects as oversized when head-end clears the cap only after earlier chunks count', async () => {
-    // 80-byte preamble in chunk one, then </head> at offset 44 of chunk two:
-    // oversized only if the guard adds the 80 already received to the in-chunk
-    // offset (80 + 44 = 124 > 100). A check that dropped `received` would admit
-    // an over-cap body across writes.
     const result = await guardedFetch(`http://rig.example:${port}/head-end-past-cap-multichunk`, {
       ...withRig,
       maxBytes: 100,

@@ -1,15 +1,3 @@
-/**
- * `/collab/thread` WebSocket — frame routing between one connected client
- * and the `AcpThreadManager`.
- *
- * The socket carries the wire protocol defined in core's
- * `acp/thread-protocol.ts`: structured JSON frames both ways, with
- * per-thread event replay driven by `subscribe { sinceSeq }`. Gating
- * (loopback + workspace-host) happens at the upgrade site in
- * `mcp-mount.ts` / the dev Vite plugin — by the time this module sees a
- * socket it is trusted to the same level as the mutating HTTP surface.
- */
-
 import type {
   ThreadErrorCode,
   ThreadServerFrame,
@@ -18,7 +6,6 @@ import { parseThreadClientFrame } from '@inkeep/open-knowledge-core/acp/thread-p
 import type { PinoLogger } from '../logger.ts';
 import { type AcpThreadManager, ThreadOpError } from './thread-manager.ts';
 
-/** Minimal structural WS shape (matches `ws`'s WebSocket where we need it). */
 interface ThreadSocket {
   send(data: string): void;
   close(code?: number, reason?: string): void;
@@ -73,8 +60,6 @@ export function attachAcpThreadSocket(
               settings: frame.settings,
             });
             send({ op: 'created', reqId: frame.reqId, info });
-            // Creating implies interest: auto-subscribe from the beginning
-            // so the creator renders the spawn/handshake status events.
             await subscribeTo(info.threadId, 0);
             return;
           }
@@ -89,8 +74,6 @@ export function attachAcpThreadSocket(
               frame.attachments,
             );
             send({ op: 'resumed', reqId: frame.reqId, info });
-            // Resuming implies interest, same as create. Usually a no-op —
-            // the client opened (and subscribed to) the archived tab first.
             await subscribeTo(frame.threadId, 0);
             return;
           }
@@ -132,10 +115,6 @@ export function attachAcpThreadSocket(
           }
           case 'queue_edit': {
             const applied = manager.editQueued(frame.threadId, frame.id, frame.content);
-            // Both outcomes answer on the reqId when the client asked to be
-            // told. A positive ack is what makes the refusal reliable: the
-            // `info` frames this thread emits for unrelated reasons would
-            // otherwise settle the edit before the error could arrive.
             if (frame.reqId !== undefined) {
               if (applied) {
                 send({ op: 'queue_edited', reqId: frame.reqId, threadId: frame.threadId });
@@ -214,13 +193,8 @@ export function attachAcpThreadSocket(
   const subscribeTo = async (threadId: string, sinceSeq: number): Promise<void> => {
     if (subscriptions.has(threadId)) return;
     const sink = (frame: ThreadServerFrame): void => send(frame);
-    // Claim the slot BEFORE the async replay so a racing second subscribe
-    // for the same thread no-ops instead of double-attaching.
     subscriptions.set(threadId, sink);
     try {
-      // Both the `subscribed` announcement and the replay that follows it
-      // reach the client through this sink — the manager emits them in the
-      // one order that lets a client tell replayed history from live traffic.
       await manager.subscribe(threadId, sinceSeq, sink);
     } catch (err) {
       subscriptions.delete(threadId);

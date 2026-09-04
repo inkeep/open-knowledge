@@ -1,30 +1,7 @@
-/**
- * The shared removal engine behind `ok deinit` (one project) and `ok uninstall`
- * (the whole machine) — a pure plan builder + an injectable executor, following
- * the `clean.ts` house pattern (`buildCleanPlan` / `runClean`).
- *
- * `buildDeinitPlan` / `buildUninstallPlan` return an ordered list of typed,
- * data-only `RemovalOp`s (no closures) so a `--dry-run` can render the exact
- * plan without touching anything, and every builder is unit-testable in
- * isolation. `runRemoval` is the SINGLE execution site: it dispatches each op by
- * `kind`, wraps every op in its own try/catch, and returns `{ removed, failed }`
- * — one op failing (a locked keychain, an EACCES dir, an unparseable config)
- * never aborts the rest of the run.
- *
- * Ordering is load-bearing for uninstall: stop servers first; remove the
- * `~/.ok` machinery dir LAST, so the run's own file logger (which writes under
- * `~/.ok/logs`) survives until the end.
- */
-
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { PROJECT_SKILL_PROJECTION_IGNORE_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
-// `resolveShadowDir` (resolves `<gitdir>/ok/`, worktree-aware; throws on a
-// malformed/inaccessible .git pointer) lives in the node:fs-importing subpath
-// the core barrel omits. Used over `getShadowRepoPath` so a shadow dir that
-// exists WITHOUT a HEAD (a torn init) is still swept — the executor's own
-// existsSync gates the actual removal.
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';
 import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
@@ -54,18 +31,8 @@ import { removeOwnLaunchEntry } from './launch-json-removal.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
 import { probeCollabClients, runStop } from './stop.ts';
 
-// ---------------------------------------------------------------------------
-// Op model
-// ---------------------------------------------------------------------------
-
-/** Section a `RemovalOp` renders under in the confirmable plan. */
 export type RemovalGroup = string;
 
-/**
- * A single removal operation, as pure data. The executor interprets `kind`; no
- * op carries a closure so plans stay serializable + comparable (for `--json`
- * and tests).
- */
 export type RemovalOp =
   | { kind: 'stop-server'; group: RemovalGroup; label: string; lockDir: string }
   | { kind: 'keychain-token'; group: RemovalGroup; label: string; host: string }
@@ -80,7 +47,6 @@ export type RemovalOp =
       scope: 'user' | 'project';
       cwd: string;
       home: string;
-      /** Explicit config path (project scope); user scope resolves from the target. */
       configPath?: string;
     }
   | { kind: 'launch-entry'; group: RemovalGroup; label: string; projectRoot: string }
@@ -90,20 +56,8 @@ export type RemovalOp =
       group: RemovalGroup;
       label: string;
       path: string;
-      /** Child names under `path` to KEEP (the `~/.ok/skills` carve-out). */
       preserve?: string[];
-      /** Only remove when `path`'s `state.json` proves it is ours (legacy dir). */
       requireOurState?: boolean;
-      /**
-       * Assert `path` is contained within this project root before removing
-       * (via `assertProjectRemovalSafe`) — set for project-scoped removals so
-       * a planted ancestor symlink (a `.claude -> /etc` in a cloned repo) or a
-       * poisoned skill name in `installed-skills.json` can't route the `rmSync`
-       * outside the project. A symlink at `path` itself is fine (OK's skill
-       * projections are symlinks; removal unlinks the link, not its target).
-       * Unset for out-of-project targets (`~/.ok`, `~/Library`, the shadow
-       * repo — which legitimately lives outside a linked worktree).
-       */
       containWithin?: string;
     };
 
@@ -112,16 +66,11 @@ export interface RemovalPlan {
   ops: RemovalOp[];
 }
 
-/** Per-op result. `not-present` = nothing was there (a clean no-op);
- *  `skipped` = deliberately left (foreign config, unverified dir);
- *  `failed` = an error the run isolated + continued past. */
 type RemovalStatus = 'removed' | 'not-present' | 'skipped' | 'failed';
 
 interface RemovalOpResult {
   op: RemovalOp;
   status: RemovalStatus;
-  /** Bounded human detail — a decline reason, a foreign marker, an error, or a
-   *  manual-removal hint. Never config contents. */
   detail?: string;
 }
 
@@ -131,24 +80,14 @@ export interface RemovalOutcome {
   failed: RemovalOpResult[];
 }
 
-// ---------------------------------------------------------------------------
-// Plan builders (pure)
-// ---------------------------------------------------------------------------
-
 function tildify(p: string, home: string): string {
   return p === home ? '~' : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p;
 }
 
-/** POSIX-ify a project-relative path for comparison against `getOkArtifactPaths`. */
 function toPosix(p: string): string {
   return sep === '/' ? p : p.split(sep).join('/');
 }
 
-/**
- * The per-project removal ring — reused by `ok deinit` AND by `ok uninstall`'s
- * recent-projects sweep. Removes that project's OK footprint while leaving the
- * user's markdown content untouched.
- */
 export function deinitOps(
   projectRoot: string,
   home: string,
@@ -156,7 +95,6 @@ export function deinitOps(
 ): RemovalOp[] {
   const ops: RemovalOp[] = [];
 
-  // 1. Stop that project's server first, so no process outlives its files.
   ops.push({
     kind: 'stop-server',
     group,
@@ -164,8 +102,6 @@ export function deinitOps(
     lockDir: resolveLockDir(projectRoot),
   });
 
-  // 2. Surgically remove OK's own entry from each project MCP config (shared
-  //    files — a user's other servers are preserved).
   const mcpRelPaths = new Set<string>();
   for (const id of ALL_EDITOR_IDS) {
     const target = EDITOR_TARGETS[id];
@@ -184,7 +120,6 @@ export function deinitOps(
     });
   }
 
-  // 3. Surgically remove OK's launch.json entry (shared file; user configs kept).
   ops.push({
     kind: 'launch-entry',
     group,
@@ -192,7 +127,6 @@ export function deinitOps(
     projectRoot,
   });
 
-  // 4. Strip OK's lines from .git/info/exclude.
   ops.push({
     kind: 'git-exclude',
     group,
@@ -200,38 +134,24 @@ export function deinitOps(
     projectRoot,
   });
 
-  // 5. Whole-remove the OK-owned dirs/files — everything in the artifact set
-  //    EXCEPT the surgically-handled MCP configs + launch.json, PLUS the
-  //    built-in `open-knowledge` project-skill projection. That projection was
-  //    carved OUT of `getOkArtifactPaths` (it is always git-ignored, never in
-  //    the sharing toggle), but it is still part of OK's footprint, so deinit
-  //    must sweep it here.
   const removeRelPaths = new Set<string>([
     ...getOkArtifactPaths(projectRoot),
-    // Authored-skill projections are NOT in the sharing-toggle artifact set
-    // (they are the user's content, not OK's — see `getOkArtifactPaths`), but
-    // OK did create these projections, so deinit still sweeps them.
     ...getInstalledSkillProjectionPaths(projectRoot),
     ...PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   ]);
   for (const rel of removeRelPaths) {
     const bare = rel.replace(/\/$/, '');
-    if (mcpRelPaths.has(bare)) continue; // handled surgically
-    if (bare === '.claude/launch.json') continue; // handled by launch-entry
+    if (mcpRelPaths.has(bare)) continue;
+    if (bare === '.claude/launch.json') continue;
     ops.push({
       kind: 'remove-path',
       group,
       label: `Remove ${rel}`,
       path: join(projectRoot, bare),
-      // These paths (incl. skill-projection dirs whose names come from
-      // installed-skills.json) live under the project — guard the rmSync against
-      // a symlink/poisoned-name escape, matching the write side.
       containWithin: projectRoot,
     });
   }
 
-  // 6. The shadow repo (`<gitdir>/ok/`). A malformed/absent .git pointer means
-  //    there is nothing to remove.
   try {
     ops.push({
       kind: 'remove-path',
@@ -239,9 +159,7 @@ export function deinitOps(
       label: 'Remove the OK shadow repo (.git/ok/)',
       path: resolveShadowDir(projectRoot),
     });
-  } catch {
-    // No resolvable gitdir — no shadow repo to sweep.
-  }
+  } catch {}
 
   return ops;
 }
@@ -254,28 +172,17 @@ export interface UninstallPlanInput {
   home: string;
   platform: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
-  /** GitHub host whose keychain token to clear (default `github.com`). */
   host: string;
-  /** Live server lock dirs (from `discoverLockDirs()`). */
   lockDirs: string[];
-  /** The PATH-install manifest (from `readPathInstallMarker(home)`), or null. */
   marker: PathInstallMarker | null;
-  /** Project roots the user chose to `deinit` in the recent-projects sweep. */
   recentDeinitProjectRoots: string[];
-  /** Also remove user-authored content (`~/.ok/skills/`). */
   purgeContent: boolean;
 }
 
-/**
- * The full machine removal plan. Ordered: stop servers → credentials → PATH
- * shim → editor configs → skill bundles → application data → recent projects →
- * the `~/.ok` machinery dir LAST.
- */
 export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
   const { home, platform, host, lockDirs, marker, recentDeinitProjectRoots, purgeContent } = input;
   const ops: RemovalOp[] = [];
 
-  // 1. Stop every running server.
   for (const lockDir of lockDirs) {
     ops.push({
       kind: 'stop-server',
@@ -285,8 +192,6 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     });
   }
 
-  // 2. Credentials (keychain token + embeddings key; the auth.yml / secrets.yml
-  //    files are swept with ~/.ok, but the keychain token is out-of-dir).
   ops.push({
     kind: 'keychain-token',
     group: 'Credentials',
@@ -299,18 +204,15 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     label: 'Remove all embeddings API keys (secrets.yml)',
   });
 
-  // 3. PATH shim revert — strip the managed block from each recorded rc file and
-  //    remove recorded extra symlinks (both live OUTSIDE ~/.ok).
   ops.push(...pathRevertOps(marker, home));
 
-  // 4. Editor MCP configs (user-global, surgical).
   for (const id of ALL_EDITOR_IDS) {
     const target = EDITOR_TARGETS[id];
     let configPath: string;
     try {
       configPath = target.configPath('', home);
     } catch {
-      continue; // platform-unavailable target (e.g. Claude Desktop on Linux)
+      continue;
     }
     ops.push({
       kind: 'mcp-entry',
@@ -324,7 +226,6 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     });
   }
 
-  // 5. Skill bundles (built-in discovery + write-skill; central + per-host).
   for (const target of userGlobalSkillBundleTargets(home)) {
     ops.push({
       kind: 'remove-path',
@@ -334,17 +235,12 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     });
   }
 
-  // 6. Desktop application data — current userData + updater cache on every
-  //    supported platform, plus the identity-gated legacy userData on macOS.
   ops.push(...applicationDataOps(home, platform, input.env));
 
-  // 7. Recent projects — each selected project runs the deinit ring.
   for (const projectRoot of recentDeinitProjectRoots) {
     ops.push(...deinitOps(projectRoot, home, `Project: ${basename(projectRoot)}`));
   }
 
-  // 8. The ~/.ok machinery dir LAST (preserving user-authored skills unless
-  //    --purge-content), so the run's file logger under ~/.ok/logs survives.
   ops.push({
     kind: 'remove-path',
     group: 'Global directory',
@@ -358,11 +254,6 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
   return { scope: 'uninstall', ops };
 }
 
-/**
- * The rc files the desktop installer's `rcTargets` can write the managed block
- * into. Checked directly (independent of the marker) because the block is
- * SELF-IDENTIFYING via its fence markers — see `pathRevertOps`.
- */
 function standardRcFiles(home: string): string[] {
   return [
     join(home, '.zshrc'),
@@ -371,22 +262,6 @@ function standardRcFiles(home: string): string[] {
   ];
 }
 
-/**
- * PATH-shim revert ops.
- *
- * The managed rc block is stripped from the standard rc locations AND any
- * marker-recorded rc file — NOT only the marker's list. The block is
- * self-identifying (`# >>> open-knowledge cli >>>` … `<<<`), so it can be found
- * and removed WITHOUT the manifest; relying on the marker alone left the block
- * behind whenever the manifest was absent (a prior partial uninstall that
- * already removed `~/Library/.../OpenKnowledge`, an older install, or an
- * unreadable manifest) — the exact "won't fully leave" failure this exists to
- * prevent. Only rc files that exist are listed; the executor additionally
- * no-ops any file that turns out to hold no OK block.
- *
- * Extra symlinks live in arbitrary bin dirs and are NOT self-identifying, so
- * those still come only from the manifest.
- */
 function pathRevertOps(marker: PathInstallMarker | null, home: string): RemovalOp[] {
   const ops: RemovalOp[] = [];
   const rcCandidates = new Set([...standardRcFiles(home), ...(marker?.rcFiles ?? [])]);
@@ -411,7 +286,6 @@ function pathRevertOps(marker: PathInstallMarker | null, home: string): RemovalO
   return ops;
 }
 
-/** Desktop application-data dirs owned by OpenKnowledge. */
 export function applicationDataOps(
   home: string,
   platform: NodeJS.Platform,
@@ -431,8 +305,6 @@ export function applicationDataOps(
   ];
 
   if (platform === 'darwin') {
-    // The legacy dir name is generic ("Open Knowledge") — another vendor could
-    // own it — so it is only removed when its state.json proves it is ours.
     const legacy = desktopUserDataDir({ ...options, productName: DESKTOP_LEGACY_PRODUCT_NAME });
     ops.push({
       kind: 'remove-path',
@@ -453,33 +325,17 @@ export function applicationDataOps(
   return ops;
 }
 
-// ---------------------------------------------------------------------------
-// Executor
-// ---------------------------------------------------------------------------
-
 export interface RunRemovalDeps {
-  /** Clear the keychain token + auth.yml. Injectable (touches the real keychain). */
   clearToken?: (
     host: string,
   ) => Promise<{ touched: Array<'keychain' | 'file'>; keychainError?: string }>;
-  /** Clear a project's embeddings keys. Injectable (touches ~/.ok/secrets.yml). */
   clearEmbeddingsKey?: () => Promise<{ touched: Array<'file'> }>;
-  /**
-   * Stop a server. Injectable (SIGTERMs real processes). Returns both the count
-   * stopped AND any stops that FAILED — `runStop` reports a failed SIGTERM
-   * (EPERM, etc.) by return value, not by throwing, so the executor must inspect
-   * `failed` to avoid deleting files out from under a still-running server.
-   */
   stopServer?: (lockDir: string) => Promise<{
     stopped: number;
     failed: Array<{ pid: number; error: string }>;
   }>;
 }
 
-/**
- * Execute a removal plan, op by op, isolating every failure. Async because the
- * credential ops are. Returns `{ results, removed, failed }`.
- */
 export async function runRemoval(
   plan: RemovalPlan,
   deps: RunRemovalDeps = {},
@@ -489,9 +345,6 @@ export async function runRemoval(
   const stopServer =
     deps.stopServer ??
     (async (lockDir: string) => {
-      // `force` because the removal verbs disclose attached clients in the plan
-      // the user already confirmed; a second refusal here would double-prompt
-      // one decision.
       const outcome = await runStop({ lockDir, force: true, log: () => {}, error: () => {} });
       return {
         stopped: outcome.stopped.length,
@@ -519,12 +372,6 @@ export async function runRemoval(
   };
 }
 
-/**
- * One line per server in the plan that still has clients attached, for the
- * plan the user confirms. Disclosure only — `deinit`/`uninstall` remove the
- * `.ok/` those windows depend on, so a restart cannot bring them back and a
- * second confirmation would only re-ask the decision the plan prompt asks.
- */
 export async function describeAttachedClients(
   plan: RemovalPlan,
   probe: (lockDir: string) => Promise<number | null> = probeCollabClients,
@@ -551,11 +398,6 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
     case 'stop-server': {
       const { stopped, failed } = await deps.stopServer(op.lockDir);
       if (failed.length > 0) {
-        // A SIGTERM that failed (EPERM, foreign-host live PID) means a process
-        // may still be holding the files this run is about to remove. Surface it
-        // as failed so the exit code + summary reflect it and the user is warned
-        // — the run continues (per-op isolation), matching the SIGTERM-only,
-        // don't-await-exit stop model.
         const detail = failed.map((f) => `pid ${f.pid}: ${f.error}`).join('; ');
         return {
           op,
@@ -568,8 +410,6 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
     case 'keychain-token': {
       const { touched, keychainError } = await deps.clearToken(op.host);
       if (keychainError) {
-        // a locked/permission-denied keychain never aborts the run — mark
-        // it unresolved + hand the user a manual-removal recipe.
         return {
           op,
           status: 'failed',
@@ -588,12 +428,9 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       const { text, changed, emptyAfter } = stripManagedPathBlock(before);
       if (!changed) return { op, status: 'not-present' };
       if (emptyAfter) {
-        // The file was OK-owned (e.g. the fish conf) — nothing left, delete it.
         rmSync(op.rcFile, { force: true });
         return { op, status: 'removed', detail: 'file removed (was OK-owned)' };
       }
-      // Atomic write + mode preservation, matching the sibling config-removal
-      // paths — an interrupted write must never truncate a user's rc file.
       atomicWriteFileSync(op.rcFile, text, { mode: existingFileMode(op.rcFile) });
       return { op, status: 'removed' };
     }
@@ -611,11 +448,6 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       );
       switch (outcome.kind) {
         case 'removed':
-          // Pi's integration is two artifacts, and the second one — the
-          // folder-trust grant that lets Pi auto-load anything in that
-          // directory — is the one worth reporting on. A grant left standing
-          // under a "✓ Removed" line is the failure this branch exists to
-          // prevent. `undefined` is every other editor: nothing to say.
           switch (outcome.trust) {
             case undefined:
             case 'removed':
@@ -677,17 +509,10 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
     case 'git-exclude': {
       const excluded = getExcludedOkPaths(op.projectRoot);
       if (excluded.length === 0) return { op, status: 'not-present' };
-      // `removeOkPathsFromGitExclude` drains the legacy skill-projection lines
-      // internally, so passing the current artifact set is enough to clean an
-      // exclude file written by any build.
       const result = removeOkPathsFromGitExclude(
         op.projectRoot,
         getOkArtifactPaths(op.projectRoot),
       );
-      // `removeOkPathsFromGitExclude` reports a write failure by RETURN value
-      // (`{kind:'no-exclude', reason:'inaccessible'}`) — the outer try/catch
-      // can't see it — so a failed write to `.git/info/exclude` (EACCES / EROFS /
-      // ENOSPC) must surface here rather than be reported as removed.
       if (result.kind === 'no-exclude') {
         return result.reason === 'inaccessible'
           ? { op, status: 'failed', detail: 'could not write .git/info/exclude (inaccessible)' }
@@ -704,17 +529,9 @@ function executeRemovePath(op: Extract<RemovalOp, { kind: 'remove-path' }>): Rem
   if (op.requireOurState && !stateDirIsOurs(op.path)) {
     return { op, status: 'skipped', detail: 'not verified as OpenKnowledge — left untouched' };
   }
-  // For project-scoped removals, refuse to rmSync through a symlinked ANCESTOR
-  // that escapes the project (a planted `.claude -> /etc`). Throws on escape →
-  // caught by the per-op try/catch as `failed` (the safe direction). A symlink
-  // AT the path is allowed: OK installs skill projections as symlinks, and
-  // removal unlinks the link itself without touching its target.
   if (op.containWithin) {
     assertProjectRemovalSafe(op.path, op.containWithin);
   }
-  // lstat, not existsSync: existsSync follows the leaf, so a DANGLING
-  // projection symlink (target already swept) would read as absent and the
-  // orphan link would be left behind.
   let leafStat: ReturnType<typeof lstatSync> | undefined;
   try {
     leafStat = lstatSync(op.path);
@@ -729,8 +546,6 @@ function executeRemovePath(op: Extract<RemovalOp, { kind: 'remove-path' }>): Rem
   }
 
   if (op.preserve && op.preserve.length > 0) {
-    // Remove every child EXCEPT the preserved names, leaving the dir itself
-    // (with the preserved children) in place — the ~/.ok/skills carve-out.
     const keep = new Set(op.preserve);
     let removedAny = false;
     for (const entry of readdirSync(op.path)) {

@@ -1,9 +1,3 @@
-/**
- * One-shot auth query runners — `auth status` and `auth repos`.
- *
- * Both spawn the CLI via `process.execPath -e <script>` for deterministic
- * testing without depending on the project CLI being installed.
- */
 import { describe, expect, test } from 'vitest';
 import { runAuthReposSubprocess, runAuthStatusSubprocess } from './auth-query.ts';
 

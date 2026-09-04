@@ -21,21 +21,9 @@ import { writeSkillFile } from '@/lib/skills-api';
 
 export interface SkillFileCreateTarget {
   skill: SkillsListEntry;
-  /** Seed prefix for the path field (`references/` by default; a dir row seeds
-   *  its own path). */
   prefix?: string;
 }
 
-/**
- * Create a new bundle file inside a skill (§7 follow-up). The field holds the
- * full bundle-relative path, so nested folders come free — `references/deep/x.md`
- * creates `deep/` on write (the server mkdirs parents). Markdown lands as a
- * live editable doc and opens immediately; anything else (scripts, text
- * fixtures) is written fs-direct.
- */
-/** The one thing wrong with a non-empty, non-trailing-slash path — or null.
- *  Specific over exhaustive: the red text names the actual problem instead of
- *  reciting every rule at once. */
 function bundlePathProblem(trimmed: string): string | null {
   if (/\s/.test(trimmed)) return t`Spaces aren't allowed in the path`;
   const segments = trimmed.split('/');
@@ -69,20 +57,12 @@ export function SkillFileCreateDialog({
   if (!target) return null;
 
   const trimmed = path.trim();
-  // Mid-typing states are incomplete, not wrong: an empty field or a trailing
-  // slash is on its way to a valid path and gets a quiet hint, never a red
-  // error. Only input that can't become valid by typing more turns red.
   const incomplete = trimmed === '' || trimmed.endsWith('/');
   const problem = incomplete ? null : bundlePathProblem(trimmed);
   const invalid = incomplete || problem !== null;
   const canSave = !invalid && !saving;
-  // When the path nests, name the folder(s) that'll be created so the implicit
-  // mkdir is honest rather than a surprise.
   const folderPart = trimmed.includes('/') ? trimmed.split('/').slice(0, -1).join('/') : null;
 
-  // An extensionless basename becomes markdown: `references/notes` means
-  // notes.md to a person, and a bare file would only open in the read-only
-  // viewer. Explicit extensions (`run.sh`, `data.json`) are kept as typed.
   const basename = trimmed.split('/').pop() ?? '';
   const effective = basename !== '' && !basename.includes('.') ? `${trimmed}.md` : trimmed;
 
@@ -109,7 +89,6 @@ export function SkillFileCreateDialog({
       return;
     }
     toast.success(t`Created ${result.path}`);
-    // Markdown references open as live editable docs right away.
     if (isMd) {
       const docName = skillEntryFileLiveDocName(target.skill, effective);
       openTarget({ kind: 'doc', target: docName, docName });

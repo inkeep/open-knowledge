@@ -1,16 +1,3 @@
-/** QA canary — browser tier: real per-keystroke LIVE typing on <Steps> in source
- *  mode (the residual the integration rung cannot reach). Exercises per-char Y.Text
- *  deltas against the live bridge WITH the hidden-but-mounted WYSIWYG binding active
- *  — would an Observer-A write-back re-indent the doc and yank the caret mid-burst?
- *
- *  Cursor-jump oracle = TYPED-BURST CONTIGUITY: a 5-char burst typed character by
- *  character must land as one contiguous run. If the caret jumps mid-burst (a
- *  write-back remap), the run fragments — caught without reaching into CM internals.
- *
- *  Per-worker isolated server + tmpdir (playwright.config has no webServer) — does
- *  not touch a dev server on 5173.
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -46,10 +33,6 @@ const STEPS = [
 const readSource = (page: Page) =>
   page.evaluate(() => window.__activeProvider?.document?.getText('source')?.toString() ?? '');
 
-// Wait for the burst to land AND the source length to settle (Observer write-back
-// finished). Polls inside the page with setTimeout — page.waitForTimeout is banned
-// by the e2e STOP rule as a fixed-delay anti-flake smell; a condition-based poll
-// with a fail-fast tick ceiling is the sanctioned replacement.
 async function settleSource(page: Page, mustInclude: string) {
   await page.evaluate(
     (needle) =>
@@ -59,7 +42,7 @@ async function settleSource(page: Page, mustInclude: string) {
         let totalTicks = 0;
         const POLL_MS = 100;
         const REQUIRED_STABLE_TICKS = 3;
-        const MAX_TICKS = 100; // ~10s ceiling — fail fast, don't run to Playwright's 120s
+        const MAX_TICKS = 100;
         const tick = () => {
           totalTicks += 1;
           if (totalTicks > MAX_TICKS) {
@@ -104,15 +87,7 @@ test.beforeEach(async ({ page, api }) => {
   );
 });
 
-// B1 detects the source-typing double-materialization race in the
-// authoritative Y.Text: a source-mode-hidden WYSIWYG editor issuing an
-// autonomous structural fragment replace while server Observer B re-derives the
-// same span per keystroke, both inserts surviving the CRDT merge. The client
-// trigger is now gated (no autonomous structural write from a hidden editor)
-// and the server refuses to persist a provenance-confirmed doubled span, so the
-// burst lands contiguous. Contention-dependent, so validate under load.
 test.describe('QA canary — live per-keystroke typing on <Steps> (browser, source mode)', () => {
-  // B1 — live burst inside a Step body: caret stays put (burst contiguous), no re-indent.
   test('typing a burst into a Step body lands contiguous, no re-indent, no growth', async ({
     page,
   }) => {
@@ -123,19 +98,18 @@ test.describe('QA canary — live per-keystroke typing on <Steps> (browser, sour
       .getByText('Content one.', { exact: false })
       .first()
       .click();
-    await page.keyboard.press('End'); // end of the "Content one." line
-    await page.keyboard.type('ZZZZZ', { delay: 45 }); // per-char live burst
+    await page.keyboard.press('End');
+    await page.keyboard.type('ZZZZZ', { delay: 45 });
     await settleSource(page, 'ZZZZZ');
 
     const src = await readSource(page);
-    expect(src).toContain('Content one.ZZZZZ'); // contiguous => caret did NOT jump mid-burst
-    expect(src).not.toMatch(INDENTED_STEP); // no Observer-A re-indent write-back
+    expect(src).toContain('Content one.ZZZZZ');
+    expect(src).not.toMatch(INDENTED_STEP);
     expect((src.match(/<Step>/g) ?? []).length).toBe(3);
     expect((src.match(/<Steps>/g) ?? []).length).toBe(1);
-    expect(src.length).toBeLessThan(STEPS.length + 32); // no growth/duplication
+    expect(src.length).toBeLessThan(STEPS.length + 32);
   });
 
-  // B2 — live burst at a body-start boundary (right after the <Step> open tag).
   test('typing a burst at a Step body-start boundary lands contiguous, tags intact', async ({
     page,
   }) => {
@@ -146,19 +120,17 @@ test.describe('QA canary — live per-keystroke typing on <Steps> (browser, sour
       .getByText('Content two.', { exact: false })
       .first()
       .click();
-    await page.keyboard.press('Home'); // start of the "Content two." line
+    await page.keyboard.press('Home');
     await page.keyboard.type('QQQQQ', { delay: 45 });
     await settleSource(page, 'QQQQQ');
 
     const src = await readSource(page);
-    expect(src).toContain('QQQQQContent two.'); // contiguous at the boundary
+    expect(src).toContain('QQQQQContent two.');
     expect(src).not.toMatch(INDENTED_STEP);
     expect((src.match(/<Step>/g) ?? []).length).toBe(3);
     expect(src.length).toBeLessThan(STEPS.length + 32);
   });
 
-  // B3 — in-browser reopen: edit, navigate away + back (client recycle + re-sync),
-  // assert the edit survived with no corruption.
   test('in-browser reopen after a live edit preserves bytes, no corruption', async ({
     page,
     api,
@@ -174,14 +146,10 @@ test.describe('QA canary — live per-keystroke typing on <Steps> (browser, sour
     await page.keyboard.type('RRRRR', { delay: 45 });
     await settleSource(page, 'RRRRR');
 
-    // Navigate away to a different doc, then back — evicts the editor + re-syncs.
     const other = `qa-other-${randomUUID().slice(0, 8)}`;
     await api.createPage(`${other}.md`);
     await page.goto(`/#/${other}`);
     await waitForProvider(page);
-    // Editor mode persists (localStorage 'ok-editor-mode-v1') — after the source
-    // toggle above, the fresh doc opens in SOURCE mode, so .ProseMirror is hidden.
-    // Wait for the source surface, not WYSIWYG.
     await page.waitForSelector('.cm-content');
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
@@ -192,7 +160,7 @@ test.describe('QA canary — live per-keystroke typing on <Steps> (browser, sour
     );
 
     const src = await readSource(page);
-    expect(src).toContain('Content three.RRRRR'); // edit survived the reopen, contiguous
+    expect(src).toContain('Content three.RRRRR');
     expect(src).not.toMatch(INDENTED_STEP);
     expect((src.match(/<Step>/g) ?? []).length).toBe(3);
     expect(src.length).toBeLessThan(STEPS.length + 32);

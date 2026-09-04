@@ -6,7 +6,7 @@ import { OpenClawIcon } from '@/components/icons/openclaw';
 import { OpenCodeIcon } from '@/components/icons/opencode';
 import { PiIcon } from '@/components/icons/pi';
 
-const AGENTS = [
+export const AGENTS = [
   { name: 'Claude', Icon: ClaudeIcon },
   { name: 'Codex', Icon: CodexIcon },
   { name: 'Cursor', Icon: CursorIcon },

@@ -1,15 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleDocumentRead`.
- *
- * Asserts the canonical RFC 9457 wire shape:
- *   - happy path: status 200, `Content-Type: application/json`, body parses
- *     against `DocumentReadSuccessSchema`, no `ok` discriminator.
- *   - unsafe docName → `urn:ok:error:invalid-request`.
- *   - reserved (system) docName → `urn:ok:error:reserved-doc-name`.
- *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
- *     `Allow: GET` header.
- */
-
 import { DocumentReadSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

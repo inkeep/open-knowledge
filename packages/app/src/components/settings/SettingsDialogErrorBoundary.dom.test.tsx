@@ -56,8 +56,6 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
       </div>,
     );
 
-    // Containment proof: the sibling rendered OUTSIDE the boundary is still
-    // mounted. Pre-fix, the lazy rejection unmounted the entire React root.
     expect(screen.getByTestId('app-survives').textContent).toBe('editor still here');
 
     const alert = screen.getByRole('alert');
@@ -65,7 +63,6 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
     expect(document.getElementById('settings-body-error-title')?.textContent).toBe(
       'Settings failed to load',
     );
-    // The dynamic-import message gets the post-deploy-specific explanation.
     expect(screen.getByText(/newer version may have been deployed/i)).toBeTruthy();
     const reload = screen.getByRole('button', { name: /reload/i });
     expect(reload.tagName).toBe('BUTTON');
@@ -73,13 +70,6 @@ describe('SettingsDialogErrorBoundary (Tier-3 mount)', () => {
   });
 
   test('a bare "Failed to fetch" error (without the dynamic-import phrase) gets the post-deploy explanation', () => {
-    // Browsers/runtimes sometimes surface chunk-load failures as just
-    // "Failed to fetch" without the longer dynamic-import phrasing —
-    // the fallback's discriminator regex matches BOTH arms so users
-    // see the post-deploy-specific message in either case. Pins the
-    // second alternation arm so a future narrowing (e.g. dropping
-    // the `Failed to fetch` token) does not silently downgrade those
-    // errors to the generic message.
     throwError = new Error('Failed to fetch');
     render(
       <SettingsDialogErrorBoundary>

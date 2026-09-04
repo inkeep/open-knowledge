@@ -1,13 +1,6 @@
-/**
- * Human + machine rendering for `ok deinit` / `ok uninstall` — grouped plan
- * output (rendered like `seed.ts`'s `formatPlanBody`) and the post-run outcome
- * summary, plus the `--json` shape.
- */
-
 import { accent, dim, error as errorColor, success, warning } from '../ui/colors.ts';
 import type { RemovalOp, RemovalOutcome, RemovalPlan } from './removal-plan.ts';
 
-/** Group ops by their section, preserving first-seen order. */
 function groupOps(ops: RemovalOp[]): Map<string, RemovalOp[]> {
   const groups = new Map<string, RemovalOp[]>();
   for (const op of ops) {
@@ -18,7 +11,6 @@ function groupOps(ops: RemovalOp[]): Map<string, RemovalOp[]> {
   return groups;
 }
 
-/** The confirmable plan body: each group's ops as a bulleted removal list. */
 export function formatRemovalPlan(plan: RemovalPlan): string {
   if (plan.ops.length === 0) return dim('Nothing to remove.');
   const lines: string[] = [];
@@ -32,7 +24,6 @@ export function formatRemovalPlan(plan: RemovalPlan): string {
   return lines.join('\n');
 }
 
-/** Post-run summary: counts + every skipped/failed op with its reason. */
 export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   const removed = outcome.removed.length;
   const failed = outcome.failed.length;
@@ -49,9 +40,6 @@ export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   );
   if (notPresent > 0) lines.push(dim(`  ${notPresent} already absent.`));
 
-  // A removal that succeeded but left something behind on purpose still owes
-  // the user that sentence — otherwise "✓ Removed" reads as a clean sweep
-  // while, say, Pi's folder-trust grant is still standing.
   for (const r of outcome.removed) {
     if (r.detail === undefined) continue;
     lines.push(`  ${warning('·')} ${r.op.label} — ${dim(r.detail)}`);
@@ -78,17 +66,6 @@ interface RemovalItem {
   detail?: string;
 }
 
-/**
- * The `--json` shape. A `mode` discriminant keeps a dry-run PLAN (what WOULD be
- * removed, under `planned`) distinct from an applied OUTCOME (what actually
- * happened, under `removed`/`skipped`/`failed`) — so a consumer never confuses
- * "these are the ops I intend to run" with "these ops succeeded".
- *
- * `attachedClients` carries the live-client probe on BOTH modes, empty when
- * nothing is attached. The human-readable path warns that those editor windows
- * stop working and that restarting will not recover them; a machine consumer
- * that only reads the removal lists would otherwise never learn it.
- */
 export type RemovalJson =
   | {
       scope: 'uninstall' | 'deinit';

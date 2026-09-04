@@ -120,8 +120,6 @@ vi.doMock('@/components/ui/skeleton', () => ({
 }));
 
 vi.doMock('@/components/ui/form', () => ({
-  // shadcn's Form *is* RHF's FormProvider — keep that so section bodies that
-  // read `useFormContext` (SettingsField) render instead of crashing on null.
   Form: ({ children, ...form }: { children?: ReactNode; [key: string]: unknown }) => (
     <FormProvider {...(form as never)}>
       <form>{children}</form>
@@ -289,16 +287,10 @@ vi.doMock('@/hooks/use-enable-sync-with-confirm', () => ({
     syncDefaultWriterCalls.push(next);
     return { ok: true };
   },
-  // Accept-and-discard stub: this file exercises section dispatch, not the
-  // cadence controls — those are covered against the real hook in
-  // SettingsDialogBody.sync-mode.dom.test.tsx.
   useSyncIntervalWriter:
     () => (_next: { pullIntervalSeconds: number; pushIntervalSeconds: number }) => ({
       ok: true as const,
     }),
-  // Thin recorder mirroring the real hook's gating so the section's wiring is
-  // exercised (deep confirm-flow behavior is covered against the real hook in
-  // SettingsDialogBody.sync-mode.dom.test.tsx and the hook's own test).
   useSyncModeSelection: (writer: ModeWriterFn, currentMode: string) => {
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [pendingMode, setPendingMode] = useState<'follow' | 'full' | null>(null);
@@ -428,8 +420,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
   test('project preferences stacks attachments and content rules under one page title', async () => {
     await renderBody({ activeId: 'project-preferences' });
 
-    // The page container is a labelled region, not a bare div: its heading id is
-    // what names the region for a screen reader, the same wiring every block uses.
     const page = screen.getByTestId('settings-project-preferences');
     expect(page.tagName).toBe('SECTION');
     expect(page.getAttribute('aria-labelledby')).toBe('settings-project-preferences-title');
@@ -438,14 +428,10 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
     expect(screen.getByTestId('settings-attachments')).not.toBeNull();
     expect(screen.getByTestId('settings-content-rules')).not.toBeNull();
-    // Link previews stayed a standalone section, not a block on this page.
     expect(screen.queryByTestId('settings-link-previews')).toBeNull();
 
-    // Every heading states where its values are stored: the page title plus
-    // both blocks, all of which write the shared, committed config.
     expect(screen.getAllByTestId('settings-scope-badge-project').length).toBe(3);
 
-    // Headings cascade: one h3 page title above h4 block titles.
     const pageTitles = screen.getAllByRole('heading', { level: 3 });
     expect(pageTitles.length).toBe(1);
     expect(pageTitles[0]?.textContent).toBe('Preferences');
@@ -477,26 +463,18 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'sync' });
 
-    // No okDesktop bridge in jsdom → the sharing block renders its CLI-pointer
-    // stub, anchored for search navigation.
     expect(document.querySelector('[data-field="section:sharing"]')).not.toBeNull();
 
-    // Headings cascade: one h3 "Sync & sharing" page title above the h4 Sync and
-    // Config sharing blocks. The two blocks are peers — Config sharing must not
-    // regress to an h4 under an h3 Sync (which would read as subordinate).
     const pageTitles = screen.getAllByRole('heading', { level: 3 });
     expect(pageTitles.map((h) => h.textContent)).toEqual(['Sync & sharing']);
     const blockTitles = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent);
     expect(blockTitles).toContain('Sync');
     expect(blockTitles).toContain('Config sharing');
 
-    // Same labelled-region wiring as the project Preferences page.
     const page = screen.getByTestId('settings-sync-sharing');
     expect(page.tagName).toBe('SECTION');
     expect(page.getAttribute('aria-labelledby')).toBe('settings-sync-sharing-title');
 
-    // Each block states its own storage scope (Sync per-machine, Config sharing
-    // committed); the grouping page header carries no badge.
     expect(screen.getByTestId('settings-scope-badge-project-local').textContent).toBe(
       'This machine',
     );
@@ -644,7 +622,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
         webUrl: 'https://github.com/inkeep/open-knowledge',
       },
     };
-    // Legacy `enabled: true` derives to full mode.
     projectLocalConfig = { autoSync: { enabled: true } };
 
     await renderBody({ activeId: 'sync' });
@@ -658,7 +635,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
       'noopener noreferrer',
     );
 
-    // Selecting Off is the safe direction — commits immediately, no confirm.
     fireEvent.click(screen.getByTestId('settings-sync-mode-off'));
     expect(syncModeSelectCalls).toEqual(['off']);
     expect(syncModeWriterCalls).toEqual(['off']);
@@ -676,8 +652,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'sync' });
 
-    // Explicit mode wins; the control is disabled until the project-local config
-    // has hydrated (cold-start guard).
     expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-value')).toBe(
       'follow',
     );
@@ -699,32 +673,24 @@ describe('SettingsDialogBody section runtime dispatch', () => {
         webUrl: 'https://github.com/inkeep/open-knowledge',
       },
     };
-    // Maintainer has committed "off by default".
     projectConfig = { autoSync: { default: false } };
     projectSynced = true;
 
     await renderBody({ activeId: 'sync' });
 
-    // Current committed stance reflected on the group's selected value.
     expect(screen.getByTestId('settings-sync-default-toggle').getAttribute('data-value')).toBe(
       'off',
     );
 
-    // This control writes the COMMITTED project binding while its block heading
-    // says This machine, so it states its own scope. Without this the heading
-    // would assert "not shared via git" over a control that is.
     const defaultBlock = within(screen.getByTestId('settings-sync-default'));
     expect(defaultBlock.getByTestId('settings-scope-badge-project').textContent).toBe('Project');
 
-    // "Full by default" writes the legacy boolean seed `true` (older builds honor it).
     fireEvent.click(screen.getByTestId('settings-sync-default-full'));
     expect(syncDefaultWriterCalls).toEqual([true]);
 
-    // "Pull-only by default" writes the widened mode string.
     fireEvent.click(screen.getByTestId('settings-sync-default-follow'));
     expect(syncDefaultWriterCalls).toEqual([true, 'follow']);
 
-    // "None" clears the committed seed (writes null → RFC 7396 delete).
     fireEvent.click(screen.getByTestId('settings-sync-default-ask'));
     expect(syncDefaultWriterCalls).toEqual([true, 'follow', null]);
   });
@@ -744,9 +710,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'sync' });
 
-    // Cold-start guard: a click before the committed doc syncs could overwrite a
-    // maintainer's committed default with the schema default (null), silently
-    // re-enabling the onboarding prompt for every collaborator.
     expect(screen.getByTestId('settings-sync-default-toggle').getAttribute('data-disabled')).toBe(
       'true',
     );
@@ -769,15 +732,12 @@ describe('SettingsDialogBody section runtime dispatch', () => {
 
     await renderBody({ activeId: 'sync' });
 
-    // A denied probe no longer disables the control — pull-only never pushes, so
-    // the receiver must be able to reach it.
     expect(screen.getByTestId('settings-sync-mode-toggle').getAttribute('data-disabled')).toBe(
       'false',
     );
     expect(screen.getByTestId('settings-sync-denied-hint').textContent).toContain(
       "You don't have permission to push",
     );
-    // Off mode is not paused; the switch-to-pull affordance is full-only.
     expect(screen.queryByTestId('settings-sync-switch-follow')).toBeNull();
   });
 
@@ -800,10 +760,8 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     await renderBody({ activeId: 'sync' });
 
     expect(screen.getByTestId('settings-sync-switch-follow')).not.toBeNull();
-    // The action routes through the mode selector toward pull-only.
     fireEvent.click(screen.getByTestId('settings-sync-switch-follow-action'));
     expect(syncModeSelectCalls).toEqual(['follow']);
-    // Opening the confirm, not an immediate write (consent gate).
     expect(syncModeWriterCalls).toEqual([]);
     expect(screen.getByTestId('sync-confirm-dialog').getAttribute('data-open')).toBe('true');
   });
@@ -828,9 +786,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
-  // The not-found masquerade parks as auth-error, whose paused label reads
-  // "Reconnect required" — the prescription the sync badge withdraws for this
-  // subclass. Settings must show the failure's own copy, not the withdrawn fix.
   test('sync section shows the not-found copy instead of the reconnect prescription', async () => {
     syncStatus = {
       state: 'auth-error',
@@ -853,11 +808,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.queryByText('Reconnect required')).toBeNull();
   });
 
-  // The ordinary shape of this state carries BOTH signals: the parked engine's
-  // not-found code and a denied probe verdict against the same invisible repo.
-  // The permission-flavored affordances must stay suppressed — the failure is
-  // not a collaborator verdict, and Follow fetches the same invisible repo —
-  // so the not-found copy must win over the push-denied short-circuits.
   test('sync section keeps the not-found copy when a denied probe verdict is also in hand', async () => {
     syncStatus = {
       state: 'auth-error',
@@ -884,23 +834,13 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
     expect(screen.queryByTestId('settings-sync-switch-follow')).toBeNull();
     expect(screen.queryByTestId('settings-sync-denied-hint')).toBeNull();
-    // The notice names an account problem, so it must also name the account —
-    // the badge does, and the docs tell readers the message identifies it.
     expect(screen.getByTestId('settings-sync-identity').textContent).toBe('Authenticated as bob.');
-    // The mode control is the fourth permission-flavored affordance: greying
-    // Full out behind "you don't have permission" would state a cause the 404
-    // doesn't prove, and would single out Full when Follow fetches the same
-    // unseeable repo. Its tooltip is also the only explanation a pointer user
-    // gets, while the keyboard path relies on the notice above.
     expect((screen.getByTestId('settings-sync-mode-full') as HTMLButtonElement).disabled).toBe(
       false,
     );
     expect(screen.queryByTestId('settings-sync-mode-full-tip')).toBeNull();
   });
 
-  // The tail is up to TWO sentences — the account used and the declared-account
-  // miss. That pair is the payload this feature exists to surface, and a
-  // per-paragraph testid would make `getByTestId` throw on exactly it.
   test('sync section renders both identity sentences when the wire carries a declared miss', async () => {
     syncStatus = {
       state: 'auth-error',
@@ -931,9 +871,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
-  // The retryable arm transitions to `offline` WITHOUT clearing pausedReason,
-  // so state and reason diverge while the not-found code survives. Both this
-  // surface and the badge key on the REASON, so both must still explain it.
   test('sync section still explains the not-found failure after an offline transition', async () => {
     syncStatus = {
       state: 'offline',
@@ -1004,11 +941,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-install-claude-desktop').textContent).toBe('Reinstall');
     expect(screen.getByTestId('install-claude-dialog').getAttribute('data-reinstall')).toBe('true');
   });
-  // Drift guard: `plugin:<id>` is constructed independently in three places —
-  // `pluginSettingsSectionId`, the shell's sidebar group, and this dispatcher.
-  // Nothing in the type system ties them, and the enable notice's deep link
-  // silently falls back to Preferences if they diverge. `lint-plugin-meta.test.ts`
-  // is the local precedent for this shape of guard.
   test('dispatches every lint plugin id built by pluginSettingsSectionId', async () => {
     const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
     const { LINT_PLUGIN_META } = await import('./lint-plugin-meta');
@@ -1020,11 +952,6 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     }
   });
 
-  // Same drift guard, non-lint branch. Slides is a peer of the theme plugin: it
-  // owns no `contentRules` slice, so it is NOT in LINT_PLUGIN_META and the
-  // generic `plugin:` fallthrough (which only knows the lint registry) cannot
-  // dispatch it. This pins the dispatch→panel half of the hand-wired id; the
-  // shell sidebar half is pinned in SettingsDialogShell.dom.test.tsx.
   test('dispatches plugin:slides to its own panel above the lint-plugin fallthrough', async () => {
     const { pluginSettingsSectionId } = await import('@/lib/use-settings-route');
     await renderBody({ activeId: pluginSettingsSectionId('slides') });

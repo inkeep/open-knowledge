@@ -1,16 +1,3 @@
-/**
- * The write dispatch, exercised without a server.
- *
- * Before the extraction this logic could only run inside a booted server with a
- * real watcher and shadow repo, which is why its two most important properties
- * — the disk path's bookkeeping and the fact that BOTH paths attribute — went
- * unverified long enough to ship broken.
- *
- * The CRDT branch uses a real `Y.Doc`: `replaceRawBody` is imported rather than
- * injected (paired writes must route through a sanctioned primitive, enforced
- * by a static scan), so there is nothing to fake there and no reason to.
- */
-
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import type { PairedWriteOrigin } from '../server-observers.ts';
@@ -92,9 +79,6 @@ describe('writeGeneratedArtifact', () => {
     );
 
     expect(outcome).toBe('unchanged');
-    // Not merely "no disk write" — no file-index mutation and no broadcast
-    // either. Those are trigger surfaces; performing them for an unchanged
-    // rebuild is what would keep a tracked file permanently dirty.
     expect(rec).toEqual({ disk: [], registered: [], indexed: [], signals: 0, attributed: [] });
   });
 
@@ -105,8 +89,6 @@ describe('writeGeneratedArtifact', () => {
 
     expect(outcome).toBe('disk');
     expect(rec.disk).toEqual([{ absPath: WRITE.absPath, markdown: WRITE.markdown }]);
-    // Registration is what stops the watcher re-entering our own write as an
-    // external change.
     expect(rec.registered).toEqual([WRITE.absPath]);
     expect(rec.signals).toBe(1);
   });
@@ -128,8 +110,6 @@ describe('writeGeneratedArtifact', () => {
     const outcome = await writeGeneratedArtifact({ ...WRITE, currentMarkdown: '# Stale\n' }, env);
 
     expect(outcome).toBe('document');
-    // Going to disk behind a loaded document's back is the bug this branch
-    // exists to avoid — the editor would sit on stale bytes.
     expect(rec.disk).toEqual([]);
     expect(rec.registered).toEqual([]);
     expect(rec.indexed).toEqual([]);
@@ -143,9 +123,6 @@ describe('writeGeneratedArtifact', () => {
     const loaded = harness(new Y.Doc());
     await writeGeneratedArtifact({ ...WRITE, currentMarkdown: '# Stale\n' }, loaded.env);
 
-    // The asymmetry that shipped: one path claimed the write and the other did
-    // not, so the same rebuild was credited differently depending on whether a
-    // window happened to be open.
     const expected = [{ docName: 'index', writer: 'ok-generator' }];
     expect(unloaded.rec.attributed).toEqual(expected);
     expect(loaded.rec.attributed).toEqual(expected);
@@ -159,8 +136,6 @@ describe('writeGeneratedArtifact', () => {
 
     await writeGeneratedArtifact({ ...WRITE, currentMarkdown: '# Stale\n' }, env);
 
-    // Not decoration: the origin is how the observer bridge knows this was a
-    // paired write and must not be amplified back through the other CRDT.
     expect(origins).toContain(ORIGIN);
   });
 

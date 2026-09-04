@@ -9,16 +9,6 @@ import {
   type TestServer,
 } from './test-harness.ts';
 
-/**
- * End-to-end proof through the real server that the skill BUNDLE-FILE surface
- * (`/api/skill-file`) routes correctly by scope × type:
- *  - a PROJECT `.md` reference is a real CRDT content doc — it persists to
- *    `.ok/skills/<name>/references/<x>.md` AND participates in the link graph
- *    (a wiki-link FROM the reference resolves to a backlink on its target),
- *    which is the load-bearing requirement (reuse of the content path).
- *  - a SCRIPT and any bundle file round-trip through the universal per-file
- *    read (`GET /api/skill-file`) without any native `cat`.
- */
 describe('skill bundle files via /api/skill-file', () => {
   let server: TestServer;
 
@@ -31,8 +21,6 @@ describe('skill bundle files via /api/skill-file', () => {
 
   const base = () => `http://127.0.0.1:${server.port}`;
 
-  /** Creates the skill and returns its REAL bundle dir rel (creates land at
-   *  the default skill home — store retirement). */
   async function putSkill(name: string, description: string, body: string): Promise<string> {
     const res = await fetch(`${base()}/api/skill`, {
       method: 'PUT',
@@ -53,15 +41,8 @@ describe('skill bundle files via /api/skill-file', () => {
     return res;
   }
 
-  /**
-   * A freshly created project skill must be DURABLE on disk the instant the
-   * create response resolves — not ~100ms later on the natural debounce — so a
-   * fast create->rename/delete can't 404 on `existsSync(skillDir)`. Regression
-   * for the create-path force-flush (`flushDiskAndDetectOutcome({ force })`).
-   */
   test('a newly created skill SKILL.md is on disk before the create response resolves', async () => {
     const dir = await putSkill('fresh', 'durable on create', '# Fresh\n');
-    // No pollUntil / debounce wait: the file must already be on disk.
     const skillMd = resolve(server.contentDir, dir, 'SKILL.md');
     expect(existsSync(skillMd)).toBe(true);
   });
@@ -69,8 +50,6 @@ describe('skill bundle files via /api/skill-file', () => {
   test('a project .md reference persists as a content doc and joins the link graph', async () => {
     const demoDir = await putSkill('demo', 'a demo skill', '# Demo\n\nSee references.\n');
 
-    // A reference whose body links OUT to a target doc — proves the ref is a
-    // graph-participating content doc (its forward link resolves).
     const refRes = await putSkillFile(
       'demo',
       'references/notes.md',
@@ -79,18 +58,12 @@ describe('skill bundle files via /api/skill-file', () => {
     expect(refRes.ok).toBe(true);
     const refBody = (await refRes.json()) as { kind: string; content: boolean; path: string };
     expect(refBody.kind).toBe('reference');
-    // `content: true` flags that the write was routed through the CRDT content
-    // doc (project `.md` reference), not the fs-direct path.
     expect(refBody.content).toBe(true);
 
-    // It persists to disk at the expected skill-relative path (the skill's
-    // REAL dir — creates land at the default skill home).
     const refFile = resolve(server.contentDir, demoDir, 'references', 'notes.md');
     await pollUntil(() => existsSync(refFile));
     expect(readFileSync(refFile, 'utf-8')).toContain('[[target-doc]]');
 
-    // Create the link target, then assert the reference shows up as a backlink
-    // source — the project `.md` reference is a first-class graph citizen.
     const target = await fetch(`${base()}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -127,15 +100,6 @@ describe('skill bundle files via /api/skill-file', () => {
     return Array.isArray(data.backlinks) ? data.backlinks.map((b) => b.source) : [];
   }
 
-  /**
-   * A skill RENAME git-mv's the dir and rewrites only SKILL.md fs-direct, so the
-   * relocated `.md` references never re-enter the link graph at their new doc
-   * names — they fall out of the backlink index until a manual rescan. This
-   * exercises the LIVE move→index path (no `/api/test-rescan-*`): after the
-   * rename the moved reference must STILL resolve as a backlink on its target,
-   * at its NEW ref doc name, and the stale old-name source must be gone.
-   *
-   */
   test('a renamed skill re-indexes its moved .md references into the link graph (no rescan)', async () => {
     const demo3Dir = await putSkill('demo3', 'a demo skill', '# Demo\n\nSee references.\n');
     const demo3Root = demo3Dir.split('/').slice(0, -1).join('/');
@@ -153,19 +117,13 @@ describe('skill bundle files via /api/skill-file', () => {
     });
     expect(target.ok).toBe(true);
 
-    // Pre-move sanity: the reference resolves at its original doc name.
     await pollUntil(async () =>
       (await backlinkSources('move-target')).includes(`${demo3Dir}/references/notes`),
     );
 
-    // RENAME the skill — refs are git-mv'd on disk; nothing rewrites them
-    // through the CRDT path, so they must be re-indexed by the move handler.
     const moved = await renameSkill('demo3', 'demo3-renamed');
     expect(moved.ok).toBe(true);
 
-    // The moved reference resolves at its NEW ref doc name…
-    // Stuck (not slow) on CI while passing locally — surface the actual index
-    // contents so the next failure is a diagnosis rather than a bare timeout.
     const expectedRef = `${demo3Root}/demo3-renamed/references/notes`;
     let lastSources: string[] = [];
     try {
@@ -183,7 +141,6 @@ describe('skill bundle files via /api/skill-file', () => {
 ${String(err)}`,
       );
     }
-    // …and the stale old-name source is gone (not a duplicate).
     const sources = await backlinkSources('move-target');
     expect(sources).not.toContain(`${demo3Dir}/references/notes`);
   }, 20000);
@@ -195,10 +152,8 @@ ${String(err)}`,
     expect(put.ok).toBe(true);
     const putBody = (await put.json()) as { kind: string; content: boolean };
     expect(putBody.kind).toBe('script');
-    // Scripts are fs-direct (never CRDT) — content routing flag is false.
     expect(putBody.content).toBe(false);
 
-    // Read it back via the universal per-file read.
     const params = new URLSearchParams({
       name: 'runner',
       scope: 'project',
@@ -211,13 +166,6 @@ ${String(err)}`,
     expect(got.text).toBe(scriptText);
   });
 
-  /**
-   * A skill REFERENCE graph node is extension-less, so the client reconstructs
-   * the read path with a hardcoded `.md`. When the on-disk file is `.mdx`, the
-   * GET must fall back to the sibling supported doc extension instead of 404ing
-   * (otherwise a `.mdx` reference is unopenable from the graph / links panel).
-   *
-   */
   test('a .mdx reference opens when requested as .md (extension-less node fallback)', async () => {
     const mdxDir = await putSkill('mdxskill', 'has an mdx ref', '# Mdx\n');
     const put = await putSkillFile('mdxskill', 'references/guide.mdx', '# Guide\n\nMDX body.\n');
@@ -226,7 +174,6 @@ ${String(err)}`,
     const onDisk = resolve(server.contentDir, mdxDir, 'references', 'guide.mdx');
     await pollUntil(() => existsSync(onDisk));
 
-    // Requested as `.md`, but the file is `.mdx` — the server resolves it.
     const params = new URLSearchParams({
       name: 'mdxskill',
       scope: 'project',
@@ -236,25 +183,14 @@ ${String(err)}`,
     expect(get.ok).toBe(true);
     const got = (await get.json()) as { path: string; kind: string; text: string };
     expect(got.text).toContain('MDX body.');
-    // The response reports the REAL resolved path (`.mdx`), not the requested `.md`.
     expect(got.path).toBe('references/guide.mdx');
     expect(got.kind).toBe('reference');
   });
 
-  /**
-   * A full-directory skill (import copies the WHOLE dir) can carry files outside
-   * references/scripts — a root `config.yaml`, a `data/` subdir. `listSkillFiles`
-   * walks the whole dir, so such a file shows in the sidebar tree; the READ must
-   * serve it too, or the tree shows a file that fails to open (§8.1: "appears in
-   * file mode but says couldn't load in skills mode"). Containment still guards.
-   *
-   */
   test('a bundle file outside references/scripts (root config.yaml) is readable', async () => {
     const cfgDir = await putSkill('cfgskill', 'has a root config', '# Cfg\n');
     const dir = resolve(server.contentDir, cfgDir);
     await pollUntil(() => existsSync(dir));
-    // The restricted PUT only accepts references/scripts, but a full-directory
-    // import can land files anywhere — write one directly to mirror that.
     const yaml = 'version: 1\nname: cfgskill\n';
     writeFileSync(resolve(dir, 'config.yaml'), yaml);
 
@@ -266,8 +202,6 @@ ${String(err)}`,
     expect(got.text).toBe(yaml);
     expect(got.path).toBe('config.yaml');
 
-    // Containment + basic guards still hold: an empty path and an escaping path
-    // are rejected even though the references/scripts restriction is lifted.
     const empty = await fetch(`${base()}/api/skill-file?name=cfgskill&scope=project&path=`);
     expect(empty.status).toBe(400);
     const escaping = await fetch(
@@ -276,14 +210,9 @@ ${String(err)}`,
     expect(escaping.status).toBe(400);
   });
 
-  /**
-   * DELETE resolves the skill's REAL (in-place) dir — the raw store root
-   * silently no-opped every in-place bundle-file delete while reporting
-   * success (store-fossil class).
-   */
   test('DELETE removes an in-place bundle file from the REAL dir (not a store no-op)', async () => {
     const dirRel = await putSkill('del-target', 'delete pin', '# Body\n');
-    expect(dirRel.startsWith('.ok/skills/')).toBe(false); // creates land in-place
+    expect(dirRel.startsWith('.ok/skills/')).toBe(false);
     expect((await putSkillFile('del-target', 'references/gone.md', '# Gone\n')).status).toBe(200);
     const abs = resolve(server.contentDir, dirRel, 'references', 'gone.md');
     expect(existsSync(abs)).toBe(true);
@@ -298,13 +227,6 @@ ${String(err)}`,
     expect(existsSync(abs)).toBe(false);
   });
 
-  /**
-   * A DELETE for a path that is not on disk must not tear anything down. Bundle
-   * doc names are ext-less, so `references/x.md` and `references/x.mdx` name the
-   * SAME live doc: deleting the absent one used to close connections, mark the
-   * doc `deleted-upstream` and unload it, killing the surviving sibling's live
-   * doc while the unlink itself no-opped.
-   */
   test('DELETE of an absent path leaves a same-stem sibling doc intact', async () => {
     const dirRel = await putSkill('stem-clash', 'stem pin', '# Body\n');
     expect((await putSkillFile('stem-clash', 'references/notes.mdx', '# Notes\n')).status).toBe(
@@ -313,9 +235,6 @@ ${String(err)}`,
     const survivor = resolve(server.contentDir, dirRel, 'references', 'notes.mdx');
     expect(existsSync(survivor)).toBe(true);
 
-    // Open the survivor so there IS a live doc to tear down — the bug is
-    // invisible against an unloaded doc. Its name is ext-less, so the absent
-    // `.md` sibling below addresses this exact doc.
     const docName = `${dirRel}/references/notes`;
     const client = await createTestClient(server.port, docName);
     await pollUntil(() => getServerState(server, docName) !== null);
@@ -327,8 +246,6 @@ ${String(err)}`,
     expect(del.status).toBe(200);
     expect(((await del.json()) as { existed: boolean }).existed).toBe(false);
 
-    // The no-op delete must not have unloaded the doc, marked it
-    // deleted-upstream, or dropped the client's connection.
     const state = getServerState(server, docName);
     expect(state).not.toBeNull();
     expect(state?.connectionCount).toBeGreaterThan(0);
@@ -340,10 +257,6 @@ ${String(err)}`,
     await client.cleanup();
   });
 
-  /**
-   * §8.9: rename moves the file on disk, moves the live content-doc identity,
-   * and refuses to overwrite an existing destination.
-   */
   test('rename moves an in-place .md reference (disk + doc identity), never overwrites', async () => {
     const dirRel = await putSkill('rename-target', 'rename pin', '# Body\n');
     expect((await putSkillFile('rename-target', 'references/old.md', '# Old\n')).status).toBe(200);
@@ -358,7 +271,6 @@ ${String(err)}`,
         body: JSON.stringify({ name: 'rename-target', scope: 'project', from, to }),
       });
 
-    // Occupied destination refuses — never an overwrite.
     expect((await rename('references/old.md', 'references/taken.md')).status).toBe(400);
 
     const res = await rename('references/old.md', 'references/deep/new.md');
@@ -375,10 +287,6 @@ ${String(err)}`,
     ).toContain('# Old');
   });
 
-  /**
-   * The mutation surface admits ANY in-bundle path (root files, custom dirs) —
-   * only SKILL.md stays managed-verbs-only.
-   */
   test('PUT writes root files + custom dirs; SKILL.md stays protected', async () => {
     const dirRel = await putSkill('any-path', 'wide surface', '# Body\n');
     expect((await putSkillFile('any-path', 'NOTES.md', '# Root note\n')).status).toBe(200);
@@ -387,7 +295,6 @@ ${String(err)}`,
     expect(existsSync(resolve(server.contentDir, dirRel, 'assets', 'tokens', 'colors.json'))).toBe(
       true,
     );
-    // The skill's identity file never mutates through the file surface.
     expect((await putSkillFile('any-path', 'SKILL.md', '# hijack\n')).status).toBe(400);
   });
 

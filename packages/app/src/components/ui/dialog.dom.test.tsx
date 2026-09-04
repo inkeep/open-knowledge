@@ -148,12 +148,8 @@ describe('Dialog window-drag band', () => {
       'h-12',
       'z-50',
     ]);
-    // The ordering IS the contract: after the overlay so it beats the no-drag
-    // blanket, before the content so the close X and heading of a dialog that
-    // overlaps the band stay clickable rather than becoming drag region.
     expect(overlay?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(content?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
-    // Opts into the globals.css rule that suspends drag under an open popper.
     expect(strip.hasAttribute('data-electron-drag')).toBe(true);
     expect(strip.getAttribute('aria-hidden')).toBe('true');
   });
@@ -164,15 +160,11 @@ describe('Dialog window-drag band', () => {
 
     const className =
       document.querySelector('[data-slot="dialog-content"]')?.getAttribute('class') ?? '';
-    // Twice the 3rem band, because the dialog is vertically centered.
     expectVisualClassTokens(className, ['max-h-[calc(100dvh-6rem)]']);
     expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-2rem)]']);
   });
 
   test('a Dialog hosting an AlertDialog yields two distinct strips', async () => {
-    // Real path: Settings hosts a delete-confirmation AlertDialog. The per-
-    // surface testId exists for exactly this composition — a hardcoded id
-    // would collide here and getByTestId would throw on the duplicate.
     vi.stubGlobal('okDesktop', {});
     const { Dialog, DialogContent, DialogTitle } = await import('./dialog');
     const { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogTitle } = await import(
@@ -214,5 +206,86 @@ describe('Dialog window-drag band', () => {
       document.querySelector('[data-slot="dialog-content"]')?.getAttribute('class') ?? '';
     expectVisualClassTokens(className, ['max-h-[20rem]']);
     expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-6rem)]']);
+  });
+});
+
+describe('Dialog footer typography', () => {
+  afterEach(() => cleanup());
+
+  async function renderFooter(children: ReactNode) {
+    const { Dialog, DialogContent, DialogFooter, DialogTitle } = await import('./dialog');
+
+    render(
+      <Dialog open={true}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Dialog title</DialogTitle>
+          <DialogFooter>{children}</DialogFooter>
+        </DialogContent>
+      </Dialog>,
+    );
+  }
+
+  test('the footer carries the treatment for every button it contains', async () => {
+    const { Button } = await import('./button');
+    await renderFooter(<Button variant="outline">Cancel</Button>);
+
+    expectVisualClassTokens(
+      document.querySelector('[data-slot="dialog-footer"]')?.getAttribute('class'),
+      [
+        '[&_button]:font-mono',
+        '[&_button]:uppercase',
+        '[&_[data-slot=button]]:font-mono',
+        '[&_[data-slot=button]]:uppercase',
+      ],
+    );
+  });
+
+  test('footer choices do not re-declare the treatment the footer already supplies', async () => {
+    const { Button } = await import('./button');
+    await renderFooter(
+      <>
+        <Button variant="outline">Cancel</Button>
+        <Button variant="ghost">Back</Button>
+      </>,
+    );
+
+    for (const label of ['Cancel', 'Back']) {
+      expectVisualClassTokensAbsent(screen.getByText(label).getAttribute('class'), [
+        'font-mono',
+        'uppercase',
+      ]);
+    }
+  });
+
+  test('a DialogClose wrapping a button leans on the footer rather than its own classes', async () => {
+    const { DialogClose } = await import('./dialog');
+    const { Button } = await import('./button');
+    await renderFooter(
+      <DialogClose asChild>
+        <Button variant="outline">Dismiss</Button>
+      </DialogClose>,
+    );
+
+    const button = screen.getByText('Dismiss');
+    expect(button.tagName).toBe('BUTTON');
+    expectVisualClassTokensAbsent(button.getAttribute('class'), ['font-mono', 'uppercase']);
+  });
+
+  test('the built-in close affordance leans on the footer rather than its own classes', async () => {
+    const { Dialog, DialogContent, DialogFooter, DialogTitle } = await import('./dialog');
+
+    render(
+      <Dialog open={true}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Dialog title</DialogTitle>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expectVisualClassTokensAbsent(screen.getByText('Close').getAttribute('class'), [
+      'font-mono',
+      'uppercase',
+    ]);
   });
 });

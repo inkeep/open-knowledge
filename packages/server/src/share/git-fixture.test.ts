@@ -1,11 +1,3 @@
-/**
- * Fidelity check for the real-git share fixture: every drift state the freshness
- * (send) and target-status (receive) paths care about is asserted here through
- * the exact git probe commands those paths use, so the substrate is proven
- * faithful before the handler tests depend on it. Synchronous `execFileSync`
- * git keeps this unskipped on CI (oven-sh/bun#11892 only bites async children).
- */
-
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -23,8 +15,6 @@ afterEach(() => {
   for (const t of triangles.splice(0)) t.cleanup();
 });
 
-/** Exit status of a git probe without throwing — the freshness/verdict probes
- *  branch on cat-file / diff exit codes, not on stdout. */
 function gitExit(cwd: string, args: string[]): number {
   const r = spawnSync('git', args, { cwd, encoding: 'utf-8' });
   return r.status ?? -1;
@@ -81,10 +71,6 @@ describe('createGitTriangle — send-side freshness drift cells', () => {
     const t = newTriangle();
     t.mkdirWorkingTree('hollow');
     const ref = `origin/${t.branch}`;
-    // The cell that separates "not on origin yet" from "not representable in
-    // git": all three probes must be silent at once. A placeholder file added
-    // to this primitive would still miss the ref, but would light up status —
-    // and every `empty` verdict downstream would quietly become `absent`.
     expect(gitExit(t.senderDir, ['cat-file', '-e', `${ref}:hollow`])).not.toBe(0);
     expect(t.git(t.senderDir, ['diff', '--name-only', ref, '--', 'hollow'])).toBe('');
     expect(
@@ -186,7 +172,6 @@ describe('createGitTriangle — receive-side rename / delete legs', () => {
 
 describe('createGitTriangle — lifecycle', () => {
   test('cleanup removes every temp repo it created', () => {
-    // Intentionally unregistered: this test owns the cleanup it asserts.
     const t = createGitTriangle();
     const { senderDir, originDir } = t;
     const receiver = t.cloneReceiver();

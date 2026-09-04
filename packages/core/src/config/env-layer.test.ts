@@ -26,15 +26,11 @@ describe('mechanical naming rule', () => {
     const table = mechanicalEnvNameTable();
     expect(table.get('OK_CONTENT_DIR')).toEqual(['content', 'dir']);
     expect(table.get('OK_AUTO_SYNC_MODE')).toEqual(['autoSync', 'mode']);
-    // Every enumerated leaf appears exactly once (no name collisions).
     expect(table.size).toBe(listConfigLeafPaths().length);
   });
 });
 
 describe('recognized surface pin', () => {
-  // Name-lock guard: env names lock at the release that first ships them.
-  // Widening this set is a deliberate ratification, never a drive-by — a
-  // failure here means the shipped env surface changed.
   it('is exactly the ratified Table 2 set', () => {
     expect(new Map(RECOGNIZED_ENV_VARS)).toEqual(
       new Map([

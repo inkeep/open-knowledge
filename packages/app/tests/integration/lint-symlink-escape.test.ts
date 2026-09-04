@@ -1,12 +1,3 @@
-/**
- * L1 integration coverage for symlink containment on the lint HTTP surface:
- * `GET /api/lint?doc=` refuses a symlink escaping the content dir with a
- * path-escape 400, `GET /api/lint/audit?path=` over an escaped symlinked
- * scope returns 200 with a warning and no leaked source text, and symlinks
- * resolving inside the content dir keep linting normally. Also pins that
- * `?doc=` accepts an extension-carrying docName.
- */
-
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,12 +9,9 @@ let server: TestServer;
 let outside: string;
 
 const SECRET = 'TOP-SECRET-OUTSIDE-CONTENT-8f3a';
-// With markdownlint enabled, MD010 (hard tabs) flags a doc with a tab.
 const DOC_WITH_TAB = '# Title\n\n\tindented with a tab\n';
 
 beforeAll(async () => {
-  // markdownlint is opt-in (off by default); this file exercises the lint
-  // endpoint, so enable it for the whole test server.
   server = await createTestServer({ markdownlintEnabled: true });
   outside = mkdtempSync(join(tmpdir(), 'ok-lint-outside-'));
   writeFileSync(join(outside, 'secret.md'), `# Secret\n\n\t${SECRET}\n`, 'utf-8');
@@ -78,8 +66,6 @@ describe('POST /api/lint/fix symlink containment', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docName: 'lint-fix-escape', agentId: 'sym-fix-agent' }),
     });
-    // The mutating fix endpoint must refuse the escape (never linting/returning
-    // or writing back the outside secret) — same containment the read path has.
     expect(res.status).toBe(400);
     const text = await res.text();
     expect((JSON.parse(text) as { type: string }).type).toBe('urn:ok:error:path-escape');

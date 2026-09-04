@@ -1,15 +1,3 @@
-/**
- * Unit tests for the pure server-assessment → CodeMirror diagnostic mapping.
- *
- * The source-mode target-existence layer takes the server's authoritative
- * `source: 'links'` findings (already policy-gated by `validation.links`) and
- * projects them onto CodeMirror lint diagnostics, widening each collapsed
- * occurrence point to the enclosing link/image span via the Lezer tree so the
- * squiggle covers the whole authored occurrence. Tested headless with an
- * `EditorState` carrying the markdown language (for the syntax tree) — no DOM,
- * matching the sibling `markdown-lint-source` + `source-polish` conventions.
- */
-
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
 import type { ValidationDocResult } from '@inkeep/open-knowledge-core';
@@ -26,7 +14,6 @@ function stateOf(doc: string): EditorState {
   });
 }
 
-/** A collapsed server finding: point range at (line, column), like the wire. */
 function finding(over: Partial<LinkFinding> & { line: number; column: number }): LinkFinding {
   const { line, column, ...rest } = over;
   return {
@@ -53,8 +40,6 @@ describe('mapLocalTargetDiagnostics', () => {
         message: 'Link target "./missing.pdf" does not resolve to an existing file.',
       }),
     ]);
-    // The server collapses the range to the occurrence start; the source layer
-    // widens it to the enclosing Link node so the squiggle covers `[..](..)`.
     expect(d?.from).toBe(linkStart);
     expect(d?.to).toBe(linkEnd);
     expect(d?.severity).toBe('error');
@@ -90,8 +75,6 @@ describe('mapLocalTargetDiagnostics', () => {
         message: 'Image target "./missing.png" does not resolve to an existing file.',
       }),
     ]);
-    // HTML img must land a real span, not a point — it is the form the ticket
-    // names and the one no prior source-mode treatment covered.
     expect(d?.from).toBe(tagStart);
     expect(d?.to).toBeGreaterThan(tagStart);
     expect(d?.to).toBe(tagEnd);
@@ -137,7 +120,6 @@ describe('mapLocalTargetDiagnostics', () => {
     expect(diagnostics).toHaveLength(2);
     expect(diagnostics[0]?.from).toBe(firstUse);
     expect(diagnostics[1]?.from).toBe(secondUse);
-    // Two distinct positioned diagnostics — the two uses never collapse to one.
     expect(diagnostics[0]?.from).not.toBe(diagnostics[1]?.from);
   });
 
@@ -163,8 +145,6 @@ describe('mapLocalTargetDiagnostics', () => {
     const [d] = mapLocalTargetDiagnostics(state, [
       finding({ line: 0, column: wikiStart, message: 'x' }),
     ]);
-    // Wiki forms have no Lezer Link node; the diagnostic stays positioned at the
-    // occurrence rather than mis-widening onto unrelated text.
     expect(d?.from).toBe(wikiStart);
     expect(d?.to).toBe(wikiStart);
   });

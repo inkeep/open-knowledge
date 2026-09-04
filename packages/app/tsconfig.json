@@ -17,6 +17,21 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "*.ts", "tests/stress/fixtures"],
+  // `tests/half-open-forced-close.test-helper.ts` is in the program on purpose:
+  // it reads `@hocuspocus/provider` internals that four suites arrange through,
+  // so a bump that renames one of them has to fail here as one compile error
+  // rather than at runtime inside four unrelated-looking test files.
+  //
+  // What that include actually pulls in is the helper PLUS its import closure,
+  // notably `tests/integration/test-harness.ts`, because TypeScript follows
+  // imports and `exclude` only filters the `*.test.ts`/`*.test.tsx` entry
+  // points. That is the deliberate cost of typechecking the helper, not an
+  // oversight. Naming further files here is a separate change.
+  "include": [
+    "src",
+    "*.ts",
+    "tests/stress/fixtures",
+    "tests/half-open-forced-close.test-helper.ts"
+  ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

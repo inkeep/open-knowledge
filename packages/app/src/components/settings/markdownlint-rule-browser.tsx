@@ -1,14 +1,3 @@
-/**
- * Full-catalog markdownlint rule browser (Settings → Plugins → markdownlint).
- * Renders every rule in the generated catalog — not just the keys the native
- * file sets — grouped by display category, with client-side search and a
- * modified-only filter, so rules that run by default are visible and
- * toggleable. Expanding a row reveals the rule's doc link and its typed
- * option editors (`rule-option-field`), driven entirely by the generated
- * catalog's option specs. Single-rule edits write back to the project's
- * native `.markdownlint.*` file (format-preserving row-replace) via the
- * markdownlint-config endpoint.
- */
 import {
   displayCategoryForRule,
   findRuleConfigEntry,
@@ -44,13 +33,7 @@ import { RuleOptionField, type RuleOptionValue } from './rule-option-field';
 type RuleValues = Record<string, MarkdownlintRuleSetting>;
 
 interface MarkdownlintRuleBrowserProps {
-  /**
-   * Hide the "these rules come from <file>" source note. The lint-config editor
-   * sets this: the user is already looking at the file, so the note is redundant
-   * there. The Settings dialog (no file context) leaves it on.
-   */
   hideConfigSourceNote?: boolean;
-  /** When the settings search jumps to a rule, seed (and re-seed) this browser's search. */
   initialRuleQuery?: { query: string; nonce: number } | null;
 }
 
@@ -66,11 +49,6 @@ export function MarkdownlintRuleBrowser({
   const [search, setSearch] = useState(initialRuleQuery?.query ?? '');
   const [onlyModified, setOnlyModified] = useState(false);
 
-  // Re-seed the search on a later navigation to a rule — the panel does not
-  // remount between rule jumps (its `key` is the constant section id), so the
-  // initial `useState` seed only covers the first mount. `nonce` re-fires even
-  // when the same rule is chosen twice. The value stays fully user-editable
-  // afterwards via `setSearch` (the same handler the input uses).
   const seedNonce = initialRuleQuery?.nonce;
   const seedQuery = initialRuleQuery?.query;
   useEffect(() => {
@@ -85,7 +63,6 @@ export function MarkdownlintRuleBrowser({
         toast.error(res.errorDetail ?? t`Failed to update markdownlint rules`);
         return;
       }
-      // Refresh this panel + re-lint open editors.
       emitLintConfigChanged();
     });
   }
@@ -105,10 +82,6 @@ export function MarkdownlintRuleBrowser({
     <div className="space-y-3" data-testid="settings-linting-markdownlint-rules">
       {!hideConfigSourceNote &&
         (!ready ? (
-          // Stable placeholder while the project config loads. Rendering either the
-          // has-file or no-file copy before we know which one is correct causes a
-          // visible reflow when the fetch resolves (the no-file state is a taller
-          // two-paragraph + callout block); the skeleton reserves height instead.
           <div
             className="space-y-2"
             aria-busy="true"
@@ -206,8 +179,6 @@ export function MarkdownlintRuleBrowser({
             return (
               <Collapsible
                 key={category}
-                // While a filter is active every section is forced open — a
-                // match inside a collapsed section would otherwise be invisible.
                 open={filtersActive || !collapsed.includes(category)}
                 onOpenChange={(open) =>
                   setCollapsed(
@@ -271,9 +242,7 @@ function RuleRow({
   return (
     <Collapsible data-testid={`markdownlint-rule-row-${rule.id}`}>
       <div className="flex items-center justify-between gap-3 px-3 py-2">
-        {/* The whole left cluster (chevron + name + id) is the disclosure
-            trigger so clicking the row body expands it; the interactive controls
-            (reset, Switch) stay outside the trigger as independent siblings. */}
+        {}
         <CollapsibleTrigger
           className="group flex min-w-0 flex-1 items-center gap-1.5 rounded-md py-0.5 text-left hover:bg-muted/50"
           data-testid={`markdownlint-rule-expand-${rule.id}`}
@@ -370,7 +339,6 @@ function RuleRow({
   );
 }
 
-/** Display-category heading, routed through Lingui (categories are UI copy). */
 function CategoryLabel({ category }: { category: RuleDisplayCategory }) {
   switch (category) {
     case 'Headings':
@@ -390,7 +358,6 @@ function CategoryLabel({ category }: { category: RuleDisplayCategory }) {
   }
 }
 
-/** Stable testid fragment for a display category (`Links & images` → `links-images`). */
 function categorySlug(category: RuleDisplayCategory): string {
   return category
     .toLowerCase()
@@ -398,25 +365,12 @@ function categorySlug(category: RuleDisplayCategory): string {
     .replace(/^-|-$/g, '');
 }
 
-/**
- * The value governing a rule row — markdownlint's own fallback order: the
- * rule's key (id or any alias, case-insensitive, last matching key wins —
- * resolved via `findRuleConfigEntry`), else the config's `default` key, else
- * the engine built-in (on).
- */
 export function governingRuleValue(rules: RuleValues, ruleId: string): MarkdownlintRuleSetting {
   const entry = findRuleConfigEntry(rules, ruleId);
   if (entry !== undefined) return entry.value as MarkdownlintRuleSetting;
   return rules.default ?? true;
 }
 
-/**
- * Whether the governing native file explicitly sets this rule under any of
- * its keys (id or alias, case-insensitive). With no governing file the
- * resolved config is OK's tuned defaults, so nothing reads as modified;
- * meta-keys (`default`, `extends`, `$schema`) never match because they map to
- * no catalog rule.
- */
 export function isRuleModified(
   rules: RuleValues,
   configFile: string | null,
@@ -425,12 +379,10 @@ export function isRuleModified(
   return configFile !== null && findRuleConfigEntry(rules, ruleId) !== undefined;
 }
 
-/** The read-only severity chip value (a `"error"`/`"warning"` file value). */
 export function ruleSeverity(value: MarkdownlintRuleSetting): MarkdownlintRuleSeverity | null {
   return typeof value === 'string' ? value : null;
 }
 
-/** Case-insensitive substring match on id, alias, or upstream name; empty query matches all. */
 export function ruleMatchesSearch(rule: RuleCatalogEntry, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q === '') return true;
@@ -441,32 +393,16 @@ export function ruleMatchesSearch(rule: RuleCatalogEntry, query: string): boolea
   );
 }
 
-/**
- * A rule's effective on/off state. An object-valued rule is ON unless it
- * explicitly sets `enabled: false` (markdownlint treats an absent `enabled` as
- * enabled), so a rule that only carries options still reads as enabled.
- */
 export function ruleEnabled(value: MarkdownlintRuleSetting): boolean {
   if (typeof value !== 'object' || value === null) return value !== false;
   return (value as { enabled?: unknown }).enabled !== false;
 }
 
-/** An object-valued rule's option keys, excluding the `enabled` on/off flag. */
 export function optionKeys(value: MarkdownlintRuleSetting): string[] {
   if (typeof value !== 'object' || value === null) return [];
   return Object.keys(value).filter((key) => key !== 'enabled');
 }
 
-/**
- * The value to write when toggling a rule on/off, preserving any options the
- * rule already carries. A bare boolean stays bare; an object keeps its option
- * keys and flips `enabled` (dropped entirely when re-enabling, since absent
- * means on — keeps the file minimal). An object with no options collapses to a
- * bare boolean, and so does a severity-string value — the GUI never writes
- * severity strings, so toggling one replaces it. This is what lets the GUI
- * expose on/off for a rule whose options it can't edit, without discarding
- * those options.
- */
 export function toggledRuleValue(
   value: MarkdownlintRuleSetting,
   nextEnabled: boolean,
@@ -480,15 +416,6 @@ export function toggledRuleValue(
   return nextEnabled ? rest : { ...rest, enabled: false };
 }
 
-/**
- * The value to write when editing one option: the rule's full params object,
- * composed by spreading the existing value before applying the edited key, so
- * sibling options — including keys the GUI doesn't model — and an
- * `enabled: false` flag survive. A bare `false` becomes `enabled: false`
- * (editing options never flips a rule on); `true` and severity strings carry
- * no keys, so they start a fresh object (severity is read-only vocabulary —
- * the row-replace is disclosed in the row tooltip).
- */
 export function ruleValueWithOption(
   value: MarkdownlintRuleSetting,
   key: string,
@@ -499,7 +426,6 @@ export function ruleValueWithOption(
   return { [key]: optionValue };
 }
 
-/** One option's current value from the rule's params (non-object values set no options). */
 function ruleOptionValueOf(value: MarkdownlintRuleSetting, key: string): unknown {
   if (typeof value !== 'object' || value === null) return undefined;
   return (value as Record<string, unknown>)[key];

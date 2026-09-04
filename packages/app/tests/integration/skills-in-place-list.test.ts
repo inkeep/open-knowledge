@@ -13,13 +13,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createTestServer, pollUntil, type TestServer } from './test-harness.ts';
 import { createLinkedWorktree } from './worktree-test-harness.ts';
 
-/**
- * In-place editor-dir skills surface as first-class `/api/skills`
- * entries at their REAL paths — deduped to one canonical per skill — and are
- * excluded from `/api/skills/installed` so the same skill never double-lists
- * as a "detected" row.
- */
-
 function writeSkill(root: string, rel: string, body: string): void {
   const dir = join(root, rel);
   mkdirSync(dir, { recursive: true });
@@ -36,7 +29,7 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
   beforeEach(async () => {
     contentDir = mkdtempSync(join(tmpdir(), 'ok-inplace-list-'));
     writeSkill(contentDir, '.claude/skills/foo', '# Same');
-    writeSkill(contentDir, '.codex/skills/foo', '# Same'); // identical copy → deduped
+    writeSkill(contentDir, '.codex/skills/foo', '# Same');
     writeSkill(contentDir, '.codex/skills/qux', '# Qux');
     server = await createTestServer({ contentDir });
   });
@@ -75,17 +68,13 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
   });
 
   test('resolve-ref: an installed skill wins (local); unknown + no provenance is none', async () => {
-    // `foo` is installed → a `/foo` ref resolves local (no import, no fork).
     const local = await fetch(`${base()}/api/skills/resolve-ref?ref=foo&scope=project&from=qux`);
     expect(local.status).toBe(200);
     expect(await local.json()).toMatchObject({ kind: 'local', scope: 'project', name: 'foo' });
-    // `qux` carries no lockfile origin, so an unknown ref has no trusted signal
-    // to follow — none (the caller offers MANUAL Explore, never a fuzzy pick).
     const none = await fetch(
       `${base()}/api/skills/resolve-ref?ref=not-installed-anywhere&scope=project&from=qux`,
     );
     expect(await none.json()).toMatchObject({ kind: 'none' });
-    // A malformed ref is rejected, never turned into a filesystem probe.
     const bad = await fetch(
       `${base()}/api/skills/resolve-ref?ref=..%2Fevil&scope=project&from=qux`,
     );
@@ -93,8 +82,6 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
   });
 
   test('an in-place imported skill carries origin + Modified off the lockfile (R14)', async () => {
-    // Recorded localHash ≠ the bundle's current parseSkillDir hash → Modified.
-    // Server was booted in beforeEach; the lockfile is read per list request.
     const { writeFileSync: wf, mkdirSync: mk } = await import('node:fs');
     mk(join(contentDir, '.ok'), { recursive: true });
     wf(
@@ -105,7 +92,7 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
           foo: {
             source: 'someone/skill-repo',
             contentHash: 'a'.repeat(64),
-            localHash: 'b'.repeat(64), // diverges from on-disk → modified
+            localHash: 'b'.repeat(64),
             importedAt: new Date().toISOString(),
           },
         },
@@ -124,20 +111,16 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
     const foo = skills.find((s) => s.name === 'foo' && s.scope === 'project');
     expect(foo?.origin?.source).toBe('someone/skill-repo');
     expect(foo?.modified).toBe(true);
-    expect(foo?.revertable).toBeUndefined(); // no baselineRef recorded
+    expect(foo?.revertable).toBeUndefined();
   });
 
   test("CHOKIDAR backend: a host dir's FIRST skill is admitted without a restart", async () => {
-    // The packaged app always runs the chokidar fallback, whose ignored()
-    // used to prune excluded dirs wholesale — a host dir with no admitted
-    // skill yet emitted no events, so its FIRST skill needed a restart.
     const gContent = mkdtempSync(join(tmpdir(), 'ok-chokidar-first-'));
     process.env.OK_FILE_WATCHER_BACKEND = 'chokidar';
     let chokidarServer: TestServer | undefined;
     try {
-      // `.codex/skills` exists but is EMPTY at boot — the caveat setup.
       mkdirSync(join(gContent, '.codex/skills'), { recursive: true });
-      writeSkill(gContent, '.claude/skills/seed', '# seed'); // ensures a non-empty scan
+      writeSkill(gContent, '.claude/skills/seed', '# seed');
       chokidarServer = await createTestServer({ contentDir: gContent });
       const cBase = `http://127.0.0.1:${chokidarServer.port}`;
       writeSkill(gContent, '.codex/skills/first-ever', '# First');
@@ -155,9 +138,6 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
   });
 
   test('a skill created AFTER boot is admitted as content via the live re-scan', async () => {
-    // Not in the boot-time allow-list — the raw-batch trigger must re-scan and
-    // rebuild the filter, after which the SKILL.md is a real content doc
-    // (visible in /api/documents, not just the per-request skills list).
     writeSkill(contentDir, '.claude/skills/live-added', '# Born after boot');
     await pollUntil(async () => {
       const res = await fetch(`${base()}/api/documents`);
@@ -168,9 +148,6 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
   });
 
   test('a PRE-EXISTING same-hash copy re-syncs when the canonical is edited (auto-pairing)', async () => {
-    // `.codex/skills/foo` existed BEFORE boot (not OK-made) — boot observes the
-    // identical pair and records it; a later canonical edit refreshes the copy
-    // instead of forking it (the "edited it and it dropped to one editor" bug).
     const canonicalMd = join(contentDir, '.claude/skills/foo/SKILL.md');
     const copyMd = join(contentDir, '.codex/skills/foo/SKILL.md');
     const { readFileSync: rf, writeFileSync: wf } = await import('node:fs');
@@ -211,8 +188,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'fanout', scope: 'project', targets }),
     });
-  // A skill with no other location takes the SYMLINK default; tests about copy
-  // behaviour ask for copies explicitly instead of relying on that default.
   const installAsCopies = (targets: string[]) =>
     fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -222,14 +197,9 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('a bare install neither relocates the source nor strips unnamed locations', async () => {
     const { lstatSync, existsSync, mkdirSync, writeFileSync } = await import('node:fs');
-    // Make codex a DETECTED project editor (detection is just "does its config
-    // path exist"), so a defaults-driven install resolves a NON-EMPTY target list
-    // — and that list can never contain the `agents` hub, which is the whole
-    // setup for the bug.
     mkdirSync(join(contentDir, '.codex'), { recursive: true });
     writeFileSync(join(contentDir, '.codex/config.toml'), '\n');
 
-    // Put the real folder at the hub, keeping the claude location behind as a link.
     expect((await install(['claude'])).status).toBe(200);
     const promote = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -239,12 +209,8 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(promote.status).toBe(200);
     const hub = join(contentDir, '.agents/skills/fanout');
     const claude = join(contentDir, '.claude/skills/fanout');
-    expect(lstatSync(hub).isSymbolicLink()).toBe(false); // the real folder
+    expect(lstatSync(hub).isSymbolicLink()).toBe(false);
 
-    // `targets` OMITTED: the caller named no set, so this call is additive. It
-    // used to fall through to set-exact reconciliation against the detected
-    // editors, read the hub's absence from that list as an uncheck, MOVE the real
-    // folder into `.codex/skills`, and delete every location codex didn't name.
     const res = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,8 +219,8 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
 
     expect(existsSync(hub)).toBe(true);
-    expect(lstatSync(hub).isSymbolicLink()).toBe(false); // source did not move
-    expect(existsSync(claude)).toBe(true); // location not stripped
+    expect(lstatSync(hub).isSymbolicLink()).toBe(false);
+    expect(existsSync(claude)).toBe(true);
   });
 
   test('ADDITIVE add/remove: stateless location math, source untouchable', async () => {
@@ -265,7 +231,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
         body: JSON.stringify({ name: 'fanout', scope: 'project', ...payload }),
       });
 
-    // add an editor: everything else untouched, source NEVER relocates.
     const addRes = await post({ add: ['codex'] });
     expect(addRes.status).toBe(200);
     const addBody = (await addRes.json()) as { hosts: string[]; sourceMovedTo?: string };
@@ -274,13 +239,11 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(addBody.hosts).toContain('codex');
     expect(existsSync(join(contentDir, '.codex/skills/fanout/SKILL.md'))).toBe(true);
 
-    // add a CUSTOM root (unified place): bundle lands there, idempotent re-add.
     const rootRes = await post({ add: ['.team/skills'] });
     expect(rootRes.status).toBe(200);
     expect(existsSync(join(contentDir, '.team/skills/fanout/SKILL.md'))).toBe(true);
     expect((await post({ add: ['.team/skills'] })).status).toBe(200);
 
-    // remove them additively — the untouched claude source survives both.
     const rmRes = await post({ remove: ['codex', '.team/skills'] });
     expect(rmRes.status).toBe(200);
     const rmBody = (await rmRes.json()) as { hosts: string[] };
@@ -288,19 +251,15 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(existsSync(join(contentDir, '.codex/skills/fanout'))).toBe(false);
     expect(existsSync(join(contentDir, '.team/skills/fanout'))).toBe(false);
 
-    // removing the SOURCE is a 400 teaching error — that's `delete`'s job.
     const srcRes = await post({ remove: ['claude'] });
     expect(srcRes.status).toBe(400);
     expect(await srcRes.text()).toContain('SOURCE');
 
-    // set-exact and additive styles never combine (schema-level 400).
     expect((await post({ targets: ['claude'], add: ['codex'] })).status).toBe(400);
   });
 
   test('remove of an ALIAS-covered viewer unfollows the pool minus this skill (A3 via MCP)', async () => {
     const { symlinkSync, lstatSync, realpathSync } = await import('node:fs');
-    // Pool: .agents/skills holds fanout + another skill; codex READS the pool
-    // via a folder symlink (no physical codex occurrence).
     mkdirSync(join(contentDir, '.agents/skills'), { recursive: true });
     const fanoutDir = join(contentDir, '.claude/skills/fanout');
     const poolFanout = join(contentDir, '.agents/skills/fanout');
@@ -311,15 +270,12 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     mkdirSync(join(contentDir, '.codex'), { recursive: true });
     symlinkSync(join(contentDir, '.agents/skills'), join(contentDir, '.codex/skills'), 'dir');
 
-    // The natural stateless call: "codex shouldn't get fanout".
     const res = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'fanout', scope: 'project', remove: ['codex'] }),
     });
     expect(res.status).toBe(200);
-    // codex's folder is now a REAL dir: keeps other-skill (as a link into the
-    // pool), does NOT see fanout; the pool keeps fanout for everyone else.
     const codexRoot = join(contentDir, '.codex/skills');
     expect(lstatSync(codexRoot).isSymbolicLink()).toBe(false);
     expect(existsSync(join(codexRoot, 'fanout'))).toBe(false);
@@ -332,9 +288,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('add to an ALIAS-covered viewer whose pool LACKS the skill materializes + installs (BUG-5)', async () => {
     const { symlinkSync, lstatSync, realpathSync } = await import('node:fs');
-    // The BUG-5 repro shape: codex's folder is a stale alias into a pool that
-    // does NOT hold the skill (the legacy-link class). "add codex" must make
-    // codex actually get the skill — not silently no-op.
     writeSkill(contentDir, '.ok/skills/legacy-resident', '# Old pool resident');
     mkdirSync(join(contentDir, '.codex'), { recursive: true });
     symlinkSync(join(contentDir, '.ok/skills'), join(contentDir, '.codex/skills'), 'dir');
@@ -347,8 +300,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const bodyJson = (await res.json()) as { hosts: string[] };
     expect(bodyJson.hosts).toContain('codex');
-    // codex's folder materialized: keeps following the old pool resident (as a
-    // per-skill link), AND physically holds the added skill.
     const codexRoot = join(contentDir, '.codex/skills');
     expect(lstatSync(codexRoot).isSymbolicLink()).toBe(false);
     expect(existsSync(join(codexRoot, 'fanout', 'SKILL.md'))).toBe(true);
@@ -365,7 +316,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
         body: JSON.stringify({ scope: 'project', ...body }),
       });
 
-    // ALIGN: codex fork loses; canonical re-projects there; bytes stashed.
     writeSkill(contentDir, '.claude/skills/forky', '# Canonical');
     writeSkill(contentDir, '.codex/skills/forky', '# Codex fork DIFFERENT');
     const align = await post({ name: 'forky', fork: { editor: 'codex', action: 'align' } });
@@ -374,8 +324,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       '# Canonical',
     );
 
-    // MAKE-SOURCE: cursor fork wins; it becomes the only canonical and the old
-    // winner's location re-projects FROM it.
     writeSkill(contentDir, '.claude/skills/champ', '# Old canonical');
     writeSkill(contentDir, '.cursor/skills/champ', '# Cursor version WINS');
     const mk = await post({ name: 'champ', fork: { editor: 'cursor', action: 'make-source' } });
@@ -387,8 +335,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       'WINS',
     );
 
-    // RENAME: keep both — the fork becomes an independent skill, frontmatter
-    // name rewritten in lock-step.
     writeSkill(contentDir, '.claude/skills/twin', '# Original');
     writeSkill(contentDir, '.codex/skills/twin', '# Divergent twin');
     const rn = await post({
@@ -401,7 +347,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(renamed).toContain('# Divergent twin');
     expect(renamed).toMatch(/name: twin-codex/);
 
-    // A same-hash copy is NOT a fork — refused.
     writeSkill(contentDir, '.claude/skills/samey', '# Same');
     writeSkill(contentDir, '.codex/skills/samey', '# Same');
     expect((await post({ name: 'samey', fork: { editor: 'codex', action: 'align' } })).status).toBe(
@@ -412,7 +357,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   test('DELETE is total: a legacy store resident dies with the native canonical', async () => {
     const gContent = mkdtempSync(join(tmpdir(), 'ok-total-del-gc-'));
     const home = mkdtempSync(join(tmpdir(), 'ok-total-del-home-'));
-    // Same skill in a native dir (canonical) AND the legacy global store.
     writeSkill(home, '.claude/skills/zombie', '# Native');
     writeSkill(home, '.ok/skills/zombie', '# Store resident');
     const gServer = await createTestServer({ contentDir: gContent, configHomedirOverride: home });
@@ -423,7 +367,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       );
       expect(del.status).toBe(200);
       expect(existsSync(join(home, '.claude/skills/zombie'))).toBe(false);
-      // The store resident is the SAME skill — it must not survive as a row.
       expect(existsSync(join(home, '.ok/skills/zombie'))).toBe(false);
     } finally {
       await gServer.cleanup();
@@ -478,8 +421,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       configHomedirOverride: home,
     });
     try {
-      // The harness bootstraps its own Claude platform bundle. Remove that
-      // fixture-created root so this request starts from the intended host set.
       rmSync(join(home, '.claude'), { recursive: true, force: true });
       rmSync(join(home, '.agents'), { recursive: true, force: true });
       const res = await fetch(`http://127.0.0.1:${gServer.port}/api/skill/install`, {
@@ -509,8 +450,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       configHomedirOverride: home,
     });
     try {
-      // Keep the explicit-target precondition honest despite the harness's
-      // platform-skill bootstrap.
       rmSync(join(home, '.claude'), { recursive: true, force: true });
       rmSync(join(home, '.agents'), { recursive: true, force: true });
       const res = await fetch(`http://127.0.0.1:${gServer.port}/api/skill/install`, {
@@ -534,14 +473,11 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   });
 
   test('install copies the canonical to a new editor; uncheck removes only the copy', async () => {
-    // Check codex: canonical (.claude) stays, .codex gets a real copy.
     const res = await install(['claude', 'codex']);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[] };
     expect(body.hosts.sort()).toEqual(['claude', 'codex']);
 
-    // A hub-hosted skill keeps its non-editor host in the response — the client
-    // diffs before/after hosts, and dropping 'agents' would misreport a removal.
     writeSkill(contentDir, '.agents/skills/hubbed', '# Hub canonical');
     const hubRes = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -554,7 +490,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(existsSync(join(contentDir, '.codex/skills/fanout/SKILL.md'))).toBe(true);
     expect(existsSync(join(contentDir, '.claude/skills/fanout/SKILL.md'))).toBe(true);
 
-    // Uncheck codex: the same-hash copy is removed, canonical survives.
     const res2 = await install(['claude']);
     expect(res2.status).toBe(200);
     expect(existsSync(join(contentDir, '.codex/skills/fanout'))).toBe(false);
@@ -562,9 +497,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   });
 
   test('a bulk add reports an unplaceable root distinctly from a name conflict', async () => {
-    // Both used to arrive as `name-conflict`, so a caller could not tell a bad
-    // path from a real collision — the single-shot `place` verb 400s on one and
-    // 409s on the other.
     const res = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -582,7 +514,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[]; warningCodes: string[] };
     expect(body.warningCodes).toContain('name-conflict');
-    // The fork's bytes are untouched.
     const { readFileSync: rf } = await import('node:fs');
     expect(rf(join(contentDir, '.codex/skills/fanout/SKILL.md'), 'utf-8')).toContain(
       '# A DIFFERENT skill',
@@ -590,8 +521,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   });
 
   test('unchecking THE SOURCE relocates it to the next target', async () => {
-    // Fan a copy to codex, then uncheck the source (.claude): the bundle MOVES
-    // to .codex (its copy becomes the real dir) and .claude is gone.
     expect((await install(['claude', 'codex'])).status).toBe(200);
     const moveRes = await install(['codex']);
     expect(moveRes.status).toBe(200);
@@ -603,7 +532,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('setSource is a SWAP: the old source becomes a symlink to the new one', async () => {
     const { lstatSync } = await import('node:fs');
-    // .claude is the source, .codex a copy. Promote .codex to source.
     expect((await install(['claude', 'codex'])).status).toBe(200);
     const res = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -613,8 +541,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[]; sourceMovedTo?: string };
     expect(body.sourceMovedTo).toBe('.codex/skills/fanout');
-    // The new source is the real dir; the OLD source path is downgraded to a
-    // SYMLINK pointing at it (the promote/downgrade swap).
     const codex = join(contentDir, '.codex/skills/fanout');
     expect(lstatSync(codex).isDirectory()).toBe(true);
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
@@ -624,12 +550,10 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(rp(claude)).toBe(rp(codex));
     expect(body.hosts[0]).toBe('codex');
     expect(body.hosts.sort()).toEqual(['claude', 'codex']);
-    // Sticky: a fresh list still elects .codex over .claude's precedence.
     const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
       skills: Array<{ name: string; hosts: string[] }>;
     };
     expect(list.skills.find((s) => s.name === 'fanout')?.hosts[0]).toBe('codex');
-    // Promoting the current source is a no-op success.
     const noop = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -642,9 +566,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   test('setSource flattens a recorded placement link that chained through the new source', async () => {
     const { dirname, isAbsolute, resolve } = await import('node:path');
     const { readlinkSync } = await import('node:fs');
-    // .claude is the source; .codex a copy; a recorded placement LINKS to
-    // .claude. Promoting .codex leaves .claude a link to it, so the placement
-    // resolves to the real dir only by chaining through .claude.
     expect((await install(['claude', 'codex'])).status).toBe(200);
     const placed = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -662,25 +583,15 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       body: JSON.stringify({ name: 'fanout', scope: 'project', setSource: 'codex' }),
     });
     expect(promoted.status).toBe(200);
-    // The ledger sweep claims chains through the new source exactly as the
-    // host-slot sweep does: ONE hop to the real dir, not two through .claude.
     const link = join(contentDir, '.windsurf/skills/fanout');
     const oneHop = resolve(dirname(link), readlinkSync(link));
     expect(oneHop).toBe(join(contentDir, '.codex/skills/fanout'));
-    // `resolve(dirname, readlink)` normalizes a relative and an absolute target
-    // to the same path, so pin the FORM separately: every target this call site
-    // can produce is inside the project, which is the relative branch of
-    // `skillLinkTarget`. The absolute branch is unreachable from here.
     expect(isAbsolute(readlinkSync(link))).toBe(false);
   });
 
   test('setSource does not re-point sibling host links the relocation sweep already owns', async () => {
     const { dirname, resolve } = await import('node:path');
     const { readlinkSync, lstatSync } = await import('node:fs');
-    // The placement ledger records host slots too, so the ledger sweep's slot
-    // list overlaps the relocation sweep's. Excluding the host-owned ones must
-    // not leave any sibling stale: after the promote every non-source host link
-    // still resolves in ONE hop to the new real dir.
     expect(
       (
         await fetch(`${base()}/api/skill/install`, {
@@ -711,11 +622,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   });
 
   test('placing a skill at the location it already occupies is a no-op success', async () => {
-    // Imports land IN-PLACE at the `.agents/skills` hub, so asking to place a
-    // freshly imported skill there names its own canonical dir. That used to
-    // fail as "Placement path must be a project-relative directory outside
-    // .ok/." — an invalid-path error for a skill already exactly where it was
-    // asked to be, surfaced as a red toast on an install that had worked.
     const listed = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
       skills: Array<{ name: string; path: string }>;
     };
@@ -734,7 +640,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { placedAt?: string };
     expect(body.placedAt).toBe(`${ownRoot}/fanout`);
-    // Nothing nested itself inside the skill.
     expect(existsSync(join(contentDir, ownRoot, 'fanout', 'fanout'))).toBe(false);
   });
 
@@ -752,7 +657,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(placeRes.status).toBe(200);
     const placed = join(contentDir, '.windsurf/skills/fanout');
     expect(existsSync(join(placed, 'SKILL.md'))).toBe(true);
-    // Clean unplace: dir removed, record dropped.
     const un = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -764,7 +668,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     });
     expect(un.status).toBe(200);
     expect(existsSync(placed)).toBe(false);
-    // Re-place, hand-edit the copy, then unplace: refused (409), bytes intact.
     expect(
       (
         await fetch(`${base()}/api/skill/install`, {
@@ -805,7 +708,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[]; sourceMovedTo?: string };
     expect(body.sourceMovedTo).toBe('.claude/skills/storey');
-    // The store bundle moved out — the editor dir is the real folder now.
     expect(existsSync(store)).toBe(false);
     const claude = join(contentDir, '.claude/skills/storey');
     expect(lstatSync(claude).isDirectory()).toBe(true);
@@ -816,7 +718,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   test('a CUSTOM root can be promoted to SOURCE (scan tracks custom-root canonicals)', async () => {
     const { lstatSync } = await import('node:fs');
     expect((await install(['claude', 'codex'])).status).toBe(200);
-    // Place a copy at the custom .ok/skills root, then promote it to source.
     expect(
       (
         await fetch(`${base()}/api/skill/install`, {
@@ -838,21 +739,16 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[]; sourceMovedTo?: string };
     expect(body.sourceMovedTo).toBe('.ok/skills/fanout');
-    // The custom root holds the real dir; the old source slot is re-placed.
     const okDir = join(contentDir, '.ok/skills/fanout');
     expect(lstatSync(okDir).isDirectory()).toBe(true);
     expect(lstatSync(okDir).isSymbolicLink()).toBe(false);
     expect(existsSync(join(contentDir, '.claude/skills/fanout/SKILL.md'))).toBe(true);
-    // The registry keeps tracking the skill with the custom root as canonical.
     expect(body.hosts[0]).toBe('.ok/skills');
     const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
       skills: Array<{ name: string; path: string }>;
     };
     expect(list.skills.find((s) => s.name === 'fanout')?.path).toBe('.ok/skills/fanout/SKILL.md');
 
-    // A MODE FLIP (Copies/Symlinks re-apply) sends set-exact over editor ids
-    // only — a vocabulary that cannot express the custom-root source. That
-    // absence is NOT an uncheck: the source must stay put, never relocate.
     const flip = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -873,7 +769,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('drift is PASSIVE disclosure: external rewrites are reported; an explicit re-flip wins', async () => {
     const { lstatSync, rmSync: rm, cpSync } = await import('node:fs');
-    // Symlink mode: codex becomes a link, recorded as the EXPECTED form.
     expect((await install(['claude', 'codex'])).status).toBe(200);
     const flip = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
@@ -889,13 +784,10 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     const codex = join(contentDir, '.codex/skills/fanout');
     expect(lstatSync(codex).isSymbolicLink()).toBe(true);
 
-    // An EXTERNAL tool rewrites the link as a real copy (sync-script style).
     rm(codex, { recursive: true, force: true });
     cpSync(join(contentDir, '.claude/skills/fanout'), codex, { recursive: true });
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
 
-    // The list reports DRIFT for that path — and OK does NOT convert it back
-    // on its own (no background self-heal; drift is a passive disclosure).
     const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
       skills: Array<{ name: string; driftPaths?: string[] }>;
     };
@@ -903,8 +795,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(entry?.driftPaths).toEqual(['.codex/skills/fanout']);
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
 
-    // An EXPLICIT re-flip is user intent and WINS: the drifted copy converts
-    // back to a symlink and the drift clears (record matches disk again).
     const reflip = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -925,14 +815,10 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('a copy externally rewired as a link TO THE CANONICAL is healthy, not drift', async () => {
     const { lstatSync, rmSync: rm, symlinkSync } = await import('node:fs');
-    // Copy mode: codex holds a COPY, recorded as the expected form.
     expect((await installAsCopies(['claude', 'codex'])).status).toBe(200);
     const codex = join(contentDir, '.codex/skills/fanout');
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
 
-    // Something outside OK (a folder link↔per-skill link conversion, a sync
-    // tool) replaces the copy with a symlink RESOLVING TO THE SOURCE — same
-    // bytes, healthy known form. That must not read as "changed outside".
     rm(codex, { recursive: true, force: true });
     symlinkSync(join(contentDir, '.claude/skills/fanout'), codex, 'dir');
     const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
@@ -940,9 +826,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     };
     expect(list.skills.find((s) => s.name === 'fanout')?.driftPaths).toBeUndefined();
 
-    // A link pointing at a DIFFERENT live skill is still drift. (A dangling
-    // link disappears from the receipts entirely — the live-path filter in
-    // readSkillPlacements — so the negative case needs a resolvable target.)
     writeSkill(contentDir, '.agents/skills/decoy', '# Decoy');
     rm(codex, { recursive: true, force: true });
     symlinkSync(join(contentDir, '.agents/skills/decoy'), codex, 'dir');
@@ -957,7 +840,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   test('the swap leave-behind link is drift-tracked (the .agents blind spot)', async () => {
     const { lstatSync, rmSync: rm, cpSync } = await import('node:fs');
     expect((await install(['claude', 'codex'])).status).toBe(200);
-    // Promote codex: .claude becomes the left-behind LINK — now recorded.
     expect(
       (
         await fetch(`${base()}/api/skill/install`, {
@@ -969,7 +851,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     ).toBe(200);
     const claude = join(contentDir, '.claude/skills/fanout');
     expect(lstatSync(claude).isSymbolicLink()).toBe(true);
-    // External tool rewrites the leave-behind link as a real copy.
     rm(claude, { recursive: true, force: true });
     cpSync(join(contentDir, '.codex/skills/fanout'), claude, { recursive: true });
     const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
@@ -988,15 +869,12 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('the .agents hub is an install target; explicit copy-mode unsymlinks (lossless)', async () => {
     const { lstatSync, realpathSync } = await import('node:fs');
-    // Check the hub: canonical (.claude) fans a copy into .agents/skills.
     const res = await installAsCopies(['claude', 'agents']);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { hosts: string[] };
     expect(body.hosts.sort()).toEqual(['agents', 'claude']);
     expect(existsSync(join(contentDir, '.agents/skills/fanout/SKILL.md'))).toBe(true);
 
-    // Once the hub holds a copy it becomes THE source (precedence-first), so
-    // symlink mode converts the EDITOR copy into the link pointing at the hub.
     const linkRes = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1011,11 +889,10 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     const hub = join(contentDir, '.agents/skills/fanout');
     const claude = join(contentDir, '.claude/skills/fanout');
     expect(lstatSync(hub).isDirectory()).toBe(true);
-    expect(lstatSync(hub).isSymbolicLink()).toBe(false); // the source is never linkified
+    expect(lstatSync(hub).isSymbolicLink()).toBe(false);
     expect(lstatSync(claude).isSymbolicLink()).toBe(true);
     expect(realpathSync(claude)).toBe(realpathSync(hub));
 
-    // ...and an EXPLICIT copy choice converts the link back (unsymlink, lossless).
     const copyRes = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1041,10 +918,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('a skill whose locations are links keeps linking', async () => {
     const { lstatSync, realpathSync } = await import('node:fs');
-    // The one input that separates "derive from the existing forms" from "derive
-    // from the location COUNT": two link locations already exist, so a count
-    // rule would call the third a copy. Its sibling pair above (0 existing →
-    // link, existing copies → copy) both agree under either rule.
     expect((await install(['claude', 'codex'])).status).toBe(200);
     expect((await install(['claude', 'codex', 'cursor'])).status).toBe(200);
     const cursor = join(contentDir, '.cursor/skills/fanout');
@@ -1054,10 +927,8 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
 
   test('a skill that already holds copies keeps copying — the default never reprojects', async () => {
     const { lstatSync } = await import('node:fs');
-    // Existing copies, recorded as copies (an install that predates the default).
     expect((await installAsCopies(['claude', 'codex'])).status).toBe(200);
     expect(lstatSync(join(contentDir, '.codex/skills/fanout')).isSymbolicLink()).toBe(false);
-    // Adding a THIRD location must not convert the existing copy behind the user.
     expect((await install(['claude', 'codex', 'cursor'])).status).toBe(200);
     expect(lstatSync(join(contentDir, '.codex/skills/fanout')).isSymbolicLink()).toBe(false);
     expect(lstatSync(join(contentDir, '.cursor/skills/fanout')).isSymbolicLink()).toBe(false);
@@ -1082,9 +953,7 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     expect(res.status).toBe(200);
     expect(lstatSync(codex).isSymbolicLink()).toBe(true);
     expect(realpathSync(codex)).toBe(realpathSync(join(contentDir, '.claude/skills/fanout')));
-    // The sibling copy is untouched — that bulk conversion is what this replaces.
     expect(lstatSync(cursor).isSymbolicLink()).toBe(false);
-    // ...and back again.
     const back = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1108,11 +977,8 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'fanout', scope: 'project', convert: { target, mode } }),
       });
-    // The source folder IS the skill — moving it is `source`, not a convert.
     expect((await convert('claude', 'link')).status).toBe(400);
-    // Nothing installed there.
     expect((await convert('cursor', 'link')).status).toBe(404);
-    // A hand-edited copy is a fork: refused, never overwritten.
     writeFileSync(join(contentDir, '.codex/skills/fanout/SKILL.md'), '# Forked\n\nedited\n');
     expect((await convert('codex', 'link')).status).toBe(409);
   });
@@ -1133,7 +999,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     const { lstatSync, realpathSync } = await import('node:fs');
     expect(lstatSync(dest).isSymbolicLink()).toBe(true);
     expect(realpathSync(dest)).toBe(realpathSync(join(contentDir, '.claude/skills/fanout')));
-    // Preference persisted → the list entry reports linkMode.
     const list = (await (await fetch(`${base()}/api/skills`)).json()) as {
       skills: Array<{ name: string; linkMode?: boolean }>;
     };
@@ -1156,7 +1021,6 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     const body = (await res.json()) as { placedAt: string };
     expect(body.placedAt).toBe('.windsurf/skills/fanout');
     expect(existsSync(join(contentDir, '.windsurf/skills/fanout/SKILL.md'))).toBe(true);
-    // Disclosed on the list entry.
     const list = (await (await fetch(`${base()}/api/skills`)).json()) as {
       skills: Array<{ name: string; customPlacements?: Array<{ path: string; mode: string }> }>;
     };
@@ -1164,9 +1028,7 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
       path: '.windsurf/skills/fanout',
       mode: 'copy',
     });
-    // Second placement at the same path refuses rather than overwrite.
     expect((await place('copy')).status).toBe(409);
-    // Escapes + .ok/ are rejected.
     const bad = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1180,14 +1042,12 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
   });
 
   test('editing the canonical re-syncs OK-recorded copies (forward re-sync)', async () => {
-    // Fan a COPY out to codex (recorded with its hash), then edit the canonical.
     const res = await install(['claude', 'codex']);
     expect(res.status).toBe(200);
     const canonicalMd = join(contentDir, '.claude/skills/fanout/SKILL.md');
     const copyMd = join(contentDir, '.codex/skills/fanout/SKILL.md');
     const { readFileSync: rf, writeFileSync: wf } = await import('node:fs');
     wf(canonicalMd, rf(canonicalMd, 'utf-8').replace('# Canonical', '# Canonical EDITED'));
-    // The watcher debounce re-syncs the recorded copy (hash-gated, lossless).
     await pollUntil(() => rf(copyMd, 'utf-8').includes('# Canonical EDITED'), 15000);
   });
 });
@@ -1222,13 +1082,11 @@ describe('GLOBAL in-place skills (R12) — native user-dir skills are first-clas
     expect(globby?.path).toBe('.claude/skills/globby/SKILL.md');
     expect(globby?.hosts).toEqual(['claude']);
 
-    // GET /api/skill resolves the native dir (no ~/.ok/skills entry exists).
     const getRes = await fetch(`${base()}/api/skill?name=globby&scope=global`);
     expect(getRes.status).toBe(200);
     const detail = (await getRes.json()) as { skill: { body: string; path: string } };
     expect(detail.skill.body).toContain('# Native global');
 
-    // And it no longer double-lists as a detected row.
     const installedRes = await fetch(`${base()}/api/skills/installed`);
     const installed = (await installedRes.json()) as {
       skills: Array<{ name: string; provenance: { scope?: string } }>;
@@ -1249,8 +1107,6 @@ describe('GLOBAL provenance + reimport (store retirement, part 2)', () => {
     contentDir = mkdtempSync(join(tmpdir(), 'ok-greimport-c-'));
     tmpHome = mkdtempSync(join(tmpdir(), 'ok-greimport-h-'));
     upstreamDir = mkdtempSync(join(tmpdir(), 'ok-greimport-up-'));
-    // A native global skill + its recorded provenance pointing at a LOCAL
-    // upstream dir (hermetic — the reimport path treats it like any source).
     writeSkill(tmpHome, '.claude/skills/glosk', '# Seeded v1');
     writeSkill(upstreamDir, 'glosk', '# Upstream v2 — changed');
     const { mkdirSync: mkd } = await import('node:fs');
@@ -1300,7 +1156,6 @@ describe('GLOBAL provenance + reimport (store retirement, part 2)', () => {
     expect(rf(join(tmpHome, '.claude/skills/glosk/SKILL.md'), 'utf-8')).toContain(
       'Upstream v2 — changed',
     );
-    // Lock refreshed with the new content hash.
     const lock = JSON.parse(rf(join(tmpHome, '.ok', 'skills-lock.json'), 'utf-8')) as {
       skills: Record<string, { contentHash: string }>;
     };
@@ -1332,12 +1187,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     });
 
   test('refuses a link whose SOURCE root does not exist, and creates nothing', async () => {
-    // The composition, not the plumbing. Nothing tested that the route's
-    // `mayCreate` closure is wired to either call site: drop `mayCreate:` from
-    // the commit path and this goes green again while the consent boundary is
-    // gone. `.codex` is absent in this fixture, so linking it would mkdir a
-    // dotdir for a tool the user never installed — the circularity the whole
-    // rule exists to prevent.
     const res = await putFolder({
       scope: 'project',
       root: '.codex/skills',
@@ -1346,20 +1195,12 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { title?: string };
-    // Pin that it is the CONSENT refusal, not the known-roots 400 above it — an
-    // earlier draft of this test used `.copilot/skills`, which is Copilot's USER
-    // root, so it never reached this branch and passed for the wrong reason.
     expect(body.title).toContain('may not create on this machine');
     expect(existsSync(join(contentDir, '.codex'))).toBe(false);
-    // The source bundles are untouched — a refusal must not half-apply.
     expect(existsSync(join(contentDir, '.agents/skills/shared/SKILL.md'))).toBe(true);
   });
 
   test('refuses the same link on the PREVIEW path, with the same status', async () => {
-    // Preview exists to tell a caller what commit will decide, so it must refuse
-    // too — and pin the SAME status, which is the second call site of the same
-    // closure. Dropping `mayCreate:` from the preview call alone leaves the
-    // commit test above green.
     const res = await putFolder({
       scope: 'project',
       root: '.codex/skills',
@@ -1369,10 +1210,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { title?: string };
-    // Preview is the path the Folders UI always takes, and it used to emit the
-    // sentence WITHOUT the roots — so the audience that most needs to know which
-    // folder was refused was the one not told. `parseApiError` reads `title`
-    // only, so `detail` never reached the toast.
     expect(body.title).toContain('.codex/skills');
     expect(existsSync(join(contentDir, '.codex'))).toBe(false);
   });
@@ -1391,7 +1228,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     expect(lstat(join(contentDir, '.cursor/skills')).isSymbolicLink()).toBe(true);
     expect(existsSync(join(contentDir, '.agents/skills/own-only/SKILL.md'))).toBe(true);
 
-    // GET reports the linked state (project scope).
     const getRes = await fetch(`${base()}/api/skill-targets`);
     const got = (await getRes.json()) as {
       folders?: Array<{ scope: string; host: string; state: string; target?: string }>;
@@ -1400,7 +1236,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     expect(cursorRow?.state).toBe('linked');
     expect(cursorRow?.target).toBe('.agents/skills');
 
-    // Unlink: back to a real dir of per-skill symlinks (lossless).
     const unlinkRes = await putFolder({
       scope: 'project',
       root: '.cursor/skills',
@@ -1430,7 +1265,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
       return g.folders ?? [];
     };
 
-    // Link records the receipt — no drift while disk matches.
     expect(
       (
         await putFolder({
@@ -1444,8 +1278,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     let cursor = (await getFolders()).find((f) => f.scope === 'project' && f.host === 'cursor');
     expect(cursor?.drift).toBeUndefined();
 
-    // An EXTERNAL tool deletes the symlink and writes a real dir (sync-script
-    // style). OK does NOT self-heal; the row discloses drift passively.
     rmSync(join(contentDir, '.cursor/skills'), { force: true });
     mkdirSync(join(contentDir, '.cursor/skills'), { recursive: true });
     cursor = (await getFolders()).find((f) => f.scope === 'project' && f.host === 'cursor');
@@ -1453,7 +1285,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     expect(cursor?.drift).toBe(true);
     expect(cursor?.expected).toBe('link → .agents/skills');
 
-    // The next explicit verb WINS and refreshes the receipt — drift clears.
     expect(
       (
         await putFolder({
@@ -1484,7 +1315,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
   });
 
   test('ledger-known custom roots are folder rows AND valid link targets', async () => {
-    // Record a custom placement so the ledger knows `.tim/skills`.
     const place = await fetch(`${base()}/api/skill/install`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1502,7 +1332,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     const timRow = got.folders?.find((f) => f.scope === 'project' && f.root === '.tim/skills');
     expect(timRow?.state).toBe('own');
 
-    // A custom root is a first-class LINK target (no root is privileged).
     const res = await putFolder({
       scope: 'project',
       root: '.cursor/skills',
@@ -1527,7 +1356,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
     const row = got.folders?.find((f) => f.scope === 'project' && f.root === '.myteam/skills');
     expect(row?.state).toBe('absent');
 
-    // Immediately linkable as a target (created on link).
     const res = await putFolder({
       scope: 'project',
       root: '.cursor/skills',
@@ -1557,22 +1385,6 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
   });
 });
 
-/**
- * The `outsideProject` stamp on `/api/skills/installed`. The pure predicate is
- * unit-tested in `core/skills-catalog/scope.test.ts`; what only a booted server
- * can pin is WHICH directory the handler measures against. Three candidates sit
- * at that call site and two are wrong:
- *   - `identity`   — resolves a linked worktree to its parent, which makes the
- *     comparison vacuous: the enumerated skills are always "inside" it;
- *   - `contentDir` — under `content.dir: docs` this is a SUBDIRECTORY of the
- *     project, so every project skill in the user's OWN checkout reads foreign.
- * Only `projectDir ?? contentDir`, the open project root, is correct, and each
- * test below fails on exactly one of the wrong two.
- *
- * Skills go under `.claude/skills` (an EDITOR project root). `.agents` is the
- * vendor-neutral hub, deliberately not an editor id, so `projectHarnessHomes`
- * does not scan it and a skill placed there is never enumerated at all.
- */
 describe('outsideProject stamp on /api/skills/installed', () => {
   let server: TestServer | undefined;
   const trash: string[] = [];
@@ -1591,9 +1403,6 @@ describe('outsideProject stamp on /api/skills/installed', () => {
   });
 
   test('does NOT flag a project skill in the user own checkout under content.dir', async () => {
-    // `content.dir: docs`. The skill sits at <projectRoot>/.claude/skills/x —
-    // inside the project the user has open, but OUTSIDE contentDir. Measuring
-    // against contentDir flags it; measuring against the project root does not.
     const projectRoot = mkdtempSync(join(tmpdir(), 'ok-outside-proj-'));
     trash.push(projectRoot);
     const docsDir = join(projectRoot, 'docs');
@@ -1608,9 +1417,6 @@ describe('outsideProject stamp on /api/skills/installed', () => {
   });
 
   test('flags a project skill that lives in the parent checkout of a linked worktree', async () => {
-    // The shape this feature exists for. A REAL linked worktree is required:
-    // `resolveProjectIdentity` only diverges from its input when `.git` is a
-    // pointer file, and that divergence is what surfaces the parent's skills here.
     const wt = createLinkedWorktree({ prefix: 'ok-outside-wt', seedOkScaffold: true });
     trash.push(wt.repoRoot, wt.worktreePath);
     writeSkill(wt.repoRoot, '.claude/skills/fromparent', '# From the parent checkout');
@@ -1671,18 +1477,6 @@ describe('repo-declared plugin identity on /api/skills (no harness registry)', (
   });
 });
 
-/**
- * `hubOffered` and the `folders[]` activation filter, computed by a REAL server.
- *
- * Both were only ever exercised through unit tests that inject the answer:
- * `skill-install-rows.test.ts` passes `hubOffered` as a stub boolean, and
- * `in-place-skills.test.ts` calls `isActivatedSkillRoot` directly. Neither can
- * see WHICH base the handler measures against — and that base already regressed
- * once in this PR (`contentDir` where the install writes to `projectDir`).
- *
- * Same shape as the `outsideProject` block above: split `contentDir` from
- * `projectDir` so a wrong base is observable rather than coincidentally right.
- */
 describe('hub activation computed server-side', () => {
   let server: TestServer | undefined;
   const trash: string[] = [];
@@ -1711,7 +1505,6 @@ describe('hub activation computed server-side', () => {
   };
 
   test('the hub is NOT a project folder row when nothing on the machine reads it', async () => {
-    // No `.agents` anywhere and no hub reader installed: the row must not appear.
     const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-none-'));
     trash.push(projectRoot);
     writeSkill(projectRoot, '.claude/skills/x', '# X');
@@ -1725,8 +1518,6 @@ describe('hub activation computed server-side', () => {
   });
 
   test('an existing .agents makes it a project folder row', async () => {
-    // The base-independent half: adoption activates it wherever the reader
-    // question lands, so this pins the filter is wired at all.
     const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-adopted-'));
     trash.push(projectRoot);
     writeSkill(projectRoot, '.agents/skills/shared', '# Shared');
@@ -1740,11 +1531,6 @@ describe('hub activation computed server-side', () => {
   });
 
   test('hubOffered is computed against projectDir, not contentDir', async () => {
-    // The regression this PR already shipped once. `content.dir: docs`, and
-    // `.agents` sits at the PROJECT root — where the install actually writes,
-    // since `skillInstallBase('project')` is `projectDir`. Measuring against
-    // contentDir answers about `<projectRoot>/docs/.agents`, which is absent,
-    // and returns false for a hub the install would land in.
     const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-base-'));
     trash.push(projectRoot);
     const docsDir = join(projectRoot, 'docs');

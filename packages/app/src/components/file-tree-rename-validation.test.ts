@@ -103,8 +103,6 @@ describe('validateAndCoerceRenameDestination — allow paths', () => {
   });
 
   test('user omitted the extension → coerce destination back to the source extension', () => {
-    // Basename-only commits can still happen if the user deletes the visible
-    // suffix. This path preserves the source extension on disk.
     expect(validateAndCoerceRenameDestination('foo.md', 'bar', false)).toEqual({
       kind: 'allow',
       destinationPath: 'bar.md',
@@ -271,10 +269,6 @@ describe('validateAndCoerceRenameDestination — asset paths', () => {
 });
 
 describe('validateAndCoerceRenameDestination — doubled document extension', () => {
-  // Pierre pre-selects only the stem and leaves the extension in place, so a
-  // user who types a whole filename ending in `.md` commits `name.md` plus the
-  // retained `.md`. `name.md.md` on disk carries docName `name.md`, which maps
-  // back to the tree path of a DIFFERENT file — two files, one tree path.
   test('typed name already ending in .md collapses the retained extension', () => {
     expect(
       validateAndCoerceRenameDestination(
@@ -344,7 +338,6 @@ describe('validateAndCoerceRenameDestination — doubled document extension', ()
   });
 
   test('an asset source is left alone even when the typed name carries a document extension', () => {
-    // Collapsing here would retitle an image to `notes.md`.
     expect(
       validateAndCoerceRenameDestination('media/image.png', 'media/notes.md.png', false),
     ).toEqual({
@@ -363,9 +356,6 @@ describe('validateAndCoerceRenameDestination — doubled document extension', ()
   });
 
   test('an uppercase source extension still collapses its retained suffix', () => {
-    // Guard 1 case-folds; guard 2 matches the retained suffix verbatim, which
-    // is exactly the string sliced off the source. Lowercasing the retained
-    // suffix anywhere in that chain would silently stop collapse from firing.
     expect(validateAndCoerceRenameDestination('foo.MD', 'bar.MD.MD', false)).toEqual({
       kind: 'allow',
       destinationPath: 'bar.MD',

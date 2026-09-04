@@ -74,8 +74,6 @@ describe('note-window dedup identity', () => {
   });
 
   test('two windows on one identity resolve most-recently-used', () => {
-    // Reachable only through in-place navigation: window 2 navigates onto the
-    // document window 1 already shows. The collision is permitted.
     registerNoteWindow(1, ctx(PROJECT_A, 'notes/alpha'));
     registerNoteWindow(2, ctx(PROJECT_A, 'notes/beta'));
     setNoteWindowDoc(2, 'notes/alpha');

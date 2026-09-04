@@ -23,6 +23,7 @@ export default {
     'where', // Windows binary lookup — git-preflight.ts, slides slidev probe
     'taskkill', // Windows process-tree termination — acp/launch.ts
     'sw_vers', // macOS version query — bug-report.ts
+    'mktemp', // where macOS puts -t files — b4-acceptance-gate.test.ts observes the gate's scratch
     'mkfifo', // named-pipe creation — keepalive-orphan-reaping.test.ts
     'xcrun', // macOS notarization tool — desktop afterSign.mjs
     'xdg-mime', // Linux default-app query — desktop ipc-handlers.ts
@@ -55,6 +56,7 @@ export default {
     'packages/server/src/http/error-response.ts': ['exports'],
     'packages/app/src/editor/http-client.ts': ['types'],
     '.{agents,codex}/skills/**': ['files'],
+    'lint-plugins/no-comments/__fixtures__/**': ['files'],
     'biome-plugins/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/build-slack-release-payload.mjs': ['files'],

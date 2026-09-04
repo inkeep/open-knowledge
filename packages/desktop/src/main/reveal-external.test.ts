@@ -25,8 +25,6 @@ describe('handleRevealExternal', () => {
       ok: false,
       reason: 'invalid-path',
     });
-    // Other C0 controls (newline/CR/tab) are rejected too — they'd inject extra
-    // lines into the confirmation dialog's interpolated path.
     expect(await handleRevealExternal('/a\nb', deps)).toEqual({
       ok: false,
       reason: 'invalid-path',

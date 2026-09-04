@@ -20,9 +20,6 @@ describe('deriveKnownFolderPaths', () => {
 
 describe('resolveNavigationTarget', () => {
   test('resolves managed-artifact docs as real doc targets (never missing)', () => {
-    // A global skill lives outside the page list, so the membership checks would
-    // mark it 'missing' — but it's a real synthetic doc. Resolve directly so hash
-    // nav opens it and graph/links aren't broken.
     const docName = '__skill__/global/foo';
     expect(resolveNavigationTarget(docName, { pages: new Set() })).toEqual({
       kind: 'doc',
@@ -32,21 +29,16 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('redirects a stale `__template__/…` deep-link to the content doc', () => {
-    // Templates are content docs now; a stale synthetic bookmark must redirect to
-    // the live content doc, not open a phantom empty tab. The legacy parser
-    // percent-DECODES segments, so an encoded spaced folder lands on the raw name.
     expect(resolveNavigationTarget('__template__/notes/daily', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: 'notes/.ok/templates/daily',
       docName: 'notes/.ok/templates/daily',
     });
-    // Root-level legacy name (no folder segment).
     expect(resolveNavigationTarget('__template__/daily', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '.ok/templates/daily',
       docName: '.ok/templates/daily',
     });
-    // Percent-encoded legacy name with a spaced folder.
     expect(resolveNavigationTarget('__template__/My%20Notes/daily', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: 'My Notes/.ok/templates/daily',
@@ -55,9 +47,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves a PROJECT skill content doc without page-index membership', () => {
-    // A freshly created/imported project skill lags the page index by the async
-    // files refetch; it must still resolve to the skill DOC rather than the
-    // read-only asset viewer, which would strand the editor on a dead surface.
     const target = '.ok/skills/new-skill/SKILL';
     expect(resolveNavigationTarget(target, { pages: new Set() })).toEqual({
       kind: 'doc',
@@ -67,10 +56,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves a GLOBAL skill bundle .md reference to an EDITABLE doc target', () => {
-    // Global skill `.md` references are now editable managed-artifact live docs
-    // (per-file skill editability), backed by `<home>/.ok/skills/<name>/<rel>.md`
-    // via managedArtifactAbsPath — they open in the editor, not the read-only
-    // skill-file viewer. The synthetic name is passed straight through as the doc.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/notes', { pages: new Set() }),
     ).toEqual({
@@ -78,7 +63,6 @@ describe('resolveNavigationTarget', () => {
       target: '__skill__/global/demo/references/notes',
       docName: '__skill__/global/demo/references/notes',
     });
-    // Nested reference.
     expect(
       resolveNavigationTarget('__skill__/global/demo/references/sub/deep', { pages: new Set() }),
     ).toEqual({
@@ -89,7 +73,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('the GLOBAL SKILL doc itself stays a normal editor doc target (not skill-file)', () => {
-    // Only references route to the viewer — the SKILL doc opens in the editor.
     expect(resolveNavigationTarget('__skill__/global/demo', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '__skill__/global/demo',
@@ -98,9 +81,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('redirects a stale `__skill__/project/<name>` deep-link to the content doc', () => {
-    // A project skill is a CONTENT doc (`.ok/skills/<name>/SKILL`), never the
-    // synthetic `__skill__/project/<name>`. A stale bookmark/deep-link in the
-    // dead form must redirect to the live content doc, not open a phantom tab.
     expect(resolveNavigationTarget('__skill__/project/foo', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: '.ok/skills/foo/SKILL',
@@ -109,16 +89,12 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves skill and template file-path links as content docs', () => {
-    // Project skills are content docs now: a link to a skill file resolves
-    // through the normal page index, NOT to a synthetic __skill__ artifact doc.
     const skillDoc = '.ok/skills/open-knowledge-pack-knowledge-base/SKILL';
     expect(resolveNavigationTarget(skillDoc, { pages: new Set([skillDoc]) })).toEqual({
       kind: 'doc',
       target: skillDoc,
       docName: skillDoc,
     });
-    // Templates are content docs too: a link resolves to the content doc name,
-    // not the dead `__template__/…` synthetic.
     expect(resolveNavigationTarget('notes/.ok/templates/daily', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: 'notes/.ok/templates/daily',
@@ -127,9 +103,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('resolves a template content doc structurally, normalizing a .md link to ext-less', () => {
-    // A freshly-created template lags the page index; it must still resolve to the
-    // template DOC (structural early-resolve), not the read-only asset viewer. A
-    // doc-body link carrying `.md` normalizes to the same ext-less content name.
     expect(resolveNavigationTarget('projects/.ok/templates/plan', { pages: new Set() })).toEqual({
       kind: 'doc',
       target: 'projects/.ok/templates/plan',
@@ -158,9 +131,6 @@ describe('resolveNavigationTarget', () => {
   });
 
   test('two double-extension files under one stem keep their qualified names', () => {
-    // `docs/guide.md.md` and `docs/guide.mdx.md` on disk: each indexes as a page
-    // whose own name still ends in a markdown extension, and nothing owns the
-    // bare `docs/guide`, so a strip would merge the two onto a name for neither.
     const resolved = resolveNavigationTarget('docs/guide.md', {
       pages: new Set(['docs/guide.md', 'docs/guide.mdx']),
       folderPaths: new Set(['docs']),
@@ -416,17 +386,10 @@ describe('okContentNavigationTarget (read-only .ok routing)', () => {
   test('targets without a .ok path segment are not governed', () => {
     expect(okContentNavigationTarget('notes/real', { pages })).toBeNull();
     expect(okContentNavigationTarget('brand-new/idea', { pages })).toBeNull();
-    // A plain `ok` segment is a user folder, not the managed directory.
     expect(okContentNavigationTarget('docs/ok/guide', { pages })).toBeNull();
   });
 
   test('a template content doc keeps the normal doc flow even when it lags the page index', () => {
-    // Templates ARE content docs in `/api/pages`, but a freshly-created one lags
-    // the page index. This `pages` set omits the template to simulate that
-    // index-lag window: the structural SHAPE match must still route a revealed
-    // template row to the editable template editor, not the read-only asset
-    // viewer. The skills carve-out below leans on membership because skills ship
-    // in the page list.
     expect(okContentNavigationTarget('.ok/templates/meeting', { pages })).toBeNull();
     expect(okContentNavigationTarget('team/.ok/templates/spec', { pages })).toBeNull();
   });
@@ -460,9 +423,6 @@ describe('okContentNavigationTarget (read-only .ok routing)', () => {
   });
 
   test('nested template paths are not template files — they land on the viewer', () => {
-    // A template is a single-segment leaf under `.ok/templates/`; a nested path is
-    // not one, so it gets no structural template resolution and falls to the
-    // read-only viewer like any other unindexed `.ok` file.
     expect(okContentNavigationTarget('.ok/templates/a/b', { pages })).toMatchObject({
       kind: 'asset',
       assetPath: '.ok/templates/a/b.md',
@@ -490,9 +450,6 @@ describe('okContentNavigationTarget (read-only .ok routing)', () => {
   });
 
   test('the docName contract is file-shaped: a leaf still gains its .md extension', () => {
-    // The mapping has no concept of a directory, so callers that can distinguish
-    // a folder path from a docName must not route folder paths here — the shape
-    // gate lives in resolveNavigationTarget, exercised below.
     expect(okContentNavigationTarget('articles/.ok', { pages })).toMatchObject({
       kind: 'asset',
       assetPath: 'articles/.ok.md',
@@ -501,9 +458,6 @@ describe('okContentNavigationTarget (read-only .ok routing)', () => {
 });
 
 describe('resolveNavigationTarget — folder-shaped .ok targets', () => {
-  // A revealed `.ok` directory holds no indexed markdown, so it never enters the
-  // page-derived folder index — the shape that used to reach the `.ok` file
-  // fallback and come back as a phantom `<dir>.md` asset.
   const options = {
     pages: new Set(['articles/intro']),
     folderPaths: new Set(['articles']),
@@ -535,8 +489,6 @@ describe('resolveNavigationTarget — folder-shaped .ok targets', () => {
   });
 
   test('.ok folders backed by indexed skill docs still resolve as folders', () => {
-    // Project skill docs ARE page-list members, so `.ok` and `.ok/skills`
-    // register as real folder paths and resolve before the fallback.
     const skillOptions = { pages: new Set(['.ok/skills/writer/SKILL']) };
     for (const folderPath of ['.ok', '.ok/skills', '.ok/skills/writer']) {
       expect(resolveNavigationTarget(`${folderPath}/`, skillOptions)).toEqual({
@@ -548,8 +500,6 @@ describe('resolveNavigationTarget — folder-shaped .ok targets', () => {
   });
 
   test('doc-shaped .ok targets keep their read-only routing', () => {
-    // A template content doc resolves structurally to itself even before the page
-    // index catches up (it is not in `options.pages` here).
     expect(resolveNavigationTarget('articles/.ok/templates/meeting', options)).toEqual({
       kind: 'doc',
       target: 'articles/.ok/templates/meeting',
@@ -571,10 +521,6 @@ describe('resolveNavigationTarget — folder-shaped .ok targets', () => {
   });
 
   test('a trailing-slash template path returns missing (folder-shaped, not a doc)', () => {
-    // The template shape parser rejects the slashed form, so a trailing-slash
-    // template path is treated as a folder, not a template doc. Pinned so a caller
-    // that later emits trailing-slash template hashes cannot silently flip this
-    // into a doc resolution.
     expect(resolveNavigationTarget('articles/.ok/templates/meeting/', options)).toEqual({
       kind: 'missing',
       target: 'articles/.ok/templates/meeting',
@@ -586,9 +532,6 @@ describe('resolveNavigationTarget .ok guard', () => {
   const options = { pages: new Set(['notes/real', '.ok/skills/writer/SKILL']) };
 
   test('doc-shaped .ok targets never resolve to missing — the viewer replaces create-mode', () => {
-    // Existing file and nonexistent name are unknowable at resolve time; both
-    // shapes must land on the read-only viewer (its error pane is the
-    // non-create missing surface), never on the create-mode editor.
     expect(resolveNavigationTarget('.ok/raw-probe', options)).toEqual({
       kind: 'asset',
       target: '.ok/raw-probe.md',
@@ -802,8 +745,6 @@ describe('downgradeFolderIndexForHashNav', () => {
 
 describe('resolveNavigationTarget — Mermaid docs', () => {
   test('resolves a .mmd / .mermaid path to a doc target even when absent from pages', () => {
-    // Mermaid docs are served as assets (never in the markdown page set) but
-    // open as editable CRDT docs — the docName retains its extension.
     const pages = new Set<string>();
     expect(resolveNavigationTarget('assets/flow.mmd', { pages })).toEqual({
       kind: 'doc',
@@ -876,8 +817,6 @@ describe('markdown-extension normalization keeps one room per file', () => {
   });
 
   test('a file whose own name ends in .md keeps that extension', () => {
-    // `specs/demo/NOTE.md.md` on disk indexes as the page `specs/demo/NOTE.md`.
-    // No page owns `specs/demo/NOTE`, so stripping addresses nothing.
     const pages = new Set(['specs/demo/NOTE.md']);
     expect(resolveNavigationTarget('specs/demo/NOTE.md', { pages })).toEqual({
       kind: 'doc',

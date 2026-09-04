@@ -1,29 +1,10 @@
 import { describe, expect, test } from 'vitest';
-// `resolveBootRestoreDecision` is the boot-orchestration seam: an async
-// coordinator that withholds the boot-restore decision until cold-start URL
-// delivery has SETTLED, then reads the launch flag, then delegates to the pure
-// `bootRestoreDecision`. On macOS the `open-url` Apple Event is delivered
-// asynchronously and can land after the synchronous boot read, so the flag must
-// not be read until the settle await resolves. Otherwise a cold-start share is
-// buried by whichever default it should have outranked: the clean-exit restore
-// snapshot, or `lastOpenedProject`. These tests pin that contract.
 import { resolveBootRestoreDecision } from './boot-restore-decision.ts';
 import { registerProtocolHandler } from './url-scheme.ts';
 
-// A valid share for a repo NOT held locally (the reported clone flow). It parses
-// to a launch-claiming `kind:'ok'` share, so delivering it flips
-// `urlLaunchOwnsWindow` to true.
 const SHARE_URL = 'openknowledge://share?url=https://github.com/inkeep/not-cloned-repo/tree/main';
-// A single-file deep-link (`ok <file>` → `openknowledge://open?file=<abs>`). The
-// single-file path rides the SAME `urlLaunchOwnsWindow` read at the same seam,
-// so one settle barrier covers both share and single-file cold-start URLs.
 const SINGLE_FILE_URL = 'openknowledge://open?file=/Users/me/notes/scratch.md';
 
-// Spin a REAL `registerProtocolHandler` and capture its `open-url` listener so a
-// test controls the exact moment the macOS Apple Event is "delivered" relative
-// to the settle await. `whenReady` never resolves, so the handler's internal
-// auto-flush loop never runs — the flag is observed purely as a function of
-// delivery timing.
 function makeHandler() {
   let openUrlListener: ((event: { preventDefault: () => void }, url: string) => void) | null = null;
   const neverReady = new Promise<void>(() => {});
@@ -44,9 +25,6 @@ function makeHandler() {
     sendDeepLink: () => {},
     getAnyReadyWindow: () => null,
     getInitialArgv: () => [],
-    // Pin non-darwin so the settle source resolves immediately (non-darwin fast
-    // path) rather than hanging on the grace timer that never fires (whenReady =
-    // neverReady). The darwin settle path is covered by url-scheme.settle.test.ts.
     platform: 'linux',
   });
   return {
@@ -55,8 +33,6 @@ function makeHandler() {
   };
 }
 
-// A settle barrier the test releases by hand, so delivery can be interleaved
-// deterministically inside the window (no wall-clock, no sleeps).
 function manualSettle() {
   let release!: () => void;
   const promise = new Promise<void>((res) => {
@@ -79,18 +55,14 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
 
-    // At decision time the Apple Event has not been delivered — the flag is stale.
     expect(control.urlLaunchOwnsWindow()).toBe(false);
 
-    // The cold-start `open-url` Apple Event lands mid-settle; the flag flips.
     deliver(SHARE_URL);
     expect(control.urlLaunchOwnsWindow()).toBe(true);
 
-    // Only now may the coordinator read the flag and decide.
     settle.release();
     const decision = await decisionPromise;
 
-    // The share owns the launch; the previously-opened project must NOT be restored.
     expect(decision).toEqual({ clearSnapshot: false, action: 'none' });
   });
 
@@ -130,7 +102,6 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
 
-    // Settle completes with no URL delivered — the flag never flips.
     settle.release();
     const decision = await decisionPromise;
 
@@ -154,10 +125,6 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
 
-    // The ordinary icon launch, through the coordinator. The launch flag is the
-    // single input that can now erase a whole session, so the coordinator must
-    // not infer a claim from anything else it holds: a settle that merely timed
-    // out, or the presence of a snapshot, must still restore every window.
     settle.release();
     const decision = await decisionPromise;
 
@@ -181,9 +148,6 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: settle.waitForUrlLaunchSettled,
     });
 
-    // A share lands mid-settle and claims the launch. It outranks the clean-exit
-    // snapshot, through the coordinator too, so the previous window set is NOT
-    // restored and the snapshot is still consumed (`clearSnapshot`).
     deliver(SHARE_URL);
     expect(control.urlLaunchOwnsWindow()).toBe(true);
 
@@ -219,8 +183,6 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
     const { control } = makeHandler();
 
     let settleResolved = false;
-    // Resolve on a microtask so a coordinator that reads the flag before awaiting
-    // settle observes `settleResolved === false` at read time.
     const settled = new Promise<void>((res) => {
       queueMicrotask(() => {
         settleResolved = true;
@@ -243,7 +205,6 @@ describe('resolveBootRestoreDecision (cold-start URL settle barrier)', () => {
       waitForUrlLaunchSettled: () => settled,
     });
 
-    // The flag was read only after settling completed.
     expect(flagReadAfterSettle).toBe(true);
   });
 });

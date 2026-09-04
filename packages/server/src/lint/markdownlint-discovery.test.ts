@@ -1,11 +1,3 @@
-/**
- * Unit tests for native markdownlint config discovery against a real temp dir:
- * the `.markdownlint.*` precedence chain, per-format parsing (JSON / JSONC /
- * YAML), loud handling of malformed files, `extends` chain flattening with
- * its guards (package refs, escapes, cycles), and the per-dir cascade
- * (markdownlint-cli2 semantics: nearest file governs wholesale).
- */
-
 import {
   chmodSync,
   mkdirSync,
@@ -98,7 +90,6 @@ describe('discoverMarkdownlintConfig', () => {
   test('a malformed-file problem carries the parser detail, not just the verdict', () => {
     write('.markdownlint.json', '{ not valid json');
     const found = discoverMarkdownlintConfig(dir);
-    // jsonc-parser's error code + offset, bounded to one line.
     expect(found?.problems[0]).toMatch(/malformed markdownlint config: .+ \(.+at offset \d+\)/);
   });
 
@@ -113,8 +104,6 @@ describe('discoverMarkdownlintConfig', () => {
   });
 
   test('rejects a half-parseable file rather than linting with a partial config', () => {
-    // jsonc-parser error-recovers to `{ MD013: false }` here; the missing
-    // colon must classify the file malformed, not silently drop MD041.
     write('.markdownlint.jsonc', '{ "MD013": false, "MD041" }');
     expect(discoverMarkdownlintConfig(dir)?.rules).toBeNull();
   });
@@ -173,14 +162,11 @@ describe('extends resolution', () => {
     write('b.json', JSON.stringify({ extends: './a.json', MD041: false }));
     write('.markdownlint.json', JSON.stringify({ extends: './a.json' }));
     const found = discoverMarkdownlintConfig(dir);
-    // a + b both contribute their own keys; the cycle back to a is cut.
     expect(found?.rules).toEqual({ MD013: false, MD041: false });
     expect(found?.problems).toEqual([expect.stringContaining('extends cycle')]);
   });
 
   test('refuses an extends target whose SYMLINK realpath escapes the project', () => {
-    // Lexically inside the boundary, physically outside: the realpath guard
-    // (not the lexical one) must catch it.
     const outside = mkdtempSync(join(tmpdir(), 'ok-mdl-outside-'));
     try {
       writeFileSync(join(outside, 'evil.json'), JSON.stringify({ MD041: false }), 'utf-8');
@@ -223,7 +209,6 @@ describe('resolveNativeMarkdownlintConfig (per-dir cascade, cli2 semantics)', ()
     write('notes/.markdownlint.json', JSON.stringify({ MD010: false }));
     mkdirSync(join(dir, 'notes/deep'), { recursive: true });
     const near = resolveNativeMarkdownlintConfig(join(dir, 'notes/deep'), dir);
-    // The folder file replaces the root file entirely — MD013/MD041 do NOT leak in.
     expect(near?.rules).toEqual({ MD010: false });
     expect(near?.file).toBe(join('notes', '.markdownlint.json'));
   });
@@ -273,8 +258,6 @@ describe('readOwnNativeRules', () => {
     expect(own?.raw).toBe(raw);
   });
 
-  // Root reads any file regardless of mode, so the permission probe only
-  // proves the rethrow when the process isn't privileged.
   test.runIf(process.getuid?.() !== 0)(
     'THROWS on a filesystem read failure — an unreadable file is not "no rules"',
     () => {

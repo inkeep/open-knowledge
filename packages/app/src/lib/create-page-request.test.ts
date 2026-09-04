@@ -20,7 +20,6 @@ describe('nextUntitledDocName', () => {
   });
 
   it('scopes taken-ness to the directory', () => {
-    // An `untitled` at the root does not push the one in `notes/` to -2.
     expect(nextUntitledDocName('notes', new Set(['untitled']))).toBe('notes/untitled');
   });
 });
@@ -57,7 +56,6 @@ describe('createPageRequest', () => {
   });
 
   it('reports a kind-specific failure when a 2xx body is missing docName', async () => {
-    // The server committed something the client cannot read back.
     stubFetch(async () => new Response(JSON.stringify({ unexpected: true }), { status: 200 }));
     expect(await createPageRequest({ path: 'untitled.md', kind: 'file' })).toEqual({
       ok: false,
@@ -83,8 +81,6 @@ describe('openCreatedPage', () => {
   const realWindow = (globalThis as { window?: unknown }).window;
 
   afterEach(() => {
-    // This tier has no DOM. Restore rather than delete: leaving a stub behind
-    // makes later files in the same worker believe they are in a browser.
     if (realWindow === undefined) delete (globalThis as { window?: unknown }).window;
     else (globalThis as { window?: unknown }).window = realWindow;
   });
@@ -104,9 +100,6 @@ describe('openCreatedPage', () => {
   });
 
   it('encodes a name containing a route metacharacter so the new page opens', () => {
-    // Creating is the path the bug was reported through: the name is legal to
-    // create, and left raw the "#" reads as the anchor delimiter, so the parser
-    // resolves no document and the app opens a New Tab over the new page.
     expect(harness('# 2 - Tokens')).toBe('#/%23%202%20-%20Tokens');
     expect(harness('What now?')).toBe('#/What%20now%3F');
   });

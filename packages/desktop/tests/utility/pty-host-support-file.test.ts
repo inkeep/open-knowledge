@@ -19,23 +19,6 @@ import {
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
 
-/**
- * Filesystem contract for the PRODUCTION support-file writer.
- *
- * The sibling suite (`pty-host.test.ts`) always injects `materializeSupportFile`,
- * so the default that ships — the one that actually calls `mkdir` and `write` —
- * is never exercised there. These tests deliberately leave the dep uninjected
- * and run against a real temp tree with real symlinks, because the property
- * under test (the resolved write location stays inside the project) is only
- * observable through the filesystem.
- *
- * `platform: 'win32'` is the logical launch platform the host is told to compose
- * for — the escape it must refuse is a Windows Git checkout with symlink support
- * — while the filesystem operations run natively on the host runner. Directory
- * junctions, which only exist on Windows, resolve through `realpath` exactly as
- * these directory symlinks do, so the segment walk covers them by construction.
- */
-
 const SUPPORT_RELATIVE_PATH = '.ok/local/terminal/claude-settings-mcp-tools.json';
 const REGISTRY_CONTENTS = '{"enabledMcpjsonServers":["open-knowledge"]}';
 
@@ -58,7 +41,6 @@ interface WriterHarness {
   warnings: Record<string, unknown>[];
 }
 
-/** Drive one `create` through the host with the production writer in place. */
 function materialize(cwd: string, relativePath = SUPPORT_RELATIVE_PATH): WriterHarness {
   let handler: ((event: { data: unknown }) => void) | null = null;
   const posted: PtyHostOutgoingMessage[] = [];
@@ -83,7 +65,6 @@ function materialize(cwd: string, relativePath = SUPPORT_RELATIVE_PATH): WriterH
     pathProbe: () => null,
     listDirectory: () => [],
     logger: { warn: (o) => warnings.push(o), info: () => {} },
-    // `materializeSupportFile` intentionally omitted — that is the subject.
   });
   handler?.({
     data: {
@@ -107,8 +88,6 @@ let project: string;
 let outside: string;
 
 beforeEach(() => {
-  // realpath the temp root: on macOS `/var` is a symlink to `/private/var`, so
-  // an un-resolved root would make every containment assertion vacuous.
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-support-file-')));
   project = join(root, 'project');
   outside = join(root, 'outside');
@@ -120,7 +99,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** The degradation the writer must fall through to when it refuses. */
 function expectBareClaudeLaunch(h: WriterHarness): void {
   expect(h.posted.filter((m) => m.type === 'spawn-error')).toHaveLength(0);
   expect(h.spawnArgs).toBe('/K claude');
@@ -228,9 +206,6 @@ describe('production support-file writer', () => {
   });
 
   test('refuses a leaf symlink that stays inside the project', () => {
-    // Even a contained symlink is refused: the writer owns this path outright,
-    // so a link there is not a shape it authored and following it would let a
-    // later re-point of the link redirect the next write.
     const inside = join(project, 'decoy.json');
     writeFileSync(inside, '{"inside":true}');
     const dir = join(project, '.ok', 'local', 'terminal');

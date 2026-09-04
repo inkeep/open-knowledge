@@ -170,11 +170,6 @@ describe('resolveFileTreeSelectionAction', () => {
   });
 
   test('opens the base file from its own row when a doubled extension is listed first', () => {
-    // The `name.md` row and the `name.md.md` row are both visible now, and both
-    // entries map RAW to `name.md`. Picking whichever entry the server happened
-    // to list first would open `name.md.md` from the `name.md` row, which is
-    // the wrong file and invisible to the user. Directory order is not
-    // guaranteed, so assert the order that used to resolve incorrectly.
     const doubled: FileEntry = {
       kind: 'document',
       docName: 'name.md',
@@ -197,7 +192,6 @@ describe('resolveFileTreeSelectionAction', () => {
       kind: 'document',
       path: 'name.md',
     });
-    // Same answers with the entries the other way round.
     expect(resolveFileTreeSelectionAction('name.md', [base, doubled])).toEqual({
       kind: 'document',
       path: 'name',
@@ -364,9 +358,6 @@ describe('resolveFileTreeSelectionAction — editable text assets', () => {
 
 describe('previewTabIdForTreePath', () => {
   test('a markdown row resolves to its extension-less document tab', () => {
-    // The row is `docs/guide.md`; the tab is `docs/guide`. Recomputing the tab
-    // id from the row path instead of the resolved action would target a tab
-    // that does not exist, and the double-click would silently do nothing.
     expect(
       previewTabIdForTreePath(
         'docs/guide.md',
@@ -396,9 +387,6 @@ describe('previewTabIdForTreePath', () => {
   });
 
   test('a mermaid row resolves to a DOCUMENT tab despite being an asset entry', () => {
-    // The case that makes sharing `resolveFileTreeSelectionAction` load-bearing:
-    // `.mmd` is an asset entry that opens as an editable doc, so keying the tab
-    // id off the entry kind would promote the wrong tab.
     expect(
       previewTabIdForTreePath(
         'assets/flow.mmd',
@@ -453,10 +441,6 @@ describe('previewTabIdForTreePath', () => {
 });
 
 describe('previewTabIdForTreePath — revealed .ok rows', () => {
-  // These rows are rerouted a second time by `okContentNavigationTarget`, AFTER
-  // the selection action resolves. Deriving the tab id from the action alone
-  // yields an id no pane owns, so the double-click is a silent no-op on exactly
-  // these rows whenever "Show .ok folders" is on.
   test('a template row resolves to its content doc tab', () => {
     expect(
       previewTabIdForTreePath(
@@ -486,7 +470,6 @@ describe('previewTabIdForTreePath — revealed .ok rows', () => {
   });
 
   test('an indexed .ok page keeps the ordinary doc tab', () => {
-    // `pages` membership means the normal doc flow owns it — no reroute.
     expect(
       previewTabIdForTreePath(
         '.ok/skills/thing/SKILL.md',

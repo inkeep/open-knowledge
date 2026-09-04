@@ -44,15 +44,9 @@ describe('evaluateCommandAvailability', () => {
     expect(evaluateCommandAvailability(spec, ctx({ activeTargetKind: 'project' }))).toBe(false);
   });
 
-  // The load-bearing reconciliation: reveal/copy are actionable in the menu's
-  // project scope but hidden in the palette with no target — one spec, two
-  // contexts, because the menu projects project-scope to `project` and the
-  // palette projects no-target to `none`.
   test('reveal/copy spec: project-scope actionable, no-target hidden', () => {
     const spec = { requiresTargetKinds: ['doc', 'folder', 'asset', 'project'] as const };
-    // Menu: project scope → project → available.
     expect(evaluateCommandAvailability(spec, ctx({ activeTargetKind: 'project' }))).toBe(true);
-    // Palette: no target → none → hidden.
     expect(evaluateCommandAvailability(spec, ctx({ activeTargetKind: 'none' }))).toBe(false);
   });
 
@@ -92,8 +86,6 @@ describe('evaluateCommandAvailability', () => {
     ).toBe(true);
   });
 
-  // Real commands combine gates (e.g. rename is host:desktop + requiresTargetKinds).
-  // Pin the multi-gate path so a reorder or short-circuit interaction can't pass.
   test('compound gates: host AND target-kind must both pass', () => {
     const spec = { host: 'desktop', requiresTargetKinds: ['doc'] } as const;
     expect(evaluateCommandAvailability(spec, ctx({ host: 'web', activeTargetKind: 'doc' }))).toBe(
@@ -152,8 +144,6 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
       }
       for (const placement of cmd.menu ?? []) {
         if (placement.menuLabelKey) expect(MENU_LABELS[placement.menuLabelKey]).toBeDefined();
-        // A menu leaf must resolve to SOME label: an explicit literal, a menu
-        // key override, or the command's own labelKey.
         const resolvable =
           placement.menuLabelText !== undefined ||
           placement.menuLabelKey !== undefined ||
@@ -165,9 +155,6 @@ describe('COMMAND_IDENTITIES registry invariants', () => {
     }
   });
 
-  // Structural cure precondition: no command declares two placements that
-  // resolve to the same platform (that is how a leaf gets hand-duplicated). The
-  // palette-side Ratchet B extension asserts this against the rendered menu too.
   test('no command has two menu placements for the same platform', () => {
     for (const cmd of COMMAND_IDENTITIES) {
       const platforms = (cmd.menu ?? []).map((p) => p.platform ?? 'all');

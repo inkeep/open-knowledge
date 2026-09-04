@@ -29,10 +29,6 @@ function makeSpawn(
 
 describe('openTarget', () => {
   test('macOS with a verified bundle path names it directly, not scheme resolution', async () => {
-    // Scheme resolution is exactly what a stale Launch Services binding
-    // hijacks (a dev-mode instance that never unregistered — see desktop's
-    // url-scheme.ts). `-a <path>` sidesteps scheme resolution entirely — see
-    // open-target.ts's darwin branch for the in-repo precedent this leans on.
     const capture: SpawnCapture = {};
     const target = 'openknowledge://open?project=%2FUsers%2Fme%2Fnotes&doc=specs%2Flaunch';
     const desktopBundlePath = '/Applications/OpenKnowledge.app';
@@ -49,13 +45,6 @@ describe('openTarget', () => {
   });
 
   test('macOS falls back to plain scheme resolution when no bundle path is given', async () => {
-    // An ungated caller (no confirmed bundle path) degrades to plain scheme
-    // resolution rather than a broken dispatch. It never routes through
-    // bundle-ID (`-b`) resolution — a different Launch Services index this
-    // dispatch has no reason to trust more than scheme resolution — but that
-    // is a statement about this dispatch, not about every `-b` caller in the
-    // package (desktop-dispatch.ts's bare launch, no target argument, is
-    // unaffected either way).
     const capture: SpawnCapture = {};
     const target = 'openknowledge://open?project=%2FUsers%2Fme%2Fnotes&doc=specs%2Flaunch';
 

@@ -1,8 +1,3 @@
-/**
- * `git` check tests — DI'd via the `assert` dep so tests don't depend on
- * the runner-host's actual git binary.
- */
-
 import {
   type GitDetected,
   GitNotAvailableError,

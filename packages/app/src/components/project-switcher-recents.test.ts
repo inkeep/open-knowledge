@@ -8,9 +8,6 @@ import {
   rowLocation,
 } from './project-switcher-recents.ts';
 
-// `branch` is a parameter, not a constant. Pinning it to 'main' is what hid
-// the mislabel: the original clone can have ANY branch checked out, and the
-// badge must stay a statement about the directory when it does.
 function main(path: string, commonDir: string, branch = 'main'): RecentProjectEntry {
   return {
     path,
@@ -97,8 +94,6 @@ describe('groupRecentsByRepo', () => {
       main('/beta', '/beta/.git'),
       worktree('/alpha/.ok/worktrees/x', '/alpha/.git', '/alpha', 'x'),
     ]);
-    // alpha first (its main appeared first), then notes, then beta. The alpha
-    // worktree folds into the existing alpha group, not a new trailing one.
     expect(groups.map((g) => g.project.path)).toEqual(['/alpha', '/notes', '/beta']);
     expect(groups[0]?.worktrees).toHaveLength(1);
   });
@@ -174,7 +169,6 @@ describe('buildWorktreeFlyoutEntries', () => {
       ]),
       '/other',
     );
-    // main pinned, then opened dev, then create-on-demand branches alphabetized.
     expect(entries.map((e) => e.branch)).toEqual(['main', 'dev', 'alpha', 'zeta']);
     const alpha = entries.find((e) => e.branch === 'alpha');
     expect(alpha?.opened).toBe(false);
@@ -187,7 +181,6 @@ describe('buildWorktreeFlyoutEntries', () => {
       worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
     ]);
     if (group === undefined) throw new Error('group');
-    // Model for /elsewhere — its mainRoot doesn't match this group, so ignored.
     const entries = buildWorktreeFlyoutEntries(
       group,
       model(
@@ -230,14 +223,10 @@ describe('rowLocation', () => {
   });
 
   test('a row with no worktree keeps its creation affordance even when flagged as the original clone', () => {
-    // Guards the ordering: testing the original-clone flag first would swallow
-    // the creation affordance. The selector model does not produce this pairing
-    // today, but nothing upstream enforces that.
     expect(rowLocation({ isMain: true, opened: false })).toBe('none');
   });
 
   test('every combination of the two inputs yields the expected location', () => {
-    // Ordered: (isMain, opened) = (T,T), (T,F), (F,T), (F,F).
     const locations = [true, false].flatMap((isMain) =>
       [true, false].map((opened) => rowLocation({ isMain, opened })),
     );
@@ -246,16 +235,6 @@ describe('rowLocation', () => {
 });
 
 describe('the original clone is identified by directory, not by branch (PRD-7330)', () => {
-  // The defect: the flyout badged the original clone's row as the repository's
-  // "default" branch. Rows are branches; the flag behind the badge is a path
-  // comparison. So checking out a feature branch in the original clone moved
-  // the claim onto that branch and left the real default branch elsewhere.
-  //
-  // Scope note. These cover the classifier's contract against the model, which
-  // was always correct here — the model derived the flag from a path, never
-  // from a branch name. The lie lived in the render, so the regression guard
-  // for it is the badge assertion in RecentProjectsMenu.dom.test.tsx. What
-  // these catch is the model regressing to derive the flag from a branch name.
   function group(rootBranch: string) {
     const [g] = groupRecentsByRepo([
       main('/repo', '/repo/.git', rootBranch),
@@ -282,8 +261,6 @@ describe('the original clone is identified by directory, not by branch (PRD-7330
       ]),
       '/repo',
     );
-    // `main` has no worktree here, so it reads as one to create — the row the
-    // old badge inverted. What matters is that nothing calls it `primary`.
     const mainRow = entries.find((e) => e.branch === 'main');
     if (mainRow === undefined) throw new Error('expected a row for the default branch');
     expect(rowLocation(mainRow)).toBe('none');
@@ -292,7 +269,6 @@ describe('the original clone is identified by directory, not by branch (PRD-7330
   test('linked worktrees are badged `worktree`, so neither category is inferred from absence', () => {
     const entries = buildWorktreeFlyoutEntries(group('feat/login'), null, '/repo');
     expect(entries.map((e) => rowLocation(e)).filter((l) => l === 'worktree')).toHaveLength(1);
-    // Exhaustive: every row carries a location, none falls through.
     expect(entries.map((e) => rowLocation(e))).toHaveLength(entries.length);
   });
 });

@@ -19,10 +19,6 @@ import {
   syncPublicPr,
 } from './bridge-public-pr-to-monorepo.mjs';
 
-// A fake `githubRequest`: records every call and returns the queued response.
-// The bridge's GitHub adapters are the only seam where the `license/cla` and
-// `cla/verified` context strings (the gate's enforcement surface) live, so the
-// tests assert the request shape at that boundary, not internal call counts.
 const fakeRequest = (response) => {
   const calls = [];
   const request = async (args) => {
@@ -357,26 +353,9 @@ describe('createClaGateGh', () => {
   });
 });
 
-// --- Graceful conflict routing canary (real `git apply --index --3way`) ------
-//
-// Guards the conflict-classification invariant: a contributor patch built
-// against the comment-STRIPPED public mirror must NOT hard-fail the bridge when
-// it 3-way-conflicts with the comment-RICH internal tree — it must be classified
-// as a resolvable 'conflicts' outcome (routed to a draft maintainer PR), while a
-// genuine non-apply stays 'failed' (fail-closed). Exercises the bridge's REAL
-// command, not a mock.
-
-// gitCleanEnv: git hooks export GIT_DIR (absolute in a linked worktree), which
-// overrides `-C` repo discovery — without the scrub, every "temp repo" command
-// below actually targets the HOOK'S repo and corrupts its shared .git/config
-// (core.bare=true + this suite's canary identity).
 const git = (dir, ...args) =>
   execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: gitCleanEnv() }).trim();
 
-// Build a real temp git repo: BASE = the comment-stripped public version (so the
-// patch's base blob is reachable for the 3-way), a patch = the contributor's
-// change against BASE, and the working tree = OURS (the comment-rich internal
-// version) the bridge applies onto. Returns { repoDir, patchFile, cleanup }.
 function setupBridgeRepo({ baseContent, oursContent, theirsContent }) {
   const root = mkdtempSync(path.join(tmpdir(), 'bridge-canary-'));
   const repoDir = path.join(root, 'repo');
@@ -389,14 +368,12 @@ function setupBridgeRepo({ baseContent, oursContent, theirsContent }) {
   git(repoDir, 'commit', '-qm', 'base');
   const base = git(repoDir, 'rev-parse', 'HEAD');
   const defaultBranch = git(repoDir, 'rev-parse', '--abbrev-ref', 'HEAD');
-  // theirs = the contributor's change against the stripped base, captured as a diff
   git(repoDir, 'checkout', '-q', '-b', 'contributor');
   writeFileSync(path.join(repoDir, 'f.ts'), theirsContent);
   git(repoDir, 'commit', '-qam', 'contributor change');
   const patch = git(repoDir, 'diff', base, 'HEAD');
   const patchFile = path.join(root, 'contributor.patch');
   writeFileSync(patchFile, `${patch}\n`);
-  // ours = the comment-rich internal version, checked out as the apply target
   git(repoDir, 'checkout', '-q', defaultBranch);
   writeFileSync(path.join(repoDir, 'f.ts'), oursContent);
   git(repoDir, 'commit', '-qam', 'internal (comment-rich)');
@@ -411,8 +388,6 @@ const STRIPPED_BASE = 'export const A = 1;\nexport const B = 2;\nexport const C 
 
 describe('applyPatchWithConflictDetection (graceful conflict routing canary)', () => {
   test("a comment-adjacency 3-way conflict is classified 'conflicts', not a hard failure", () => {
-    // OURS adds a comment on the SAME line the contributor edits — the exact
-    // comment-strip divergence that broke the bridge. Guaranteed 3-way conflict.
     const { repoDir, patchFile, cleanup } = setupBridgeRepo({
       baseContent: STRIPPED_BASE,
       theirsContent: 'export const A = 1;\nexport const B = 22;\nexport const C = 3;\n',
@@ -429,10 +404,6 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
   });
 
   test("a divergence far from the contributor's edit applies 'clean'", () => {
-    // The contributor edits B (top); OURS's comment divergence is at C (bottom),
-    // separated by filler so they land in DIFFERENT diff hunks → 3-way merges
-    // cleanly. (Adjacent divergences share a hunk and conflict; that's exactly
-    // why the bridge conflicts on comment-dense regions.)
     const longBase =
       'export const A = 1;\nexport const B = 2;\n' +
       'const p = 0;\nconst q = 0;\nconst r = 0;\nconst s = 0;\nconst u = 0;\nconst v = 0;\n' +
@@ -464,8 +435,6 @@ describe('applyPatchWithConflictDetection (graceful conflict routing canary)', (
     writeFileSync(path.join(repoDir, 'f.ts'), STRIPPED_BASE);
     git(repoDir, 'add', '-A');
     git(repoDir, 'commit', '-qm', 'base');
-    // A patch against a file that does not exist, whose base blobs are absent —
-    // git apply --3way can neither apply it directly nor reconstruct a 3-way base.
     const ghostPatch = [
       'diff --git a/ghost.ts b/ghost.ts',
       'index 1111111..2222222 100644',
@@ -521,23 +490,10 @@ describe('commitIndicatesConflicts (metadata-re-sync conflict-hold guard)', () =
   });
 });
 
-// --- Metadata-event composition test (guards the conflict-hold fail-open) -----
-//
-// On a metadata-only re-sync (e.g. a contributor editing their PR body)
-// syncPublicPr skips the apply block, so hasConflicts must be re-derived from
-// the internal PR's head-commit marker; otherwise a conflict-carrying DRAFT PR
-// is silently un-drafted (markPullRequestReadyForReview). Per-predicate unit
-// tests (canary, predicate, forceDraft) cannot
-// reach this wiring. This runs the REAL syncPublicPr metadata path (zero git
-// ops) with the GitHub API faked at the true external boundary, asserting the
-// observable draft outcome, not call counts.
-
 const CONFLICT_HEAD =
   'sync(oss): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)';
 const CLEAN_HEAD = 'sync(oss): mirror inkeep/open-knowledge#310';
 
-// Drive the real syncPublicPr through a metadata-only ('edited') event with the
-// GitHub API faked. Returns the load-bearing observable mutations it made.
 async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
   const recorded = { draftMutation: null, comment: null };
   const internalPr = {
@@ -577,9 +533,9 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
       return json({ commit: { message: headCommitMessage } });
     }
     if (method === 'PATCH' && url.includes('/pulls/42')) return json(internalPr);
-    if (method === 'GET' && url.includes('/orgs/')) return json({ message: 'Not Found' }, 404); // non-member
+    if (method === 'GET' && url.includes('/orgs/')) return json({ message: 'Not Found' }, 404);
     if (method === 'GET' && url.includes('/commits/public-head-sha/status')) {
-      return json({ statuses: [{ context: 'license/cla', state: 'success' }] }); // CLA signed -> not gated
+      return json({ statuses: [{ context: 'license/cla', state: 'success' }] });
     }
     if (method === 'POST' && url.endsWith('/graphql')) {
       const q = JSON.parse(init.body).query;
@@ -631,9 +587,6 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: true,
     });
-    // Without the conflict-hold re-derivation, this fires
-    // markPullRequestReadyForReview. Correct: the conflict hold is re-derived
-    // true -> shouldBeDraft true -> already draft -> NO transition fires.
     expect(r.draftMutation).toBeNull();
     expect(r.comment).toBeNull();
   });
@@ -649,8 +602,6 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: false,
     });
-    // Symmetric to the draft case: the conflict hold is re-derived true ->
-    // shouldBeDraft true -> PR is currently ready -> convertPullRequestToDraft fires.
     expect(r.draftMutation).toBe('to-draft');
     expect(r.comment).toBeNull();
   });

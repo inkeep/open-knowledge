@@ -1,11 +1,3 @@
-/**
- * Pure tree-path helpers for the file sidebar: keyboard/selection target
- * resolution, delete-target planning, markdown-sibling checks, and the
- * row-decoration lookup index. Everything here is a pure function of its
- * inputs — no React, no DOM mutation, no network — except
- * `isEditableKeyboardTarget`, which performs a DOM read.
- */
-
 import type { FileTree as PierreFileTreeModel } from '@pierre/trees';
 import {
   docNameToTreePath,
@@ -79,9 +71,6 @@ export function selectedTreePathsToDeleteTargets(
   selectedTreePaths: readonly string[],
   documents: readonly FileEntry[],
 ): FileTreeTarget[] {
-  // Revealed `.ok` rows are read-only OK-managed state — they never become
-  // delete targets, even when swept into a multi-selection beside deletable
-  // rows (this also keeps the confirm dialog's item count honest).
   const uniqueDeletablePaths = [...new Set(selectedTreePaths)].filter(
     (treePath) => !hasOkPathSegment(treePath),
   );
@@ -113,8 +102,6 @@ export function resolveDuplicableKeyboardTarget(
   assetTreePaths: ReadonlySet<string>,
 ): FileTreeTarget | null {
   const selectedPath = focusedOrFirstSelectedTreePath(model);
-  // Revealed `.ok` rows are read-only OK-managed state — no keyboard
-  // copy/paste/duplicate, matching their menu's suppressed affordances.
   if (!selectedPath || assetTreePaths.has(selectedPath) || hasOkPathSegment(selectedPath)) {
     return null;
   }
@@ -190,10 +177,6 @@ export function collectTabsToCloseForDelete(
   return { docNames, folderPaths, assetPaths };
 }
 
-/**
- * The slice of FileTree's pending-create state this module needs — kept
- * structural so the component's richer lifecycle record stays local to it.
- */
 export interface PendingCreateTarget {
   kind: 'file' | 'folder';
   createdPath: string;
@@ -215,12 +198,6 @@ export interface RowDecorationIndex {
   foldersByTreeDirectoryPath: ReadonlyMap<string, FolderEntry>;
 }
 
-/**
- * O(1) lookup index for `renderRowDecoration`, which the tree invokes per
- * visible row on every redraw — a linear scan of the document list there is
- * O(rows × entries). First entry wins on key collision, matching the
- * front-to-back `Array.find` this replaces.
- */
 export function buildRowDecorationIndex(entries: readonly FileEntry[]): RowDecorationIndex {
   const docsByTreePath = new Map<string, DocumentEntry>();
   const foldersByTreeDirectoryPath = new Map<string, FolderEntry>();

@@ -225,9 +225,6 @@ describe('deleteFrontmatterSchemaFile', () => {
   });
 
   test('a non-directory path component still reports deleted (provably absent)', () => {
-    // `.ok` is a regular file, so resolving `.ok/schemas` fails with ENOTDIR.
-    // The entry cannot exist, so `deleted` is the honest answer — this pins the
-    // narrow branch against a naive "only ENOENT counts" rewrite.
     writeFileSync(join(projectDir, '.ok'), 'not a directory');
     const result = deleteFrontmatterSchemaFile(projectDir, '.ok/schemas/x.schema.json');
     expect(result.action).toBe('deleted');

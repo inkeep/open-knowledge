@@ -1,13 +1,3 @@
-/**
- * Cluster: client-side log ingest. Backs `POST /api/client-logs`, the
- * web/browser path for capturing renderer `console` output into the on-disk
- * pino logs (the Electron app captures renderer console directly in its main
- * process via `console-message`, so it does not use this endpoint).
- *
- * Shared bounds live in `../../logging/renderer-log.ts` so the server Zod caps
- * and the renderer batcher agree.
- */
-
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import {
@@ -15,11 +5,6 @@ import {
   RENDERER_LOG_MAX_MESSAGE_BYTES,
 } from '../../logging/renderer-log.ts';
 
-/**
- * One captured console entry. `fields`/`event` carry the structured payload
- * lifted from a `JSON.stringify(...)` console line (see
- * `parseStructuredConsoleMessage`); `message` is the raw text fallback.
- */
 export const ClientLogEntrySchema = z
   .object({
     level: z.enum(['info', 'warn', 'error']),
@@ -33,13 +18,6 @@ export const ClientLogEntrySchema = z
   .loose() satisfies StandardSchemaV1;
 export type ClientLogEntry = z.infer<typeof ClientLogEntrySchema>;
 
-/**
- * Request body for `POST /api/client-logs` — a bounded batch of entries.
- * `droppedSinceLastFlush` is the number of entries the client forwarder lost
- * since its last delivered batch (buffer overflow or failed POSTs — reconnect
- * storms are the typical cause); the server records it so the persisted log
- * carries an explicit gap marker instead of silently missing entries.
- */
 export const ClientLogsRequestSchema = z
   .object({
     entries: z.array(ClientLogEntrySchema).max(RENDERER_LOG_MAX_ENTRIES),
@@ -48,7 +26,6 @@ export const ClientLogsRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type ClientLogsRequest = z.infer<typeof ClientLogsRequestSchema>;
 
-/** Success body — count of entries written to the server log. */
 export const ClientLogsSuccessSchema = z
   .object({
     accepted: z.number().int().min(0),

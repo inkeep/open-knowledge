@@ -5,7 +5,6 @@ import {
   type UtilityProcessLike,
 } from './window-manager.ts';
 
-/** Minimal owned-utility-fork stub — only `.kill` is exercised. */
 function ctx(
   ownsServer: boolean,
   kill: ((signal: NodeJS.Signals) => void) | null,
@@ -55,7 +54,6 @@ describe('signalDetachedServerStop (before-quit-for-update teardown)', () => {
       }
     });
     const log = { warn: vi.fn((_o: object, _m: string) => {}) };
-    // The EPERM pid is first to prove iteration continues past a failure.
     const signalled = signalDetachedServerStop(
       [
         ['/proj/locked', 404],
@@ -94,11 +92,7 @@ describe('signalStopOwnedUtilityForks (shared utility-fork hard-kill)', () => {
   test('skips contexts that do not own their server or have no utility', () => {
     const killOwned = vi.fn((_s: NodeJS.Signals) => {});
     const killNotOwned = vi.fn((_s: NodeJS.Signals) => {});
-    signalStopOwnedUtilityForks([
-      ctx(false, killNotOwned), // attached (sibling-owned) server — must not touch
-      ctx(true, null), // detached server, no in-process utility fork
-      ctx(true, killOwned), // the only one to kill
-    ]);
+    signalStopOwnedUtilityForks([ctx(false, killNotOwned), ctx(true, null), ctx(true, killOwned)]);
     expect(killNotOwned).not.toHaveBeenCalled();
     expect(killOwned).toHaveBeenCalledWith('SIGKILL');
   });

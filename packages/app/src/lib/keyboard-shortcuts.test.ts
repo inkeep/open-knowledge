@@ -219,7 +219,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Wrong platform modifier: Ctrl+J on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'j' },
@@ -227,7 +226,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Extra Alt / Shift / bare key are all excluded.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, key: 'j' },
@@ -261,7 +259,6 @@ describe('keyboard shortcut registry', () => {
         ),
       ).toBe(true);
     }
-    // Cmd+` is macOS window-cycling, never ours — a `mod` matcher would steal it.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, key: '`', code: 'Backquote' },
@@ -269,7 +266,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Bare backtick must keep typing a backtick.
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: false, altKey: false, key: '`', code: 'Backquote' },
@@ -277,8 +273,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Matching on `code` means a layout whose backtick key emits another
-    // character still toggles, and an unrelated key that emits "`" does not.
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: '<', code: 'Backquote' },
@@ -310,18 +304,11 @@ describe('keyboard shortcut registry', () => {
       key: '`',
       code: 'Backquote',
     };
-    // Desktop: the View menu accelerator already dispatches ⌘J, so the renderer
-    // must ignore it (acting on both would toggle twice) while still owning ⌃`,
-    // which has no accelerator and would otherwise be undeliverable on desktop.
     expect(matchesRendererShortcut(cmdJ, 'toggle-terminal-panel', true, 'mac')).toBe(false);
     expect(matchesRendererShortcut(ctrlBacktick, 'toggle-terminal-panel', true, 'mac')).toBe(true);
-    // Web: no menu bar, so the renderer owns every binding.
     expect(matchesRendererShortcut(cmdJ, 'toggle-terminal-panel', false, 'mac')).toBe(true);
     expect(matchesRendererShortcut(ctrlBacktick, 'toggle-terminal-panel', false, 'mac')).toBe(true);
 
-    // Windows/Linux: the native CmdOrCtrl+J accelerator resolves to Ctrl+J, so
-    // the same menu-vs-renderer split must hold there too — the double-fire
-    // guard is not mac-only. ⌃` carries no accelerator on any platform.
     const ctrlJ = { metaKey: false, ctrlKey: true, altKey: false, key: 'j' };
     expect(matchesRendererShortcut(ctrlJ, 'toggle-terminal-panel', true, 'windowsLinux')).toBe(
       false,
@@ -357,7 +344,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Wrong platform modifier: Ctrl+L on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'l' },
@@ -365,7 +351,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Shift+Cmd+L stays free for CodeMirror's source-multi-cursor binding.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'l' },
@@ -373,7 +358,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // ⌥⌘L belongs to open-ask-ai, so the bare-⌘L toggle must reject alt.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, key: 'l' },
@@ -395,8 +379,6 @@ describe('keyboard shortcut registry', () => {
     expect(formatShortcut('open-ask-ai', 'windowsLinux')).toBe('Ctrl Shift L');
   });
 
-  // Shift rather than Alt: Ctrl+Alt+L is KDE Plasma's Lock Session alternate,
-  // grabbed by kglobalaccel before any renderer listener sees it.
   test('open-ask-ai requires Shift, keeping bare Cmd+L for the agents panel', () => {
     expect(
       matchesKeyboardShortcut(
@@ -412,7 +394,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Bare ⌘L is the agents-panel toggle, never this.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, shiftKey: false, key: 'l', code: 'KeyL' },
@@ -420,7 +401,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Shift alone (no Cmd/Ctrl) is not a chord.
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: false, shiftKey: true, key: 'L', code: 'KeyL' },
@@ -428,7 +408,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // The old ⌥⌘L must NOT still fire — it would lock the screen on KDE.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, shiftKey: false, key: '¬', code: 'KeyL' },
@@ -444,7 +423,6 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('matches new-terminal-tab on Shift+Cmd+J / Ctrl+Shift+J and stays clear of the ⌘J toggle', () => {
-    // The chord fires with shift held, on each platform's mod key.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'j' },
@@ -459,7 +437,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Without shift it is NOT the launch chord (that is the ⌘J toggle).
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'j' },
@@ -467,7 +444,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // Wrong platform modifier: Ctrl+Shift+J on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: 'j' },
@@ -475,8 +451,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // The reverse direction of mutual exclusion: Shift+⌘J does not trip the
-    // toggle (plain-⌘J-vs-launch is the "Without shift" case above).
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'j' },
@@ -553,8 +527,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // ⇧⌘K must NOT open the palette — that chord belongs to CodeMirror's
-    // delete-line in source mode.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'k' },
@@ -595,7 +567,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Wrong platform modifier: Ctrl+K on macOS must NOT match (mod is exact).
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: true, altKey: false, key: 'k' },
@@ -617,9 +588,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // One exact chord, two consumers: matching is identical for both ids;
-    // routing between them is contextual (capture-phase claim in the editor
-    // vs. the palette's window-bubble fallthrough).
     const exactCmdK = { metaKey: true, ctrlKey: false, altKey: false, key: 'k' };
     expect(matchesKeyboardShortcut(exactCmdK, 'add-link', 'mac')).toBe(true);
     expect(matchesKeyboardShortcut(exactCmdK, 'command-palette', 'mac')).toBe(true);
@@ -640,8 +608,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Same exact-chord discipline as the ⌘K binding: no extra modifiers, and
-    // a bare P is just typing.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: true, key: 'p' },
@@ -656,7 +622,6 @@ describe('keyboard shortcut registry', () => {
         'mac',
       ),
     ).toBe(false);
-    // ⇧⌘P belongs to switch-project (the Project Navigator), not the palette.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, key: 'p' },
@@ -667,11 +632,6 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('Cmd/Ctrl+P reaches the palette unconditionally — add-link never claims it', () => {
-    // The point of the ⌘P binding: LinkEditPopover claims exact ⌘K on window
-    // capture and stops propagation, so with a WYSIWYG selection ⌘K never
-    // reaches the palette. ⌘P is matched by the palette alone, which is what
-    // keeps a keyboard path to the palette open in that state. If someone
-    // adds ⌘P to add-link's bindings, that property is gone and this fails.
     const exactCmdP = { metaKey: true, ctrlKey: false, altKey: false, key: 'p' };
     expect(matchesKeyboardShortcut(exactCmdP, 'command-palette', 'mac')).toBe(true);
     expect(matchesKeyboardShortcut(exactCmdP, 'add-link', 'mac')).toBe(false);
@@ -682,8 +642,6 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('keeps Cmd+K as the displayed command-palette chord', () => {
-    // Chips and tooltips render bindings[0]; ⌘P is the unadvertised alias, so
-    // adding it must not change what the UI teaches.
     expect(formatShortcut('command-palette', 'mac')).toBe('⌘ K');
     expect(formatShortcut('command-palette', 'windowsLinux')).toBe('Ctrl K');
   });
@@ -763,9 +721,6 @@ describe('keyboard shortcut registry', () => {
     ).toBe(true);
   });
 
-  // The queue send takes Shift and nothing else. ⌘Enter is also TipTap's
-  // hardBreak and CodeMirror's insertBlankLine, so this GLOBAL listener staying
-  // off it is what keeps a line break from dispatching a batch.
   test('the queue send answers Shift+Cmd+Enter only', () => {
     const cmdEnter = { metaKey: true, ctrlKey: false, altKey: false, key: 'Enter' };
     const shiftCmdEnter = { ...cmdEnter, shiftKey: true };
@@ -781,7 +736,6 @@ describe('keyboard shortcut registry', () => {
         'windowsLinux',
       ),
     ).toBe(true);
-    // Bare Shift+Enter is the composer's newline — it must never dispatch.
     expect(
       matchesKeyboardShortcut(
         { metaKey: false, ctrlKey: false, altKey: false, shiftKey: true, key: 'Enter' },
@@ -791,8 +745,6 @@ describe('keyboard shortcut registry', () => {
     ).toBe(false);
   });
 
-  // ⌘L carries two rows disambiguated by selection state (the ⌘K/add-link shape),
-  // so both must match the same event — the handler, not the registry, picks.
   test('matches both agents-panel rows on Cmd/Ctrl+L', () => {
     const cmdL = { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'l' };
     expect(matchesKeyboardShortcut(cmdL, 'toggle-agent-panel', 'mac')).toBe(true);
@@ -823,8 +775,6 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('the mode-switch chords match only their own id across the whole registry', () => {
-    // The matcher keys on `code`, so the produced `key` (layout-dependent when
-    // Alt is held) is irrelevant here and set only to satisfy the event shape.
     const chords = [
       { id: 'toggle-editor-mode', code: 'KeyM', key: 'm' },
       { id: 'view-source-at-cursor', code: 'KeyE', key: 'e' },
@@ -847,8 +797,6 @@ describe('keyboard shortcut registry', () => {
         code: chord.code,
       };
       for (const shortcut of KEYBOARD_SHORTCUTS) {
-        // The public array widens `id` to `string`; every runtime value is a
-        // registered id, so narrowing it back for the matcher lookup is sound.
         const id = shortcut.id as KeyboardShortcutId;
         expect(matchesKeyboardShortcut(macEvent, id, 'mac')).toBe(id === chord.id);
         expect(matchesKeyboardShortcut(winEvent, id, 'windowsLinux')).toBe(id === chord.id);
@@ -867,38 +815,7 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('the traced xterm version stays pinned', () => {
-    // The chord's immunity inside a focused terminal pane is a TRACED property of
-    // one xterm release, not a guarantee: @xterm/xterm 6.0.0 ships no
-    // modifyOtherKeys / CSI-u encoding, so its keydown path finds nothing to
-    // encode for Ctrl+Shift+<letter> and returns before the call that would
-    // `preventDefault()`. A release that adds one starts encoding exactly this
-    // shape and silently claims the chord — the terminal would swallow it and
-    // the reporter would stop opening from the surface a user is most likely to
-    // be reporting about.
-    //
-    // EQUALITY, not a floor, unlike the sibling guard in
-    // `editor/extensions/raw-mdx-nested-copy-version-pin.test.ts`: there the
-    // hazard is drifting BELOW a verified version, so forward drift is safe.
-    // Here forward drift is the hazard itself, so any move re-opens the question
-    // and has to trip this.
-    //
-    // BOTH halves, because they catch different edits. The declared string
-    // catches the manifest being loosened (`^6.0.0` is not `6.0.0`, so it trips
-    // the moment the pin stops being exact). The resolved version catches the
-    // installed package moving underneath a pin that still looks right — a
-    // lockfile edit, a stale store, a patched copy. Asserting only the manifest
-    // would miss the second; asserting only the resolved version would let a
-    // caret range through for as long as it happened to resolve to 6.0.0, and
-    // trip later on an unrelated `pnpm update` with no obvious cause.
-    //
-    // Resolution follows the sibling guard's shape in
-    // `editor/extensions/raw-mdx-nested-copy-version-pin.test.ts`.
-    //
-    // When this trips: re-run the trace in `keyboard-shortcuts.ts` against the
-    // new release before moving the pin.
     const require_ = createRequire(import.meta.url);
-    // Node's strict exports resolver rejects a bare `<pkg>/package.json` subpath
-    // unless the package lists it, so resolve the main entry and walk up.
     let dir = dirname(require_.resolve('@xterm/xterm'));
     let resolved: string | undefined;
     for (;;) {
@@ -911,9 +828,7 @@ describe('keyboard shortcut registry', () => {
           resolved = parsed.version;
           break;
         }
-      } catch {
-        // no package.json here, or a nested one with a different name — walk up
-      }
+      } catch {}
       const parent = dirname(dir);
       if (parent === dir) break;
       dir = parent;
@@ -926,20 +841,9 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('the report-bug chord is display-only and matches no shortcut in the registry', () => {
-    // A native menu accelerator delivers this chord, so no renderer listener may
-    // claim it — not even the report-bug row itself. A `match` added to that
-    // binding would put the chord back behind the app-global overlay gate, which
-    // is the one place it must not be.
-    //
-    // The probe is READ OFF the binding rather than restated. A literal here
-    // survives a rebind by silently probing the retired chord, which leaves the
-    // sweep passing while testing a key nothing is bound to — coverage that
-    // reads as protection and is not.
     const binding = KEYBOARD_SHORTCUTS.find((shortcut) => shortcut.id === 'report-bug')
       ?.bindings[0];
     const letter = binding?.mac.trim().slice(-1).toLowerCase();
-    // Guards the derivation itself: a binding whose trailing token stops being
-    // a single letter would silently probe something meaningless.
     expect(letter).toMatch(/^[a-z]$/);
     expect(binding?.windowsLinux.trim().slice(-1).toLowerCase()).toBe(letter);
     const code = `Key${letter?.toUpperCase()}`;
@@ -961,12 +865,9 @@ describe('keyboard shortcut registry', () => {
     };
     const claimedBy: string[] = [];
     for (const shortcut of KEYBOARD_SHORTCUTS) {
-      // The public array widens `id` to `string`; every runtime value is a
-      // registered id, so narrowing it back for the matcher lookup is sound.
       const id = shortcut.id as KeyboardShortcutId;
       if (matchesKeyboardShortcut(macEvent, id, 'mac')) claimedBy.push(`mac:${id}`);
       if (matchesKeyboardShortcut(winEvent, id, 'windowsLinux')) claimedBy.push(`win:${id}`);
-      // Both hosts: a native menu bar is present on desktop, absent on web.
       for (const hasNativeMenu of [true, false]) {
         if (matchesRendererShortcut(macEvent, id, hasNativeMenu, 'mac')) {
           claimedBy.push(`mac-renderer:${id}`);
@@ -980,8 +881,6 @@ describe('keyboard shortcut registry', () => {
   });
 
   test('the mode toggle requires its Alt modifier so it never steals Cmd+M', () => {
-    // Cmd+M (no Alt) is the macOS "minimize window" chord — the toggle must not
-    // fire on it, nor on a bare M keypress.
     expect(
       matchesKeyboardShortcut(
         { metaKey: true, ctrlKey: false, altKey: false, key: 'm', code: 'KeyM' },

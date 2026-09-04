@@ -14,8 +14,6 @@ export interface PageIdentity {
 
 function splitFrontmatterLines(frontmatter: string): string[] {
   if (!frontmatter) return [];
-  // Unwrap via the core helper rather than local fence-strip replaces so the
-  // fence shape (incl. trailing-whitespace tolerance) stays owned by core.
   return unwrapFrontmatterFences(frontmatter).split(/\r?\n/);
 }
 
@@ -120,14 +118,6 @@ export function extractPageAliases(content: string): string[] {
   return [];
 }
 
-/**
- * Extract a human-readable title from a markdown file's content.
- *
- * Priority:
- *  1. `title:` field in YAML frontmatter (between leading `---` delimiters)
- *  2. First `# heading` line in the file body
- *  3. filename (without extension, as provided by the caller)
- */
 export function extractPageTitle(content: string, filename: string): string {
   const { frontmatter, body } = stripFrontmatter(content);
   const title = extractFrontmatterScalar(frontmatter, 'title');
@@ -136,33 +126,11 @@ export function extractPageTitle(content: string, filename: string): string {
   return extractFirstHeading(body) ?? filename;
 }
 
-/**
- * The `# heading` half of `extractPageTitle`'s ladder, on its own, for callers
- * whose "no title" answer is `undefined` rather than the filename — enrichment
- * leaves `title` unset so `exec` can fall back to the path itself. Takes a body
- * with frontmatter already stripped.
- */
 export function extractFirstHeading(body: string): string | undefined {
   const headingMatch = body.match(/^# (.+)$/m);
   return headingMatch ? headingMatch[1].trim() : undefined;
 }
 
-/**
- * Extract the raw `icon:` scalar from a markdown file's frontmatter, or
- * `undefined` when absent / blank. The classification step (emoji vs.
- * URL vs. content-relative path vs. unsupported) happens client-side —
- * the server ships the unvalidated string. Kept symmetric with
- * `extractPageTitle`'s zero-dependency YAML walk so `handlePages` can
- * read both from the same `readFileSync` without pulling in a YAML
- * parser.
- */
-/** Mirrors `MAX_VALUE_LENGTH` in `packages/app/src/components/page-header-utils.ts`
- * and `.max(2048)` on `PageEntrySchema.icon`. Server-side cap is the
- * load-bearing one: `successResponse` runs `safeParse` on every `/api/pages`
- * emit, and an oversized scalar on a single doc would 500 the entire
- * listing — degrading the file tree, wiki-link resolution cache, search
- * candidates, and the chip-icon cache for every other doc.
- */
 const ICON_VALUE_LENGTH_CAP = 2048;
 
 export function extractPageIcon(content: string): string | undefined {
@@ -172,14 +140,6 @@ export function extractPageIcon(content: string): string | undefined {
   return icon;
 }
 
-/**
- * A block-scalar indicator (`>` / `|`, with optional chomping and indentation
- * digits) is what remains on the key's own line when the value spans following
- * lines. `extractFrontmatterScalar` reads a single line, so it returns the
- * indicator rather than the text. Treat that as absent: the indicator is a YAML
- * artifact, and emitting it verbatim would put a literal `>` where a document's
- * description belongs.
- */
 const BLOCK_SCALAR_INDICATOR = /^[>|][+-]?\d*$/;
 
 function extractSingleLineScalar(content: string, key: string): string | undefined {
@@ -189,21 +149,10 @@ function extractSingleLineScalar(content: string, key: string): string | undefin
   return value;
 }
 
-/**
- * The `description:` scalar, or `undefined` when absent / blank. Kept on the
- * same zero-dependency walk as `extractPageTitle` and `extractPageIcon` so the
- * seed walk and every live disk event can enrich a file-index entry from the
- * content they already hold, without a YAML parse per document.
- */
 export function extractPageDescription(content: string): string | undefined {
   return extractSingleLineScalar(content, 'description');
 }
 
-/**
- * The `type:` scalar, or `undefined` when absent / blank. OKF's conformance
- * floor is a non-empty `type` on every non-reserved document, which is what
- * makes it the one field dependable enough to group a generated index by.
- */
 export function extractPageType(content: string): string | undefined {
   return extractSingleLineScalar(content, 'type');
 }
@@ -214,11 +163,6 @@ export interface FrontmatterMetadata {
   tags: string[] | undefined;
 }
 
-/**
- * Parse frontmatter metadata fields relevant to graph display.
- * Accepts the raw YAML string (with or without `---` delimiters).
- * Uses regex-based extraction — no yaml dependency.
- */
 export function parseFrontmatterMetadata(rawYaml: string): FrontmatterMetadata {
   if (!rawYaml?.trim()) {
     return { cluster: undefined, category: undefined, tags: undefined };

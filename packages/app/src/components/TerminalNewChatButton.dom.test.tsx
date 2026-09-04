@@ -18,8 +18,6 @@ function renderButton(overrides: Partial<React.ComponentProps<typeof TerminalNew
   const onPickAgent = vi.fn((_agent: RegisteredAgent) => {});
   const onOpenSettings = vi.fn(() => {});
   const selected: NewSessionChoice = overrides.selected ?? { kind: 'cli', cli: 'claude' };
-  // A QueryClient with no network — the catalog query stays disabled/idle in tests,
-  // so the cap defaults to 8 and no agent row is disabled.
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
@@ -93,10 +91,6 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
   });
 
-  // Real Radix, no menu double. Arrow-key menu navigation skips the visible
-  // `DropdownMenuLabel`, so the group's `aria-label` is the only section context
-  // an AT user gets while stepping through rows — an unnamed group is an a11y
-  // regression the `menuitem` assertions above cannot see.
   test('names the In app group "In app" and carries no maturity badge', async () => {
     const user = userEvent.setup();
     renderButton();
@@ -110,8 +104,6 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
 
   test('lists only the CLIs in visibleClis (Claude + detected), hiding the rest', async () => {
     const user = userEvent.setup();
-    // The host passes the already-gated list (via `isTerminalCliEnabled`): here
-    // Claude plus detected Codex. Undetected CLIs are absent.
     renderButton({ visibleClis: ['claude', 'codex'] });
 
     await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
@@ -122,7 +114,6 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     expect(screen.queryByRole('menuitem', { name: 'GitHub Copilot CLI' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Antigravity CLI' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Cursor CLI' })).toBeNull();
-    // The bare-shell Terminal row is independent of CLI gating — always present.
     expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
   });
 

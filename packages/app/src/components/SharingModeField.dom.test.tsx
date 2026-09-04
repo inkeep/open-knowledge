@@ -16,7 +16,6 @@ vi.doMock('@lingui/react/macro', () => ({
 
 const { SharingModeField } = await import('./SharingModeField');
 
-/** Controlled wrapper so clicks actually move the selection. */
 function Harness({
   initial = 'shared',
   disabled = false,
@@ -52,9 +51,6 @@ describe('SharingModeField', () => {
   });
 
   test('"Only me" leads the pair in DOM order', async () => {
-    // The default is Only me, so it reads first. DOM order is also the tab and
-    // screen-reader order, and the visual order via the two-column grid, so
-    // asserting it here pins the invariant one place.
     render(<Harness />);
 
     const radios = screen.getAllByRole('radio');
@@ -88,22 +84,14 @@ describe('SharingModeField', () => {
     render(<Harness />);
 
     const link = screen.getByTestId('t-sharing-docs-link');
-    // Config sharing, NOT docs/features/share — that page is the Share-links
-    // feature (doc deep links), which does not explain this choice at all.
     expect(link.getAttribute('href')).toBe(
       'https://openknowledge.ai/docs/reference/what-open-knowledge-writes',
     );
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
-    // A screen reader's links list enumerates links with no surrounding
-    // context, so the accessible name has to name the destination. It still
-    // contains the visible text, per WCAG 2.5.3 Label in Name.
     const accessibleName = link.getAttribute('aria-label') ?? '';
     expect(accessibleName).toBe('Learn more about config sharing');
     expect(accessibleName).toContain(link.textContent ?? '');
-    // The radiogroup's name comes from aria-labelledby → the label span only;
-    // the link lives outside both the labelled span and the radiogroup, so
-    // its text can't leak into the group's accessible name.
     const group = screen.getByRole('radiogroup');
     const labelId = group.getAttribute('aria-labelledby') ?? '';
     const label = document.getElementById(labelId);

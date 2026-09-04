@@ -1,19 +1,3 @@
-/**
- * Resolve + spawn ACP agent processes.
- *
- * Security envelope (spec 2026-07-02-acp-external-agents §9): spawnable
- * commands come ONLY from (a) registry manifests (npx / uvx / binary
- * distribution specs) or (b) the machine-local custom-agents file. Nothing
- * arriving over HTTP/WS names a command — frames carry agent IDS which
- * resolve through this module. `shell: false` + argv arrays throughout.
- *
- * Never bundled, never redistributed: npx/uvx packages install into the
- * user's package-manager cache at launch time; binary archives download to
- * `~/.ok/acp-agents/<id>/<version>/` (user-level so N projects share one
- * install). Proprietary agents therefore stay entirely outside OK's GPL
- * distribution.
- */
-
 import { type ChildProcess, spawn } from 'node:child_process';
 import { constants, existsSync, statSync } from 'node:fs';
 import { access, chmod, readFile, stat } from 'node:fs/promises';
@@ -39,16 +23,9 @@ export interface ResolvedLaunch {
   args: string[];
   env: Record<string, string>;
   kind: 'npx' | 'uvx' | 'binary' | 'custom';
-  /**
-   * True when this launch's PATH came from a manifest / custom-agent `env`
-   * overlay rather than the repaired inherited base. Such a PATH is a spawn-env
-   * contract that wins verbatim (see {@link mergedEnv}), so the login-shell
-   * fallback must leave it alone — the same reason base augmentation does.
-   */
   pathFromOverlay: boolean;
 }
 
-/** Strictest declared Node floor among the registry-backed npx ACP adapters. */
 export const MINIMUM_NPX_NODE_MAJOR = 22;
 
 export class AgentLaunchError extends Error {
@@ -64,12 +41,10 @@ export class AgentLaunchError extends Error {
   }
 }
 
-/** User-level cache for extracted binary distributions. */
 function defaultBinaryCacheDir(): string {
   return join(homedir(), OK_DIR, 'acp-agents');
 }
 
-/** True iff `dir` exists and is a directory (symlinks followed). */
 function isDir(dir: string): boolean {
   try {
     return statSync(dir).isDirectory();
@@ -78,37 +53,10 @@ function isDir(dir: string): boolean {
   }
 }
 
-/**
- * Build the spawn env for an ACP agent / terminal: `process.env` with its PATH
- * repaired, then `overlay` applied on top.
- *
- * The PATH repair targets the INHERITED base only — a Dock/Finder-launched
- * Desktop inherits launchd's minimal PATH, so an agent CLI installed under a
- * package-manager global bin (`~/Library/pnpm`, `~/.bun/bin`, …) isn't found
- * even when it runs fine from a terminal. We append the well-known tool +
- * PM-global dirs, the same augmentation git spawns use. An overlay that sets
- * PATH is a spawn-env contract and wins verbatim (applied after): augmentation
- * repairs the base env, it does not transform caller intent — matching
- * `child_process` / Docker / systemd semantics.
- */
 export function mergedEnv(overlay?: Record<string, string>): Record<string, string> {
   const base: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined) continue;
-    // Drop pnpm's `npm_config_overrides` broadcast from the inherited base.
-    // When OK Desktop runs via `pnpm dev`, pnpm flattens its
-    // `pnpm-workspace.yaml` `overrides` block into `npm_config_overrides`
-    // for every child, in pnpm's flat `parent>child` key shape. A nested
-    // `npx exec …` (how npx-kind agents launch) hands that string to npm's
-    // arborist, which rejects the flat key with
-    // `npm error Override without name: <parent>><child>` and the launch
-    // dies during initialize. Every other pnpm broadcast (`patched-
-    // dependencies`, `shared-workspace-lockfile`, `strict-peer-
-    // dependencies`, …) only surfaces as an `Unknown env config` warning,
-    // so the scrub is targeted, not family-wide — env-only npm config the
-    // user actually set (`npm_config_userconfig`, nerf-darted auth tokens
-    // like `npm_config_//registry.example.com/:_authToken`) must reach the
-    // spawned agent unchanged.
     if (k.toLowerCase() === 'npm_config_overrides') continue;
     base[k] = v;
   }
@@ -121,57 +69,18 @@ export function mergedEnv(overlay?: Record<string, string>): Record<string, stri
   return { ...base, ...overlay };
 }
 
-/**
- * The PATH every ACP agent this host spawns is launched with — {@link mergedEnv}'s
- * repaired base, exposed so anything OK hands the agent can declare a PATH that
- * is never narrower than the agent's own.
- *
- * The narrowing this prevents is not hypothetical: OK injects a stdio MCP entry
- * whose `env` several adapters spread LAST over the child's inherited env, so a
- * declared PATH replaces rather than supplements. Declaring the server's raw
- * `process.env.PATH` there would hand the MCP child launchd's minimal default
- * under a Dock-launched Desktop — dropping exactly the package-manager global
- * bins the spawn augmentation exists to restore. Reading it back off `mergedEnv`
- * rather than re-augmenting keeps the two from drifting apart.
- */
 export function agentSpawnPath(): string | undefined {
   return envPath(mergedEnv());
 }
 
-/** True when `overlay` sets PATH under any spelling — see {@link ResolvedLaunch.pathFromOverlay}. */
 export function overlaySetsPath(overlay?: Record<string, string>): boolean {
   return overlay !== undefined && Object.keys(overlay).some((k) => k.toLowerCase() === 'path');
 }
 
-/**
- * Stamp the hosted-agent marker onto an agent's spawn env.
- *
- * Applied at the spawn site rather than inside `mergedEnv` so it lands on
- * real agent launches only — the harness-availability probe builds its env
- * from `mergedEnv` too, and a throwaway `--version` check is not a hosted
- * agent. Applied AFTER the caller's overlay: whether OK is hosting this agent
- * is our fact about the launch, not a per-agent registry setting to override.
- *
- * The marker's reason for existing is the hop it tries to survive: the agent we
- * spawn goes on to spawn its own `ok mcp` (from the harness's MCP config, which
- * OK does not control), and that process reads the marker to decide whether to
- * hand the agent a preview URL or steer it to `ok open`. That hop is best-effort
- * and cannot be made deterministic from here — harnesses disagree about the env
- * they give MCP children, and some sanitize or allowlist it down to a handful of
- * standard variables. Entries OK injects itself carry the marker explicitly
- * instead; `OkMcpHostedMarker` in the thread manager records which case a thread
- * landed in.
- */
 export function withHostedAgentMarker(env: Record<string, string>): Record<string, string> {
   return { ...env, [OK_HOSTED_AGENT_ENV]: '1' };
 }
 
-/**
- * Resolve a registry agent to a spawnable command, downloading + extracting
- * a binary distribution when that's the only option. Preference order
- * npx → uvx → binary: package-manager launches self-update via the pinned
- * version in the manifest and need no archive plumbing.
- */
 export async function resolveRegistryLaunch(
   agent: RegistryAgent,
   platformKey: string | null,
@@ -206,7 +115,6 @@ export async function resolveRegistryLaunch(
     }
     const target = dist.binary[platformKey];
     const root = await ensureBinaryInstalled(agent.id, agent.version, target, binaryCacheDir, log);
-    // `cmd` is relative to the archive root (e.g. `./dist-package/cursor-agent`).
     const cmd = resolve(root, target.cmd.replace(/\\/g, '/'));
     if (!isWithin(root, cmd)) {
       throw new AgentLaunchError(
@@ -235,16 +143,6 @@ export function resolveCustomLaunch(entry: CustomAgentEntry): ResolvedLaunch {
   };
 }
 
-/**
- * Rewrite an npx/uvx launch to run through a runtime OK downloaded — used
- * when the system interpreter is absent. Swaps the command for the managed
- * tree's own `npx`/`uvx` (which behaves identically to the system one, so the
- * args carry over unchanged), prepends the runtime's bin dir to PATH so
- * nested `node`/`uv` resolve to the managed copy, and points the package
- * cache at a private dir so package installs never touch the user's global
- * `~/.npm` / uv cache. Only npx/uvx launches are rewritable — a binary or
- * custom command has no managed fallback.
- */
 export function rewriteLaunchToManagedRuntime(
   launch: ResolvedLaunch,
   runtime: ManagedRuntime,
@@ -260,23 +158,10 @@ export function rewriteLaunchToManagedRuntime(
   return { cmd: runtime.uvxBin, args: [...launch.args], env, kind: 'uvx', pathFromOverlay };
 }
 
-/**
- * Rewrite a launch to also search the login shell's PATH — used when the
- * inherited-plus-augmented PATH couldn't resolve the command but the user's
- * terminal can (a version manager whose bin dir no static list can name; see
- * `login-shell-path.ts`). Appended, never prepended, so every directory that
- * already resolved keeps resolving to the same binary.
- */
 export function withLoginShellPath(launch: ResolvedLaunch, loginShellPath: string): ResolvedLaunch {
   return { ...launch, env: withLoginShellPathEnv(launch.env, loginShellPath) };
 }
 
-/**
- * Retry an incompatible interpreter under the environment the user's terminal
- * sees. Unlike the normal append-only merge, this intentionally lets the shell
- * runtime win; callers must first establish that the inherited runtime cannot
- * satisfy the launch contract.
- */
 export function withPreferredLoginShellPath(
   launch: ResolvedLaunch,
   loginShellPath: string,
@@ -286,11 +171,6 @@ export function withPreferredLoginShellPath(
   return { ...launch, env };
 }
 
-/**
- * {@link withLoginShellPath} for a bare spawn env — the ACP terminal surface,
- * which builds its env from `mergedEnv` rather than from a `ResolvedLaunch`.
- * Same append-only merge, same case-preserving PATH key.
- */
 export function withLoginShellPathEnv(
   env: Record<string, string>,
   loginShellPath: string,
@@ -300,7 +180,6 @@ export function withLoginShellPathEnv(
   return next;
 }
 
-/** The env's PATH key (Windows spells it `Path`), for case-preserving overwrite. */
 function pathKey(env: Record<string, string>): string {
   for (const k of Object.keys(env)) {
     if (k.toLowerCase() === 'path') return k;
@@ -313,15 +192,11 @@ function prependPath(dir: string, existing: string | undefined): string {
 }
 
 export interface EnsureBinaryInstallOptions {
-  /** Test seam — defaults to global `fetch`. */
   fetchImpl?: typeof fetch;
-  /** Test seam for synchronizing concurrent installers immediately before commit. */
   beforeCommit?: () => Promise<void>;
-  /** Test seam — defaults to the production commit-lock timeout. */
   commitLockTimeoutMs?: number;
 }
 
-/** Return the installed root only when the manifest command is present and executable. */
 async function findInstalledBinary(
   versionDir: string,
   target: RegistryBinaryTarget,
@@ -344,25 +219,12 @@ async function findInstalledBinary(
   return versionDir;
 }
 
-/**
- * A failure whose verdict depends only on the checksum-verified archive bytes
- * and the manifest `cmd` — re-downloading cannot change it. Remembered in a
- * failure marker so later launches fail fast from cache instead of
- * re-streaming the archive on every attempt.
- */
 class DeterministicInstallError extends Error {}
 
 function installFailureMarkerPath(agentDir: string, version: string): string {
   return join(agentDir, `.install-failed-${sanitizeSegment(version)}`);
 }
 
-/**
- * The remembered failure reason when a fresh marker matches the current
- * manifest, else null. A manifest change (new cmd, sha, or archive URL)
- * mismatches and clears the way for a retry; so does marker age — the day
- * cap bounds the wedge for unverified manifests whose archive could be
- * republished at the same URL.
- */
 async function readInstallFailureMarker(
   markerPath: string,
   target: RegistryBinaryTarget,
@@ -416,12 +278,6 @@ async function writeInstallFailureMarker(
   });
 }
 
-/**
- * Download + extract a binary distribution once per (id, version); later
- * launches reuse the extracted tree. The commit machinery (beside-destination
- * staging, single-filesystem atomic rename, commit lock, stale sweeps) is the
- * shared `stagedInstall`.
- */
 export async function ensureBinaryInstalled(
   id: string,
   version: string,
@@ -452,10 +308,6 @@ export async function ensureBinaryInstalled(
           signal: AbortSignal.timeout(120_000),
           fetchImpl: opts.fetchImpl,
         });
-        // Binary distributions are opaque executables — verify the publisher's
-        // checksum whenever the manifest carries one, mirroring the managed-
-        // runtime download path. A manifest without one installs with a loud
-        // warning rather than silently skipping verification.
         if (target.sha256 !== undefined) {
           if (sha !== target.sha256.toLowerCase()) {
             throw new Error(`archive checksum mismatch: expected ${target.sha256}, got ${sha}`);
@@ -474,9 +326,7 @@ export async function ensureBinaryInstalled(
         if (!isWithin(extractDir, cmdPath)) {
           throw new DeterministicInstallError('manifest cmd escapes the extracted archive');
         }
-        await chmod(cmdPath, 0o755).catch(() => {
-          // Windows / already-executable — non-fatal.
-        });
+        await chmod(cmdPath, 0o755).catch(() => {});
         if (!(await isExecutableFile(cmdPath))) {
           throw new DeterministicInstallError(
             `extracted agent archive has no usable command at ${target.cmd}`,
@@ -504,18 +354,6 @@ export async function ensureBinaryInstalled(
   }
 }
 
-/**
- * Verify the resolved command is launchable BEFORE spawning, so a missing
- * interpreter surfaces as an actionable "install X" message instead of the
- * child's asynchronous, opaque `spawn <cmd> ENOENT` (which today lands as a
- * generic `spawn-failed` / `agent failed to start` status).
- *
- * `npx`/`uvx`/a bare custom command are searched across `PATH` the way the OS
- * would — honoring `PATHEXT` on Windows, where `npx` is really `npx.cmd`. A
- * path-qualified command (binary distributions, path-qualified custom agents)
- * is checked in place. Throws `AgentLaunchError('command-not-found')` with a
- * per-kind remediation hint when nothing is executable.
- */
 export async function preflightLaunch(launch: ResolvedLaunch): Promise<void> {
   if (await isLaunchable(launch.cmd, envPath(launch.env))) return;
   throw new AgentLaunchError('command-not-found', missingCommandHint(launch));
@@ -534,19 +372,7 @@ function missingCommandHint(launch: ResolvedLaunch): string {
   }
 }
 
-/**
- * The launch-error detail for an npx/uvx interpreter that is installed but
- * cannot RUN (see {@link probeInterpreterHealth}). Reaches the user on either
- * dead end: a host with no managed runtime to fall back to, or a managed
- * runtime the user declined. Distinct from {@link missingCommandHint}: the
- * command is right there, so a "was not found" message sends the user hunting
- * for an install they already have.
- */
 export function brokenInterpreterHint(launch: ResolvedLaunch, detail: string): string {
-  // Switched whole, like `missingCommandHint`: the Homebrew/icu4c cause is
-  // Node-specific, and pasting it into a uv failure sends that user to inspect
-  // a runtime with nothing to do with it — the wrong-address problem this hint
-  // exists to fix.
   const cause =
     launch.kind === 'uvx'
       ? 'That usually means its uv is broken. Reinstall or repair uv and try again.'
@@ -554,76 +380,28 @@ export function brokenInterpreterHint(launch: ResolvedLaunch, detail: string): s
   return `\`${launch.cmd}\` is installed but failed to run (${detail}). ${cause}`;
 }
 
-/**
- * The launch-error detail for a REPLACED copy of OK's own runtime still
- * failing to run — the fallback's fallback, after the damaged copy was
- * discarded and re-downloaded. Deliberately not {@link brokenInterpreterHint}:
- * a verified archive that won't run twice in a row is not a broken system
- * Node/uv, so pointing at Homebrew would send the user to repair something
- * blameless.
- */
 export function unrepairableManagedRuntimeHint(launch: ResolvedLaunch, detail: string): string {
   const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
   return `OK downloaded a fresh copy of ${runtime} and it still can't run (${detail}). Something on this machine is stopping it — antivirus, a security policy, or an unsupported CPU are the usual causes.`;
 }
 
-/** Actionable dead end when this OK build carries an obsolete managed Node. */
 export function incompatibleManagedRuntimeHint(detail: string): string {
   return `OK's private Node.js runtime is incompatible (${detail}). Update Open Knowledge and try again.`;
 }
 
-/**
- * The launch-error detail for a damaged copy of OK's own runtime that could
- * not be replaced: the rename that clears the way for a fresh download failed,
- * which on Windows means another agent still holds files open inside the tree.
- * Distinct from {@link unrepairableManagedRuntimeHint} because nothing was
- * re-downloaded — claiming a fresh copy also failed would name the wrong
- * culprit and send the user hunting for a machine-level cause that isn't there.
- */
 export function undeletableManagedRuntimeHint(launch: ResolvedLaunch, detail: string): string {
   const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
   return `OK's own copy of ${runtime} is damaged (${detail}) and couldn't be replaced — another agent may still be using it. Close other agent threads and try again.`;
 }
 
-/**
- * The launch-error detail for a user who declined the re-download of OK's own
- * damaged runtime. Not the stock decline hint: that one says the interpreter
- * isn't installed, when the actual state is that OK's copy is present and
- * broken and the user just refused the fix.
- */
 export function declinedRepairHint(launch: ResolvedLaunch): string {
   const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
   return `OK's own copy of ${runtime} is damaged and can't run this agent. Start the agent again to let OK download a fresh copy.`;
 }
 
-/** Cap on probe output retained while waiting for the verdict. */
 const PROBE_OUTPUT_MAX = 2_000;
-/** Cap on the output excerpt carried in a probe verdict (it reaches the user). */
 const PROBE_DETAIL_MAX = 300;
 
-/**
- * Confirm a resolved npx/uvx interpreter can actually EXECUTE, by running it
- * with `--version`.
- *
- * {@link preflightLaunch} proves only that the command file exists and carries
- * the execute bit — which a fatally broken interpreter also does. A Homebrew
- * `node` whose linked `icu4c` was upgraded out from under it aborts the instant
- * it starts (`dyld: Library not loaded: …/libicui18n.NN.dylib` → SIGABRT), so
- * the agent dies before the ACP handshake and the user sees only
- * `initialize failed: ACP connection closed`. Catching it here lets the caller
- * route to the managed runtime — the same remedy a MISSING interpreter already
- * gets.
- *
- * Returns a short failure detail (signal or exit code, plus the first stderr
- * line) when the probe crashes or exits non-zero, and `null` when it runs
- * cleanly. A probe still alive at `timeoutMs` also counts as `null`: a slow
- * `--version` is not the crash-on-startup this guards, and blocking every
- * launch on it would be a worse regression than letting the real spawn proceed.
- * `--version` is universal to npx/uvx, fast, network-free and side-effect-free
- * (no package install). Spawned the way {@link spawnAcpAgent} spawns the real
- * agent — same Windows command resolution, same `launch.env` — so the probe
- * exercises the interpreter the launch actually will.
- */
 export function probeInterpreterHealth(
   launch: ResolvedLaunch,
   timeoutMs = 5_000,
@@ -642,9 +420,6 @@ export function probeInterpreterHealth(
         env: launch.env,
         stdio: ['ignore', 'ignore', 'pipe'],
         shell: false,
-        // Same reason as the real agent spawn: an interpreter that hangs has
-        // usually already forked, and only a process GROUP kill reaches the
-        // fork. Without this a timed-out probe leaks the grandchild.
         detached: !win,
         windowsHide: true,
         windowsVerbatimArguments: wrap,
@@ -666,15 +441,7 @@ export function probeInterpreterHealth(
       settleProbe(detail);
     };
     const timer = setTimeout(() => {
-      // Group kill, not `child.kill`: an npx that hangs has usually already
-      // forked, and signalling only the wrapper leaves the fork running.
-      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {
-        // Best-effort: the verdict below stands either way.
-      });
-      // A timeout answers "healthy enough" and is otherwise indistinguishable
-      // from a clean run, so without this line an interpreter that hangs every
-      // launch spends the full budget invisibly and the operator sees only the
-      // downstream handshake failure.
+      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {});
       log?.debug(
         { cmd: launch.cmd, kind: launch.kind, timeoutMs },
         '[acp-launch] interpreter health probe timed out — proceeding with the launch',
@@ -702,17 +469,6 @@ export function probeInterpreterHealth(
   });
 }
 
-/**
- * Verify that an npx launch resolves a supported Node runtime from the same
- * environment the adapter will inherit. npm's POSIX launcher uses
- * `#!/usr/bin/env node`; its Windows launcher prefers the sibling `node.exe`
- * beside the resolved `npx.cmd` shim, then falls back to PATH.
- *
- * Compatibility is fail-closed for a missing runtime, failed process, empty
- * output, or unparsable version. A timeout is only an unknown/slow verdict, so
- * it proceeds with the launch after best-effort process-tree termination and
- * a debug log, matching the interpreter-health probe's latency policy.
- */
 export function probeNpxNodeCompatibility(
   launch: ResolvedLaunch,
   timeoutMs = 5_000,
@@ -754,9 +510,7 @@ export function probeNpxNodeCompatibility(
       settleProbe(detail);
     };
     const timer = setTimeout(() => {
-      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {
-        // Best-effort: the unknown verdict stands either way.
-      });
+      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {});
       log?.debug(
         { cmd: launch.cmd, kind: launch.kind, timeoutMs },
         '[acp-launch] Node.js compatibility probe timed out — proceeding with the launch',
@@ -765,8 +519,6 @@ export function probeNpxNodeCompatibility(
     }, timeoutMs);
     timer.unref?.();
     child.on('error', (err) => settle(`Node.js version probe failed: ${err.message}`));
-    // `close`, not `exit`: stdout can remain readable briefly after the process
-    // exits, and the version bytes are the compatibility verdict.
     child.on('close', (code, signal) => {
       if (signal !== null || (code !== null && code !== 0)) {
         const firstStderrLine = stderr
@@ -801,12 +553,10 @@ export function probeNpxNodeCompatibility(
   });
 }
 
-/** Actionable dead-end message when no compatible system Node can be selected. */
 export function incompatibleNodeHint(launch: ResolvedLaunch, detail: string): string {
   return `\`${launch.cmd}\` cannot run this agent with the selected Node.js runtime (${detail}). Upgrade Node.js or let Open Knowledge download a private compatible copy.`;
 }
 
-/** Case-insensitive `PATH` lookup (Windows spells it `Path`), falling back to the process env. */
 export function envPath(env: Record<string, string>): string | undefined {
   for (const [k, v] of Object.entries(env)) {
     if (k.toLowerCase() === 'path') return v;
@@ -814,17 +564,11 @@ export function envPath(env: Record<string, string>): string | undefined {
   return process.env.PATH;
 }
 
-/**
- * True when `cmd` names a location rather than a name to search for — binary
- * distributions and path-qualified custom agents. Such a command is checked in
- * place, so no amount of PATH repair changes its verdict.
- */
 export function isPathQualified(cmd: string): boolean {
   const win = process.platform === 'win32';
   return isAbsolute(cmd) || cmd.includes('/') || (win && cmd.includes('\\'));
 }
 
-/** Resolve `cmd` to an executable the way the OS would at spawn time. */
 async function isLaunchable(cmd: string, pathEnv: string | undefined): Promise<boolean> {
   const win = process.platform === 'win32';
   if (isPathQualified(cmd)) {
@@ -852,8 +596,6 @@ async function isExecutableFile(candidate: string): Promise<boolean> {
   try {
     const st = await stat(candidate);
     if (!st.isFile()) return false;
-    // Windows has no execute bit; a matching PATHEXT entry (already applied by
-    // the caller) is the executability signal there.
     if (process.platform === 'win32') return true;
     await access(candidate, constants.X_OK);
     return true;
@@ -862,16 +604,6 @@ async function isExecutableFile(candidate: string): Promise<boolean> {
   }
 }
 
-/**
- * Resolve a bare Windows command to its absolute launcher via PATH + PATHEXT,
- * searching only executable extensions (`.EXE`/`.CMD`/…) — never the bare file.
- * `C:\Program Files\nodejs` ships both an extensionless `npx` (a git-bash shell
- * script Windows can't exec) and `npx.cmd`; resolving to the real `npx.cmd` is
- * what lets it launch, and it fixes npm's `%~dp0` too (invoking `npx.cmd` by
- * its absolute path resolves its own dir correctly, where a quoted bare `"npx"`
- * resolves it to the cwd). Returns the input unchanged when already
- * path-qualified or unresolved. VM-verified against real `npx`.
- */
 export function resolveWindowsCommand(cmd: string, pathEnv: string | undefined): string {
   if (isAbsolute(cmd) || cmd.includes('\\') || cmd.includes('/')) return cmd;
   const exts = (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
@@ -884,15 +616,12 @@ export function resolveWindowsCommand(cmd: string, pathEnv: string | undefined):
       const candidate = join(dir, cmd + ext);
       try {
         if (statSync(candidate).isFile()) return candidate;
-      } catch {
-        // Not this candidate.
-      }
+      } catch {}
     }
   }
   return cmd;
 }
 
-/** Resolve the Node executable that npm's npx launcher will actually use. */
 export function resolveNpxNodeCommand(
   launch: ResolvedLaunch,
   platform: NodeJS.Platform = process.platform,
@@ -909,52 +638,21 @@ export function resolveNpxNodeCommand(
     const siblingNode = join(dirname(resolvedNpx), 'node.exe');
     try {
       if (statSync(siblingNode).isFile()) return siblingNode;
-    } catch {
-      // npm falls back to PATH when its sibling Node is absent.
-    }
+    } catch {}
   }
   return resolveWindowsCommand('node', pathEnv);
 }
 
-/** Double-quote a token if cmd.exe would otherwise split or interpret it. */
 function quoteCmdArg(arg: string): string {
   if (arg === '') return '""';
   return /[\s"&()<>^|%]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg;
 }
 
-/**
- * On Windows, route a `.cmd`/bare launcher through `cmd.exe /d /s /c`. The
- * whole command is wrapped in an OUTER pair of quotes (`cmd /c ""exe" args"`)
- * because `/s` strips the first and last quote — without it a launcher path
- * containing a space (e.g. `C:\Program Files\nodejs\npx.cmd`) is mis-split by
- * cmd. Passed verbatim so we, not Node, own the quoting. Args come only from
- * the trusted registry/custom sources (spec §9), and double-quoting neutralizes
- * cmd metacharacters for the package-name/flag arguments in practice.
- * VM-verified: real `npx` runs and bidirectional stdio (the ACP handshake)
- * round-trips through the wrapper.
- */
 export function windowsCmdWrap(cmd: string, args: string[]): { cmd: string; args: string[] } {
   const inner = [`"${cmd}"`, ...args.map(quoteCmdArg)].join(' ');
   return { cmd: process.env.ComSpec ?? 'cmd.exe', args: ['/d', '/s', '/c', `"${inner}"`] };
 }
 
-/**
- * `npx exec` runs npm arborist, which walks up from cwd looking for a
- * `package.json` to treat as the project root — and rejects pnpm's flat
- * `parent>child` `overrides` keys as `Override without name: ...`. Spawn
- * from an OK-owned dir under the user's home and plant a private marker
- * `package.json` in it so the arborist walk terminates AT the isolated dir
- * — no ancestor is reached, no pnpm-format overrides are ever parsed. The
- * agent's real workspace still arrives via the ACP `session/new` cwd.
- *
- * Under `~/.ok/` (sibling of `~/.ok/acp-agents/`) rather than `os.tmpdir()`
- * so another local user can't squat the path (on Linux `tmpdir()` is
- * world-writable `/tmp`; npm reads the spawn cwd as its project root and
- * would honor a planted `.npmrc` there). `mode: 0o700` matches the
- * secrets-store precedent under the same dotdir. The marker manifest
- * carries `private: true` so no publish path could ever run against it,
- * and no `overrides` key so its OWN parse can't fail.
- */
 function acpNpxIsolatedCwd(): string {
   const dir = join(homedir(), OK_DIR, 'acp-npx-cwd');
   tracedMkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -968,24 +666,6 @@ function acpNpxIsolatedCwd(): string {
   return dir;
 }
 
-/**
- * Spawn the resolved agent. Its lifetime is owned by its thread (killed on
- * thread close and on server shutdown), the opposite of the fire-and-forget
- * `spawn-detached.ts` handoff path.
- *
- * POSIX spawns are `detached: true` for group-kill, NOT for independence:
- * npx/uvx launches make the real agent a *grandchild*, and SIGKILL cannot be
- * forwarded by a dead wrapper — killing only the direct child orphans a
- * stuck agent mid-LLM-turn (verified: SIGKILL to `npx` leaves its bin
- * running, reparented to PID 1). `detached` makes the wrapper a process-group
- * leader so `terminateAgentTree` can signal the whole tree at once.
- *
- * On Windows, Node can't spawn a `.cmd`/`.bat` with `shell: false`
- * (CVE-2024-27980) and does no PATHEXT resolution for bare names — so a bare
- * launcher (system `npx`) is resolved to its absolute `npx.cmd` and any
- * `.cmd`/`.bat` is run through cmd.exe. Native `.exe`s (`uvx`, agent binaries,
- * the managed node) spawn directly. `taskkill /T` still reaps the whole tree.
- */
 export function spawnAcpAgent(launch: ResolvedLaunch, cwd: string): ChildProcess {
   if (!isAbsolute(cwd)) {
     throw new Error(`spawnAcpAgent requires an absolute cwd, got: ${cwd}`);
@@ -1004,8 +684,6 @@ export function spawnAcpAgent(launch: ResolvedLaunch, cwd: string): ChildProcess
     shell: false,
     detached: !win,
     windowsHide: true,
-    // We built the cmd.exe command line ourselves (outer-quoted for spaced
-    // paths); tell Node not to re-quote it.
     windowsVerbatimArguments: wrap,
   });
 }
@@ -1014,7 +692,6 @@ function hasExited(child: ChildProcess): boolean {
   return child.exitCode !== null || child.signalCode !== null;
 }
 
-/** Resolve true when the child exits within `timeoutMs`, false otherwise. */
 function awaitExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
   if (hasExited(child)) return Promise.resolve(true);
   return new Promise((resolvePromise) => {
@@ -1031,32 +708,18 @@ function awaitExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
   });
 }
 
-/** Signal the agent's whole process group, falling back to the direct child. */
 function signalAgentGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   const pid = child.pid;
   if (pid === undefined || hasExited(child)) return;
   try {
     process.kill(-pid, signal);
     return;
-  } catch {
-    // No such group (already gone) or the spawn predates group leadership —
-    // fall back to the direct child.
-  }
+  } catch {}
   try {
     child.kill(signal);
-  } catch {
-    // Already gone.
-  }
+  } catch {}
 }
 
-/**
- * Kill the agent and everything it spawned, and only resolve once it is
- * actually dead (or `false` if it somehow survived SIGKILL). POSIX: group
- * SIGTERM → `graceMs` wait → group SIGKILL. Windows: `taskkill /T /F`
- * immediately — there is no graceful console signal to try first, and a
- * TerminateProcess on the root would orphan the tree before taskkill could
- * enumerate it.
- */
 export async function terminateAgentTree(
   child: ChildProcess,
   opts: { graceMs: number; forceWaitMs?: number },
@@ -1072,12 +735,9 @@ export async function terminateAgentTree(
           windowsHide: true,
         }).unref();
       } catch {
-        // taskkill unavailable — degrade to the direct child.
         try {
           child.kill('SIGKILL');
-        } catch {
-          // Already gone.
-        }
+        } catch {}
       }
     }
     return awaitExit(child, Math.max(opts.graceMs, forceWaitMs));

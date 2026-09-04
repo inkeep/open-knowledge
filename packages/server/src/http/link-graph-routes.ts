@@ -1,19 +1,3 @@
-/**
- * The link/graph read family — `backlinks`, `backlink-counts`,
- * `forward-links`, `link-graph`, `dead-links`, `orphans`, `hubs`,
- * `tags-list`, `tags-for-name`, `suggest-links` — lifted out of
- * `api-extension.ts` as the first natively-routed Wave 2 group. Same lift
- * shape as `skills-sh-handlers.ts`: what the handlers closed over in the
- * extension arrives as {@link LinkGraphRouteDeps}, and the handler bodies
- * are unchanged.
- *
- * Unlike the skills.sh handlers, this group does NOT return to the legacy
- * route table: `createLinkGraphRoutes` returns an {@link ApiRouteTable} +
- * the Hono patterns for the native mount, and the extension exposes them as
- * its `nativeApi` handle. A route lives in exactly one router — these paths
- * are gone from the legacy dispatch record in the same change.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Hocuspocus } from '@hocuspocus/server';
 import {
@@ -51,7 +35,6 @@ export interface LinkGraphRouteDeps {
   hocuspocus: Hocuspocus;
   derivedDocumentIndex: DerivedDocumentIndexApiPort | undefined;
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
-  /** The extension's docName safety predicate (path-traversal refusal). */
   isSafeDocName: (docName: string) => boolean;
   readPageTitleForDocName: (docName: string) => string;
   readPageTitleForLinkedDocName: (docName: string, admitted: Set<string>) => string;
@@ -133,13 +116,6 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
     { handler: 'backlinks', method: 'GET', skipBodyParse: true },
   );
 
-  /**
-   * Bulk backlink-count lookup. `GET /api/backlink-counts?docNames=a,b,c`
-   * returns `{ counts: { a: 3, b: 0, c: 2 } }`. Serves listing UIs
-   * (exec ls/grep/find slim enrichment) that need connection density per file
-   * without N-amplifying the single-doc `/api/backlinks` endpoint.
-   * docNames failing `isSafeDocName` are silently dropped from `counts`.
-   */
   const handleBacklinkCounts = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -230,9 +206,6 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
                   snippet: entry.snippet,
                 },
         );
-        // Local file/image references ride an additive sibling collection sourced
-        // from the assessment index — never reclassified from the graph rows above,
-        // so document relationship semantics stay pure.
         let localTargets: ReturnType<typeof toForwardLinkLocalTargets> | undefined;
         try {
           const localTargetSources = await derivedDocumentIndex.getLocalTargetAssessmentsForSources(
@@ -334,7 +307,6 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
               cluster: meta.cluster ?? null,
               category: meta.category ?? null,
               tags: meta.tags ?? null,
-              // Only stamped when true — an ordinary document carries no flag.
               ...(bundle !== null && isInternalBundleSkillName(bundle.name)
                 ? { managed: true as const }
                 : {}),
@@ -642,9 +614,6 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
     }
   }
 
-  // A literal declaration (`satisfies`, never a widening `: Record<...>`
-  // annotation) — the helper's `mutating` key-check needs the literal path
-  // union to survive inference.
   const routes = {
     '/api/backlinks': handleBacklinks,
     '/api/backlink-counts': handleBacklinkCounts,
@@ -657,14 +626,10 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
     '/api/suggest-links': handleSuggestLinks,
   } satisfies ApiRouteRecord;
 
-  // Every route in this group is a read (none rode the legacy
-  // MUTATING_ROUTES loopback/Host gate), so no mutating set is declared.
   return createApiRouteGroup(routes, {
     dynamic: {
       prefix: '/api/tags/',
       template: '/api/tags/:name',
-      // Empty name (`/api/tags/`): no dispatch — the pipeline's explicit
-      // 404 owns it, under the same template the legacy dispatch used.
       dispatch: (rawName) =>
         rawName ? (req, res) => handleTagsForName(req, res, rawName) : undefined,
     },

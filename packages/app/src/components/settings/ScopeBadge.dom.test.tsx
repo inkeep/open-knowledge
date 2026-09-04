@@ -1,16 +1,9 @@
-/**
- * DOM tests for ScopeBadge — the storage-scope indicator shown beside every
- * settings section heading. Asserts the visible label and the scope-specific
- * tooltip copy.
- */
-
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ScopeBadge, type SettingsScope } from './ScopeBadge';
 
-// Radix Tooltip reaches for globals jsdom's preload doesn't expose.
 type GlobalWithShims = typeof globalThis & { ResizeObserver?: unknown };
 const g = globalThis as GlobalWithShims;
 if (g.ResizeObserver === undefined) {
@@ -55,9 +48,6 @@ describe('ScopeBadge', () => {
     expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
   });
 
-  // The user tooltip speaks to reach, not to a backing file: Configure agents
-  // persists to localStorage and Hotkeys stores nothing, so a "stored in your
-  // user config" claim would be false on pages this badge labels.
   test('user tooltip explains it stays on this device across every project', async () => {
     renderBadge('user');
     await userEvent.hover(screen.getByTestId('settings-scope-badge-user'));
@@ -70,8 +60,6 @@ describe('ScopeBadge', () => {
     renderBadge('project');
     await userEvent.hover(screen.getByTestId('settings-scope-badge-project'));
     const tooltip = await screen.findAllByRole('tooltip');
-    // Names the project folder, not a file: this badge also covers .okignore,
-    // the per-editor MCP files, .ok/skills/ and .ok/templates/.
     expect(within(tooltip[0]).getByText(/through git/i)).toBeDefined();
     expect(within(tooltip[0]).queryByText(/config\.yml/i)).toBeNull();
   });

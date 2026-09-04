@@ -10,9 +10,6 @@ afterEach(() => {
 });
 
 describe('thread draft staging', () => {
-  // The two ends genuinely race: `launchAgentThread` stages once `createThread`
-  // resolves, while `ThreadView` subscribes when the dock mounts its tab. Both
-  // orders have to deliver, or an Ask AI silently loses the user's passage.
   test('delivers to a subscriber that arrives AFTER the stage', () => {
     stageThreadDraft('thread-1', 'fix this lint error');
     const seen: string[] = [];
@@ -27,7 +24,6 @@ describe('thread draft staging', () => {
     expect(seen).toEqual(['fix this lint error']);
   });
 
-  // A remount must not re-seed a draft the user already cleared.
   test('consumes exactly once', () => {
     stageThreadDraft('thread-1', 'first');
     const first: string[] = [];
@@ -50,7 +46,6 @@ describe('thread draft staging', () => {
     expect(two).toEqual(['for two']);
   });
 
-  // Nothing to review — staging it would just flash an empty composer.
   test.each([' ', '', '\n\t '])('ignores whitespace-only text (%j)', (text) => {
     const seen: string[] = [];
     subscribeStagedThreadDraft('thread-1', (t) => seen.push(t));
@@ -66,9 +61,6 @@ describe('thread draft staging', () => {
     expect(seen).toEqual([]);
   });
 
-  // A remount can register its listener before the previous one's cleanup runs
-  // (React StrictMode, fast tab flips). The stale cleanup must not evict the
-  // newer listener, or the very next stage goes nowhere.
   test('a stale unsubscribe does not evict a newer listener', () => {
     const older = vi.fn();
     const newer = vi.fn();

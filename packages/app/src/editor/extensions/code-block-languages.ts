@@ -1,28 +1,9 @@
-/**
- * Languages available in the visual-mode code block picker.
- *
- * Values match the canonical `highlight.js` / `lowlight` language IDs (those
- * are also what we store in markdown info-strings, so round-trip is byte-stable).
- * Aliases let users type `js` / `ts` / `sh` / etc. in the filter input.
- */
-
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 
 interface CodeLanguageOption {
   value: string;
-  /**
-   * The picker's display name. Almost every entry is a language proper noun
-   * (`Bash`, `Python`, `SQL`) that stays as written in every locale — a
-   * translated `Rust` would name nothing.
-   */
   label: string;
-  /**
-   * Set only on the entries whose label is descriptive English rather than a
-   * proper noun. Deferred (a descriptor, not a `t` call) because this list is
-   * module scope: resolving here would freeze the picker in whatever language
-   * was active at import. `CodeBlockView` resolves it per render.
-   */
   labelMessage?: MessageDescriptor;
   aliases?: string[];
 }
@@ -34,10 +15,6 @@ export const CODE_BLOCK_LANGUAGES: CodeLanguageOption[] = [
     labelMessage: msg`Plain text`,
     aliases: ['text', 'txt', 'none'],
   },
-  // `'shell'` is intentionally NOT an alias of `bash` — the canonical
-  // `'shell'` entry below is a distinct highlight.js grammar (shell-session
-  // prompt + output). Listing it here would have been overwritten by the
-  // canonical entry anyway (last write wins in ALIAS_MAP).
   { value: 'bash', label: 'Bash', aliases: ['sh', 'zsh'] },
   { value: 'c', label: 'C' },
   { value: 'cpp', label: 'C++', aliases: ['c++'] },
@@ -86,10 +63,6 @@ const ALIAS_MAP: Map<string, string> = (() => {
   return m;
 })();
 
-/**
- * Map a user-supplied language token to its canonical lowlight key.
- * Returns `null` when the value is empty (= plain text).
- */
 export function normalizeCodeLanguage(language: string | null | undefined): string | null {
   if (!language) return null;
   return ALIAS_MAP.get(language.toLowerCase()) ?? language.toLowerCase();

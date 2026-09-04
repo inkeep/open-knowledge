@@ -1,20 +1,9 @@
-/**
- * Behavior tests for the generic rule-option widget vocabulary
- * (`RuleOptionField`): each `RuleOptionSpec.type` dispatches to its control
- * and edits emit typed values. Specs come from the real generated catalog so
- * the vocabulary is exercised against what ships — including MD022, whose
- * union-typed `lines_above`/`lines_below` must fall back to the read-only
- * chip while its sibling `include_front_matter` stays editable.
- */
-
 import { MARKDOWNLINT_RULE_CATALOG, type RuleOptionSpec } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { RULE_OPTION_WIDGET_OVERRIDES, RuleOptionField } from './rule-option-field';
 
-// Radix primitives reach for pointer-capture and scroll APIs the jsdom
-// preload doesn't expose; hoist the same shims the sibling DOM tests use.
 const ElementProto = Element.prototype as Element & {
   hasPointerCapture?: () => boolean;
   releasePointerCapture?: () => void;
@@ -135,7 +124,6 @@ describe('RuleOptionField — unsupported fallback (MD022)', () => {
     for (const key of ['lines_above', 'lines_below']) {
       const chip = screen.getByTestId(`rule-option-MD022-${key}-unsupported`);
       expect(chip.textContent).toBe('Edit in config file');
-      // Read-only: the field offers no editing control.
       const field = screen.getByTestId(`rule-option-MD022-${key}`);
       expect(field.querySelector('input, button, select, textarea')).toBeNull();
     }
@@ -195,7 +183,6 @@ describe('RuleOptionField — integer', () => {
   });
 
   test('honors the schema minimum by clamping the committed value', () => {
-    // MD013 line_length carries minimum 1 in the vendored schema.
     const onChange = vi.fn(() => {});
     render(
       <RuleOptionField
@@ -327,8 +314,6 @@ describe('RuleOptionField — enum', () => {
 
 describe('RuleOptionField — string-array', () => {
   test('renders existing entries as pills and commits grammar-free values verbatim', () => {
-    // MD043 headings hold values like `## Summary` — spaces and a leading
-    // `#` must survive (the frontmatter tag grammar would reject/mangle).
     const onChange = vi.fn(() => {});
     render(
       <RuleOptionField

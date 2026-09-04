@@ -9,9 +9,6 @@ function captureInfo() {
 function soleParsedCall(spy: ReturnType<typeof captureInfo>): Record<string, unknown> {
   expect(spy.mock.calls).toHaveLength(1);
   const [first, ...rest] = spy.mock.calls[0];
-  // The capture sites only parse a message whose FIRST argument is a lone JSON
-  // object; a second argument would be joined into the message text on the web
-  // transport and dropped entirely on the Electron one.
   expect(rest).toEqual([]);
   expect(typeof first).toBe('string');
   return JSON.parse(first as string) as Record<string, unknown>;
@@ -34,9 +31,6 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('emits at info, the only level both capture transports keep', () => {
-    // `mapConsoleLevel` maps 'debug' to null and the web forwarder never patches
-    // `console.debug`, so a debug breadcrumb reaches no log file on either
-    // distribution. warn/error survive but misreport routine diagnostics.
     const info = captureInfo();
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -74,8 +68,6 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('drops a nested field and counts it rather than shipping unredactable depth', () => {
-    // Pino's keyed redact reaches one level, so a nested object cannot be
-    // masked; a cyclic one would additionally throw on serialize.
     const spy = captureInfo();
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
@@ -90,10 +82,6 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('a field named after a pino key is dropped, not left to corrupt the record', () => {
-    // pino appends these fields to its own without deduping, so a collision
-    // reaches the file as a repeated key that whichever parser reads it next
-    // has to arbitrate. Enforced at the boundary because `mark()` forwards the
-    // props of marks that do not exist yet.
     const spy = captureInfo();
     emitDiagnosticBreadcrumb('ok-test-event', {
       level: 2,
@@ -101,16 +89,9 @@ describe('emitDiagnosticBreadcrumb', () => {
       pid: 2,
       hostname: 'h',
       msg: 'no',
-      // Base bindings and the desktop logger's own key. `subsystem` is the
-      // worst of them: that logger merges as `{ subsystem, ...data }`, so a
-      // field of this name wins in plain JS before pino runs and silently
-      // re-files the record under another subsystem.
       name: 'nope',
       runtime: 'nope',
       subsystem: 'nope',
-      // The server logger's OTel mixin keys, which pino resolves in the merge
-      // object's favour — so one of these would re-file the line against a
-      // trace that does not contain it.
       trace_id: 'nope',
       span_id: 'nope',
       trace_flags: 'nope',
@@ -124,10 +105,6 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('a BigInt costs one field, not the whole line', () => {
-    // `JSON.stringify` throws on a BigInt, and a denylist keyed on `typeof
-    // 'object'` would let it through to the outer catch — which discards the
-    // breadcrumb, event name included. `mark()` forwards props verbatim from
-    // marks that do not exist yet, so the value type cannot be assumed.
     const spy = captureInfo();
     expect(() => emitDiagnosticBreadcrumb('ok-test-event', { big: 10n, index: 3 })).not.toThrow();
     expect(soleParsedCall(spy)).toEqual({
@@ -169,10 +146,6 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('an oversized payload degrades to a parseable line instead of an unparseable one', () => {
-    // The Electron capture site truncates BEFORE parsing and the parse is
-    // all-or-nothing, so a line over the transport cap arrives there with no
-    // event name and no fields at all. Degrade deliberately instead, which also
-    // makes the two transports agree on what an oversized payload looks like.
     const spy = captureInfo();
     emitDiagnosticBreadcrumb('ok-test-event', {
       docName: 'x'.repeat(MAX_BREADCRUMB_CHARS),
@@ -184,18 +157,11 @@ describe('emitDiagnosticBreadcrumb', () => {
   });
 
   test('the cap keeps the documented headroom under the 8192 transport limit', () => {
-    // Pinned against the transport's own constant rather than left to drift:
-    // the headroom is what absorbs UTF-16-length-versus-UTF-8-bytes on a
-    // multibyte payload, and raising the cap to the transport limit would
-    // spend it silently.
     expect(MAX_BREADCRUMB_CHARS).toBeLessThanOrEqual(RENDERER_LOG_MAX_MESSAGE_BYTES / 2);
   });
 
   test('a payload sized exactly to the cap keeps every field', () => {
     const spy = captureInfo();
-    // Exactly at the cap, which the comparison admits — the boundary is where a
-    // one-off in either direction shows up, and any lower cap degrades this and
-    // fails the assertion.
     const room =
       MAX_BREADCRUMB_CHARS -
       JSON.stringify({ event: 'ok-test-event', docName: '', index: 4 }).length;

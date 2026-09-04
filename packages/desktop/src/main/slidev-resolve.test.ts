@@ -1,12 +1,3 @@
-/**
- * Tests for the real filesystem executability probe backing slidev resolution.
- *
- * `resolveSlidev` itself is covered behaviorally through `handleSlidesStatus`
- * (see ipc/slides.test.ts) with injected probes. Here we pin the ONE real-fs
- * adapter — `realIsExecutableFile` — against a tmpdir, exercising the catch with
- * genuine ENOENT/EACCES inputs rather than a forced throw.
- */
-
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -43,7 +34,6 @@ describe('realIsExecutableFile', () => {
     writeFileSync(f, 'not a program');
     chmodSync(f, 0o644);
     if (process.platform === 'win32') {
-      // Windows has no execute bit; a present regular file is runnable there.
       expect(await realIsExecutableFile(f)).toBe(true);
     } else {
       expect(await realIsExecutableFile(f)).toBe(false);

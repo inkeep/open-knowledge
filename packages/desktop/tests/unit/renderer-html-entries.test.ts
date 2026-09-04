@@ -4,24 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { RENDERER_HTML_ENTRIES } from '../../../app/vite.entries';
 
-/**
- * The renderer ships from two builds with different consumers: `packages/app`'s
- * own `vite build` produces what a PACKAGED window loads (`dist/` → the CLI's
- * `dist/public/` → `<Resources>/app/`), while `packages/desktop`'s
- * `electron-vite build` produces the unpackaged-dev fallback at
- * `out/renderer/`. An entry declared in only one of them works in dev and 404s
- * in the shipped app, so the entry set is asserted to match across both.
- */
 const appRoot = resolve(fileURLToPath(new URL('../../../app/', import.meta.url)));
 
 type EntryInput = Record<string, string>;
 
-/**
- * Both spellings are read because the two configs are mid-migration: Vite 8
- * renamed `rollupOptions` to `rolldownOptions` and the app config has moved
- * while the electron-vite one has not. Reading either keeps this assertion
- * alive across that rename instead of silently going vacuous.
- */
 interface RendererBuild {
   rollupOptions?: { input?: EntryInput };
   rolldownOptions?: { input?: EntryInput };
@@ -61,9 +47,6 @@ describe('renderer HTML entries', () => {
   });
 
   test('every declared entry is a flat sibling at the app root', async () => {
-    // Vite emits shared chunks to `<outDir>/assets/`, and each entry HTML gets
-    // relative `./assets/…` URLs. Nesting one entry a directory deeper would
-    // silently break its asset resolution under `file://`.
     for (const [name, entryPath] of Object.entries(await appBuildInput())) {
       expect(dirname(entryPath), `${name} entry must sit at the app root`).toBe(appRoot);
       expect(existsSync(entryPath), `${name} entry is missing on disk`).toBe(true);

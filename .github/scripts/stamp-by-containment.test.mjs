@@ -5,11 +5,6 @@ import {
   summarize,
 } from './stamp-by-containment.mjs';
 
-// Importing this module in-process cannot prove it LINKS: vitest resolves `.mjs`
-// through Vite's transform, which leaves a missing named import as `undefined`
-// rather than the load-time SyntaxError real node raises. `module-graph.test.mjs`
-// is what covers that, for every script here rather than only this one.
-
 const rel = (id, version) => ({ id, name: `v${version}`, version });
 
 const R = {
@@ -39,8 +34,6 @@ describe('isBetaRelease', () => {
   });
 
   test('a missing version is not treated as a beta', () => {
-    // Guessing "beta" for an unknown shape would make the reconciler skip a
-    // stable it should have corrected.
     expect(isBetaRelease({})).toBe(false);
     expect(isBetaRelease(null)).toBe(false);
   });
@@ -48,7 +41,6 @@ describe('isBetaRelease', () => {
 
 describe('planTicketReconciliation', () => {
   test('an unresolvable fix commit is never acted on', () => {
-    // Removing a stamp we cannot verify would destroy a possibly-correct edit.
     const p = plan({
       attachedReleases: [R['0.46.0']],
       shippedTag: null,
@@ -96,7 +88,6 @@ describe('planTicketReconciliation', () => {
   });
 
   test('BETA attachments are never touched', () => {
-    // A beta is a correct per-cut delta; only the stable is containment-derived.
     const p = plan({
       attachedReleases: [R['0.46.0-beta.35'], R['0.46.0']],
       shippedTag: 'v0.46.1',
@@ -128,11 +119,6 @@ describe('planTicketReconciliation', () => {
   });
 
   test('an UNRESOLVABLE fix commit never strips a stable, unlike a proven one', () => {
-    // The distinction the two branches turn on. `not-mirrored` from the
-    // resolver means the commit was never located; it looks identical to
-    // "not shipped" if you only read a boolean, and collapsing them would
-    // delete correct stamps on tickets whose PR link is a merge-queue
-    // artifact, a revert, or predates the mirror.
     const attachedReleases = [R['0.46.0'], R['0.47.0-beta.5']];
     const proven = plan({ attachedReleases, shippedTag: null, evidence: 'proven-not-shipped' });
     const unknown = plan({ attachedReleases, shippedTag: null, evidence: 'unresolvable' });
@@ -143,7 +129,6 @@ describe('planTicketReconciliation', () => {
   });
 
   test('a containing stable with no release object is reported, not invented', () => {
-    // Minting releases belongs to the cut, not to this reconciler.
     const p = plan({
       attachedReleases: [R['0.46.0']],
       shippedTag: 'v0.99.9',

@@ -1,13 +1,3 @@
-/**
- * DOM tests for `usePublishFrontmatterSelection` — the hook that wires
- * the property panel's plain-React widgets into the selection-context store so a
- * highlight inside a property value feeds the composer exactly like a body-text
- * selection (keyed `(docName, 'frontmatter')`). Two highlight sources are
- * covered: a form field (textarea — the highlight is its own
- * `selectionStart..selectionEnd`, NOT part of `window.getSelection()`) and a
- * DOM Range over a static value display.
- */
-
 import { act, cleanup, render } from '@testing-library/react';
 import { useRef } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -36,7 +26,6 @@ describe('usePublishFrontmatterSelection', () => {
     const ta = getByTestId('value') as HTMLTextAreaElement;
     act(() => {
       ta.focus();
-      // "a long description value" — highlight "long description" (offsets 2..18).
       ta.setSelectionRange(2, 18);
       document.dispatchEvent(new Event('selectionchange'));
     });
@@ -57,7 +46,6 @@ describe('usePublishFrontmatterSelection', () => {
     expect(getSelectionContext('notes', 'frontmatter')).not.toBeNull();
 
     act(() => {
-      // Collapse the selection.
       ta.setSelectionRange(5, 5);
       document.dispatchEvent(new Event('selectionchange'));
     });

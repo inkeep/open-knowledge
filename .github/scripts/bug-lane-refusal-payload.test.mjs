@@ -3,29 +3,24 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
+  actionLine,
+  buildHeadline,
   buildSlackPayload,
   changedJsonKeys,
   classifyConflictPath,
   classifyRefs,
-  describeRefusal,
   INERT_JSON_KEYS,
-  optionsFor,
   parseArgs,
+  reasonPhrase,
 } from './bug-lane-refusal-payload.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const bugLane = readFileSync(join(REPO_ROOT, '.github', 'workflows', 'bug-lane.yml'), 'utf8');
-// The lane is two workflows since the 2026-08-21 split: bug-lane.yml evaluates
-// and hands off, bug-lane-verify.yml does the picking, paging and dispatching.
-// Every step this file asserts on lives in the verify half — assert against the
-// file that actually RUNS the step, so a step drifting back across the boundary
-// fails here rather than passing on a concatenation.
 const bugLaneVerify = readFileSync(
   join(REPO_ROOT, '.github', 'workflows', 'bug-lane-verify.yml'),
   'utf8',
 );
 
-/** A private manifest whose only fix-side change is the Playwright subset. */
 const appManifest = (e2e) =>
   JSON.stringify({
     name: '@inkeep/open-knowledge-app',
@@ -35,9 +30,9 @@ const appManifest = (e2e) =>
 
 describe('changedJsonKeys', () => {
   test('reports dotted leaf paths, not subtrees', () => {
-    expect(changedJsonKeys({ scripts: { a: '1', b: '2' } }, { scripts: { a: '1', b: '3' } })).toEqual(
-      ['scripts.b'],
-    );
+    expect(
+      changedJsonKeys({ scripts: { a: '1', b: '2' } }, { scripts: { a: '1', b: '3' } }),
+    ).toEqual(['scripts.b']);
   });
 
   test('catches added and removed leaves, not just modified ones', () => {
@@ -51,9 +46,6 @@ describe('changedJsonKeys', () => {
 });
 
 describe('classifyConflictPath', () => {
-  // The incident this exists for: a bug fix appended one Playwright spec to
-  // the CI subset, an unrelated feature had appended six since the stable, and
-  // the whole point release was refused over a line that does not ship.
   test('the e2e-subset append is inert', () => {
     const got = classifyConflictPath({
       path: 'packages/app/package.json',
@@ -68,7 +60,11 @@ describe('classifyConflictPath', () => {
   test('a published manifest is never inert, whatever key moved', () => {
     const pub = (e2e) =>
       JSON.stringify({ name: '@inkeep/open-knowledge', scripts: { 'test:e2e': e2e } });
-    const got = classifyConflictPath({ path: 'packages/cli/package.json', before: pub('a'), after: pub('b') });
+    const got = classifyConflictPath({
+      path: 'packages/cli/package.json',
+      before: pub('a'),
+      after: pub('b'),
+    });
     expect(got.inert).toBe(false);
     expect(got.detail).toMatch(/published/);
   });
@@ -86,9 +82,6 @@ describe('classifyConflictPath', () => {
     expect(got.detail).toContain('dependencies.react');
   });
 
-  // `scripts.test` IS the tier the lane runs to verify the synthetic tree, so
-  // treating it like its `test:e2e` sibling would let a drifted verification
-  // command be reported as harmless.
   test('scripts.test is not inert even though test:e2e is', () => {
     expect(INERT_JSON_KEYS.has('scripts.test')).toBe(false);
     const after = JSON.stringify({
@@ -125,7 +118,11 @@ describe('classifyConflictPath', () => {
 
   test('a path the fix never changed is not called harmless', () => {
     const same = appManifest('a.e2e.ts');
-    const got = classifyConflictPath({ path: 'packages/app/package.json', before: same, after: same });
+    const got = classifyConflictPath({
+      path: 'packages/app/package.json',
+      before: same,
+      after: same,
+    });
     expect(got.inert).toBe(false);
     expect(got.detail).toMatch(/without the fix changing it/);
   });
@@ -165,81 +162,128 @@ describe('classifyRefs', () => {
   });
 });
 
-describe('describeRefusal', () => {
-  // Production-shaped. `classifyRefs` derives `inert` as
-  // `files.length > 0 && files.every(...)`, so a ref carrying the flag ALWAYS
-  // carries the paths it was derived from; an empty `files` is a distinct
-  // state (the pick failed without conflicting) and gets its own class below.
+describe('reasonPhrase and buildHeadline', () => {
   const inert = [
-    { ref: 'a', inert: true, files: [{ path: 'packages/app/package.json', inert: true, detail: 'test:e2e only' }] },
+    {
+      ref: 'a',
+      inert: true,
+      files: [{ path: 'packages/app/package.json', inert: true, detail: 'test:e2e only' }],
+    },
   ];
   const behavioral = [
-    { ref: 'a', inert: false, files: [{ path: 'packages/server/src/boot.ts', inert: false, detail: 'carries behavior' }] },
+    {
+      ref: 'a',
+      inert: false,
+      files: [{ path: 'packages/server/src/boot.ts', inert: false, detail: 'carries behavior' }],
+    },
   ];
   const noPaths = [{ ref: 'a', inert: false, totalFiles: 37, files: [] }];
 
+  test('the reason phrase is three words or fewer', () => {
+    const words = (s) => s.split(/\s+/).length;
+    expect(words(reasonPhrase({ verdict: 'could-not-verify', refs: [] }))).toBeLessThanOrEqual(3);
+    expect(words(reasonPhrase({ verdict: 'fail', refs: [] }))).toBeLessThanOrEqual(3);
+    expect(words(reasonPhrase({ verdict: 'conflict', refs: inert }))).toBeLessThanOrEqual(3);
+    expect(words(reasonPhrase({ verdict: 'conflict', refs: noPaths }))).toBeLessThanOrEqual(3);
+    expect(words(reasonPhrase({ verdict: 'conflict', refs: behavioral }))).toBeLessThanOrEqual(3);
+  });
+
   test('the four refusal classes read differently at a glance', () => {
-    const h = (args) => describeRefusal(args).headline;
-    const drift = h({ verdict: 'conflict', refs: inert });
-    const real = h({ verdict: 'conflict', refs: behavioral });
-    const red = h({ verdict: 'fail', refs: [] });
-    const unknown = h({ verdict: 'conflict', refs: noPaths });
+    const r = (args) => reasonPhrase(args);
+    const drift = r({ verdict: 'conflict', refs: inert });
+    const real = r({ verdict: 'conflict', refs: behavioral });
+    const red = r({ verdict: 'fail', refs: [] });
+    const unknown = r({ verdict: 'conflict', refs: noPaths });
     expect(new Set([drift, real, red, unknown]).size).toBe(4);
-    expect(drift).toMatch(/config drift, not by the fix/);
-    expect(real).toMatch(/does not apply/);
+    expect(drift).toMatch(/config drift/);
+    expect(real).toMatch(/conflict/);
   });
 
-  test('one behavior-carrying ref in a mixed batch picks the severe headline', () => {
-    expect(describeRefusal({ verdict: 'conflict', refs: [...inert, ...behavioral] }).headline).toMatch(
-      /does not apply/,
+  test('one behavior-carrying ref in a mixed batch picks the severe reason', () => {
+    expect(reasonPhrase({ verdict: 'conflict', refs: [...inert, ...behavioral] })).toBe(
+      'behavior-carrying conflict',
     );
   });
 
-  // The shape that shipped a false alarm: a pick that applied EMPTY because
-  // the stable already contained the fix exited non-zero with no conflicting
-  // path, and the severe branch asserted a behavior-carrying collision it had
-  // no evidence for — telling the reader the fix depended on later work when
-  // it was already released.
   test('no recorded conflicting path never claims a behavior-carrying collision', () => {
-    const { headline, meaning } = describeRefusal({ verdict: 'conflict', refs: noPaths });
-    expect(headline).not.toMatch(/does not apply to the current stable/);
-    expect(meaning).not.toMatch(/carries behavior/);
-    expect(meaning).toMatch(/no conflicting file/);
+    expect(reasonPhrase({ verdict: 'conflict', refs: noPaths })).not.toMatch(/behavior/);
   });
 
-  // A batch where one ref genuinely collided must still report the severe
-  // case; the no-path class is only for a batch with no evidence at all.
-  test('a mixed batch with real paths keeps the severe headline', () => {
-    expect(describeRefusal({ verdict: 'conflict', refs: [...noPaths, ...behavioral] }).headline).toMatch(
-      /does not apply/,
+  test('a mixed batch with real paths keeps the severe reason', () => {
+    expect(reasonPhrase({ verdict: 'conflict', refs: [...noPaths, ...behavioral] })).toBe(
+      'behavior-carrying conflict',
     );
+  });
+
+  test('the headline names the specific ref and ticket on a conflict', () => {
+    const headline = buildHeadline({
+      verdict: 'conflict',
+      refs: [{ ref: 'abcdef1234567890', tickets: ['PRD-1'], inert: false, files: [] }],
+      stable: 'v1.2.3',
+    });
+    expect(headline).toContain('`abcdef123` (PRD-1)');
+    expect(headline).toContain('v1.2.3');
+    expect(headline).toContain('No action needed');
+  });
+
+  test('a red tier or a budget blow names the batch, not a specific ref', () => {
+    expect(buildHeadline({ verdict: 'fail', refs: [], stable: 'v1' })).toContain(
+      'The queued fix(es)',
+    );
+    expect(buildHeadline({ verdict: 'could-not-verify', refs: [], stable: 'v1' })).toContain(
+      'The queued fix(es)',
+    );
+  });
+
+  test('the no-action sentence differs for a budget blow', () => {
+    const retried = buildHeadline({ verdict: 'could-not-verify', refs: [], stable: 'v1' });
+    const soaked = buildHeadline({ verdict: 'conflict', refs: inert, stable: 'v1' });
+    expect(retried).toMatch(/retries this batch automatically/);
+    expect(soaked).toMatch(/rides its cycle's stable/);
+    expect(retried).not.toMatch(/rides its cycle's stable/);
   });
 });
 
-describe('optionsFor', () => {
+describe('actionLine', () => {
   const withPath = (inertFlag) => [
-    { ref: 'x', inert: inertFlag, files: [{ path: 'p/package.json', inert: inertFlag, detail: 'd' }] },
+    {
+      ref: 'x',
+      inert: inertFlag,
+      files: [{ path: 'p/package.json', inert: inertFlag, detail: 'd' }],
+    },
   ];
 
-  test('the inert case never points at resolve_paths, which would refuse', () => {
-    const opts = optionsFor({ verdict: 'conflict', refs: withPath(true) });
-    expect(opts.join('\n')).not.toMatch(/-f resolve_paths=/);
-    expect(opts.join('\n')).toMatch(/allowlist is code/);
+  test('the inert case never points at resolve_paths, which would refuse, but still names the disqualifier', () => {
+    const line = actionLine({ verdict: 'conflict', refs: withPath(true) });
+    expect(line).not.toMatch(/-f resolve_paths=/);
+    expect(line).toMatch(/config drift/);
+    expect(line).toMatch(/resolve_paths.*does not cover this path/);
   });
 
   test('inert and behavioral give different advice', () => {
-    const a = optionsFor({ verdict: 'conflict', refs: withPath(true) });
-    const b = optionsFor({ verdict: 'conflict', refs: withPath(false) });
+    const a = actionLine({ verdict: 'conflict', refs: withPath(true) });
+    const b = actionLine({ verdict: 'conflict', refs: withPath(false) });
     expect(a).not.toEqual(b);
-    expect(b.join('\n')).toMatch(/smaller self-contained commit/);
+    expect(b).toMatch(/smaller self-contained commit/);
   });
 
-  // Without evidence the advice must not send someone to hand-cut a release:
-  // the likeliest cause of a pathless failure is that the fix already shipped.
   test('no recorded path sends the reader to the log, not to a hand-cut release', () => {
-    const opts = optionsFor({ verdict: 'conflict', refs: [{ ref: 'x', inert: false, files: [] }] }).join('\n');
-    expect(opts).not.toMatch(/smaller self-contained commit/);
-    expect(opts).toMatch(/run log/);
+    const line = actionLine({ verdict: 'conflict', refs: [{ ref: 'x', inert: false, files: [] }] });
+    expect(line).not.toMatch(/smaller self-contained commit/);
+    expect(line).toMatch(/run/);
+    expect(line).toMatch(/already be in the stable/);
+  });
+
+  test('a budget blow points at the lane’s recent runs, not at a resolution', () => {
+    expect(actionLine({ verdict: 'could-not-verify', refs: [] })).toMatch(/recent runs/);
+  });
+
+  test('a red tier never renders refs-based advice, even when the dropped refs are inert', () => {
+    const line = actionLine({ verdict: 'fail', refs: withPath(true) });
+    expect(line).not.toMatch(/needs a human decision/);
+    expect(line).not.toMatch(/config drift/);
+    expect(line).not.toMatch(/smaller self-contained commit/);
+    expect(line).toMatch(/stable is red on its own/);
   });
 });
 
@@ -254,11 +298,7 @@ describe('buildSlackPayload', () => {
     },
   ];
 
-  // "Why it refused" renders per-ref conflict evidence, and a red tier has none
-  // of its own — every surviving ref cherry-picked cleanly, which is the only
-  // way it reached the tiers. Without the failure list the section renders as a
-  // bare heading above an instruction to go read the log.
-  test('a red tier names the failing tests instead of an empty reason', () => {
+  test('a red tier names the failing test instead of an empty reason', () => {
     const body = buildSlackPayload({
       verdict: 'fail',
       stable: 'v0.62.1',
@@ -267,31 +307,32 @@ describe('buildSlackPayload', () => {
       failures: [
         'src/skill-bundles.test.ts > every bundle has a SKILL.md on disk whose frontmatter name matches',
       ],
-    }).blocks[1].text.text;
+    }).blocks[0].text.text;
     expect(body).toContain('skill-bundles.test.ts');
     expect(body).toContain('not flake-class');
-    // The discrimination the empty page could not offer.
-    expect(body).toContain('the stable is red on its own');
+    expect(body).toContain('red verification');
+    expect(body).not.toContain('verification timeout');
     expect(body).not.toMatch(/\*Why it refused\*\n\n/);
+    expect(body).toContain('the stable is red on its own');
+    expect(body).toContain('check it against the fixes');
+    expect(body).toContain('depends on later work');
   });
 
-  // A red tier does NOT imply an empty batch: the pick loop records every
-  // dropped ref and lets the survivors run the tiers, so a partial drop
-  // followed by a red tier carries both kinds of evidence. The partial-drop
-  // page is gated on `verdict == 'pass'`, so if this page omits the drops
-  // nothing on that tick tells the operator a ref was dropped at all.
-  test('a red tier with dropped refs still accounts for the drops', () => {
+  test('a red tier with dropped refs still accounts for the drops, without advising on them', () => {
     const body = buildSlackPayload({
       verdict: 'fail',
       stable: 'v0.62.1',
       runUrl: '',
       failures: ['src/thing.test.ts > a case'],
       refs,
-    }).blocks[1].text.text;
+    }).blocks[0].text.text;
     expect(body).toContain('src/thing.test.ts');
     expect(body).toContain('Also dropped from this batch');
-    expect(body).toContain('packages/app/package.json');
     expect(body).toContain('PRD-7835');
+    expect(body).toContain('conflicted in 1 file');
+    expect(body).not.toContain('packages/app/package.json');
+    expect(body).not.toContain('needs a human decision');
+    expect(body).toContain('check it against the fixes');
   });
 
   test('a red tier with no dropped refs adds no drop section', () => {
@@ -301,7 +342,7 @@ describe('buildSlackPayload', () => {
       runUrl: '',
       failures: ['src/thing.test.ts > a case'],
       refs: [],
-    }).blocks[1].text.text;
+    }).blocks[0].text.text;
     expect(body).not.toContain('Also dropped from this batch');
   });
 
@@ -312,12 +353,13 @@ describe('buildSlackPayload', () => {
       refs: [],
       runUrl: '',
       failures: [],
-    }).blocks[1].text.text;
-    expect(body).toContain('captured no failing test or task name');
+    }).blocks[0].text.text;
+    expect(body).toContain('Both attempts went red');
     expect(body).not.toMatch(/\*Why it refused\*\n\n/);
+    expect(body).toMatch(/if a failure is named above/i);
   });
 
-  test('a red tier caps the failure list and says how many it dropped', () => {
+  test('a red tier names only the first failure, with a count of the rest', () => {
     const failures = Array.from({ length: 11 }, (_, i) => `suite > case ${i}`);
     const body = buildSlackPayload({
       verdict: 'fail',
@@ -325,59 +367,76 @@ describe('buildSlackPayload', () => {
       refs: [],
       runUrl: '',
       failures,
-    }).blocks[1].text.text;
-    expect(body).toContain('case 7');
-    expect(body).not.toContain('case 8');
-    expect(body).toContain('…and 3 more');
+    }).blocks[0].text.text;
+    expect(body).toContain('case 0');
+    expect(body).not.toContain('case 1');
+    expect(body).toContain('and 10 more');
+    expect(body).toContain('the stable is red on its own');
   });
 
-  test('names the ticket, the path, the verdict and what applied cleanly', () => {
+  test('names the ticket, the reason and the stable, without the per-file breakdown', () => {
     const body = buildSlackPayload({
       verdict: 'conflict',
       stable: 'v0.48.9',
       refs,
       runUrl: 'https://example.test/run/1',
-    }).blocks[1].text.text;
+    }).blocks[0].text.text;
     expect(body).toContain('PRD-7835');
-    expect(body).toContain('packages/app/package.json');
     expect(body).toContain('v0.48.9');
-    expect(body).toContain('27 other files in the commit applied cleanly');
+    expect(body).toContain('config drift');
+    expect(body).toContain('conflicted in 1 file; 27 applied cleanly');
+    expect(body).not.toContain('packages/app/package.json');
   });
 
-  // The verbatim shape of the page that went out for PRD-7310 over v0.50.2:
-  // 37 files, none conflicting, because the stable already shipped the fix.
-  // It rendered "conflicted in 0 files:" with nothing under it, immediately
-  // followed by "37 other files applied cleanly" — a stated conflict with no
-  // evidence, contradicted by its own next line.
   test('a pathless failure renders no empty conflict list and no phantom count', () => {
     const body = buildSlackPayload({
       verdict: 'conflict',
       stable: 'v0.50.2',
-      refs: [{ ref: '4cef9c5a587dc26ea4bcb5fe2ab134a1fa8ec00d', tickets: ['PRD-7310'], totalFiles: 37, inert: false, files: [] }],
+      refs: [
+        {
+          ref: '4cef9c5a587dc26ea4bcb5fe2ab134a1fa8ec00d',
+          tickets: ['PRD-7310'],
+          totalFiles: 37,
+          inert: false,
+          files: [],
+        },
+      ],
       runUrl: '',
-    }).blocks[1].text.text;
+    }).blocks[0].text.text;
     expect(body).not.toContain('conflicted in 0 files');
-    expect(body).not.toContain('37 other files');
     expect(body).toContain('PRD-7310');
     expect(body).toContain('no conflicting file');
-    expect(body).toContain('all 37 files in the commit applied cleanly');
+    expect(body).toContain('all 37 files applied cleanly');
   });
 
   test('keeps the silence-is-deliberate note', () => {
-    const body = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs, runUrl: '' }).blocks[1]
-      .text.text;
+    const body = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs, runUrl: '' })
+      .blocks[0].text.text;
     expect(body).toMatch(/Further identical refusals stay silent/);
+  });
+
+  test('has no emoji and no header block', () => {
+    const payload = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs, runUrl: '' });
+    expect(payload.blocks).toHaveLength(1);
+    expect(payload.blocks[0].type).toBe('section');
+    expect(JSON.stringify(payload)).not.toMatch(/[\u{1F000}-\u{1FFFF}☀-➿]/u);
+    expect(payload.text).toBe(payload.blocks[0].text.text.split('\n')[0]);
   });
 
   test('a commit subject containing quotes cannot corrupt the payload', () => {
     const hostile = [
       { ...refs[0], tickets: ['"}, {"type":"section","text":"pwned'], files: refs[0].files },
     ];
-    const payload = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs: hostile, runUrl: '' });
-    expect(JSON.parse(JSON.stringify(payload)).blocks).toHaveLength(2);
+    const payload = buildSlackPayload({
+      verdict: 'conflict',
+      stable: 'v1',
+      refs: hostile,
+      runUrl: '',
+    });
+    expect(JSON.parse(JSON.stringify(payload)).blocks).toHaveLength(1);
   });
 
-  test('caps a large batch instead of blowing Slack’s block limit', () => {
+  test('caps a large batch of refs instead of blowing Slack’s block limit', () => {
     const many = Array.from({ length: 12 }, (_, i) => ({
       ref: `${i}`.repeat(12),
       tickets: [],
@@ -390,9 +449,9 @@ describe('buildSlackPayload', () => {
       })),
     }));
     const body = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs: many, runUrl: '' })
-      .blocks[1].text.text;
+      .blocks[0].text.text;
     expect(body).toMatch(/and 7 more ref\(s\)/);
-    expect(body).toMatch(/and 12 more/);
+    expect(body).toContain('conflicted in 20 files');
     expect(body.length).toBeLessThan(3000);
   });
 });
@@ -408,16 +467,6 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  /**
-   * Exact bounds of a step: its `- name:` up to the next sibling step.
-   *
-   * Throws on a missing name rather than returning a degenerate slice. An
-   * unguarded `indexOf` yields -1, `slice(-1)` yields the file's last
-   * character, and every `not.toContain` / `not.toMatch` assertion below then
-   * passes against that one character — so a renamed or relocated step turns
-   * its own coverage green instead of red. The sibling helper in
-   * release-cascade-shape.test.mjs guards the same way, for the same reason.
-   */
   const step = (name) => {
     const start = bugLaneVerify.indexOf(`- name: ${name}`);
     if (start === -1) throw new Error(`bug-lane-verify.yml has no step named ${name}`);
@@ -426,11 +475,6 @@ describe('workflow wiring', () => {
     return end === -1 ? rest : rest.slice(0, end);
   };
 
-  /**
-   * The step's executable shell, with whole-line comments removed. Assertions
-   * about what the shell DOES must not be satisfiable — or broken — by prose
-   * that quotes the very form it warns against.
-   */
   const shellOf = (name) =>
     step(name)
       .split('\n')
@@ -442,8 +486,6 @@ describe('workflow wiring', () => {
     const conflictCapture = verify.indexOf('--diff-filter=U');
     const abort = verify.indexOf('cherry-pick --abort');
     expect(conflictCapture).toBeGreaterThan(-1);
-    // An abort clears the index, so capturing after it yields an empty list and
-    // the page silently loses the only datum that makes it actionable.
     expect(conflictCapture).toBeLessThan(abort);
   });
 
@@ -451,10 +493,6 @@ describe('workflow wiring', () => {
     expect(step('Page on a refusal')).toContain('bug-lane-refusal-payload.mjs');
   });
 
-  // A pick onto a stable that already contains the fix exits non-zero with no
-  // conflicting path. Treated as a conflict it pages a refusal claiming the
-  // fix depends on later work — the opposite of the truth — so it must be
-  // classified BEFORE the conflict bookkeeping runs.
   test('the verify step separates an empty pick from a conflict', () => {
     const verify = shellOf('Verify the synthetic tree');
     const emptyGuard = verify.indexOf('git diff --quiet HEAD');
@@ -465,22 +503,13 @@ describe('workflow wiring', () => {
     expect(verify).toContain('already-in-stable');
   });
 
-  // The guarantee the whole change rests on: an all-already tick is silent
-  // BY CONSTRUCTION, because the paging chain only ever fires on the two
-  // verdicts that represent a real question for a human.
   test('only conflict, fail and could-not-verify can reach the pager', () => {
     const gate = step('Refusal signature');
     const verdicts = [...gate.matchAll(/verdict == '([a-z-]+)'/g)].map((m) => m[1]);
-    // `could-not-verify` is a refusal an operator must see: the tiers never
-    // finished, so the batch stays pending with nothing said about it.
     expect(new Set(verdicts)).toEqual(new Set(['conflict', 'fail', 'could-not-verify']));
     expect(verdicts).not.toContain('already-in-stable');
   });
 
-  // The page is the only channel this workflow has — its own header notes that
-  // `workflow_dispatch` runs are excluded from the status rollup and can never
-  // colour a commit. So the distinction has to exist HERE, not just in the run
-  // log, or it does not exist for the person it is for.
   describe('a budget blow does not read as a red tier', () => {
     const payload = (verdict) =>
       buildSlackPayload({
@@ -490,37 +519,34 @@ describe('workflow wiring', () => {
         runUrl: 'https://example.test/run',
         failures: ['the tiers did not finish within 1500s'],
       });
-    const page = (verdict) => payload(verdict).blocks[1].text.text;
+    const page = (verdict) => payload(verdict).blocks[0].text.text;
 
-    test('says nothing was verified, rather than naming a cause', () => {
-      // The headline is its own surface: it is what Slack shows in a list, so
-      // "failed" there is the first thing an operator reads and acts on.
-      expect(JSON.stringify(payload('could-not-verify'))).toContain('could not verify');
+    test('says the batch retries itself, rather than naming a cause', () => {
+      expect(JSON.stringify(payload('could-not-verify'))).toContain('verification timeout');
       const body = page('could-not-verify');
-      expect(body).toContain('Nothing was verified');
 
-      // ROUTING, not just the branch. Every assertion below this comment used
-      // to be satisfiable by rendering NOTHING: revert the verdict test on the
-      // `failureLines` call and this page becomes a `*Why it refused*` heading
-      // over a blank line, which is the exact shape `refLines` warns about --
-      // stating a refusal and listing no evidence for it.
       expect(body).toContain('did not finish within 1500s');
+      expect(body).toContain('nothing was verified about the queued fixes');
       expect(body).not.toMatch(/\*Why it refused\*\n\n/);
-      // The one thing this whole verdict exists to tell an operator. Nothing
-      // else in this file asserts any `optionsFor` string for it, so emptying
-      // that branch rendered a bare header and stayed green.
-      expect(body).toContain('IS a retry candidate');
-      // Every one of these is false on a blow, and the last is the inverse of
-      // the truth — the batch is precisely a retry candidate.
+      expect(body).toContain('retries this batch automatically');
       expect(body).not.toContain('not flake-class');
-      expect(body).not.toContain('depends on later work');
-      expect(body).not.toContain('not a retry candidate');
-      expect(body).not.toContain('the stable is red on its own');
+      expect(body).not.toContain('red verification');
+      expect(body).not.toContain('24h soak lane');
+      expect(body).not.toContain("rides its cycle's stable");
     });
 
-    // Mirrors the `fail` parity case: a partial drop followed by a budget blow
-    // arrives here with real drop evidence, and the partial-drop page cannot
-    // cover it because its own step gates on `verdict == 'pass'`.
+    test('a budget blow with no captured failures still says nothing was verified', () => {
+      const body = buildSlackPayload({
+        verdict: 'could-not-verify',
+        stable: 'v1',
+        refs: [],
+        runUrl: '',
+        failures: [],
+      }).blocks[0].text.text;
+      expect(body).toContain('ran out of their time budget');
+      expect(body).toContain('nothing was verified about the queued fixes');
+    });
+
     test('still accounts for refs dropped before the tiers ran', () => {
       const body = buildSlackPayload({
         verdict: 'could-not-verify',
@@ -536,36 +562,31 @@ describe('workflow wiring', () => {
         ],
         runUrl: 'https://example.test/run',
         failures: ['the tiers did not finish within 1500s (exit 124)'],
-      }).blocks[1].text.text;
+      }).blocks[0].text.text;
       expect(body).toContain('Also dropped from this batch');
       expect(body).toContain('abc1234');
-      // Rendering the page showed `undefined - CARRIES BEHAVIOR (undefined)`
-      // from a fixture that passed bare strings where refLines reads objects.
-      // Asserting the ref alone did not see it, so assert the file line too.
-      expect(body).toContain('packages/core/src/index.ts');
+      expect(body).toContain('conflicted in 1 file');
       expect(body).not.toContain('undefined');
     });
 
     test('still says all of that for a genuine red tier', () => {
       const body = page('fail');
       expect(body).toContain('not flake-class');
-      expect(body).toContain('not a retry candidate');
+      expect(body).toContain('red verification');
       expect(body).not.toContain('ran out of');
+      expect(body).toContain('The fix itself needs nothing');
+      expect(body).not.toContain("No action needed — it rides its cycle's stable");
     });
   });
 
-  // `${V:-{\}}` expands to a LITERAL `{\}` — a brace in a parameter-expansion
-  // default is not escapable there. jq --argjson then refuses, and the enriched
-  // page degrades to the plain fallback on every single run, with nothing in
-  // the log saying the enrichment never happened.
   test('the page does not default a JSON var with a brace expansion', () => {
     expect(shellOf('Page on a refusal')).not.toMatch(/\$\{[A-Za-z_]+:-\{/);
   });
 
-  // Steps share one workspace, and verify leaves it detached at the stable tag
-  // — which predates this script, so it is simply not on disk by the time the
-  // page runs. Without a restore the page degrades to the fallback forever,
-  // and nothing in the log says the enrichment never happened.
+  test('the plain-text fallback is emoji-free', () => {
+    expect(shellOf('Page on a refusal')).not.toMatch(/[\u{1F000}-\u{1FFFF}☀-➿]/u);
+  });
+
   test('the page restores the lane scripts the detached tree dropped', () => {
     const shell = shellOf('Page on a refusal');
     const restore = shell.indexOf('git checkout "$GITHUB_SHA"');
@@ -574,11 +595,6 @@ describe('workflow wiring', () => {
     expect(restore).toBeLessThan(invoke);
   });
 
-  // `git checkout <ref> -- a b` is atomic: one path missing at that ref aborts
-  // the whole restore, so combining them would let an unrelated rename leave
-  // the page silently degraded. Asserted as the shape it must have — one
-  // single-token pathspec, driven by a loop — rather than by trying to exclude
-  // every way two could be written.
   test('the restore names one path at a time', () => {
     expect(shellOf('Page on a refusal')).toMatch(
       /for p in [^\n]*\n\s*git checkout "\$GITHUB_SHA" -- "\$p"/,
@@ -586,31 +602,14 @@ describe('workflow wiring', () => {
   });
 
   test('the lane still never authorizes conflict resolution when dispatching', () => {
-    // Both halves: the dispatch lives in the verify workflow, but this is a
-    // fail-closed assertion about the LANE, and the evaluator gained its own
-    // `gh workflow run` in the split. Checking only one half would let the
-    // other acquire the flag silently.
     expect(bugLane).not.toContain('resolve_paths');
     expect(bugLaneVerify).not.toContain('resolve_paths');
   });
 
-  // Pins the guard itself. Every other call site names a step that exists, so
-  // the throw branch is otherwise dead code — and a future edit that dropped it
-  // (a merge conflict, a simplification) would return this whole describe to
-  // passing vacuously with nothing going red. Verifying it by hand once proves
-  // it works today; only this proves it still does.
   test('step() throws on a missing name instead of returning a degenerate slice', () => {
     expect(() => step('This step does not exist')).toThrow(/has no step named/);
   });
 
-  /**
-   * Every `run:` body in a workflow, block-scalar and inline forms both.
-   *
-   * Scoped to `run:` rather than matching `${{ inputs.` line-shapes anywhere,
-   * because the rule is about reaching a SHELL. A `with:` parameter
-   * (`ref: ${{ inputs.stable }}`) is legitimate and a line-shape filter would
-   * red-flag it, teaching whoever trips it that the rule is arbitrary.
-   */
   const runBodies = (yaml) => {
     const lines = yaml.split('\n');
     const bodies = [];
@@ -636,22 +635,7 @@ describe('workflow wiring', () => {
     return bodies;
   };
 
-  // THE RATCHET for the env-only convention. Without it the rule lives in a
-  // comment: reverting the `Refuse an empty batch` env block to direct
-  // `${{ inputs.* }}` splicing left all 1200 tests in this project green, which
-  // is how that defect shipped in the first place despite two reviewers naming
-  // it. `${{ }}` is substituted as raw text before the shell parses, so a
-  // dispatch value carrying `$(...)` executes in a job holding GITHUB_TOKEN and
-  // the Slack webhook secrets.
-  //
-  // Scoped to `inputs.` — the untrusted surface. `steps.*.outputs.*` splicing
-  // is deliberately NOT banned: those values are produced by the workflow
-  // itself, so a blanket ban would be a materially different and much churnier
-  // rule than the one the convention comments actually state.
   test('dispatch inputs reach the shell only through env, never `${{ }}` splicing', () => {
-    // Every workflow, not just the lane's two: the convention comment claims to
-    // govern publish-linux-repo.yml and point-release.yml as well, and a rule
-    // enforced only where it was written is how the next copy escapes it.
     const dir = join(REPO_ROOT, '.github', 'workflows');
     const files = readdirSync(dir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
     expect(files.length, 'no workflows found to scan').toBeGreaterThan(0);
@@ -659,28 +643,13 @@ describe('workflow wiring', () => {
     for (const file of files) {
       const yaml = readFileSync(join(dir, file), 'utf8');
       const bodies = runBodies(yaml);
-      // Catches a walker that SKIPS a block. It cannot catch one that captures
-      // a block and TRUNCATES it, since `declared` reads the same `run:`
-      // anchor — that half is pinned directly by the walker unit test below,
-      // which is the only thing that actually proves depth.
       const declared = yaml.split('\n').filter((l) => /^\s*run: /.test(l)).length;
       expect(bodies.length, `${file}: walker missed a run: block`).toBe(declared);
-      // Every spelling, not one literal. `${{inputs.x}}`, a two-space variant
-      // and the `github.event.inputs.*` form are all equivalent to Actions and
-      // all enable the identical injection — and that last form is a live idiom
-      // in this very directory, so it is the likely alternate spelling rather
-      // than a hypothetical one.
       const spliced = bodies.filter((b) => /\$\{\{\s*(github\.event\.)?inputs\./.test(b));
       expect(spliced, `${file}: inputs spliced into a run: body`).toEqual([]);
     }
   });
 
-  // Pins runBodies() against a synthetic document, which is the only thing that
-  // proves DEPTH. A count check compares the walker to the same `run:` anchor it
-  // reads, so a walker truncated to its first line keeps the count intact and
-  // the ratchet above goes quiet with a real splice sitting on line two. A
-  // corpus sentinel does not close it either: the first line of these bodies is
-  // the shell preamble, so a one-line capture still matches it.
   test('runBodies captures a whole block, neither truncated nor bled into the next step', () => {
     const doc = [
       'jobs:',
@@ -698,9 +667,7 @@ describe('workflow wiring', () => {
     const bodies = runBodies(doc);
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toContain('first');
-    // The assertion a truncating walker fails.
     expect(bodies[0]).toContain('third');
-    // The assertion an over-capturing walker fails.
     expect(bodies[0]).not.toContain('- name: two');
     expect(bodies[1]).toBe('echo inline');
   });

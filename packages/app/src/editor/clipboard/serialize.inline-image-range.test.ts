@@ -1,35 +1,3 @@
-/**
- * Inline-image source-fallback range contract: position resolution must
- * target the image atom's own PM range.
- *
- * tiptap always renders an outer `.react-renderer.node-image` span around
- * a React node view; fixtures that omit it exercise a topology production
- * never produces. These tests model the real production topology:
- *
- *   .ProseMirror > p
- *     > span.react-renderer.node-image
- *       > span[data-node-view-wrapper data-clipboard-inline-leaf]
- *         > span[data-rmiz] > span[data-rmiz-content] > img
- *
- * with a leading text-node sibling in the paragraph (`Some prose with an
- * ![alt](./x.jpg) image.`), and pin the contract stated in
- * `ImageInlineZoomView.tsx` and `findDescriptorRoot`'s doc comment:
- * position resolution for an inline-leaf-wrapped PM atom must target the
- * atom node's own range (direct `posAtDOM(<img>, 0)` path — no descriptor
- * misroute), and any offset handed to `posAtDOM` counts childNodes (text
- * nodes included), never an element-only index.
- *
- * `buildWalkerEnv` is intentionally private; the env is captured by
- * stubbing the walker entry point via `vi.doMock` and driving
- * `serializeFragment` — the same public wiring production uses.
- *
- * The registered mock DELEGATES to the real implementation except inside
- * an explicit capture window, so it stays behavior-transparent to every
- * other test file in the worker. Delegation avoids restore semantics
- * entirely; `realWalkLiveDom` is captured before the mock so it remains
- * independent from the mocked namespace.
- */
-
 import type { JSONContent } from '@tiptap/core';
 import type { Fragment } from '@tiptap/pm/model';
 import { Schema } from '@tiptap/pm/model';
@@ -55,16 +23,7 @@ vi.doMock('./clipboard-walker.ts', () => ({
   },
 }));
 
-// Imported AFTER the module mock so `serializeFragment`'s walker tier hits
-// the delegating mock above.
 const { createClipboardHtmlSerializer, findDescriptorRoot } = await import('./serialize.ts');
-
-// ---------------------------------------------------------------------------
-// Fake live-DOM elements. This test runs without a DOM; these cover exactly the
-// surface the code under test touches (`classList.contains`,
-// `hasAttribute`, `parentElement`, `childNodes`) with STABLE
-// object identity so `parentElement ===` and `childNodes.indexOf(...)` work.
-// ---------------------------------------------------------------------------
 
 interface FakeEl {
   classes: Set<string>;
@@ -99,11 +58,6 @@ function chain(...els: FakeEl[]): void {
 
 const fakeTextNode = () => ({ nodeType: 3 });
 
-/**
- * Real production topology around ImageInlineZoom's inline `<img>`, with
- * the leading/trailing text runs as paragraph siblings. Returns the
- * elements the tests interrogate.
- */
 function buildInlineZoomTopology() {
   const proseMirror = el({ classes: ['ProseMirror'] });
   const para = el();
@@ -119,10 +73,6 @@ function buildInlineZoomTopology() {
   para.childNodes = [fakeTextNode(), reactRenderer, fakeTextNode()];
   return { para, reactRenderer, img };
 }
-
-// ---------------------------------------------------------------------------
-// PM document mirroring the inline-image-in-prose seed: `Some prose with an ![alt](./x.jpg) image.`
-// ---------------------------------------------------------------------------
 
 const inlineImageSchema = new Schema({
   nodes: {
@@ -158,15 +108,8 @@ function buildDoc() {
   ]);
 }
 
-// Paragraph content starts at 1; the image atom sits after the 19-char
-// leading text run.
 const IMAGE_POS = 1 + LEADING_TEXT.length;
 
-/**
- * posAtDOM faithful to ProseMirror's documented contract: the offset
- * argument counts CHILDNODES of the passed node (text nodes included).
- * For the paragraph, childNodes map to PM inline children 1:1.
- */
 function fakePosAtDOM(para: FakeEl, img: FakeEl, doc: ReturnType<typeof buildDoc>) {
   const paraNode = doc.child(0);
   return (node: unknown, offset: number, _bias?: number): number => {
@@ -182,12 +125,6 @@ function fakePosAtDOM(para: FakeEl, img: FakeEl, doc: ReturnType<typeof buildDoc
   };
 }
 
-/**
- * Markdown manager double that discriminates WHICH PM node reached
- * serialization: an image node emits its markdown source; text emits the
- * raw text. The assertion below is on which node was resolved, so a wrong
- * range surfaces as wrong bytes, never a false green.
- */
 function discriminatingMdManager() {
   const serializeJson = (json: JSONContent): string => {
     if (json.type === 'image') {
@@ -245,10 +182,6 @@ afterEach(() => {
 
 describe('QA-005 contract — inline-image source-fallback range resolution', () => {
   test('findDescriptorRoot: real ImageInlineZoom topology (outer .react-renderer.node-image present) is NOT a descriptor', () => {
-    // tiptap always renders a `.react-renderer.node-<name>` span around a
-    // React node view — the inline-leaf opt-out must neutralize the WHOLE
-    // wrapper stack of the same node view, not just the annotated
-    // NodeViewWrapper, so the direct `posAtDOM(<img>, 0)` path is taken.
     const { img } = buildInlineZoomTopology();
     expect(findDescriptorRoot(img as unknown as Element)).toBeNull();
   });
@@ -264,14 +197,6 @@ describe('QA-005 contract — inline-image source-fallback range resolution', ()
   });
 
   test('descriptor path with a leading text sibling passes a childNodes offset to posAtDOM (genuine descriptor mid-paragraph)', () => {
-    // Same paragraph shape, but the wrapper stack is a GENUINE descriptor
-    // (no `data-clipboard-inline-leaf`), so the descriptor-parent branch
-    // is the correct route. `mathInline` is the inline descriptor that
-    // actually sits mid-paragraph between text nodes (`MathInlineView`,
-    // NodeViewWrapper as="span"). The paragraph's childNodes are
-    // [#text, descriptor, #text]; an element-only index (0) addresses the
-    // leading text run. The offset fed to posAtDOM must count childNodes,
-    // so the resolved range is the descriptor's own node.
     const proseMirror = el({ classes: ['ProseMirror'] });
     const para = el();
     const reactRenderer = el({ classes: ['react-renderer', 'node-mathInline'] });

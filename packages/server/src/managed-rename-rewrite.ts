@@ -62,10 +62,6 @@ function readInlineCode(line: string, start: number): { nextIndex: number } | nu
     i += closeLen;
   }
 
-  // Unmatched opening run — see backlink-index.ts readInlineCode for the
-  // CommonMark §6.1 rationale. Skip past the full run to avoid O(N²) re-scans
-  // on long unclosed backtick runs (DoS bound). Caller copies the literal run
-  // verbatim via line.slice(idx, inlineCode.nextIndex).
   return { nextIndex: openEnd };
 }
 
@@ -124,9 +120,6 @@ function readMarkdownLink(
   };
 }
 
-// Matches `![alt](src "optional title")`. Wiki-embeds (`![[file.ext]]`)
-// fail the shared grammar's label because the char after `![` is `[`,
-// so they flow through untouched.
 function readImageRef(
   line: string,
   start: number,
@@ -214,14 +207,6 @@ function rewriteWikiLinksInLine(
   return { markdown: rewritten, rewrites };
 }
 
-// Recompute a RELATIVE image-ref href when the containing doc moves from
-// oldSourceDocName to newSourceDocName. The asset stays put (refs-only
-// rewrite); only the relative path needs adjustment.
-//
-// Returns null when the href should NOT be rewritten:
-//   - absolute path (`/docs/photo.png`) — legacy emit, leave verbatim
-//   - URL with scheme (`https://…`, `data:…`) — external, no recompute
-//   - protocol-relative (`//cdn.example.com/x.png`) — external
 function recomputeRelativeImageHref(
   originalHref: string,
   oldSourceDocName: string,
@@ -234,24 +219,19 @@ function recomputeRelativeImageHref(
   const querySuffix = queryIdx >= 0 ? beforeHash.slice(queryIdx) : '';
   const pathPart = queryIdx >= 0 ? beforeHash.slice(0, queryIdx) : beforeHash;
 
-  // Absolute / external — leave unchanged.
   if (pathPart.startsWith('/') || pathPart.startsWith('//')) return null;
   if (isExternalHref(pathPart)) return null;
 
   const oldDir = posix.dirname(oldSourceDocName);
   const newDir = posix.dirname(newSourceDocName);
-  if (oldDir === newDir) return null; // same dir → relative path unchanged
+  if (oldDir === newDir) return null;
 
-  // Resolve asset's contentDir-relative path from oldSource's dirname.
   const oldDirAnchored = oldDir === '.' ? '/' : `/${oldDir}/`;
   const assetFromRoot = posix.resolve(oldDirAnchored, pathPart).slice(1);
 
-  // Compute new relative path from newSource's dirname.
   let newRef = posix.relative(newDir === '.' ? '' : newDir, assetFromRoot);
   newRef ||= posix.basename(assetFromRoot);
 
-  // Preserve leading `./` if original had it (and result is not already an
-  // ancestor reference).
   if (pathPart.startsWith('./') && !newRef.startsWith('./') && !newRef.startsWith('../')) {
     newRef = `./${newRef}`;
   }
@@ -279,9 +259,6 @@ function buildAssetHrefFromSource(
   options: { encodePath?: boolean } = {},
 ): string {
   const encodePath = options.encodePath ?? true;
-  // Per-segment, not `encodeURI`: the latter leaves `#` and `?` raw, so an
-  // asset whose filename contains one is re-read as path + fragment/query and
-  // the rewritten link silently points somewhere else.
   const formatPath = (path: string) => (encodePath ? encodeHrefPath(path) : path);
   const { pathPart, suffix } = splitHrefPathAndSuffix(originalHref);
   if (pathPart.startsWith('/')) return `/${formatPath(newAssetPath)}${suffix}`;
@@ -297,12 +274,6 @@ function buildAssetHrefFromSource(
   return `${formatPath(nextHref)}${suffix}`;
 }
 
-/**
- * `options.literal` is the authored form's plane, threaded from the caller: a
- * wiki target is a literal filename, a markdown/HTML destination is a URI whose
- * escapes decode. It has to match `encodePath` on the way back out, or the
- * rewrite reads one plane and writes the other.
- */
 function rewriteAssetHrefForRename(
   originalHref: string,
   sourceDocName: string,
@@ -331,18 +302,11 @@ function recomputeRelativeMarkdownHref(
 
   const keepsRootPrefix = pathPart.startsWith('/');
   const sourceDir = posix.dirname(sourceDocName);
-  // docNames are decoded, hrefs are not: a name carrying a space, `#`, `?`, or
-  // a paren must be re-encoded on the way back out or the emitted destination
-  // stops parsing as a link.
   let relativePath = keepsRootPrefix
     ? `/${encodeHrefPath(newDocName)}`
     : encodeHrefPath(posix.relative(sourceDir === '.' ? '' : sourceDir, newDocName));
   relativePath ||= encodeHrefPathSegment(posix.basename(newDocName));
 
-  // Preserve whatever supported doc extension the authored link carried.
-  // The canonical list lives at `packages/server/src/doc-extensions.ts`; this
-  // function is called in tight loops per link-rewrite so it inlines the
-  // two-case check rather than importing `isSupportedDocFile`.
   if (pathPart.endsWith('.mdx')) {
     relativePath += '.mdx';
   } else if (pathPart.endsWith('.md')) {
@@ -402,10 +366,6 @@ function rewriteMarkdownLinksInLine(
       }
     }
 
-    // Image refs (`![alt](src)`) get path-recomputed when the SOURCE
-    // doc itself moves (sourceDocName === oldDocName). Wiki-embed refs
-    // (`![[file]]`) and image refs in docs that aren't moving fall
-    // through untouched (refs-only rewrite).
     if (line[idx] === '!' && line[idx + 1] === '[') {
       const imageRef = readImageRef(line, idx);
       if (imageRef) {
@@ -627,12 +587,6 @@ function rewriteAssetReferencesInLine(
   return { markdown: rewritten, rewrites };
 }
 
-/**
- * Doc-relative spelling of `targetDocName` as seen from `anchorDocName`'s
- * directory, preserving an authored `./` prefix when the result stays
- * descendant-shaped. Mirrors `buildAssetHrefFromSource`'s relative branch,
- * minus URI encoding — JSX attribute values are literal doc paths, not hrefs.
- */
 function relativeJsxSrcRef(
   anchorDocName: string,
   targetDocName: string,
@@ -647,22 +601,6 @@ function relativeJsxSrcRef(
   return ref;
 }
 
-/**
- * Next value for one src-ref attribute, or null when it must stay untouched.
- *
- * Matching compares the docName the value RESOLVES to (per the registry
- * entry's resolution rule — the renderer's own) against `oldDocName`, so all
- * three documented spellings match: root-relative `/notes/board.excalidraw`,
- * doc-relative `board.excalidraw`, and (for bare-doc-name tags) the verbatim
- * docName. Write-back preserves the author's spelling class; a doc-relative
- * result is verified to round-trip through the renderer's normalizer back to
- * the target docName, else falls back to root-relative.
- *
- * When the CONTAINING doc itself moves (`sourceDocName === oldDocName`),
- * doc-relative values pointing at NON-renamed targets are recomputed so they
- * still address the same document from the new location — the JSX analog of
- * `rewriteMarkdownLinksInLine`'s containing-doc-move image-ref branch.
- */
 function rewriteJsxSrcAttrValue(
   spec: JsxSrcRefTagSpec,
   value: string,
@@ -671,14 +609,6 @@ function rewriteJsxSrcAttrValue(
   newDocName: string,
 ): string | null {
   const next = computeNextJsxSrcAttrValue(spec, value, sourceDocName, oldDocName, newDocName);
-  // Refuse-not-corrupt: the caller splices the result back between the
-  // original quote pair with no escaping, so a quote or angle bracket in it
-  // would inject markup into the CONTAINING document — and a `>` breaks the
-  // tag matcher, making the corruption unrepairable by any later rename.
-  // Leaving the attribute untouched surfaces later as a broken-link advisory
-  // on the stale src — on the problems plane / write advisory, NOT in the
-  // rename response itself: a refusal leaves `rewrites` unincremented, so a
-  // doc whose only pending change was refused never enters `rewrittenDocs`.
   if (next !== null && /["'<>]/.test(next)) return null;
   return next;
 }
@@ -691,8 +621,6 @@ function computeNextJsxSrcAttrValue(
   newDocName: string,
 ): string | null {
   if (spec.resolution === 'bare-doc-name') {
-    // Location-independent spelling — nothing to recompute on a containing-doc
-    // move; only a rename of the referenced doc itself rewrites it.
     return value === oldDocName ? newDocName : null;
   }
   const resolved = resolveJsxSrcRefTarget(spec, value, sourceDocName);
@@ -701,8 +629,6 @@ function computeNextJsxSrcAttrValue(
   if (resolved !== oldDocName && !isContainingDocMove) return null;
   const target = resolved === oldDocName ? newDocName : resolved;
   if (value.startsWith('/')) {
-    // Root-relative spelling resolves identically from any location — a
-    // containing-doc move alone leaves it untouched.
     return resolved === oldDocName ? `/${target}` : null;
   }
   const anchorDocName = isContainingDocMove ? newDocName : sourceDocName;
@@ -712,21 +638,12 @@ function computeNextJsxSrcAttrValue(
   return next === value ? null : next;
 }
 
-// Multi-line tag content (`<Mirror\n  src="…"\n  anchor="…"\n/>`) is
-// intentionally NOT rewritten here — a rare authoring shape; if it becomes
-// common, lift this scanner to an mdast-walking variant. The line-scoped
-// scanner keeps the rewrite path predictable + idempotent for the common
-// single-line case.
 function rewriteJsxSrcRefsInLine(
   line: string,
   sourceDocName: string,
   oldDocName: string,
   newDocName: string,
 ): RenameRewriteResult {
-  // Walk the line so inline-code spans are skipped verbatim — mirrors
-  // `rewriteWikiLinksInLine` and the markdown-link rewriter. Without this,
-  // a `<Mirror src="…" />` inside backticks (e.g. documentation showing
-  // Mirror syntax) gets rewritten on doc rename and corrupts the example.
   let rewritten = '';
   let rewrites = 0;
   let idx = 0;
@@ -943,9 +860,6 @@ function rewriteOutboundMarkdownLinksInLine(
       }
     }
 
-    // Wiki links resolve via the basename index, not relative paths — leave
-    // them alone here. Self-rename of `[[oldDocName]]` → `[[newDocName]]` is
-    // handled by `rewriteWikiLinksForDocumentRename` in the self-rename pass.
     if (line[idx] === '[' && line[idx + 1] === '[') {
       const wikiLink = readWikiLink(line, idx);
       if (wikiLink) {
@@ -955,10 +869,6 @@ function rewriteOutboundMarkdownLinksInLine(
       }
     }
 
-    // Image refs are recomputed by `rewriteMarkdownLinksInLine`'s
-    // `isContainingDocMove` branch in the self-rename pass — skip here so
-    // we don't double-recompute (which would treat an already-rewritten
-    // href as if it were still anchored to the old source dir).
     if (line[idx] === '!' && line[idx + 1] === '[') {
       const imageRef = readImageRef(line, idx);
       if (imageRef) {
@@ -1003,17 +913,6 @@ function rewriteOutboundMarkdownLinksInLine(
   return { markdown: rewritten, rewrites };
 }
 
-/**
- * Recompute relative outbound markdown-link hrefs in a document whose own
- * location moved from `oldSourceDocName` to `newSourceDocName`. Image refs
- * and self-targeting wiki/markdown links are NOT handled here — they're
- * covered by `rewriteMarkdownLinksForDocumentRename` /
- * `rewriteWikiLinksForDocumentRename` invoked with the same (old, new) pair
- * (the self-rename pass in `applyRenameMap`).
- *
- * No-op when the dirname doesn't change — relative paths to non-renamed
- * targets stay correct on a same-folder rename.
- */
 export function rewriteOutboundMarkdownLinksForSourceMove(
   markdown: string,
   oldSourceDocName: string,

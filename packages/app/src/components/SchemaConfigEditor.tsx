@@ -1,22 +1,3 @@
-/**
- * Editor pane for an opened frontmatter schema file (`.ok/schemas/*.json`).
- * Offers a segmented toggle between the raw read-only Source view
- * (`TextViewer`) and the WYSIWYG Fields view (`FrontmatterSchemaFieldEditor`,
- * the same per-field editor the Settings frontmatter plugin panel uses), so a
- * schema owner can edit fields without hand-writing JSON while still able to
- * inspect keywords the friendly rows don't model.
- *
- * The field editor reads the RESOLVED schema from the effective lint config,
- * which only inlines files referenced by a `contentRules.frontmatter.schemas`
- * mapping — so Fields is offered only for mapped files. An unmapped schema
- * would render an empty editor over a file that has content; the disabled
- * segment explains instead, and Source stays usable.
- *
- * Only the active segment is mounted: returning to Source remounts
- * `TextViewer`, which refetches the file so a field written through the
- * Fields view is reflected.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { useLingui } from '@lingui/react/macro';
@@ -33,13 +14,9 @@ import {
 } from '@/lib/schema-fields-view-intent';
 
 interface SchemaConfigEditorProps {
-  /** Root-relative path of the opened schema asset (no leading slash). */
   assetPath: string;
 }
 
-// Same ungated text sibling of `/api/asset` the markdownlint config editor
-// uses — serves any path-safe file as UTF-8 text so the dot-directory schema
-// renders. Path-safety is enforced server-side.
 function assetTextUrl(assetPath: string): string {
   return `/api/asset-text?path=${encodeURIComponent(assetPath)}`;
 }
@@ -47,9 +24,6 @@ function assetTextUrl(assetPath: string): string {
 export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
   const { t } = useLingui();
   const [persistedMode, setPersistedMode] = useLintConfigViewMode();
-  // A Settings-panel open carries a one-shot Fields intent that outranks the
-  // persisted preference for THIS mount only; the user's own toggle (which
-  // both persists and overrides) wins from then on.
   const [overrideMode, setOverrideMode] = useState<LintConfigViewMode | null>(null);
   const viewMode = overrideMode ?? persistedMode;
   const setViewMode = (next: LintConfigViewMode) => {
@@ -57,11 +31,6 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
     setPersistedMode(next);
   };
 
-  // Claim the Fields intent from an effect, not a render-time read, so render
-  // performs no destructive consume and one path serves both cases: an intent
-  // banked before this mount, and one recorded live while the editor stays
-  // mounted (see the module doc for the Settings-overlay case that keeps the
-  // already-active schema mounted and makes the live path necessary).
   useEffect(() => {
     const claim = (path: string) => {
       if (path !== assetPath) return;
@@ -73,15 +42,10 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
   }, [assetPath]);
   const { data } = useProjectLintConfig();
 
-  // Server and client paths are both root-relative with no leading slash, so
-  // string equality against the resolved mapping entries identifies a mapped
-  // schema file.
   const fieldsEnabled = (data?.effective.plugins.frontmatter.schemas ?? []).some(
     (s) => s.file === assetPath,
   );
 
-  // Fields lives in the wysiwyg slot; force Source when it's unavailable so a
-  // persisted 'rules' preference on an unmapped file never renders blank.
   const isSourceMode = !fieldsEnabled || viewMode === 'source';
 
   const fileName = assetPath.split('/').pop() ?? assetPath;
@@ -104,8 +68,6 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
         />
       </div>
       {isSourceMode ? (
-        // Source is a CodeMirror viewer that owns its own scroll — full-bleed,
-        // no wrapper padding (a second scroll container would double-scroll).
         <div className="min-h-0 flex-1 overflow-hidden">
           <TextViewer
             key={assetPath}
@@ -116,9 +78,6 @@ export function SchemaConfigEditor({ assetPath }: SchemaConfigEditorProps) {
           />
         </div>
       ) : (
-        // The field editor has no scroll or padding of its own — in Settings it
-        // inherits both from the dialog body. Standalone it needs its own
-        // scroll container and the same content gutter as other panes.
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="mx-auto w-full max-w-3xl">
             <FrontmatterSchemaFieldEditor file={assetPath} />

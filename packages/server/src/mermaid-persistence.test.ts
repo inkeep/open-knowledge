@@ -17,13 +17,10 @@ function makeCtx(): MermaidPersistenceCtx {
   return { contentDir, lkgCache: new Map<string, string>() };
 }
 
-// A Mermaid docName retains its extension (`assets/flow.mmd`) — it maps 1:1 to
-// the on-disk file relative to contentDir.
 const DOC = 'assets/flow.mmd';
 const ABS = () => resolve(contentDir, DOC);
 const SRC = 'graph TD;\n  A[Start] --> B{Choice};\n  B -->|Yes| C[Go];\n';
 
-/** Write the `.mmd` file to disk, creating its parent dir first. */
 function writeMmd(content: string): void {
   mkdirSync(dirname(ABS()), { recursive: true });
   writeFileSync(ABS(), content, 'utf-8');
@@ -47,8 +44,6 @@ describe('storeMermaidDoc', () => {
 
   test('stores source with markdown-syntactic + blank-line content byte-for-byte (no remark round-trip)', async () => {
     const ctx = makeCtx();
-    // Content that a markdown pipeline would normalize (blank lines, `#`, `>`,
-    // trailing spaces). A Mermaid doc must persist it unchanged.
     const awkward = '## not a heading\n\n\n> not a quote  \ngraph LR; A-->B;\n';
     const doc = new Y.Doc();
     doc.transact(() => doc.getText('source').insert(0, awkward), 'agent');
@@ -77,11 +72,9 @@ describe('storeMermaidDoc', () => {
     doc.transact(() => doc.getText('source').insert(0, SRC), 'agent');
     expect(await storeMermaidDoc(doc, DOC, 'agent', ctx)).toBe('persisted');
 
-    // Simulate a concurrent external edit landing on disk since our LKG.
     const external = 'sequenceDiagram; Alice->>Bob: Hi;\n';
     writeMmd(external);
 
-    // A subsequent in-app edit tries to store — disk wins.
     doc.transact(() => {
       const yt = doc.getText('source');
       yt.delete(0, yt.length);
@@ -90,10 +83,6 @@ describe('storeMermaidDoc', () => {
     expect(await storeMermaidDoc(doc, DOC, 'agent', ctx)).toBe('reconciled');
     expect(doc.getText('source').toString()).toBe(external);
     expect(readFileSync(ABS(), 'utf-8')).toBe(external);
-    // After reconcile the LKG cache MUST hold the imported disk bytes,
-    // otherwise the next store will re-detect divergence and reconcile
-    // in a loop (or worse, treat the imported bytes as a fresh in-app
-    // edit and clobber the external writer's next update).
     expect(ctx.lkgCache.get(DOC)).toBe(external);
   });
 });
@@ -106,7 +95,6 @@ describe('loadMermaidDoc', () => {
     loadMermaidDoc(doc, DOC, ctx);
     expect(doc.getText('source').toString()).toBe(SRC);
     expect(typeof doc.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBe('string');
-    // The XmlFragment stays empty — these docs are Y.Text-only (bridge off).
     expect(doc.getXmlFragment('default').length).toBe(0);
   });
 
@@ -139,13 +127,7 @@ describe('loadMermaidDoc', () => {
 });
 
 describe('editable text docs on the verbatim path', () => {
-  // Text docs (`src/util.ts` / `config.json` / …) dispatch onto the same
-  // load/store pair — the resolver is extension-agnostic. Pin the verbatim
-  // round-trip for code content that the markdown pipeline would otherwise
-  // canonicalize (backticks, braces, blank lines).
   const TS_DOC = 'src/util.ts';
-  // Concatenated so the literal `${name}` bytes don't read as a template
-  // placeholder to the linter.
   const TS_SRC = `export function greet(name: string): string {\n\n  return \`hello $\{name}\`;\n}\n`;
 
   test('loads a .ts file verbatim into Y.Text("source")', () => {

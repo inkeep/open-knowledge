@@ -8,7 +8,6 @@ import {
 
 const RELEASE_URL = 'https://github.com/inkeep/open-knowledge/releases/tag/v0.38.4';
 
-/** Slack rejects the message when any section's text exceeds this. */
 const SLACK_SECTION_CAP = 3000;
 
 function sectionTexts(payload) {
@@ -130,7 +129,6 @@ describe('chunkForSections', () => {
     const chunks = chunkForSections(text, 500);
     expect(chunks.length).toBeGreaterThan(1);
     for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(500);
-    // No content is dropped by the split.
     expect(chunks.join('\n')).toBe(text);
   });
 
@@ -168,7 +166,6 @@ describe('buildSlackReleasePayload', () => {
   });
 
   test('degrades to the header + link message when notes are unavailable', () => {
-    // `gh release view` failing must not cost us the announcement.
     for (const notes of ['', undefined]) {
       const payload = buildSlackReleasePayload({ version: '0.38.4', releaseUrl: RELEASE_URL, notes });
       expect(payload.blocks).toHaveLength(2);
@@ -178,7 +175,6 @@ describe('buildSlackReleasePayload', () => {
   });
 
   test('keeps every section under the Slack cap for an oversized release body', () => {
-    // Larger than any real body (a 0.38.0-scale minor is ~6.4k).
     const notes = `### Minor Changes\n\n${Array.from(
       { length: 120 },
       (_, i) => `- change ${i}: ${'detail '.repeat(20)}`,
@@ -192,7 +188,6 @@ describe('buildSlackReleasePayload', () => {
       expect(text.length).toBeLessThanOrEqual(SLACK_SECTION_CAP);
     }
     expect(payload.blocks.length).toBeLessThanOrEqual(50);
-    // Truncated bodies still point at the full notes.
     expect(payload.blocks.at(-1).text.text).toContain(RELEASE_URL);
   });
 

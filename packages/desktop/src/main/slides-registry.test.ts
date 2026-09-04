@@ -6,13 +6,10 @@ import {
   type SlidesDeckWindow,
 } from './slides-registry.ts';
 
-/** A stand-in for the deck's window — the registry only stores it, so an id
- *  plus a structural cast is enough. */
 function fakeWindow(id: number): SlidesDeckWindow {
   return { id } as unknown as SlidesDeckWindow;
 }
 
-/** A deck whose process records the signals it was sent. */
 function fakeDeck(docPath: string, port: number) {
   const signals: Array<'SIGTERM' | 'SIGKILL'> = [];
   const deck: RunningSlidesDeck = {
@@ -22,6 +19,7 @@ function fakeDeck(docPath: string, port: number) {
       onExit: () => {},
       signal: (sig) => {
         signals.push(sig);
+        return Promise.resolve();
       },
       isAlive: () => true,
       pid: undefined,
@@ -40,7 +38,7 @@ describe('createSlidesDeckRegistry', () => {
     expect(registry.get('/decks/other.md')).toBeUndefined();
   });
 
-  it('signals every server to stop with SIGTERM and empties on reapAll', () => {
+  it('force-stops every server and empties on reapAll', () => {
     const registry = createSlidesDeckRegistry();
     const a = fakeDeck('/decks/a.md', 3001);
     const b = fakeDeck('/decks/b.md', 3002);
@@ -50,10 +48,8 @@ describe('createSlidesDeckRegistry', () => {
 
     registry.reapAll();
 
-    // App-quit teardown asks each server to stop cleanly (SIGTERM), never a
-    // straight SIGKILL that would deny its Vite server a port release + flush.
-    expect(a.signals()).toEqual(['SIGTERM']);
-    expect(b.signals()).toEqual(['SIGTERM']);
+    expect(a.signals()).toEqual(['SIGKILL']);
+    expect(b.signals()).toEqual(['SIGKILL']);
     expect(registry.size()).toBe(0);
     expect(registry.get('/decks/a.md')).toBeUndefined();
   });
@@ -65,8 +61,6 @@ describe('createSlidesDeckRegistry', () => {
     registry.register(a.deck);
     registry.register(b.deck);
 
-    // The window's own close handler already reaped the process; unregister only
-    // removes the bookkeeping so a reopen starts fresh — it must not signal again.
     registry.unregister('/decks/a.md');
 
     expect(a.signals()).toEqual([]);
@@ -92,11 +86,7 @@ describe('createSlidesDeckRegistry', () => {
 
     const attempt: Promise<OkSlidesOpenResult> = Promise.resolve({ kind: 'open', ok: true });
     registry.setOpenInFlight('/decks/a.md', attempt);
-    // The marker is the exact promise a joiner awaits, so a second activation
-    // shares the first attempt's real verdict instead of spawning a rival.
     expect(registry.getOpenInFlight('/decks/a.md')).toBe(attempt);
-    // In-flight tracking is separate from the registered decks (a deck registers
-    // only once its server is confirmed serving, seconds after the start begins).
     expect(registry.get('/decks/a.md')).toBeUndefined();
 
     registry.clearOpenInFlight('/decks/a.md');
@@ -112,58 +102,126 @@ describe('createSlidesDeckRegistry', () => {
 
     registry.reapAll();
 
-    // App-quit teardown empties both maps, so nothing survives to be re-entered.
     expect(registry.size()).toBe(0);
     expect(registry.getOpenInFlight('/decks/b.md')).toBeUndefined();
+  });
+
+  it('clears immediately but waits for every process signal', async () => {
+    const registry = createSlidesDeckRegistry();
+    let release: (() => void) | undefined;
+    const pendingSignal = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { deck } = fakeDeck('/decks/a.md', 3001);
+    deck.process.signal = () => pendingSignal;
+    registry.register(deck);
+    let settled = false;
+
+    const drain = registry.reapAll().then(() => {
+      settled = true;
+    });
+    expect(registry.size()).toBe(0);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release?.();
+    await drain;
+    expect(settled).toBe(true);
   });
 });
 
 describe('reapAll reaches children that are spawned but not yet registered', () => {
-  // The leak this guards: `register` only runs once a server is CONFIRMED
-  // serving, and a cold Vite start takes seconds. A quit inside that window used
-  // to find nothing to signal — `decks` was empty and `opening` held only a
-  // promise, which carries no killable handle — so the `detached` child outlived
-  // the app holding its port.
   function fakeProc() {
     const signals: string[] = [];
+    const exitHandlers: Array<(code: number | null) => void> = [];
+    let alive = true;
     return {
       signals,
       proc: {
-        onExit: () => {},
-        signal: (s: 'SIGTERM' | 'SIGKILL') => signals.push(s),
-        isAlive: () => true,
+        onExit: (handler: (code: number | null) => void) => exitHandlers.push(handler),
+        signal: (s: 'SIGTERM' | 'SIGKILL') => {
+          signals.push(s);
+          return Promise.resolve();
+        },
+        isAlive: () => alive,
         pid: 1234,
+      },
+      emitExit: (code: number | null = 0) => {
+        alive = false;
+        for (const handler of exitHandlers) handler(code);
       },
     };
   }
 
-  it('SIGTERMs a spawned-but-unregistered child', () => {
+  it('force-stops a spawned-but-unregistered child', () => {
     const registry = createSlidesDeckRegistry();
     const { signals, proc } = fakeProc();
     registry.trackSpawned('/proj/deck.md', proc);
-    // Never registered — this is the mid-boot state.
     expect(registry.size()).toBe(0);
 
     registry.reapAll();
 
-    expect(signals).toEqual(['SIGTERM']);
+    expect(signals).toEqual(['SIGKILL']);
   });
 
-  it('does not double-signal once the child has been handed to decks', () => {
+  it('retains a handed-off child until exit without double-signalling it', () => {
     const registry = createSlidesDeckRegistry();
     const { signals, proc } = fakeProc();
     registry.trackSpawned('/proj/deck.md', proc);
-    // Ownership transfers to `decks` when the window opens.
     registry.register({
       docPath: '/proj/deck.md',
       port: 4300,
       process: proc,
       window: { on: () => {}, focus: () => {}, isDestroyed: () => false } as never,
     });
-    registry.untrackSpawned('/proj/deck.md');
-
+    registry.unregister('/proj/deck.md');
     registry.reapAll();
 
-    expect(signals).toEqual(['SIGTERM']);
+    expect(signals).toEqual(['SIGKILL']);
+  });
+
+  it('keeps an older failed child when a retry for the same deck is handed off', () => {
+    const registry = createSlidesDeckRegistry();
+    const failed = fakeProc();
+    const opened = fakeProc();
+    registry.trackSpawned('/proj/deck.md', failed.proc);
+    registry.trackSpawned('/proj/deck.md', opened.proc);
+    registry.register({
+      docPath: '/proj/deck.md',
+      port: 4300,
+      process: opened.proc,
+      window: { on: () => {}, focus: () => {}, isDestroyed: () => false } as never,
+    });
+    registry.reapAll();
+
+    expect(failed.signals).toEqual(['SIGKILL']);
+    expect(opened.signals).toEqual(['SIGKILL']);
+  });
+
+  it('forgets a failed child after the process exits', () => {
+    const registry = createSlidesDeckRegistry();
+    const failed = fakeProc();
+    registry.trackSpawned('/proj/deck.md', failed.proc);
+
+    failed.emitExit(1);
+    registry.reapAll();
+
+    expect(failed.signals).toEqual([]);
+  });
+
+  it('does not signal a registered process that already exited', () => {
+    const registry = createSlidesDeckRegistry();
+    const opened = fakeProc();
+    registry.register({
+      docPath: '/proj/deck.md',
+      port: 4300,
+      process: opened.proc,
+      window: { on: () => {}, focus: () => {}, isDestroyed: () => false } as never,
+    });
+
+    opened.emitExit(1);
+    registry.reapAll();
+
+    expect(opened.signals).toEqual([]);
   });
 });

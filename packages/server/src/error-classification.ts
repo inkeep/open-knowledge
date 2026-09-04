@@ -1,25 +1,10 @@
-/**
- * 5-class error taxonomy for git sync operations.
- *
- * Inspired by Temporal's ApplicationFailure.non_retryable pattern:
- * each class is explicitly tagged as retryable or non-retryable so
- * callers can decide recovery strategy without inspecting raw stderr.
- */
-
 import {
   classifyGitAuthError,
   type GitAuthFailureSubclass,
   type SyncErrorCode,
 } from '@inkeep/open-knowledge-core';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** Subclass strings, narrowed per class. */
 type NetworkSubclass = 'dns' | 'timeout' | '5xx' | '429' | 'connection-refused' | 'unknown-network';
-// Derived from the canonical core union so a new subclass lands here
-// automatically, the same way `AUTH_SUBCLASS_MESSAGES` already tracks it.
 type AuthSubclass = GitAuthFailureSubclass;
 type SemanticSubclass =
   | 'non-fast-forward'
@@ -34,22 +19,8 @@ type StructuralSubclass =
   | 'unknown-structural';
 type LocalSubclass = 'index-lock' | 'dirty-tree' | 'disk-full' | 'unknown-local';
 
-/**
- * Bounded enum of UI-localizable error codes the sync UI maps to translated
- * strings via Lingui. The wire never carries an English sentence — only the
- * code travels server-to-client; the UI looks up the user-visible copy.
- *
- * Codes mirror the `<class>/<subclass>` taxonomy. The literals are single-
- * sourced as `SYNC_ERROR_CODES` in `@inkeep/open-knowledge-core` (the wire
- * schema lives there too); this is the server-facing alias. Add a new code by
- * extending that tuple, then map the new `(class, subclass)` case in
- * `deriveUserFacingCode` below. The mapping is not compiler-enforced — the
- * if-chain falls through to `null`, so a missing case fails open at runtime
- * (raw message instead of localized copy) rather than failing to typecheck.
- */
 export type UserFacingErrorCode = SyncErrorCode;
 
-/** Tagged result from classifyGitError(). */
 export type ClassifiedError =
   | {
       class: 'network';
@@ -92,11 +63,6 @@ export type ClassifiedError =
       rawStderr?: string;
     };
 
-/**
- * Map a `(class, subclass)` tuple to a `UserFacingErrorCode` for the sync
- * UI to localize. Returns `null` for variants with no override; callers
- * fall back to the developer-facing `message` field on render.
- */
 export function deriveUserFacingCode(
   cls: ClassifiedError['class'],
   subclass: string,
@@ -110,12 +76,7 @@ export function deriveUserFacingCode(
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Stderr pattern matchers
-// ---------------------------------------------------------------------------
-
 function extractStderr(error: Error): string {
-  // simple-git errors may have a `git` property or message with stderr
   const raw = (error as unknown as Record<string, unknown>).git?.toString() ?? error.message ?? '';
   return raw;
 }
@@ -124,29 +85,16 @@ function matchesAny(haystack: string, patterns: RegExp[]): boolean {
   return patterns.some((re) => re.test(haystack));
 }
 
-// ---------------------------------------------------------------------------
-// Class 2 (Auth) — regex banks live in @inkeep/open-knowledge-core
-// (`classifyGitAuthError`); this module delegates to keep one source of
-// truth for the auth patterns the CLI's `ok clone` catch and the server
-// share.
-// ---------------------------------------------------------------------------
-
 const AUTH_SUBCLASS_MESSAGES: Record<GitAuthFailureSubclass, string> = {
   'no-credential': 'No GitHub credential available — reconnect to resume syncing',
   '401': 'Authentication failed — token may be expired',
   '403': 'Access denied (403)',
   'scope-mismatch': 'GitHub token missing required scopes',
   'ssh-auth': 'SSH authentication failed — check your SSH key or host-key trust',
-  // Asserts only what the stderr proves: GitHub 404s both "doesn't exist" and
-  // "private + no access", so the copy names both and accuses neither.
   'not-found-as-identity':
     'Repository not found — it may not exist, or the account used may not have access',
   'unknown-auth': 'Authentication failed',
 };
-
-// ---------------------------------------------------------------------------
-// Class 3 (Semantic) matchers
-// ---------------------------------------------------------------------------
 
 const NON_FAST_FORWARD_PATTERNS: RegExp[] = [
   /non-fast-forward/i,
@@ -163,12 +111,10 @@ const PROTECTED_BRANCH_PATTERNS: RegExp[] = [
   /at least \d+ approving review/i,
   /required status check/i,
   /branch policy/i,
-  // GitHub-specific error codes (GH001-GH004 dugite equivalents)
   /GH001/i,
   /GH002/i,
   /GH003/i,
   /GH004/i,
-  // GitHub API rejection wording
   /push declined due to repository rule/i,
   /cannot push to a protected branch/i,
 ];
@@ -178,14 +124,8 @@ const MERGE_CONFLICT_PATTERNS: RegExp[] = [
   /automatic merge failed/i,
   /CONFLICT \(/,
   /\bconflict\b.*\bmerge\b/i,
-  // simple-git's GitResponseError wraps MergeSummaryDetail; both its
-  // `message` and `error.git.toString()` produce "CONFLICTS: file:reason[, …]".
   /(?:^|\n)CONFLICTS:\s/i,
 ];
-
-// ---------------------------------------------------------------------------
-// Class 4 (Structural) matchers
-// ---------------------------------------------------------------------------
 
 const LFS_PATTERNS: RegExp[] = [/lfs.*quota/i, /exceeded.*bandwidth/i, /lfs storage/i];
 
@@ -208,10 +148,6 @@ const SECRET_DETECTED_PATTERNS: RegExp[] = [
   /leaking.*credentials/i,
   /token.*detected/i,
 ];
-
-// ---------------------------------------------------------------------------
-// Class 5 (Local) matchers
-// ---------------------------------------------------------------------------
 
 const INDEX_LOCK_PATTERNS: RegExp[] = [
   /\.git\/index\.lock/i,
@@ -237,10 +173,6 @@ const DISK_FULL_PATTERNS: RegExp[] = [
   /ENOSPC/i,
 ];
 
-// ---------------------------------------------------------------------------
-// Class 1 (Network) matchers
-// ---------------------------------------------------------------------------
-
 const NETWORK_PATTERNS: RegExp[] = [
   /could not resolve host/i,
   /name.*resolution/i,
@@ -257,9 +189,6 @@ const NETWORK_PATTERNS: RegExp[] = [
   /ehostunreach/i,
 ];
 
-// Anchored to HTTP-status contexts so unrelated 3-digit numbers (file paths
-// like `/data/file501.txt`, error text like "502 bytes") don't route local
-// faults into the network class with retry/backoff.
 const HTTP_5XX_PATTERNS: RegExp[] = [
   /\bHTTP[\s/]*5[0-9]{2}\b/i,
   /\bstatus:?\s*5[0-9]{2}\b/i,
@@ -274,33 +203,8 @@ const HTTP_429_PATTERNS: RegExp[] = [
   /too many requests/i,
 ];
 
-// ---------------------------------------------------------------------------
-// Classifier
-// ---------------------------------------------------------------------------
-
-/**
- * Variant of {@link ClassifiedError} omitting `userFacingCode` — the shape
- * `classifyGitErrorBase` returns before the public wrapper attaches the UI
- * code. Keeping the helper at this shape lets each return site stay focused
- * on the developer-facing message; the user-facing code is derived once.
- */
 type ClassifiedErrorBase = Omit<ClassifiedError, 'userFacingCode'>;
 
-/**
- * Classify a git operation error into one of 5 retry-tagged classes.
- *
- * Priority order (most specific first):
- *   1. Local (index.lock, dirty tree) — must check before semantic
- *   2. Auth (401, 403, bad credentials)
- *   3. Semantic (protected branch > non-FF > merge conflict)
- *   4. Structural (LFS, large file, pre-receive, secret)
- *   5. Network (DNS, timeout, 5xx, 429)
- *   6. Local fallback (catch-all for git process errors)
- *
- * Public wrapper: classifies then attaches a `userFacingCode` for the sync
- * UI to map to a localized string via Lingui (or `null` to fall through to
- * the developer-facing `message`).
- */
 export function classifyGitError(error: Error | unknown): ClassifiedError {
   const base = classifyGitErrorBase(error);
   return {
@@ -314,7 +218,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
   const raw = extractStderr(err);
   const combined = `${err.message}\n${raw}`.toLowerCase();
 
-  // --- Class 5 (Local) — check early to avoid misclassifying index.lock as auth
   if (matchesAny(combined, INDEX_LOCK_PATTERNS)) {
     return {
       class: 'local',
@@ -343,10 +246,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     };
   }
 
-  // --- Class 2 (Auth) — delegated to @inkeep/open-knowledge-core. A 403
-  // that matches a protected-branch pattern is reclassified to semantic
-  // here so push-rejected-by-branch-policy doesn't get rendered as a
-  // generic access denial.
   const authResult = classifyGitAuthError(err);
   if (authResult.kind === 'auth') {
     if (authResult.subclass === '403' && matchesAny(combined, PROTECTED_BRANCH_PATTERNS)) {
@@ -367,7 +266,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     };
   }
 
-  // --- Class 3 (Semantic)
   if (matchesAny(combined, PROTECTED_BRANCH_PATTERNS)) {
     return {
       class: 'semantic',
@@ -396,7 +294,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     };
   }
 
-  // --- Class 4 (Structural)
   if (matchesAny(combined, LFS_PATTERNS)) {
     return {
       class: 'structural',
@@ -434,7 +331,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     };
   }
 
-  // --- Class 1 (Network)
   if (matchesAny(combined, HTTP_429_PATTERNS)) {
     return {
       class: 'network',
@@ -494,7 +390,6 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     };
   }
 
-  // --- Class 5 fallback (local unknown)
   return {
     class: 'local',
     subclass: 'unknown-local',

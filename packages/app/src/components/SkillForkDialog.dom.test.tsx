@@ -1,16 +1,7 @@
-/**
- * the fork-resolution dialog must never hang on "Loading both
- * versions". The diff is a preview aid, not a gate — if a version preview fails
- * to load (fetch error) or the skill has no `absolutePath` to locate the dirs,
- * the dialog surfaces that and keeps the three resolve actions usable, instead
- * of an indefinite spinner. Runs under jsdom via `test:dom`.
- */
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-// Radix Dialog focus-trap reaches for DOM globals the shared jsdom preload
-// doesn't expose — same local shims as the sibling dialog dom tests.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -56,9 +47,7 @@ describe('SkillForkDialog — never hangs on Loading (PRD-7608)', () => {
     await waitFor(() => {
       expect(screen.queryByText(/Couldn't load the version preview/i)).not.toBeNull();
     });
-    // Not stuck on the spinner…
     expect(screen.queryByText(/Loading both versions/i)).toBeNull();
-    // …and the three resolve actions are still usable.
     expect(screen.getByRole('button', { name: /keep source/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /use claude version/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /keep both/i })).toBeTruthy();
@@ -73,7 +62,6 @@ describe('SkillForkDialog — never hangs on Loading (PRD-7608)', () => {
 
     expect(screen.getByText(/Couldn't load the version preview/i)).toBeTruthy();
     expect(screen.queryByText(/Loading both versions/i)).toBeNull();
-    // No fetch is even attempted when the dirs can't be located.
     expect(fetchSkillPreviewMock).not.toHaveBeenCalled();
   });
 });

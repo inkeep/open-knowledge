@@ -22,13 +22,6 @@
 import Code from '@tiptap/extension-code';
 
 export const CodeMarkFidelity = Code.extend({
-  // COUPLED: patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch
-  // The `hydrateMarks` replacement in that patch (outside-in greedy nesting)
-  // assumes Code can coexist with emphasis/strong on the same span. If this
-  // widening is reverted — e.g. during a TipTap upstream upgrade — the patch
-  // silently reverts to producing sibling emission instead of nested, and
-  // CommonMark corpus idempotence fails for `*a \`*\`*`-class inputs. Do NOT
-  // narrow this field (precedent #9 + CLAUDE.md WARN rule).
   excludes: '',
 
   addAttributes() {
@@ -36,9 +29,6 @@ export const CodeMarkFidelity = Code.extend({
       ...this.parent?.(),
       sourceFenceChar: { default: '`' },
       sourceFenceLength: { default: 1 },
-      // The author typed the CommonMark §6.1 padded form (`` ` y ` ``)
-      // even though padding wasn't structurally required; replayed on
-      // serialize so the pad spaces round-trip byte-equal.
       sourcePadded: { default: false, rendered: false },
     };
   },

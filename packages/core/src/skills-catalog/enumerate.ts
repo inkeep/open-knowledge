@@ -1,15 +1,3 @@
-/**
- * `enumerateInstalledSkills()` — the read-only, cross-harness foundation the
- * whole marketplace builds on. Runs each harness adapter, normalizes every
- * skill to the open `CatalogSkill` shape, de-dupes the same skill across
- * harnesses into one entry (the `skills.sh` fan-out lands one skill in many
- * homes), and groups source bundles into `OkPack` envelopes.
- *
- * Robustness contract: a missing/empty home is skipped; a malformed skill is
- * skipped (or degraded to its dir name) — never abort the whole run. A machine
- * with nothing installed returns `{ skills: [], packs: [] }`.
- */
-
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { parseSkillDir } from './acquire/parse.ts';
@@ -23,20 +11,10 @@ import { OK_PACK_SCHEMA_VERSION } from './schema.ts';
 import { catalogRawScopeToOkScope, isDetectedSkillInProject } from './scope.ts';
 
 export interface EnumerateOptions {
-  /** User home dir to resolve harness homes under. Defaults to the real one. */
   home?: string;
-  /**
-   * Open project root. When set, ALSO scan `<projectDir>/.<harness>/skills` for
-   * every harness (the only project source for non-Claude harnesses), stamping
-   * each as `scope:'project'` bound to this dir so the project/global classifier
-   * keeps it here. Pass the SAME value the caller filters with
-   * (`isDetectedSkillInProject(..., projectDir)`) — for a git worktree that is
-   * the parent-checkout identity, so project scans and plugin records agree.
-   */
   projectDir?: string;
 }
 
-/** OK's own shipped skills — surfaced via the excluded `/api/skills` surface, not as Detected rows. */
 const OK_OWNED_SKILL_PREFIX = 'open-knowledge';
 
 export interface InstalledSkillsResult {
@@ -44,23 +22,14 @@ export interface InstalledSkillsResult {
   packs: OkPack[];
 }
 
-/** True when a raw skill carries any provenance (i.e. a Claude plugin source, or a project stamp). */
 function hasProvenance(s: RawSkill): boolean {
   return Object.keys(s.provenance).length > 0;
 }
 
-/**
- * True when a raw skill came from a Claude PLUGIN (carries the rich
- * `plugin`/`marketplace`/`version` provenance), as opposed to a bare skill-dir
- * or a project-scan stamp (which only carry `scope`/`projectPath`). Preferred by
- * `pickWinner` so a plugin instance still wins the de-dupe over a same-named
- * project-dir copy now that project scans stamp provenance too.
- */
 function isPluginSourced(s: RawSkill): boolean {
   return s.provenance.plugin !== undefined;
 }
 
-/** Pick the richest instance to represent a de-duped skill: plugin > any provenance > more files > first. */
 function pickWinner(a: RawSkill, b: RawSkill): RawSkill {
   if (isPluginSourced(a) !== isPluginSourced(b)) return isPluginSourced(a) ? a : b;
   if (hasProvenance(a) !== hasProvenance(b)) return hasProvenance(a) ? a : b;
@@ -90,17 +59,11 @@ function contentIdentity(s: RawSkill): string {
   }
 }
 
-/**
- * Collapse only identical skill occurrences. Scope and project binding are part
- * of identity, and same-named bundles with different bytes remain distinct.
- */
 function dedupeSkills(raw: RawSkill[]): CatalogSkill[] {
   const byIdentity = new Map<string, { winner: RawSkill; harnesses: Set<string> }>();
   for (const s of raw) {
     const scope = catalogRawScopeToOkScope(s.provenance.scope);
     const projectPath = scope === 'project' ? (s.provenance.projectPath ?? '') : '';
-    // A bundle that vanished or became unreadable during enumeration must not
-    // merge with another occurrence merely because both hashes are unavailable.
     const key = `${scope}\0${projectPath}\0${s.name}\0${contentIdentity(s)}`;
     const cur = byIdentity.get(key);
     if (!cur) {
@@ -122,7 +85,6 @@ function dedupeSkills(raw: RawSkill[]): CatalogSkill[] {
     );
 }
 
-/** Group bundles into Packs, de-duped by pack name (a bare skill in N homes → one Pack). */
 function toPacks(bundles: SkillBundle[]): OkPack[] {
   const byName = new Map<
     string,
@@ -137,7 +99,6 @@ function toPacks(bundles: SkillBundle[]): OkPack[] {
   for (const b of bundles) {
     const cur = byName.get(b.packName);
     const acc = cur ?? { version: '0.0.0', skills: new Set<string>(), hosts: new Set<string>() };
-    // First concrete version wins; first description/author wins.
     if (acc.version === '0.0.0' && b.packVersion !== '0.0.0') acc.version = b.packVersion;
     if (!acc.description && b.packDescription) acc.description = b.packDescription;
     if (!acc.author && b.packAuthor) acc.author = b.packAuthor;
@@ -158,10 +119,6 @@ function toPacks(bundles: SkillBundle[]): OkPack[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * Enumerate every installed skill across all known harness homes. Pure read —
- * no home is mutated. Returns sorted, de-duped skills + their Pack envelopes.
- */
 export function enumerateInstalledSkills(opts: EnumerateOptions = {}): InstalledSkillsResult {
   const bundles: SkillBundle[] = [];
   for (const h of harnessHomes(opts.home)) {
@@ -174,16 +131,11 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
           bundles.push(...enumerateSkillDir(h.dir, h.harness));
           break;
         default: {
-          // A new HarnessHomeKind must add a branch here, not silently
-          // fall through to one adapter. Throw (not return) so an unhandled
-          // kind fails loud instead of returning undefined from this function.
           const _never: never = h;
           throw new Error(`unhandled harness home kind: ${String(_never)}`);
         }
       }
     } catch (err) {
-      // One bad home never aborts the cross-harness read, but log so an
-      // operator can tell an EACCES/malformed home apart from "nothing installed".
       console.warn('[skills-catalog] failed to enumerate harness home, skipping', {
         harness: h.harness,
         dir: h.dir,
@@ -193,9 +145,6 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
   }
   if (opts.projectDir !== undefined) {
     bundles.push(...enumerateProjectHarnessSkills(opts.projectDir));
-    // In-project Agent Plugins (agent-plugins.org): `<projectDir>/plugins/*`
-    // with a conformant manifest surface their skills as project-scoped
-    // detected rows — no harness registration required.
     bundles.push(
       ...enumerateAgentPluginsRoot(resolve(opts.projectDir, 'plugins'), 'agent-plugins', {
         scope: 'project',
@@ -218,22 +167,6 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
   return { skills: dedupeSkills(raw), packs: toPacks(localBundles) };
 }
 
-/**
- * Scan `<projectDir>/.<harness>/skills` for every bare-skill-dir harness and
- * return the discovered skills stamped `scope:'project'` bound to `projectDir`.
- *
- * The stamp is load-bearing: the `skill-dir` adapter records no provenance, and
- * `catalogRawScopeToOkScope(undefined)` → `'global'`, so an un-stamped project
- * skill would surface in EVERY project. Stamping it as project-scoped (with the
- * same `projectDir` the server filters against) keeps it exactly here.
- *
- * OK's OWN projections are excluded: OK writes `.claude/skills/<name>` etc. as
- * symlinks into `<projectDir>/.ok/skills` (skill-projection.ts), whose canonical
- * home is the separate `/api/skills` surface — surfacing them here would
- * double-list OK's managed skills as Detected rows. A skill whose realpath
- * resolves under `.ok/skills`, or that carries OK's reserved shipped-bundle name
- * prefix, is dropped.
- */
 function enumerateProjectHarnessSkills(projectDir: string): SkillBundle[] {
   const okSkillsRoot = realOrSelf(resolve(projectDir, '.ok', 'skills'));
   const out: SkillBundle[] = [];
@@ -255,19 +188,16 @@ function enumerateProjectHarnessSkills(projectDir: string): SkillBundle[] {
   return out;
 }
 
-/** Stamp a project-scanned skill so the project/global classifier keeps it here. */
 function stampProjectScope(s: RawSkill, projectDir: string): RawSkill {
   return { ...s, provenance: { ...s.provenance, scope: 'project', projectPath: projectDir } };
 }
 
-/** True when a project-scanned skill is one of OK's own projections (link into `.ok/skills`, or a shipped bundle). */
 function isOkOwnedProjection(s: RawSkill, okSkillsRoot: string): boolean {
   if (s.name.startsWith(OK_OWNED_SKILL_PREFIX)) return true;
   const real = realOrSelf(s.home);
   return real === okSkillsRoot || real.startsWith(okSkillsRoot + sep);
 }
 
-/** `realpathSync`, or the resolved input when the path can't be resolved (broken link / gone). */
 function realOrSelf(p: string): string {
   try {
     return realpathSync(p);

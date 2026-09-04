@@ -1,20 +1,3 @@
-/**
- * Unit tests for the `share_link` MCP tool.
- *
- * Boundary checks:
- *   - Polymorphic target resolution: doc OR folder, auto-probed from disk
- *     (`.mdx` → `.md` → directory) or pinned via `kind`. The six-case
- *     matrix lives in the "target resolution" describe block.
- *   - Trailing `.md`/`.mdx` normalization on doc paths.
- *   - The six `ShareConstructUrlErrorCode` business-logic branches map to
- *     distinct, agent-actionable messages. `no-remote` is the load-bearing
- *     one — it must direct the user at publishing (not run it).
- *   - Tool-local codes (`target-not-found`, `kind-mismatch`, `unknown`) are
- *     produced inline by the wrapper and are distinct from the system-wide
- *     `urn:ok:error:doc-not-found` envelope.
- *   - Happy path returns the marketing share URL + branch + resolvedKind.
- */
-
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -39,7 +22,6 @@ interface RegisteredTool {
   name: string;
   description: string;
   inputSchema?: Record<string, unknown>;
-  /** Raw Zod shape the tool declares; each field is parseable on its own. */
   outputSchema?: Record<string, z.ZodType>;
   handler: (args: { path: string; kind?: 'doc' | 'folder'; cwd?: string }) => Promise<ToolResult>;
 }
@@ -74,7 +56,6 @@ function createFakeServer() {
   };
 }
 
-/** Standard success body for the construct-url mock. */
 function successBody() {
   return {
     ok: true,
@@ -92,9 +73,6 @@ let mockResponse: { status: number; body: Record<string, unknown> } = {
   status: 200,
   body: {},
 };
-// Escape hatch for the non-JSON / non-2xx scenarios: when set, the fake server
-// returns this Response verbatim (bypasses JSON serialization). Per-test
-// `beforeEach` clears it so leakage between cases stays impossible.
 let mockRawResponse: Response | null = null;
 
 beforeAll(async () => {
@@ -142,14 +120,6 @@ function makeDeps(serverUrl: string | undefined, config: Config = BASE_CONFIG): 
   };
 }
 
-/**
- * Seed a live, ui-capable `server.lock` under `<tmpDir>/.ok/local/` so the
- * preview-url resolver's reachability gate fires (a non-null `previewUrl`
- * means "a UI is running"). `acquireServerLock` stamps THIS process's pid +
- * machine identity so the liveness checks pass. Without this, every success
- * case resolves `previewUrl: null` (no UI), so the lock is what lets us assert
- * the concrete doc/folder route shapes.
- */
 async function seedUiServer(): Promise<void> {
   const lockDir = resolve(tmpDir, '.ok', 'local');
   await mkdir(lockDir, { recursive: true });
@@ -344,9 +314,6 @@ describe('share_link — target resolution (FR9 matrix)', () => {
   });
 
   test('auto-probe (no kind) under a non-root content dir posts content-relative paths', async () => {
-    // The auto-probe branch resolves through its own return path, so the
-    // explicit-kind cases above do not cover it: a re-projection regression
-    // here would post `vault/...` and mint a link at the wrong subtree.
     const config = ConfigSchema.parse({ content: { dir: 'vault' } });
     await mkdir(resolve(tmpDir, 'vault', 'guides'), { recursive: true });
     await writeFile(resolve(tmpDir, 'vault', 'notes.md'), '# notes');
@@ -636,7 +603,7 @@ describe('share_link — business-logic errors', () => {
   test('transport error: surfaces a tool-level error when the server is down', async () => {
     await writeFile(resolve(tmpDir, 'page.md'), '# page');
     const { server, getTool } = createFakeServer();
-    register(server, makeDeps('http://127.0.0.1:1')); // unreachable
+    register(server, makeDeps('http://127.0.0.1:1'));
     const result = await getTool().handler({ path: 'page' });
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { ok: boolean }).ok).toBe(false);
@@ -644,12 +611,6 @@ describe('share_link — business-logic errors', () => {
 });
 
 describe('share_link — message coverage', () => {
-  /**
-   * Every output-enum code must map to a non-empty, agent-actionable message.
-   * Server codes flow through `messageForShareError`; tool-local codes
-   * (target-not-found, kind-mismatch) are produced inline. `unknown` is
-   * exercised by the transport/protocol error paths below.
-   */
   const SERVER_CODES = [
     'no-remote',
     'detached-head',
@@ -700,9 +661,6 @@ describe('share_link — message coverage', () => {
 
 describe('share_link — transport / protocol error paths', () => {
   test('non-JSON 200 body: tool-level error mentions the parse failure', async () => {
-    // A misconfigured proxy returning HTML on a JSON shim, or a truncated
-    // response — covered defensively in share-link.ts. The test pins the
-    // catch site so a future refactor that drops the JSON parse guard fails.
     await writeFile(resolve(tmpDir, 'page.md'), '# page');
     mockRawResponse = new Response('<html>not json</html>', {
       status: 200,
@@ -864,15 +822,12 @@ describe('share_link — freshness relay (FR6)', () => {
     expect(text).toContain(
       "it's empty or contains only ignored files. The link won't work until you add a tracked document.",
     );
-    // The agent must not relay a remedy no push can deliver.
     expect(text).not.toContain("isn't on GitHub yet");
   });
 
   test('declares the empty verdict in the output schema so strict clients accept it', () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl));
-    // Claude validates `structuredContent` against this schema with AJV, so a
-    // verdict the tool can emit but the schema omits is rejected client-side.
     const freshnessSchema = getTool().outputSchema?.freshness;
     expect(freshnessSchema?.safeParse('empty').success).toBe(true);
   });
@@ -883,8 +838,6 @@ describe('share_link — freshness relay (FR6)', () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl));
     const result = await getTool().handler({ path: 'notes' });
-    // The core schema's value-tolerant catch coerces the unknown value to
-    // undefined at parse, so the relay degrades to silence rather than a crash.
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({ ok: true });
     expect(result.structuredContent?.freshness).toBeUndefined();

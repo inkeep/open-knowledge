@@ -25,7 +25,6 @@ import { SettingsDialogBody } from './SettingsDialogBody';
 
 const originalFetch = globalThis.fetch;
 
-/** Drop every `null` leaf — the patch spelling for "delete this key". */
 function stripNulls(value: unknown): unknown {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
   return Object.fromEntries(
@@ -46,8 +45,6 @@ function makeBinding(config: Config = ConfigSchema.parse({})): {
       patches.push(patch);
       return {
         ok: true,
-        // `null` means "clear this key" in a real patch (the binding deletes it
-        // before validating), so drop nulls rather than handing them to Zod.
         effective: ConfigSchema.parse({ ...config, ...stripNulls(patch) }),
         appliedPaths: ['editor.wordWrap'],
       };
@@ -63,7 +60,6 @@ function makeBinding(config: Config = ConfigSchema.parse({})): {
   return { binding, patches };
 }
 
-/** A binding that rejects every write, for the error-routing path. */
 function makeRejectingBinding(config: Config = ConfigSchema.parse({})): ConfigBinding {
   return {
     current: () => config,
@@ -133,7 +129,6 @@ function renderPreferences(binding: ConfigBinding) {
   );
 }
 
-/** The project-scope Preferences page — where the attachments block lives. */
 function renderProjectPreferences() {
   return render(
     <SettingsContextProvider>
@@ -312,10 +307,6 @@ describe('SettingsDialogBody preferences runtime', () => {
   });
 });
 
-/**
- * Radix opens the listbox from the keyboard as well as from a pointer, and the
- * keyboard path needs none of the pointer-capture APIs jsdom leaves out.
- */
 async function openLanguagePicker(user: ReturnType<typeof userEvent.setup>) {
   const trigger = screen.getByRole('combobox', { name: 'Language' });
   trigger.focus();
@@ -349,16 +340,11 @@ describe('SettingsDialogBody language picker', () => {
 
     await openLanguagePicker(user);
 
-    // Named in their own language, so someone who cannot read the language on
-    // screen can still find theirs. Membership is the sibling test below; this
-    // one is about what the rows say.
     const names = screen.getAllByRole('option').map((el) => el.textContent);
     expect(names[0]).toBe('System');
     expect(names).toContain('简体中文');
     expect(names).toContain('português (Brasil)');
 
-    // The two right-to-left locales are enumerated and complete, and must stay
-    // unreachable from here while the chrome's layout for them is unfinished.
     for (const locale of LAYOUT_DEFERRED_LOCALES) {
       const endonym = new Intl.DisplayNames([locale], { type: 'language' }).of(locale);
       expect(screen.queryByRole('option', { name: endonym })).toBeNull();
@@ -372,9 +358,6 @@ describe('SettingsDialogBody language picker', () => {
 
     await openLanguagePicker(user);
 
-    // Reading back the `lang` each option carries pins both the derivation and
-    // the tag assistive tech pronounces the name with. `null` is the System
-    // row, which names no language.
     const tags = screen
       .getAllByRole('option')
       .map((el) => el.querySelector('[lang]')?.getAttribute('lang') ?? null);
@@ -408,16 +391,6 @@ describe('SettingsDialogBody language picker', () => {
     });
   });
 
-  /**
-   * The signal behind locale promotion. Recorded at the picker rather than
-   * where the language is applied, because only the picker knows the user did
-   * it — the apply path also runs for an external edit to `global.yml` and for
-   * another window's change arriving over the CRDT.
-   *
-   * The OTel boundary is faked with `spyOn(trace, 'getTracer')` rather than a
-   * module mock, which would persist in the shared unit-test module registry
-   * and clobber the real provider other files register.
-   */
   describe('change telemetry', () => {
     const spans: { name: string; attributes: Attributes | undefined }[] = [];
     let getTracerSpy: Mock<typeof trace.getTracer>;
@@ -458,9 +431,6 @@ describe('SettingsDialogBody language picker', () => {
       });
     });
 
-    // Unresolved on the way out: a user who deliberately picked English and one
-    // following an English OS are the same resolved locale and opposite signals
-    // for promotion.
     test('switching back to System is recorded as the sentinel', async () => {
       installTracerSpy();
       const user = userEvent.setup();
@@ -478,14 +448,6 @@ describe('SettingsDialogBody language picker', () => {
       });
     });
 
-    // Re-selecting the language already in force is not a change, and counting
-    // it would inflate exactly the number promotion decisions read.
-    //
-    // The absence is asserted only AFTER a real emission has been observed on
-    // this same mount. A bare "nothing was recorded" cannot tell a working
-    // guard from a telemetry path that never fires at all, so the first half
-    // establishes that spans do arrive here before the second half claims one
-    // did not.
     test('re-picking the current language records nothing', async () => {
       installTracerSpy();
       const user = userEvent.setup();
@@ -513,9 +475,6 @@ describe('SettingsDialogBody language picker', () => {
     const { binding } = makeBinding(config);
     renderPreferences(binding);
 
-    // The trigger renders its own label rather than mirroring a selected item,
-    // which is what keeps a preference the picker does not list from showing as
-    // an empty control.
     expect(screen.getByRole('combobox', { name: 'Language' }).textContent).toContain('العربية');
 
     await openLanguagePicker(user);
@@ -523,18 +482,6 @@ describe('SettingsDialogBody language picker', () => {
   });
 });
 
-/**
- * Optimistic theme-apply path. The Theme cards must flip next-themes
- * immediately on the originating client instead of waiting for the patch ->
- * user-config Y.Text -> ConfigProvider merged-effect round-trip.
- *
- * This harness mounts no ConfigProvider effects; it only supplies the bare
- * ConfigContext needed by project-scope settings. The only thing that can move
- * next-themes state on click is still the optimistic `setTheme(next)` wired
- * into `FieldControlBody`'s theme-cards branch. That makes the probe assertion
- * a discriminating check: it goes green ONLY if the optimistic path fires. The
- * `binding.patch` assertion proves persistence is still wired.
- */
 let themeStorageKeySeq = 0;
 
 function ThemeProbe() {
@@ -543,8 +490,6 @@ function ThemeProbe() {
 }
 
 function renderPreferencesWithTheme(binding: ConfigBinding) {
-  // Unique storageKey per render so next-themes can't carry a persisted
-  // value from a prior test in this file (defaultTheme="system" each time).
   themeStorageKeySeq += 1;
   return render(
     <ThemeProvider
@@ -568,13 +513,6 @@ function renderPreferencesWithTheme(binding: ConfigBinding) {
   );
 }
 
-/**
- * What each theme value reads as on screen. Each card renders a translated
- * label rather than the config value, so the value alone no longer finds the
- * control; under this runner the Lingui macros pass English through, which is
- * what these are. Kept as a lookup so the call sites stay written in terms of
- * the value they go on to assert against.
- */
 const THEME_OPTION_LABELS: Record<string, string> = {
   light: 'Light',
   dark: 'Dark',
@@ -597,17 +535,13 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
     const { binding, patches } = makeBinding();
     const { container } = renderPreferencesWithTheme(binding);
 
-    // Default theme before any click.
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
     await user.click(themeCardItem(container, 'dark'));
 
-    // Optimistic flip — observable only via the new setTheme path because
-    // this tree has no ConfigProvider merged-effect to drive the theme.
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
     });
-    // Persistence to user-scope config.yml still wired (nested patch shape).
     expect(patches).toEqual([{ appearance: { theme: 'dark' } }]);
   });
 
@@ -616,7 +550,6 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
     const { binding, patches } = makeBinding();
     const { container } = renderPreferencesWithTheme(binding);
 
-    // Move off the default first so the System transition is observable.
     await user.click(themeCardItem(container, 'dark'));
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
@@ -624,7 +557,6 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
 
     await user.click(themeCardItem(container, 'system'));
 
-    // Verbatim 'system' — the OS-tracking lever — not a resolved light/dark.
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('system');
     });
@@ -645,16 +577,6 @@ describe('SettingsDialogBody theme cards — optimistic apply', () => {
   });
 });
 
-/**
- * The color-palette picker (Settings → Plugins → Themes) optimistically flips
- * next-themes to the palette's FORCED mode, not merely "dark or nothing". A
- * light-kind built-in (Catppuccin Latte) must flip to light so the `.dark`
- * class drops in the same tick the light palette paints — otherwise Tailwind
- * `dark:` variants coexist with the light palette until the config round-trips,
- * a flash of dark-on-light. Same harness/probe rationale as the toggle tests
- * above: with no ConfigProvider effect mounted, only the optimistic
- * `setTheme(colorThemeMode(next))` path can move the probe.
- */
 function renderThemePluginWithTheme(binding: ConfigBinding) {
   themeStorageKeySeq += 1;
   return render(
@@ -697,8 +619,6 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   });
 
   test('assigning a palette to the mode on screen applies it immediately', async () => {
-    // jsdom reports no dark preference, so the mode on screen is light and the
-    // sun is the icon that changes what the user sees right now.
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderThemePluginWithTheme(binding);
@@ -930,11 +850,6 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   });
 
   test('a cross-variant palette in the on-screen slot forces its own mode', async () => {
-    // Dracula is a dark-kind palette. Assigned to the LIGHT slot while the mode
-    // on screen is light, it still forces its own dark variant, so the flip has
-    // to drive next-themes to `dark` immediately (Tailwind `dark:` variants would
-    // otherwise render dark-on-light until the config round-trip). The
-    // Latte-into-light case above only exercises a same-variant assignment.
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderThemePluginWithTheme(binding);
@@ -949,8 +864,6 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   });
 
   test('assigning a palette to the OTHER mode leaves the current appearance alone', async () => {
-    // The whole point of the pair: staging a dark palette while working in
-    // light must not drag the app into dark mode.
     const user = userEvent.setup();
     const { binding } = makeBinding();
     renderThemePluginWithTheme(binding);
@@ -963,9 +876,6 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   });
 
   test('reset clears BOTH slots, not just the path the row is keyed by', async () => {
-    // The row is anchored to colorThemeLight but speaks for both modes, so a
-    // per-path reset would strand the dark palette under a "reset to default"
-    // label.
     const user = userEvent.setup();
     const { binding, patches } = makeBinding(
       ConfigSchema.parse({ appearance: { colorThemeLight: 'dracula' } }),
@@ -985,14 +895,9 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
   });
 
   test('a rejected write surfaces an inline error instead of failing silently', async () => {
-    // Writing through the binding directly skips the form commit that every
-    // other field uses to route rejections into its own FormMessage.
     const user = userEvent.setup();
     renderThemePluginWithTheme(makeRejectingBinding());
 
-    // Assign the slot that is actually on screen (jsdom reports no dark
-    // preference, so the sun is the live one). Assigning the other slot paints
-    // nothing, which would make the revert a no-op and the assertion vacuous.
     expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
 
     await user.click(screen.getByLabelText('Use Catppuccin Latte as the light theme'));
@@ -1000,16 +905,10 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     await waitFor(() => {
       expect(screen.getByText('palette write rejected')).toBeDefined();
     });
-    // The optimistic paint set the attribute before the write; the rejection
-    // has to undo it, or the user is left looking at a palette that was never
-    // persisted next to an error saying so.
     expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
   });
 
   test('a rejected cross-variant pick also reverts the forced light/dark mode', async () => {
-    // Assigning a dark palette to the light slot forces dark mode optimistically.
-    // Reverting only the palette attribute would strand that mode on the
-    // previous palette, so the revert has to undo both effects.
     const user = userEvent.setup();
     renderThemePluginWithTheme(makeRejectingBinding());
 
@@ -1020,12 +919,9 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
     await waitFor(() => {
       expect(screen.getByText('palette write rejected')).toBeDefined();
     });
-    // Back to the user's own preference, not Dracula's forced dark.
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('system');
     });
-    // Both halves of the optimistic apply have to come back, so check the
-    // attribute here too rather than leaving it to the same-variant sibling.
     expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
   });
 

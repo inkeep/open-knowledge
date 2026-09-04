@@ -14,44 +14,16 @@ import { cn } from '@/lib/utils';
 import { SplashCliBlock } from './splash-cli-block';
 
 interface SplashCliPopoverProps {
-  /**
-   * Opener element, wrapped in PopoverTrigger asChild. A render function so the
-   * caller can animate a caret off the `open` state. Both callers are client
-   * components, so the function prop never crosses the RSC boundary.
-   */
   trigger: (open: boolean) => ReactNode;
   installCommand: string;
-  /** Omitted on the fallback screen (no resolved repo to clone). */
   cloneCommand?: string;
-  /** When set, a "View on GitHub" link-out is appended below the CLI block. */
   githubUrl?: string;
-  /**
-   * Download route the panel appends each build's params to. When set, the
-   * panel leads with one row per published build. On a decoded share this is
-   * the query-less `/d/<encoded>/download` route, so the share-pairing cookie
-   * survives whichever platform the recipient picks; the fallback screens pass
-   * the tracked stable route, which already carries a `utm_content`.
-   */
   platformBaseUrl?: string;
   detectedOs?: DetectedOs;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
 }
 
-/**
- * The shared "Open with CLI" popover: a copyable install (+ clone) block under
- * the "Open with CLI" header, optionally followed by a View-on-GitHub link.
- * Used by the macOS Download split button (caret trigger + GitHub) and the
- * invalid-share fallback ("Open with CLI" button, install-only) so the two
- * panels can't drift. Portalled to <body> (never clipped / out-stacked) with
- * Radix focus-trapping + outside-click/Escape dismissal.
- */
-/**
- * Append a build's params to the download base. The share route arrives
- * query-less and the tracked stable route arrives carrying `utm_content`, so
- * the separator can't be hardcoded — the fallback screens would otherwise mint
- * a second `?` and drop the attribution that follows it.
- */
 function withTargetQuery(base: string, query: string): string {
   return `${base}${base.includes('?') ? '&' : '?'}${query}`;
 }

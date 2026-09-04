@@ -18,7 +18,6 @@ describe('<ProfilerBoundary>', () => {
   });
 
   test('children prop is required in the TypeScript surface', () => {
-    // Compile-time check — if this file type-checks, the prop exists.
     const node = (
       <ProfilerBoundary name="type-probe">
         <div />
@@ -26,8 +25,4 @@ describe('<ProfilerBoundary>', () => {
     );
     expect(node).toBeDefined();
   });
-
-  // onRender behavior is exercised end-to-end in the Playwright perf
-  // scenarios against a live React root — server-side
-  // renderToString does not invoke Profiler commit callbacks.
 });

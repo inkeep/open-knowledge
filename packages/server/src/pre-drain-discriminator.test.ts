@@ -1,15 +1,3 @@
-/**
- * Pre-drain discriminator — pure decision core, span extractors, and the
- * same-block scenario corpus.
- *
- * The corpus stages each scenario through the real `AgentSessionManager` /
- * `applyAgentMarkdownWrite` paths against a real UndoManager, then runs the
- * read-only discriminator on the staged pre-propagation state. Its measured
- * harm labels are the pinned ground truth: any scenario labelled harmful that
- * the discriminator would admit to pre-drain fails the suite. The line-hunk
- * localizer is refuted on the one non-contiguous shape it leaks (the splice
- * model routes it to checkpoint; hunks admit it).
- */
 import { diffLinesFast, type MarkdownManager } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
@@ -23,7 +11,6 @@ import {
   planPreDrain,
 } from './pre-drain-discriminator.ts';
 
-/** The drain's rewrite RANGE — the classifier's input, from the shared localizer. */
 function drainRewriteRange(
   body: string,
   fragmentPmJson: ReturnType<typeof mdManager.parse>,
@@ -32,7 +19,6 @@ function drainRewriteRange(
   return splice === null ? null : { start: splice.spliceStart, end: splice.spliceEnd };
 }
 
-/** A MarkdownManager stand-in that throws if the expensive localizer is reached. */
 const throwingMdManager = {
   parseToMdast: () => {
     throw new Error('localizer reached: parseToMdast should not run');
@@ -50,17 +36,13 @@ const FIVE_PARA = [
   'para five epsilon',
 ].join('\n\n');
 
-/** The canonical settled form an agent's full-body payload is composed against. */
 const canon = (md: string): string => mdManager.serialize(mdManager.parse(md));
 
 interface Scenario {
   readonly id: string;
-  /** The spike's measured Outcome label. */
   readonly harmful: boolean;
-  /** The spike's `splice+graze` classification (true = admitted to pre-drain). */
   readonly expectedPreDrain: boolean;
   readonly base: string;
-  /** Stage the scenario on the rig and return the discriminator verdict. */
   readonly stage: (rig: DiscriminatorRig) => PreDrainVerdict;
 }
 
@@ -278,7 +260,6 @@ describe('cost gate: cheap fail-closed guards short-circuit before the localizer
   });
 
   it('fails closed on a missing target without touching the localizer', () => {
-    // A prepend has no measured target span → checkpoint before the parse.
     const { verdict } = planPreDrain({
       ...baseInput,
       pendingDirty: true,
@@ -320,7 +301,6 @@ describe('classifyPreDrain — pure overlap core', () => {
   });
 
   it('admits an all-whitespace intersection via the graze relaxation', () => {
-    // Body bytes 8..10 are the "\n\n" block separator — whitespace only.
     const verdict = classifyPreDrain({ start: 0, end: 10 }, { start: 8, end: 18 }, body);
     expect(verdict).toEqual({ preDrain: true, reason: 'pre-drain-whitespace-graze' });
   });
@@ -363,8 +343,6 @@ describe('the drain rewrite range localizes the flush to the changed block', () 
     const fragment = mdManager.parse(`${body}\n\npara three gamma`);
     const splice = drainRewriteRange(body, fragment);
     expect(splice).not.toBeNull();
-    // The rewrite starts at or after the end of "para two beta" — the appended
-    // block, never the untouched prefix.
     expect((splice as BodySpan).start).toBeGreaterThanOrEqual(body.indexOf('para two'));
   });
 
@@ -374,7 +352,6 @@ describe('the drain rewrite range localizes the flush to the changed block', () 
     const splice = drainRewriteRange(body, fragment);
     expect(splice).not.toBeNull();
     const s = splice as BodySpan;
-    // The rewrite covers the middle block, not "para one alpha".
     expect(s.start).toBeGreaterThan(0);
     expect(s.end).toBeLessThanOrEqual(body.length);
   });
@@ -390,9 +367,6 @@ describe('extractComposeTargetSpan — agent-write target', () => {
   });
 
   it('fails closed (null) for every non-append position', () => {
-    // `replace` / `patch` are full-body overwrites the plan declines before any
-    // target extraction; `prepend` is unmeasured. None of them may produce a
-    // span the classifier could reason a flush against.
     expect(extractComposeTargetSpan(body, 'prepend')).toBeNull();
     expect(extractComposeTargetSpan(body, 'replace')).toBeNull();
     expect(extractComposeTargetSpan(body, 'patch')).toBeNull();
@@ -400,11 +374,6 @@ describe('extractComposeTargetSpan — agent-write target', () => {
 });
 
 describe('full-body-overwrite positions are structurally inert', () => {
-  // A pure block insertion: the drain's splice collapses to the trailing region
-  // and its intersection with a whole-body target is whitespace-only — exactly
-  // the shape the classifier's graze relaxation admits. The position gate has to
-  // decline it BEFORE that arithmetic runs, or the overwrite silently reverts a
-  // keystroke the flush already moved into the write's own loss baseline.
   const body = 'alpha one\n\nbeta two\n';
   const pendingFragment = mdManager.parse(`${body}\ngamma three appended\n`);
 
@@ -440,12 +409,6 @@ describe('full-body-overwrite positions are structurally inert', () => {
   });
 });
 
-/**
- * A test-local line-hunk localizer — the REFUTED substrate. It reports the
- * removed hunks of the pending content as SEPARATE body ranges, then admits the
- * flush when none overlaps the target. It exists only to pin the leak below; the
- * production discriminator never uses it.
- */
 function hunksOnlyAdmitsFlush(body: string, pendingBody: string, target: BodySpan): boolean {
   let offset = 0;
   const removed: BodySpan[] = [];
@@ -465,23 +428,17 @@ function hunksOnlyAdmitsFlush(body: string, pendingBody: string, target: BodySpa
 describe('hunks-only localizer is refuted (non-contiguous pending leaks)', () => {
   it('the splice model checkpoints a target between two non-contiguous pending edits while hunks admit it', () => {
     const body = 'alpha one\n\nbeta two\n\ngamma three\n\ndelta four\n\nepsilon five';
-    // Agent patched the middle block; the target is "gamma three".
     const target: BodySpan = (() => {
       const start = body.indexOf('gamma three');
       return { start, end: start + 'gamma three'.length };
     })();
-    // Pending edits in the FIRST and LAST blocks (non-contiguous), so the drain's
-    // block splice collapses over-wide across the whole doc.
     const pendingBody = body
       .replace('alpha one', 'alpha one EDIT')
       .replace('epsilon five', 'epsilon five EDIT');
     const pendingFragment = mdManager.parse(pendingBody);
     const spliceRange = drainRewriteRange(body, pendingFragment);
 
-    // Splice model: the over-wide rewrite covers "gamma three" → checkpoint.
     expect(classifyPreDrain(spliceRange, target, body).preDrain).toBe(false);
-    // Hunks-only: the two separate removed hunks miss "gamma three" → admits the
-    // flush — the measured harmful-direction leak the ban exists to prevent.
     expect(hunksOnlyAdmitsFlush(body, pendingBody, target)).toBe(true);
   });
 });

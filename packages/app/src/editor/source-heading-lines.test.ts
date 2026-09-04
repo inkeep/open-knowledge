@@ -1,23 +1,7 @@
-/**
- * The source-mode heading enumerator: one entry per heading line, in document
- * order, keyed to the line's start offset.
- *
- * Two consumers depend on the ordinal being exact. Outline navigation maps the
- * clicked outline row's index onto the nth entry, and active-heading tracking
- * measures the nth entry's line geometry — so a line admitted or skipped here
- * that the server's outline producer treats differently shifts every subsequent
- * row. Expected offsets are written as `doc.line(n).from` so a fixture edit
- * cannot silently invalidate hand-computed integers.
- */
-
 import { Text } from '@codemirror/state';
 import { describe, expect, test } from 'vitest';
 import { type SourceHeadingLine, sourceHeadingLines } from './source-heading-lines';
 
-// Each call allocates a fresh `Text`, so the module-level cache in
-// `sourceHeadingLines` (keyed by `Text` identity) never carries one test's
-// result into another. Do not hoist a `Text` to module scope — that would share
-// one cache slot across tests.
 function docOf(lines: string[]): Text {
   return Text.of(lines);
 }
@@ -55,8 +39,6 @@ describe('sourceHeadingLines', () => {
   });
 
   test('points `from` at the line start, before the hashes', () => {
-    // Outline navigation places the cursor at this offset; landing after the
-    // hashes would put the caret inside the heading marker.
     const doc = docOf(['Prose.', '', '## Heading']);
 
     const [entry] = sourceHeadingLines(doc);
@@ -86,8 +68,6 @@ describe('sourceHeadingLines', () => {
   });
 
   test('skips frontmatter whose opening fence carries a trailing space', () => {
-    // `--- ` is one in-tolerance keystroke away from `---`; frontmatter
-    // recognition must not flip on it, or the YAML comment leaks in.
     const doc = docOf([
       '--- ',
       'title: Fence hazard',
@@ -114,20 +94,12 @@ describe('sourceHeadingLines', () => {
   });
 
   test('skips frontmatter whose fences carry Windows line endings', () => {
-    // The heading predicate and the code-fence tracker both tolerate a trailing
-    // CR, so the frontmatter fence check has to as well or the three disagree
-    // about where the body starts. CodeMirror strips CR when it builds a
-    // document, so no production caller arrives here with one — but a caller
-    // constructing `Text` by hand would otherwise silently take the YAML
-    // comment as heading zero and shift every ordinal after it.
     const doc = docOf(['---\r', 'title: Windows\r', '# yaml comment\r', '---\r', '\r', '# Real\r']);
 
     expect(slugs(sourceHeadingLines(doc))).toEqual(['real']);
   });
 
   test('treats an unclosed leading fence as body, not frontmatter', () => {
-    // A closing fence is mandatory for the server's frontmatter partition too,
-    // so an unclosed opener leaves the whole document as body for both.
     const doc = docOf(['---', 'title: Never closed', '# Looks like yaml', '']);
 
     expect(slugs(sourceHeadingLines(doc))).toEqual(['looks-like-yaml']);
@@ -197,9 +169,6 @@ describe('sourceHeadingLines', () => {
   });
 
   test('reuses the previous result for the same document instance', () => {
-    // Tracking re-resolves every heading on each animation frame, so a rescan
-    // per frame is the cost this cache exists to avoid. Returning the identical
-    // array is the only externally observable proof the scan was skipped.
     const doc = docOf(['# One', '', '## Two']);
 
     const first = sourceHeadingLines(doc);

@@ -8,12 +8,6 @@ import {
   waitForShellReady,
 } from '../support/pty-readiness.test-helper.ts';
 
-/**
- * Contract for the real-shell harness's readiness gate and its failure channel.
- * Platform timing rationale lives on the helper; these tests pin that a
- * still-starting shell is not ready and a dead shell fails diagnostically.
- */
-
 interface FakeStream extends PtyStream {
   emit(chunk: string): void;
   fail(reason: string): void;
@@ -34,14 +28,11 @@ function createFakeStream(): FakeStream {
   };
 }
 
-/** Sample every 5ms and require 100ms of quiet — long enough to span the gaps below. */
 const FAST_READY = { intervalMs: 5, quietSamples: 20, timeoutMs: 5_000 } as const;
 
 describe('shell readiness gate', () => {
   test('does not report ready while the shell is still producing startup output', async () => {
     const stream = createFakeStream();
-    // ConPTY shape: the setup paint lands first, the shell's own startup output
-    // follows in bursts, and the prompt is last.
     stream.emit('\u001b[2J\u001b[H');
     const chunks = ['loading profile\r\n', 'startup notice\r\n', 'PS C:\\project> '];
     const timers = chunks.map((chunk, index) =>
@@ -157,11 +148,6 @@ describe('condition waits', () => {
   });
 });
 
-/**
- * A shell whose console input reader attaches some time after its first bytes,
- * dropping anything written before then — the ConPTY behavior the Windows
- * failure came from, reproduced deterministically on any platform.
- */
 function evaluateFakePowerShellCommand(command: string): string | null {
   const arithmetic = /^Write-Output "([^"]*)_\$\(\((\d+)\*(\d+)\)\)_([^"]*)"$/u.exec(command);
   if (arithmetic !== null) {
@@ -187,9 +173,7 @@ function createStartupRaceSpawn(readyAfterMs: number): SpawnPty {
       onData(listener) {
         emit = listener;
       },
-      onExit() {
-        // The fake shell never exits on its own.
-      },
+      onExit() {},
       write(data) {
         if (!accepting) return;
         const typed = data.replace(/\r$/u, '');
@@ -198,18 +182,12 @@ function createStartupRaceSpawn(readyAfterMs: number): SpawnPty {
         if (output === null) return;
         timers.push(setTimeout(() => emit(`${output}\r\n`), 0));
       },
-      resize() {
-        // No geometry to track.
-      },
+      resize() {},
       kill() {
         for (const timer of timers) clearTimeout(timer);
       },
-      pause() {
-        // No backpressure to model.
-      },
-      resume() {
-        // No backpressure to model.
-      },
+      pause() {},
+      resume() {},
     };
   };
 }
@@ -263,27 +241,15 @@ describe('driving a real host through a shell that starts slowly', () => {
   test('maps a real host exit into the readiness failure channel', async () => {
     const spawn: SpawnPty = () => ({
       pid: 4243,
-      onData() {
-        // This shell exits before producing output.
-      },
+      onData() {},
       onExit(listener) {
         queueMicrotask(() => listener({ exitCode: 3, signal: undefined }));
       },
-      write() {
-        // The shell exits before accepting input.
-      },
-      resize() {
-        // No geometry to track.
-      },
-      kill() {
-        // Already exited.
-      },
-      pause() {
-        // No backpressure to model.
-      },
-      resume() {
-        // No backpressure to model.
-      },
+      write() {},
+      resize() {},
+      kill() {},
+      pause() {},
+      resume() {},
     });
     const host = createPtyHostProbe({
       spawn,

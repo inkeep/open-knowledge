@@ -1,15 +1,3 @@
-/**
- * Hocuspocus extension that attaches server-authoritative observers per-document.
- *
- * Uses the Document reference from afterLoadDocument payload directly (Document
- * extends Y.Doc). This avoids openDirectConnection's connection-count increment
- * which would prevent documents from unloading during server shutdown.
- *
- * The markdown bridge is not attached: every client derives its ProseMirror
- * document locally from `Y.Text`, so the `Y.XmlFragment` has no readers. What
- * this extension does attach is the per-document quiescence tracker, which
- * persistence needs and which reads `Y.Doc` transactions only.
- */
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
@@ -33,89 +21,19 @@ const log = getLogger('server-observers');
 export interface ServerObserverExtensionOptions {
   mdManager: MarkdownManager;
   schema: Schema;
-  /**
-   * Shadow-repo reference threaded into Observer A Path B so content-loss
-   * violations can write silent rescue checkpoints. Omit when no shadow is
-   * available (e.g., minimal integration harness) — Path B then skips the
-   * checkpoint but still emits structured telemetry.
-   */
   shadowRef?: ShadowRef;
-  /** Resolver for the current project branch name. Defaults to 'main'. */
   getCurrentBranch?: () => string | null;
-  /** Absolute content root used to place the rescue blob inside the commit tree. */
   contentRoot?: string;
-  /**
-   * Basename-index resolver for `![[photo.png]]` wiki-embed refs, threaded
-   * into Observer B's `mdManager.parse` call so the resulting PM image/link
-   * carries the resolved src/href. Omit in unit tests — handler falls back
-   * to literal target.
-   */
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  /**
-   * Byte-size resolver for `![[file.ext]]` wikilinks whose extension is
-   * in `FILE_ATTACHMENT_EXTENSIONS`. The wikiLinkEmbed handler calls
-   * this with the same `(target, sourcePath)` it passes to
-   * `resolveEmbed`; the result is formatted via `formatFileSize` and
-   * stamped on the jsxComponent's `size` prop so the File row's size
-   * span survives reloads. Server-side only (`fs.statSync` against the
-   * resolved disk path); omit in unit tests / client-side parses where
-   * `WikiEmbedFile.translateProps` then renders without a size span.
-   */
   resolveSize?: (basename: string, sourcePath: string) => number | null;
-  /**
-   * Derive-timing defer guard kill-switch, resolved from `.ok/config.yml`
-   * (`bridge.deferGuard.enabled`, default ON). Threaded per-document into
-   * `setupServerObservers`.
-   */
   deferGuardEnabled?: boolean;
-  /**
-   * Bridge content-loss detector kill-switch, resolved from `.ok/config.yml`
-   * (`bridge.lossDetector.enabled`, default ON). Threaded per-document into
-   * `setupServerObservers` for the Observer-A apply post-condition.
-   */
   lossDetectorEnabled?: boolean;
-  /**
-   * Re-derive-loop fixed-point backstop kill-switch, resolved from
-   * `.ok/config.yml` (`bridge.fixedPoint.enabled`, default ON). Threaded
-   * per-document into `setupServerObservers`.
-   */
   fixedPointBackstopEnabled?: boolean;
-  /**
-   * Pre-drain discriminator kill-switch, resolved from `.ok/config.yml`
-   * (`bridge.preDrain.enabled`, default ON). Threaded per-document into
-   * `setupServerObservers`; the doc's pre-drain controller stays registered
-   * either way, but flushes only when enabled.
-   */
   preDrainEnabled?: boolean;
-  /**
-   * Content-free loss-capture ring, constructed once at boot (gated on
-   * `lossCapture.enabled`). Each derive-timing defer records a `guard-defer`
-   * event, each detector trip a `detector-trip` event, and each backstop trip a
-   * `backstop-trip` event through it. Omit when no ring is wired (unit harness).
-   */
   lossRing?: LossCaptureRing;
 }
 
-/**
- * The bridge never runs. Clients derive their ProseMirror document from
- * `Y.Text` (see `projection-binding.ts`), so nothing reads the
- * `Y.XmlFragment`; attaching the bridge would have Observer A serialize a
- * fragment nobody updates and line-diff it back over `Y.Text`, reverting edits.
- *
- * A named constant rather than an inline deletion: the observer machinery it
- * gates comes out in stages, and one named seam keeps each stage's remaining
- * arm obvious. It goes with the last of them.
- */
 const BRIDGE_DISABLED = true;
-
-/**
- * Create the Hocuspocus extension that manages per-document server state.
- *
- * - afterLoadDocument: attaches the quiescence tracker using the Document from
- *   the hook payload; the bridge observers are gated off by `BRIDGE_DISABLED`
- * - afterUnloadDocument: detaches the tracker and any observer cleanup
- * - Skips __system__ doc (CC1 broadcast pseudo-doc) for the observer arm
- */
 export function createServerObserverExtension(opts: ServerObserverExtensionOptions): Extension {
   // Once per server, while the machinery is present but inert: an inert bridge
   // and a working one are otherwise indistinguishable from the logs. Drop this
@@ -136,25 +54,12 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
 
   return {
     async afterLoadDocument({ documentName, document }) {
-      // Quiescence tracking comes FIRST, and stays outside every skip below.
-      //
-      // It reads `Y.Doc` transactions only — nothing about the fragment — but
-      // persistence gates every write on `isDocQuiescent`, and the counters
-      // start equal, so a doc with no tracker reports `settledGen >
-      // lastUserTxGen` as false forever and never persists. Any skip that
-      // swallowed it would mean "this doc never settles".
-      //
-      // Detached on unload via its own map, whose lifetime differs from the
-      // observer cleanups'.
       if (!quiescenceDetachers.has(documentName)) {
         quiescenceDetachers.set(
           documentName,
           attachQuiescenceTracker(document as unknown as Y.Doc),
         );
       }
-
-      // Mermaid docs are Y.Text-only like config docs — the markdown bridge must
-      // NOT run (it would re-canonicalize the diagram source through remark).
       if (BRIDGE_DISABLED) return;
       if (
         isSystemDoc(documentName) ||
@@ -195,9 +100,6 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
           cleanups.set(documentName, unsubscribe);
           return true;
         } catch (err) {
-          // Do NOT re-throw: Hocuspocus afterLoadDocument is not try/catch guarded
-          // (unlike onLoadDocument). Re-throwing would break the document setup
-          // pipeline (beforeBroadcastStateless, awareness wiring) for ALL clients.
           log.error(
             { docName: documentName, err },
             `[ServerObserverExtension] Failed to attach observers for '${documentName}'`,
@@ -209,15 +111,9 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
       };
 
       if (!attach()) {
-        // Single delayed retry for transient failures (schema init timing,
-        // temporary resource exhaustion). If the retry also fails, the
-        // document remains degraded — the underlying cause is likely
-        // persistent and requires investigation via error counters.
-        // Tracked so afterUnloadDocument can cancel if the doc unloads
-        // before the retry fires (prevents orphaned observer attachment).
         const retryId = setTimeout(() => {
           pendingRetries.delete(documentName);
-          if (cleanups.has(documentName)) return; // already attached (e.g., unload+reload)
+          if (cleanups.has(documentName)) return;
           log.warn(
             { docName: documentName },
             `[ServerObserverExtension] Retrying observer attachment for '${documentName}'`,
@@ -229,7 +125,6 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
     },
 
     async afterUnloadDocument({ documentName }) {
-      // Cancel pending retry to prevent orphaned observer attachment
       const pending = pendingRetries.get(documentName);
       if (pending) {
         clearTimeout(pending);

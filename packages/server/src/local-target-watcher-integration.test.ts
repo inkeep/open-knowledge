@@ -26,8 +26,6 @@ describe('local-target watcher integration', () => {
     writeFileSync(join(contentDir, 'assets', 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     const contentFilter = createContentFilter({ projectDir, contentDir });
 
-    // Real watcher: its seed walk indexes report.pdf and logo.png as kind:'file'
-    // under their content-root-relative paths.
     const watcher = await startWatcher(contentDir, async () => {}, contentFilter);
     const index = new DerivedDocumentIndex({
       projectDir,
@@ -50,9 +48,6 @@ describe('local-target watcher integration', () => {
     const status = Object.fromEntries(
       (await index.getLocalTargetAssessments('src')).map((a) => [a.resolvedTarget, a.status]),
     );
-    // The real watcher's file-index key equals the assessment's resolved
-    // content-root-relative identity, so present files are exact and the absent
-    // one is missing — the cross-boundary key alignment that lets findings heal.
     expect(status['assets/report.pdf']).toBe('exact');
     expect(status['assets/logo.png']).toBe('exact');
     expect(status['assets/missing.pdf']).toBe('missing');

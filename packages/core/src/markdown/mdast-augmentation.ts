@@ -40,9 +40,6 @@ export interface WikiLinkEmbedMdast {
     target: string;
     alias: string | null;
     anchor: string | null;
-    /** Untrimmed source segments — see WikiLinkMdast. Captured by the
-     * shared micromark exits; the embed serialization path currently
-     * ignores them (embed fidelity is tracked separately). */
     sourceTarget?: string | null;
     sourceAnchor?: string | null;
     sourceAlias?: string | null;

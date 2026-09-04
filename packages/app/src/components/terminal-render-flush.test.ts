@@ -32,8 +32,6 @@ describe('createSameFrameRepaint', () => {
     repaint();
     repaint();
     repaint();
-    // Degrades to xterm's own next-frame repaint: the public refresh still
-    // queues the range, only the same-frame flush is unavailable.
     expect(refresh).toHaveBeenCalledTimes(3);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain('render-debouncer internal not found');

@@ -71,12 +71,6 @@ vi.doMock('@/components/GraphView', () => ({
 
 const PREF_KEY = 'ok-graph-fullscreen-skill-nodes-v1';
 
-/**
- * Install a memory-backed `window.localStorage`. The DOM env does not provide one
- * on every Node version we run (it is absent under Node 26 locally), and this
- * suite asserts the persistence contract directly — so it owns its storage rather
- * than inheriting whatever the environment happens to supply.
- */
 function installMemoryStorage(): Storage {
   const entries = new Map<string, string>();
   const storage: Storage = {
@@ -124,8 +118,6 @@ describe('GraphPanel skill-node visibility control', () => {
   test('docked graph is unfiltered and offers no skill control', async () => {
     await renderPanel();
 
-    // The local 2-hop viewer keeps built-ins so a skill's own neighborhood
-    // stays inspectable there.
     expect(graphView().getAttribute('data-skill-visibility')).toBe('all');
     expect(screen.queryByRole('button', { name: 'Hide skill nodes' })).toBeNull();
   });
@@ -148,7 +140,6 @@ describe('GraphPanel skill-node visibility control', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Show skill nodes' }));
     expect(graphView().getAttribute('data-skill-visibility')).toBe('hide-builtins');
-    // Back at the default, so the key clears rather than storing 'true'.
     expect(window.localStorage.getItem(PREF_KEY)).toBeNull();
   });
 

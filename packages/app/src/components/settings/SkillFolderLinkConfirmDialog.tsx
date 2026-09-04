@@ -1,18 +1,3 @@
-/**
- * The consent screen for linking one host skills folder into another: it draws
- * which folder survives, then groups everything the merge touches by what it
- * costs you — moves and duplicate drops are lossless, destroyed entries and
- * replaced deliveries are not.
- *
- * Presentational: the caller owns the write and clears `open` when it settles.
- * The confirm control is a plain Button (not AlertDialogAction) so the dialog
- * does not tear itself down before the caller's awaited work finishes, matching
- * DeleteConfirmationDialog.
- *
- * Direction is the thing users read backwards, so it is drawn rather than
- * described: the picked folder is on the left becoming a pointer, the surviving
- * folder on the right keeping the skills.
- */
 import type { SkillFolderLinkPreview } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowRight, Copy, Trash2, Unlink } from 'lucide-react';
@@ -31,17 +16,12 @@ import { Button } from '@/components/ui/button';
 export interface SkillFolderLinkConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** The folder being consumed — it becomes the symlink. */
   pick: string;
-  /** The folder that survives and keeps the skills. */
   keep: string;
   preview: SkillFolderLinkPreview;
   onConfirm: () => void;
 }
 
-/** One outcome group: icon + label + count, with the names it covers. `tone`
- *  carries whether the group costs the user anything — destructive for the two
- *  that do, muted for the duplicate drop that does not. */
 function OutcomeRow({
   icon,
   label,
@@ -108,8 +88,7 @@ export function SkillFolderLinkConfirmDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogBody className="flex flex-col gap-4 py-1">
-          {/* Direction, drawn. Reading it backwards is the mistake this
-              surface keeps producing, so it leads. */}
+          {}
           <div className="flex items-center gap-2" data-testid="skill-folder-link-direction">
             <div className="min-w-0 flex-1 rounded border border-border/60 px-2 py-1.5">
               <code className="block break-all font-mono text-[11px]">{pick}</code>

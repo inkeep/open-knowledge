@@ -106,11 +106,6 @@ describe('ensureProjectGit', () => {
   });
 
   test('falls back to a usable git when bare git is unavailable on PATH', async () => {
-    // Bare git off PATH (PATH=/nonexistent) is not "git unavailable": the
-    // setup-boundary preflight resolves the host's git at a detectGit() fallback
-    // path and invokes THAT binary, closing the check/use divergence — so the op
-    // succeeds. ("git unavailable *everywhere* → recoverable typed error" is
-    // owned by project-git.preflight.test.ts.)
     const projectRoot = resolve(tmpDir, 'no-git-binary');
     mkdirSync(projectRoot, { recursive: true });
 
@@ -123,7 +118,6 @@ describe('ensureProjectGit', () => {
       process.env.PATH = originalPath;
     }
 
-    // Init ran via the fallback git, so .git/HEAD exists.
     expect(existsSync(resolve(projectRoot, '.git/HEAD'))).toBe(true);
   });
 
@@ -131,14 +125,6 @@ describe('ensureProjectGit', () => {
     const projectRoot = resolve(tmpDir, 'partial');
     mkdirSync(projectRoot, { recursive: true });
 
-    // Create a fake `git` binary that creates .git/ but NOT .git/HEAD.
-    // Simulates a defensively-checked post-condition failure. It must also pass
-    // the setup-boundary preflight, so it answers `--version` with a valid,
-    // >= MIN_GIT_VERSION string — making detectGit() resolve THIS git (PATH
-    // source) and the op invoke it (rather than falling back to the host git).
-    // The `2.45.0` below is pinned ABOVE MIN_GIT_VERSION (2.31) on purpose: if
-    // the floor is ever bumped past 2.45, bump this stub too, or detectGit()
-    // trips GitTooOldError before the partial-init path under test.
     const fakeBin = resolve(tmpDir, 'fake-bin');
     mkdirSync(fakeBin);
     const fakeGit = resolve(fakeBin, 'git');
@@ -149,12 +135,6 @@ describe('ensureProjectGit', () => {
     );
     await execFileAsync('chmod', ['+x', fakeGit]);
 
-    // The preflight must resolve to THIS stub for the partial-init path to fire.
-    // PATH narrowing makes the `git --version` probe deterministically hit the
-    // stub (2.45.0), but resolveOnPath('git') resolves against the runtime's
-    // startup PATH snapshot (Bun ignores a mid-process PATH mutation for a
-    // no-`env` spawnSync) and would otherwise return the host git. Seed the
-    // resolveOnPath memo so detectGit().resolvedPath IS the stub.
     __resetResolveOnPathCacheForTests();
     __seedResolveOnPathCacheForTests('git', fakeGit);
     const originalPath = process.env.PATH;
@@ -169,7 +149,6 @@ describe('ensureProjectGit', () => {
 });
 
 describe('ensureProjectGit — initial commit', () => {
-  /** True when `git rev-parse --verify HEAD` resolves (the repo has >=1 commit). */
   async function headResolves(cwd: string): Promise<boolean> {
     try {
       await execFileAsync('git', ['rev-parse', '--verify', 'HEAD'], { cwd });
@@ -190,9 +169,6 @@ describe('ensureProjectGit — initial commit', () => {
   });
 
   test('leaves `main` resolvable, so `git worktree add ... -- main` succeeds', async () => {
-    // The user-visible symptom: the New-worktree dialog runs
-    // `git worktree add -b <branch> <path> -- main`, and git rejects an unborn
-    // `main` with `fatal: invalid reference: main`.
     const projectRoot = resolve(tmpDir, 'worktree-base');
     mkdirSync(projectRoot, { recursive: true });
 
@@ -207,9 +183,6 @@ describe('ensureProjectGit — initial commit', () => {
   });
 
   test('backfills a root commit on a repo already stranded with an unborn HEAD', async () => {
-    // Every project shipped OK created before this fix is in this state, and
-    // nothing else backfills it. They are the population that reported the bug,
-    // so a forward-only fix would leave them broken forever.
     const projectRoot = resolve(tmpDir, 'stranded');
     mkdirSync(projectRoot, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', projectRoot]);
@@ -217,16 +190,11 @@ describe('ensureProjectGit — initial commit', () => {
 
     const result = await ensureProjectGit(projectRoot);
 
-    // No `git init` ran — the repo already existed; only its root commit was
-    // missing.
     expect(result.didInit).toBe(false);
     await expect(headResolves(projectRoot)).resolves.toBe(true);
   });
 
   test('never grafts a root commit onto a repo that holds any history', async () => {
-    // The safety bound. A repo whose history sits on some other branch has an
-    // unborn `main`, and committing there would create a root disjoint from
-    // everything already in it.
     const projectRoot = resolve(tmpDir, 'history-elsewhere');
     mkdirSync(projectRoot, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=other', projectRoot]);
@@ -236,13 +204,11 @@ describe('ensureProjectGit — initial commit', () => {
       { cwd: projectRoot },
     );
     const before = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot });
-    // Point HEAD at an unborn branch, leaving the real history on `other`.
     await execFileAsync('git', ['symbolic-ref', 'HEAD', 'refs/heads/main'], { cwd: projectRoot });
     await expect(headResolves(projectRoot)).resolves.toBe(false);
 
     await ensureProjectGit(projectRoot);
 
-    // `main` stays unborn and `other` is untouched — no disjoint root appeared.
     await expect(headResolves(projectRoot)).resolves.toBe(false);
     const after = await execFileAsync('git', ['rev-parse', 'other'], { cwd: projectRoot });
     expect(after.stdout.trim()).toBe(before.stdout.trim());
@@ -259,13 +225,6 @@ describe('ensureProjectGit — initial commit', () => {
   });
 
   test('commits even when git can resolve no identity at all', async () => {
-    // OK Desktop targets note-takers, not only developers — git installed with
-    // `user.email` unset is a realistic first-run state, and project creation
-    // must not depend on the user having configured one.
-    //
-    // `useConfigOnly` is what makes this test real: without it git happily
-    // auto-derives `user@host`, the commit succeeds on its own, and the test
-    // would pass on machines that never exercise the fallback at all.
     const projectRoot = resolve(tmpDir, 'no-identity');
     mkdirSync(projectRoot, { recursive: true });
     const emptyConfig = resolve(tmpDir, 'gitconfig-no-identity');
@@ -280,8 +239,6 @@ describe('ensureProjectGit — initial commit', () => {
       }
     }
     try {
-      // Guard the guard: prove git really cannot commit unaided here, so a
-      // future change to identity resolution can't quietly hollow this out.
       await expect(
         execFileAsync('git', ['var', 'GIT_COMMITTER_IDENT'], { cwd: projectRoot }),
       ).rejects.toBeDefined();

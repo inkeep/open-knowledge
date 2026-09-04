@@ -44,43 +44,21 @@ import { requestSkillTrackPrompt } from '@/lib/skill-track-prompt-store';
 import { fetchSkillPreview, listDetectedSkills } from '@/lib/skills-api';
 import { buildSkillsTreePaths, detectedId, isSkillDocActive } from '@/lib/skills-tree-paths';
 
-// Lazy-load the full add-skill modal (skills.sh search + upload + new skill) —
-// the SAME dialog the Skills empty state opens — so its weight stays out of the
-// always-mounted sidebar bundle and loads only on first open.
 const ImportSkillDialog = lazy(() =>
   import('@/components/ImportSkillDialog').then((m) => ({ default: m.ImportSkillDialog })),
 );
 
-/**
- * "Skills" section of the file sidebar — ONE `<OkFileTree>` (the same Pierre
- * component as the main file tree). GLOBAL / PROJECT are top-level folder rows
- * (styled as muted uppercase labels via `SKILLS_TREE_CSS`); each scope's skills
- * nest under it. A scope holds this project's skills (store + in-place)
- * and skills OK detected in your other tools (editable in place). A single tree
- * means Pierre's native single-select "just works". `SKILL.md` opens the editor;
- * a detected row opens its editable in-place buffer.
- */
 export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: boolean } = {}) {
   const state = useSkills();
   const { openTarget, activeDocName, activeTarget, openTabs, activateTab } = useDocumentContext();
   const { merged, userBinding, projectLocalBinding } = useConfigContext();
-  // Preview tabs off means every sidebar click opens its own tab — same
-  // preference the Files tree honors.
   const tabBehavior: 'append' | 'replace-active' =
     (merged?.editor?.previewTabs ?? true) ? 'replace-active' : 'append';
-  // Grouping by provenance. Defaults on, but it is a pure view toggle: off
-  // renders exactly the flat tree that shipped before it existed.
   const showSkillGroups = merged?.appearance?.sidebar?.showSkillGroups ?? true;
-  // Pinned skills, read per scope. The two lists live in different config layers
-  // (project-local vs user) because pin scope follows skill scope — see
-  // `skill-pins.ts` — but the merged view flattens that, so reading is uniform.
   const pinnedByScope = {
     project: readPins(merged, 'project'),
     global: readPins(merged, 'global'),
   };
-  // Pin scope decides the LAYER, which is the whole point of the two lists: a
-  // project pin is per-machine-per-project (beside `showSkillGroups`), a global pin
-  // is per-user so a pinned global skill follows you into every project.
   const togglePinned = (scope: SkillScope, name: string, pinned: boolean) => {
     const binding = scope === 'global' ? userBinding : projectLocalBinding;
     if (binding === null) return;
@@ -100,10 +78,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   const scopeLabel = useSkillScopeLabels();
   const scopeDescription = useSkillScopeDescriptions();
 
-  // A pin follows its skill across a scope move. The two pin lists live in
-  // different config layers, so without this a move silently dropped the pin
-  // and the skill fell back into the flat tree. Best-effort: pin state is a
-  // convenience, so a failed migration never surfaces as a move failure.
   const togglePinnedRef = useRef(togglePinned);
   useEffect(() => {
     togglePinnedRef.current = togglePinned;
@@ -124,27 +98,12 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
 
   const skills = state.status === 'ready' ? state.data : [];
   const nameSets = skillNameSetsByScope(skills);
-  // Live user-expanded folder tree paths, reported by the inner tree (Pierre has
-  // no expand event; it reads `isExpanded()` on model changes). Held as STATE in
-  // the OUTER component so it survives the inner tree's remount on a rename /
-  // install-state change, letting `expanded` below restore what the user had open
-  // instead of collapsing everything (§2.7/§2.8). State (not a ref) so it can be
-  // read during render without violating the React Compiler.
   const [userExpanded, setUserExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const { createBlank, creating } = useCreateBlankSkill();
-  // Which scope + add-skill modal tab (upload / skills-sh) is open; null = closed.
   const [addSkill, setAddSkill] = useState<{ scope: SkillScope; tab: AddSkillTab } | null>(null);
-  // Which scope the New-skill (name + description) dialog is open for; null = closed.
   const [newSkillScope, setNewSkillScope] = useState<SkillScope | null>(null);
 
-  // Skills OK detected in your other tools that aren't in this project's skills
-  // list — in-place project skills list first-class now, so what
-  // remains here is global-scope skills + plugin-cache installs, rendered as
-  // editable rows under their scope.
   const [detected, setDetected] = useState<CatalogSkill[] | null>(null);
-  // A detected skill's bundle files (references/scripts), fetched lazily the
-  // first time the user opens it — so the sidebar shows its file tree WITHOUT
-  // firing a preview fetch for every detected skill up front. Keyed `scope::name`.
   const [detectedFilesById, setDetectedFilesById] = useState<Record<string, readonly string[]>>({});
   useEffect(() => {
     if (!dockExpanded) return;
@@ -167,11 +126,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     };
   }, [dockExpanded]);
 
-  // A name can be held by several distinct-content skills in different host dirs
-  // — different skills, not copies. Scope+name is then not a row identity: it
-  // would collapse their bundle-file lists and their tree rows into one. Only
-  // those rows carry a host qualifier, so every ordinary skill keeps the exact
-  // keys and requests it used before.
   const sharedNameKeys = new Set<string>();
   {
     const seen = new Set<string>();
@@ -186,27 +140,10 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   const skillRowKey = (s: SkillsListEntry): string =>
     `${s.scope}:${s.name}:${hostQualifierOf(s) ?? ''}`;
 
-  // Each skill's bundle-file paths ride the list entries themselves
-  // (`filePaths`, paths only) — derived here, no fetching. This replaced an
-  // N-per-skill `GET /api/skill` fan-out that re-fired on every skills-changed
-  // signal: on an install with ~90 skills the fan-out saturated the browser's
-  // request pool for seconds and queued imports and opens behind it, which
-  // read as "import worked but the skill won't open".
   const filesByKey: Record<string, readonly { path: string }[]> = Object.fromEntries(
     skills.map((s) => [skillRowKey(s), (s.filePaths ?? []).map((path) => ({ path }))]),
   );
 
-  // --- scroll preservation across tree remounts ---
-  //
-  // `SkillsTree` remounts on every path-set or install-state change (its `key`;
-  // Pierre cannot reconcile those in place), and the fresh instance renders
-  // SHORT until its async ready-flip. The dock's scroller clamps to the shrunken
-  // content in that window, so a remount that coincided with a click read as
-  // "the skills studio section scrolls back to the top". The scroller belongs
-  // to the dock (the CollapsibleContent above this section): capture its
-  // position continuously here; `TreeScrollKeeper` — keyed WITH the tree, so
-  // its mount IS the remount signal — restores it once the new tree has grown
-  // tall enough to hold it.
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const lastScrollTopRef = useRef(0);
   const restoringRef = useRef(false);
@@ -215,62 +152,28 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     const scroller = sectionRef.current?.closest<HTMLElement>(DOCK_SCROLLER_SELECTOR);
     if (!scroller) return;
     const onScroll = () => {
-      // Clamp events during a restore are the symptom, not the user — recording
-      // them would overwrite the position being restored.
       if (!restoringRef.current) lastScrollTopRef.current = scroller.scrollTop;
     };
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => scroller.removeEventListener('scroll', onScroll);
   }, [dockExpanded]);
 
-  // Collapsed, the dock renders its header row only — this body contributes
-  // nothing and, more importantly, the two fetches above never fire.
   if (!dockExpanded) {
     return null;
   }
 
-  // --- open routing (parameterized by skill) ---
-  // Open a skill's live doc (project content doc OR `__skill__/…` managed-
-  // artifact doc — both resolve to a `{kind:'doc'}` target) REPLACING the active
-  // tab, the same preview-tab behavior the Files tree uses on click: clicking
-  // through skills reuses one tab instead of stacking a new one each time (§8.7).
-  // A pinned active tab is preserved (replace-active falls back to append when
-  // pinned, handled in openTargetWithOptions). Users who want a tab per click
-  // turn `editor.previewTabs` off, which pins `tabBehavior` to append.
   const openSkillDoc = (docName: string) => {
     openTarget({ kind: 'doc', target: docName, docName }, { tabBehavior });
     pushHashWithoutNavigation(hashFromDocName(docName));
   };
   const openSkillMd = (skill: SkillsListEntry) => {
-    // Route through the SHARED opener rather than opening the doc directly.
-    // `useOpenSkill` documents itself as the single entry point every
-    // open-a-skill surface must use, and this one had drifted: it minted the doc
-    // name itself, so every fix applied there (scope resolution, the fresh-entry
-    // fallback, pinning the surface to Skills) silently did not apply to a
-    // sidebar click. Same visible action behaving differently depending on where
-    // it was invoked from is what made these bugs so hard to pin down.
     openSkill(skill.scope, skill.name, {
       replaceActive: tabBehavior === 'replace-active',
       ...(skill.path ? { path: skill.path } : {}),
       ...(skill.hostQualifier !== undefined ? { host: skill.hostQualifier } : {}),
     });
   };
-  // Managed built-ins reuse the SAME read-only preview tab as detected skills, sourced
-  // from their bundle dir (`absolutePath` is the bundle SKILL.md; its parent is
-  // the skill dir). The `builtin` flavor swaps the "Manage it" header for a
-  // read-only note and drops the import action.
-  // Open a read-only skill preview REPLACING the active tab (§8.7, matching the
-  // editable-doc + Files behavior), instead of stacking a new preview tab each
-  // click. The hash still carries the full target for deep-linking + the
-  // in-preview FILES list. A pinned active tab is preserved by openTargetWithOptions.
   const openPreviewReplacing = (target: SkillPreviewHashTarget) => {
-    // A local-path preview (built-in / detected) reuses the tab already open for
-    // that skill+level instead of spawning a second one. Its `source` is part of
-    // the tab identity but moves under us — a plugin-cache path carries the
-    // plugin version, and a detected skill relocates when its installed copy is
-    // deleted — so the same skill would otherwise open a second, identically
-    // labelled tab. `explore` keeps `source` in its identity (same name from two
-    // repos is two different previews), so it is not deduped here.
     if (target.flavor !== 'explore' && target.level) {
       const existing = findLocalSkillPreviewTabId(
         openTabs,
@@ -301,8 +204,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     pushHashWithoutNavigation(hashFromSkillPreview(target));
   };
   const openManaged = (skill: SkillsListEntry) => {
-    // Same-tab reuse for a re-opened built-in lives in `openPreviewReplacing`,
-    // which covers every local-path preview flavor.
     openPreviewReplacing({
       flavor: 'builtin',
       source: skillDir(skill.absolutePath ?? ''),
@@ -312,21 +213,12 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     });
   };
   const openFile = (skill: SkillsListEntry, filePath: string) => {
-    // Same gate as the SKILL doc: nothing in a gitignored bundle is indexed.
-    // NOT for a managed built-in: OK ships those bundles read-only, a repo that
-    // ignores them means it, and they open as a read-only preview anyway — so
-    // offering to git-track one is an offer the user must not take.
     if (skill.ignored === true && !skill.managed) {
       requestSkillTrackPrompt({ scope: skill.scope, name: skill.name });
       return;
     }
     const dot = filePath.lastIndexOf('.');
     const ext = dot >= 0 ? filePath.slice(dot + 1).toLowerCase() : '';
-    // Editable in place: any `.md`/`.mdx` bundle file of a non-managed skill,
-    // project OR global. Project files are content docs; global files are
-    // managed-artifact live docs — `skillFileLiveDocName` routes both. Managed
-    // built-ins (open-knowledge*) and non-md files (scripts/binary) fall through
-    // to the read-only skill-file viewer.
     if (!skill.managed && (ext === 'md' || ext === 'mdx')) {
       openSkillDoc(skillEntryFileLiveDocName(skill, filePath));
       return;
@@ -335,8 +227,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     openTarget(
       {
         kind: 'skill-file' as const,
-        // The target string is the tab identity — it must separate two
-        // same-named skills, or opening one focuses the other's tab.
         target: `${skill.scope}/${skill.name}${host ? `:${host}` : ''}/${filePath}`,
         scope: skill.scope,
         name: skill.name,
@@ -354,11 +244,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
       }),
     );
   };
-  // A read-only skill-preview tab (built-in / plugin-resident / foreign) is as
-  // much "this skill is open" as an editable doc tab — without this the row of
-  // any preview-opening skill never highlights, so the tree looks dead after
-  // the click. `path` distinguishes the SKILL row (no path) from a bundle-file
-  // selection inside the same preview tab.
   const isPreviewActiveFor = (name: string, scope: SkillScope, path?: string): boolean =>
     activeTarget?.kind === 'skill-preview' &&
     activeTarget.name === name &&
@@ -378,11 +263,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     );
   };
   const isSkillMdActive = (skill: SkillsListEntry): boolean =>
-    // Pure + unit-tested (see skills-tree-paths.test.ts). Requires a real OPEN
-    // tab, not just a matching `activeDocName`: a skill-file viewer or preview
-    // leaves that value stale on the last doc tab, and an open that never
-    // landed leaves it pointing at a doc with no tab — either way the row reads
-    // active and the tree's click guard then swallows the retry.
     isSkillDocActive({
       activeTargetKind: activeTarget?.kind,
       activeDocName,
@@ -390,8 +270,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
       docName: skillEntryLiveDocName(skill),
     }) || isPreviewActiveFor(skill.name, skill.scope);
 
-  // Lazily load this detected skill's bundle file tree on first open (cached
-  // after) so the row can nest references/scripts under it.
   const ensureDetectedFiles = (s: CatalogSkill, source: string) => {
     const id = detectedId(s);
     if (detectedFilesById[id] !== undefined) return;
@@ -404,15 +282,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     const source = skillDir(s.files.skillMd);
     ensureDetectedFiles(s, source);
     const rel = sub && sub !== SKILL_MD_PATH ? sub : undefined;
-    // Two ways the editable in-place buffer is a trap, both answered by the
-    // read-only preview whose one action is a copy the user owns:
-    //   - a Claude PLUGIN-CACHE resident is vendor-managed, versioned state, so
-    //     a plugin update clobbers any edit;
-    //   - a skill OUTSIDE the open project is only listed because worktree
-    //     enumeration resolves to the parent checkout, so an edit would land in
-    //     a different checkout on a different branch.
-    // Provenance answers only the first. Locality is a separate axis and gets a
-    // separate flavor — a non-plugin skill must not be dressed up as a plugin.
     const trapped =
       s.provenance.plugin !== undefined ? 'detected' : s.outsideProject ? 'foreign' : null;
     if (trapped !== null) {
@@ -426,26 +295,12 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
       });
       return;
     }
-    // The skill row / SKILL.md AND every reference file open the EDITABLE buffer
-    // that autosaves back to the real harness file — "edit without managing":
-    // full WYSIWYG. A bundle file
-    // passes its ext-less `rel`; one registration covers the whole skill dir.
-    // Same `tabBehavior` decision as every other open in this sidebar. Hard-
-    // coding reuse here left the two halves of this function disagreeing: the
-    // plugin branch above already routes through `openPreviewReplacing`, so
-    // with `previewTabs` off a detected skill was the one row that still stole
-    // the active tab. `replaceActive` maps 1:1 onto the two values — the hook
-    // passes `tabBehavior: 'replace-active'` when true, and `openTarget`
-    // defaults to `'append'` otherwise.
     const replaceActive = tabBehavior === 'replace-active';
     void openSkillForEdit(s.name, source, { replaceActive, rel }).then((r) => {
       if (!r.ok) toast.error(t`Couldn't open ${s.name} for editing: ${r.error}`);
     });
   };
 
-  // Build paths + a `<scopeLabel>/<segment>` → skill lookup. Every scope always
-  // appears (as an empty folder if it has no skills) so its "New / Add" menu is
-  // always reachable. Pure + unit-tested (see skills-tree-paths.test.ts).
   const labelToScope = new Map(SKILL_SCOPE_ORDER.map((s) => [scopeLabel[s], s] as const));
   const {
     paths,
@@ -473,8 +328,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     pinnedByScope,
   });
 
-  // Pure, unit-tested comparator (see skill-sort.test.ts). The depth semantics
-  // it encodes are load-bearing and previously shipped wrong; keep the coverage.
   const skillSort = createSkillSortComparator(
     labelToScope,
     detectedByPrefix,
@@ -483,16 +336,9 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     pinnedPrefixes,
   );
 
-  // Remount key: path set + per-skill state (installed/update) + detected count —
-  // NOT the active row (selection is synced imperatively so opening a doc never
-  // remounts / collapses the tree).
   const stateKey = `${skills.map((s) => `${s.installed ? 1 : 0}`).join('')}|d${detectedByPrefix.size}`;
 
   const skillsLoading = state.status === 'loading';
-  // Pins are part of the key: the sort comparator and the pin-row CSS are both
-  // baked at tree creation, and an UNGROUPED pin changes no paths — without
-  // this, pinning (or the async config load delivering existing pins) neither
-  // floats nor marks the row until something else forces a remount.
   const treeKey = `${paths.join('|')}::${stateKey}::p${[...pinnedPrefixes].sort().join(',')}`;
 
   return (
@@ -577,18 +423,8 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   );
 }
 
-// The dock's scroller (SkillsSidebarDock's CollapsibleContent). One constant so
-// the capture and restore sites cannot drift onto different nodes; `data-slot`
-// is shadcn's own marker on that element.
 const DOCK_SCROLLER_SELECTOR = '[data-slot="collapsible-content"]';
 
-/**
- * Restores the dock scroller's position after a `SkillsTree` remount. Rendered
- * with a key derived from the SAME key that remounts the tree, so this mounts
- * exactly when the tree does — and its mount effect retries by frame (briefly)
- * because the new tree grows asynchronously and Pierre emits no "ready" event
- * an ancestor could await. Renders nothing.
- */
 function TreeScrollKeeper({
   sectionRef,
   lastScrollTopRef,
@@ -616,9 +452,6 @@ function TreeScrollKeeper({
         raf = requestAnimationFrame(tick);
         return;
       }
-      // Unreachable target (the list shrank under the saved offset): clamp the
-      // saved value, or it stays pending forever — recording is suppressed
-      // while a restore is pending, and only recording could fix the value.
       lastScrollTopRef.current = Math.min(
         saved,
         Math.max(0, scroller.scrollHeight - scroller.clientHeight),

@@ -13,16 +13,11 @@ const subscribeSchema = z.object({
 
 type SubscribeValues = z.infer<typeof subscribeSchema>;
 
-// Compact email-capture form for the docs "On this page" TOC column. POSTs to
-// /api/subscribe, which the microfrontends
-// group routes to the ok-marketing app (see docs/microfrontends.json).
 export function ProductUpdatesForm() {
   const [submitFailed, setSubmitFailed] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const successRef = useRef<HTMLParagraphElement>(null);
 
-  // After a successful submit the input + button unmount and the confirmation
-  // replaces them; move focus to it so keyboard/SR focus isn't orphaned.
   useEffect(() => {
     if (subscribed) successRef.current?.focus();
   }, [subscribed]);
@@ -38,8 +33,6 @@ export function ProductUpdatesForm() {
       const response = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        // `source` is a bounded allowlist enforced by the /api/subscribe route
-        // (in ok-marketing); 'docs_toc' tags signups from this TOC form.
         body: JSON.stringify({ ...values, source: 'docs_toc' }),
       });
       if (response.ok) {
@@ -78,10 +71,7 @@ export function ProductUpdatesForm() {
                 <label htmlFor={field.name} className="sr-only">
                   Email
                 </label>
-                {/* Combined input + submit control (mirrors the OK app's
-                    InputGroup pattern) built from the docs primitives: a pill
-                    wrapper owns the border + focus ring, the Input renders
-                    borderless, and the submit button sits inside on the right. */}
+                {}
                 <div
                   data-invalid={fieldState.invalid}
                   className="flex h-11 items-center rounded-xl border border-input bg-fd-background pr-1 transition-colors focus-within:border-slide-accent focus-within:ring-2 focus-within:ring-slide-accent/40 data-[invalid=true]:border-red-500"

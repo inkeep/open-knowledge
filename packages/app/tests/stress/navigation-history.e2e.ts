@@ -118,9 +118,6 @@ test('browser history traverses every user-facing navigation target and truncate
     expect(skillResponse.status).toBe(200);
     const skillJson = (await skillResponse.json()) as { created: boolean; path: string };
     expect(skillJson).toMatchObject({ created: true, path: expect.stringContaining(skillName) });
-    // Project skills are content docs at their real in-place dir, so opening one
-    // from the tree is its own navigation target — derive the hash rather than
-    // hardcoding a skills root.
     const skillDocHash = `#/${skillJson.path.replace(/\.mdx?$/, '')}`;
 
     const skillFileResponse = await fetch(`${workerServer.baseURL}/api/skill-file`, {
@@ -164,29 +161,18 @@ test('browser history traverses every user-facing navigation target and truncate
     await expectAsset(page, assetHash, assetName);
 
     const sidebar = page.locator('[data-slot="sidebar-container"]');
-    // Skills dock beneath the file tree now rather than replacing it, so there is
-    // no surface switch and no Skills home to land on — expanding the dock is a
-    // pure view change and contributes no history entry. That absence is the
-    // point: the back/forward chain below no longer has a Skills-home hop.
-    // `exact` matters: the dock's toolbar holds an "Explore skills" button, and a
-    // substring match (the default) claims both it and the section trigger.
     await sidebar
       .getByTestId('skills-dock')
       .getByRole('button', { name: 'Skills Studio', exact: true })
       .click();
-    // Pierre's tree renders each label twice (a visible copy and an
-    // aria-hidden overflow measurement copy), so take the first match.
     const projectGroup = sidebar.getByText('Project', { exact: true }).first();
     await projectGroup.waitFor({ timeout: 15_000 });
     const skillRow = sidebar.getByText(skillName, { exact: true }).first();
-    // The scope group's expanded state is persisted, so it can already be open;
-    // clicking unconditionally would collapse it and hide the skill.
     if (!(await skillRow.isVisible())) {
       await projectGroup.click();
     }
     await skillRow.click();
     await sidebar.getByText('scripts', { exact: true }).first().click();
-    // Rows label the stem; the extension renders as a separate badge.
     await sidebar.getByText(bundleFile.replace(/\.ts$/, ''), { exact: true }).first().click();
     await expectSkillFile(page, skillFileHash, bundleFile, bundleMarker);
 
@@ -220,7 +206,6 @@ test('browser history traverses every user-facing navigation target and truncate
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goBack();
     await expectAsset(page, assetHash, assetName);
-    // No surface to switch back from: the file tree was visible the whole time.
     await sidebarTreeItem(page, `${baselineDoc}.md`).click();
     await expectDocument(page, baselineHash, `Navigation Baseline ${id}`);
     await page.goForward();

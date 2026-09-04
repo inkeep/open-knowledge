@@ -1,18 +1,8 @@
-/**
- * Shared adapter primitives: the intermediate bundle/skill shapes both
- * adapters emit, the single SKILL.md reader, and the inert-capability probe.
- *
- * Read-only: every fs call here is a read. A malformed SKILL.md never throws —
- * frontmatter that fails to parse falls back to the directory name so one bad
- * skill is degraded, not fatal (the enumerator skips/degrades, never aborts).
- */
-
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { readSkillManifestMeta } from '../manifest-meta.ts';
 import type { SkillInert, SkillProvenance } from '../schema.ts';
 
-/** A skill read from disk, pre-normalization. */
 export interface RawSkill {
   readonly name: string;
   readonly description: string;
@@ -25,19 +15,15 @@ export interface RawSkill {
   readonly inert: SkillInert;
 }
 
-/** A source bundle (one Claude plugin, or one bare skill-dir) and its skills. */
 export interface SkillBundle {
   readonly packName: string;
   readonly packVersion: string;
-  /** Plugin `description` where the source records one (bare dirs: undefined). */
   readonly packDescription?: string;
-  /** Plugin `author.name` where recorded. */
   readonly packAuthor?: string;
   readonly harness: string;
   readonly skills: RawSkill[];
 }
 
-/** Files under `dir` (recursive), absolute paths, files only. `[]` when absent. */
 function listFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   try {
@@ -50,12 +36,6 @@ function listFiles(dir: string): string[] {
   }
 }
 
-/**
- * Read one skill directory (`<dir>/SKILL.md` + optional `scripts/`/`references/`).
- * Returns `null` when there is no `SKILL.md` (skip it). On malformed frontmatter
- * the skill still returns, with `name` falling back to the dir name and an empty
- * description — degrade-not-abort.
- */
 export function readSkillDir(
   dir: string,
   harness: string,
@@ -69,9 +49,7 @@ export function readSkillDir(
   let description = '';
   try {
     ({ name, description } = readSkillManifestMeta(readFileSync(skillMd, 'utf-8'), dirName));
-  } catch {
-    // Unreadable SKILL.md → keep the dir-name fallback rather than abort.
-  }
+  } catch {}
   return {
     name,
     description,
@@ -85,7 +63,6 @@ export function readSkillDir(
   };
 }
 
-/** Skill-dir names directly under `root` (each a candidate `<name>/SKILL.md`). */
 export function skillDirNames(root: string): string[] {
   if (!existsSync(root)) return [];
   try {
@@ -98,7 +75,6 @@ export function skillDirNames(root: string): string[] {
   }
 }
 
-/** Presence-only inert flags for a bundle root (`commands/`, `hooks/`, `.mcp.json`). */
 export function detectInert(bundleRoot: string): SkillInert {
   const isDir = (p: string): boolean => {
     try {
@@ -114,5 +90,4 @@ export function detectInert(bundleRoot: string): SkillInert {
   };
 }
 
-/** Inert flags with everything off — bare skill-dirs ship no capabilities. */
 export const NO_INERT: SkillInert = { commands: false, hooks: false, mcp: false };

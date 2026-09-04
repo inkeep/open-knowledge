@@ -1,13 +1,3 @@
-/**
- * Schema-driven section harness for the Settings dialog body: mounts the
- * form machinery (`useConfigForm`) for one config binding and renders a
- * titled group of `SettingsField`s from a declarative `FieldDef` list.
- *
- * L3 rejection from non-pane writers (CLI, MCP, hand-edit) surfaces as a
- * sonner toast + brief field flash on the matching scope's section (when
- * mounted).
- */
-
 import {
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_USER,
@@ -32,32 +22,9 @@ interface BoundSchemaSectionProps {
   scope: Scope;
   binding: ConfigBinding;
   fields: FieldDef[];
-  /**
-   * Storage-scope badge beside the title. Distinct from `scope`, which routes
-   * config binding and only distinguishes user from project — a panel bound to
-   * the project config can still store per-machine values, so the badge is
-   * declared rather than derived.
-   *
-   * Required, so a section added through this adapter cannot quietly ship
-   * without declaring where its values land. The sibling config-driven adapter
-   * (`TemplatesManagerConfig.scopeBadge`) enforces the same.
-   */
   scopeBadge: SettingsScope;
 }
 
-/**
- * Mounts the harness (`useConfigForm`) once per binding identity and
- * wraps the body in shadcn's `<Form>` (RHF's `FormProvider`). One per
- * scope; both scopes' sections live under the same dialog so each has
- * its own form instance.
- *
- * Owns the CC1 `'config-validation-rejected'` subscription scoped to
- * the matching docName, plus the per-field flash state — both need
- * access to the form. The toast fires for any rejection on this scope;
- * `setError` + `setFocus` + `flash` only fire when the field's section
- * is the active one (the form is unmounted otherwise, so nothing to
- * flash).
- */
 export function BoundSchemaSection({
   title,
   description,
@@ -75,10 +42,6 @@ export function BoundSchemaSection({
     const unsubscribe = subscribeToConfigValidationRejected((event) => {
       if (event.docName !== docName) return;
 
-      // Toast carries the full multi-line summary (humanFormat); the
-      // inline FormMessage shows only the path-matched issue so the
-      // field doesn't render a multi-line block with file paths and
-      // caret markers.
       toast.error(humanFormat(event.error), { duration: 8000 });
 
       const path = firstIssuePath(event.error);
@@ -92,12 +55,6 @@ export function BoundSchemaSection({
         if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
         flashTimerRef.current = setTimeout(() => {
           setFlashedPath(null);
-          // Clear the inline error alongside the flash. The toast
-          // (8s) remains the persistent feedback channel; if the
-          // external writer corrected the value via Y.Text,
-          // `applyExternalUpdate` already updated the field — we
-          // don't want a stale red FormMessage lingering on a
-          // now-valid value.
           form.clearErrors(path as FieldPath<Config>);
         }, 600);
       }
@@ -127,7 +84,6 @@ interface SchemaSectionProps {
   title: string;
   description: string;
   scope: Scope;
-  /** Storage-scope badge beside the title. Required, matching the public prop. */
   scopeBadge: SettingsScope;
   fields: FieldDef[];
   commitField: (name: FieldPath<Config>) => boolean;

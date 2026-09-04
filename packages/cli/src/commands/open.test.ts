@@ -16,8 +16,6 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
   const deps: OpenDeps = {
     detectBundlePath: () => null,
     resolveBaseUrl: () => null,
-    // Default: nothing is a folder on disk, so tests opt into folder routing via
-    // an explicit override, `--folder`, or a trailing slash.
     classifyName: () => 'doc',
     openTarget: async (t, options) => {
       opened.push(t);
@@ -45,10 +43,6 @@ describe('runOpen', () => {
   });
 
   test('doc with a desktop bundle threads the verified bundle path to openTarget', async () => {
-    // The dispatcher (open-target.ts) names this exact bundle directly on
-    // darwin instead of resolving the openknowledge:// scheme through Launch
-    // Services — this is what makes that safe: it's the same path
-    // detectBundlePath() just confirmed exists, not a re-derived identity.
     const { deps, openedOptions } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
     });
@@ -168,8 +162,6 @@ describe('runOpen', () => {
   });
 
   test('skill name with a traversal/unsafe segment → error before any open', async () => {
-    // The unsafe-name guard runs before the skill branch, so a malicious skill
-    // name can't slip into the synthetic `__skill__/<scope>/<name>` target.
     const { deps, opened, errors } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
     });
@@ -218,9 +210,6 @@ describe('runOpen', () => {
     expect(errors).toHaveLength(1);
   });
 
-  // The deep-link path (encodeURIComponent) and the browser-route path
-  // (encodeDocName, per-segment) intentionally diverge on `/`: the deep link
-  // encodes it to %2F, the browser route preserves it as a path separator.
   test('doc deep link encodes the whole name including the slash (%2F)', async () => {
     const { deps, opened } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
@@ -253,9 +242,6 @@ describe('createRealOpenDeps wiring', () => {
     expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
   });
 
-  // The headless-agent contract: a bundle is present but `available` is false
-  // (non-TTY) — the collapse keys on bundlePath, so desktop routing still fires.
-  // Pins against a regression that re-gates on `available`.
   test('detectBundlePath returns the bundle path when available:false but bundlePath is set', () => {
     const deps = createRealOpenDeps(() => ({
       available: false,
@@ -363,8 +349,6 @@ describe('explicit --project validation', () => {
     const code = await runOpen('README', {}, deps);
     expect(code).toBe(0);
     expect(consulted).toBe(false);
-    // No project encloses the cwd here, so the fallback directory must not be
-    // reported as one.
     expect(logs.filter((l) => l.startsWith('Project:'))).toHaveLength(0);
     expect(logs.join('\n')).toContain('not an OpenKnowledge project');
   });
@@ -386,8 +370,6 @@ describe('running outside any project', () => {
     const { deps, logs } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
       enclosingProject: () => null,
-      // A real project DOES sit above the cwd, but the cwd is not a project, so
-      // there is no nesting to report.
       findAncestorProject: () => '/repo/root',
     });
     await runOpen('notes', {}, deps);
@@ -399,7 +381,6 @@ describe('running from a subdirectory of a project', () => {
   test('acts on the enclosing project, not the subdirectory it was run from', async () => {
     const { deps, opened, logs } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
-      // cwd is <root>/specs; the project is <root>.
       enclosingProject: () => '/repo/root',
       findAncestorProject: () => null,
     });
@@ -413,7 +394,6 @@ describe('running from a subdirectory of a project', () => {
     const { deps, logs } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
       enclosingProject: () => '/repo/root',
-      // Nothing encloses the real project root.
       findAncestorProject: () => null,
     });
     await runOpen('notes', {}, deps);

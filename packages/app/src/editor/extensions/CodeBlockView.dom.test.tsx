@@ -1,14 +1,3 @@
-/**
- * Composition guard for the preview NodeView → iframe `srcdoc` wiring.
- *
- * `code-block-preview-csp.test.ts` pins `buildPreviewIframeHeader` in
- * isolation; this test pins that its output actually reaches the rendered
- * iframe — a dropped header or a hardcoded string would ship the wrong CSP to
- * the live preview. The CSP is no longer configurable (the iframe runs a fixed
- * open network policy), so this asserts the open directives land in the
- * `srcdoc`.
- */
-
 import type { Config } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/core';
@@ -47,8 +36,6 @@ function makeEditor(): NodeViewProps['editor'] {
   } as unknown as NodeViewProps['editor'];
 }
 
-// `language: 'html'` + `meta: 'preview'` makes `shouldShowPreview` true, so
-// the preview iframe (the surface under test) actually renders.
 function makeProps(): NodeViewProps {
   return {
     editor: makeEditor(),
@@ -80,13 +67,11 @@ describe('CodeBlockView preview-CSP wiring', () => {
 
   test('renders the fixed open-network CSP in the iframe srcdoc', () => {
     const srcdoc = renderSrcdoc();
-    // The builder's open directives flow through the NodeView into the iframe.
     expect(srcdoc).toContain("script-src 'unsafe-inline' https:");
     expect(srcdoc).toContain('connect-src https:');
     expect(srcdoc).toContain('img-src https:');
     expect(srcdoc).not.toContain("connect-src 'none'");
     expect(srcdoc).not.toContain("'unsafe-eval'");
-    // The body still rides after the header — guards the `+ node.textContent`.
     expect(srcdoc).toContain('<div id="probe">hello</div>');
   });
 });
@@ -96,16 +81,6 @@ describe('CodeBlockView edit-source modal language wiring', () => {
     cleanup();
   });
 
-  /**
-   * Regression for the silent-degrade bug:
-   * `normalizeCodeLanguage('html')` returns `'xml'` (the canonical lowlight
-   * key), so a stale `normalized === 'html'` guard at the modal call site
-   * always evaluated false and the modal opened with `language="plain"` —
-   * no Lezer tree → no token spans → blank-coloring source pane. Pinning
-   * the rendered `data-language` attribute on the modal source host
-   * catches a regression of that exact shape: any future alias-tree
-   * rework that re-introduces the bug would fail this test.
-   */
   test('html-preview fence opens edit-source modal with language="html"', () => {
     const { container } = render(
       <ConfigContext value={makeConfigValue(null)}>
@@ -117,21 +92,12 @@ describe('CodeBlockView edit-source modal language wiring', () => {
     ) as HTMLButtonElement | null;
     expect(editBtn).toBeTruthy();
     fireEvent.click(editBtn as HTMLButtonElement);
-    // Radix portals dialog content to document.body — query off the document.
     const sourceHost = document.querySelector('[data-testid="ok-code-preview-edit-modal-source"]');
     expect(sourceHost).toBeTruthy();
     expect(sourceHost?.getAttribute('data-language')).toBe('html');
   });
 });
 
-/**
- * Pins the parent-side CSP-violation seam that the unit tests cannot reach:
- * the bootstrap test stops at the iframe's `postMessage`, and
- * `PreviewBlockedNotice.dom.test.tsx` starts at the component's props. This is
- * the wire between them — `onMessage` parses a report from THIS iframe into
- * state and renders the notice, `onLoad` clears it, and a report from a foreign
- * window is dropped by the `e.source` filter.
- */
 describe('CodeBlockView CSP-violation notice wiring', () => {
   afterEach(() => {
     cleanup();
@@ -148,9 +114,6 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
     return { ...utils, iframe };
   }
 
-  // jsdom's MessageEvent constructor rejects a Window as `source` (it requires a
-  // MessagePort), so build a plain message Event and attach `source` + `data`
-  // directly — the handler only reads those two fields.
   function cspReport(source: unknown) {
     const evt = new Event('message');
     Object.defineProperty(evt, 'source', { value: source, configurable: true });
@@ -167,8 +130,6 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
   }
 
   test('shows no notice before any CSP report arrives', () => {
-    // `blockedRequests` initializes to null and the render gates on it; a
-    // non-null default would paint a spurious notice on every preview mount.
     const { container } = renderPreview();
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
@@ -215,18 +176,7 @@ describe('CodeBlockView CSP-violation notice wiring', () => {
   });
 });
 
-/**
- * Pins the click→compose contract for the code-block chrome's Ask AI button.
- *
- * The button opens the same comment composer the text bubble menu's Ask AI
- * opens — which offers both filing the note for a later batch and handing it
- * to an agent now. Before that it establishes what the comment is ABOUT: a
- * pick already inside this block stands, and only an empty or outside
- * selection gets replaced by a NodeSelection over the whole fence.
- */
 describe('CodeBlockView Ask AI composer', () => {
-  // rAF defers the emit a frame so the selection transaction lands first;
-  // polyfill for jsdom.
   if (typeof globalThis.requestAnimationFrame === 'undefined') {
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       queueMicrotask(() => cb(0));
@@ -254,15 +204,9 @@ describe('CodeBlockView Ask AI composer', () => {
 
   interface EditorMockOverrides {
     setNodeSelectionThrows?: 'range' | 'other';
-    /** Live selection, in document positions. */
     selection?: { from: number; to: number };
   }
 
-  /**
-   * Fake editor shaped enough for the click handler: `setNodeSelection` records
-   * the position it was handed (or throws), and `state.selection` is whatever
-   * the case under test needs the live pick to be.
-   */
   function makeEditorWithCommands(overrides: EditorMockOverrides = {}) {
     const setNodeSelection = (pos: number) => {
       if (overrides.setNodeSelectionThrows === 'range') {
@@ -323,7 +267,6 @@ describe('CodeBlockView Ask AI composer', () => {
 
   test('a pick inside this block stands — the comment is about those lines', async () => {
     subscribeStart();
-    // The block occupies [5, 15); this selection sits within its content.
     fireEvent.click(clickAskAi(makeAskAiProps({ selection: { from: 7, to: 11 } })));
 
     await waitFor(() => expect(starts).toBe(1));
@@ -332,8 +275,6 @@ describe('CodeBlockView Ask AI composer', () => {
 
   test('a pick in a DIFFERENT block does not stop this one selecting itself', async () => {
     subscribeStart();
-    // `editor.isActive('codeBlock')` would answer "yes, some code block" here
-    // and wrongly leave the other block's selection in place.
     fireEvent.click(clickAskAi(makeAskAiProps({ selection: { from: 40, to: 46 } })));
 
     await waitFor(() => expect(starts).toBe(1));
@@ -342,8 +283,6 @@ describe('CodeBlockView Ask AI composer', () => {
 
   test('a stale position (setNodeSelection throws RangeError) neither crashes nor composes', async () => {
     subscribeStart();
-    // Silence the classified warn so the test log stays clean; the
-    // classification itself is what the no-emit + no-throw combo asserts.
     const originalWarn = console.warn;
     console.warn = () => {};
     try {
@@ -359,12 +298,6 @@ describe('CodeBlockView Ask AI composer', () => {
   test('a non-RangeError from setNodeSelection is re-thrown (guard does not swallow real bugs)', async () => {
     subscribeStart();
     const btn = clickAskAi(makeAskAiProps({ setNodeSelectionThrows: 'other' }));
-    // A throw from a React 19 event handler is not caught by RTL's fireEvent
-    // under jsdom; the runtime reports the uncaught error to the window 'error'
-    // event instead of rethrowing synchronously. Capture it (preventDefault so
-    // the report does not fail the test) and assert the message, proving the
-    // guard only class-catches RangeError and lets a real bug escape rather
-    // than swallowing every throw.
     const uncaught: string[] = [];
     const onError = (event: ErrorEvent) => {
       event.preventDefault();
@@ -381,7 +314,7 @@ describe('CodeBlockView Ask AI composer', () => {
 
   test('click with getPos absent (unrenderable NodeView) is a no-op', async () => {
     subscribeStart();
-    const btn = clickAskAi(makeAskAiProps({}, /* pos */ undefined));
+    const btn = clickAskAi(makeAskAiProps({}, undefined));
     expect(() => fireEvent.click(btn)).not.toThrow();
     await new Promise((resolve) => queueMicrotask(() => resolve(null)));
     expect(starts).toBe(0);

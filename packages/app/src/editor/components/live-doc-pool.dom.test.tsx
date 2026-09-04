@@ -1,11 +1,3 @@
-/**
- * `useLiveDocText` status-mapping tests with the WebSocket transport faked
- * at the `@hocuspocus/provider` boundary — the Y.Doc, the pool map, the
- * refcounts, the debounce, the watchdog, the admission gate, and the hard
- * capacity cap are all real. The transport truth (real server, real sync)
- * lives in `tests/integration/live-doc-pool.test.ts`.
- */
-
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
@@ -90,8 +82,6 @@ describe('useLiveDocText', () => {
     });
     expect(result.current).toEqual({ kind: 'ready', text: '{"elements":[]}' });
 
-    // A post-sync edit reaches the consumer only after the trailing-edge
-    // debounce, not per keystroke.
     act(() => {
       setSource(provider, '{"elements":[{"id":"a"}]}');
     });
@@ -111,9 +101,6 @@ describe('useLiveDocText', () => {
     });
     const before = result.current;
 
-    // Every reconnect re-fires onSynced; an identical text must not mint a
-    // fresh status object, or every consumer re-runs its parse/export
-    // chain for a pixel-identical result.
     act(() => {
       provider.emitSynced();
     });
@@ -136,8 +123,6 @@ describe('useLiveDocText', () => {
       vi.advanceTimersByTime(LIVE_DOC_SYNC_WATCHDOG_MS + 1);
     });
     expect(result.current).toEqual({ kind: 'unreachable' });
-    // The entry is gone — a never-syncing provider must not keep retrying
-    // in the background for the rest of the session.
     expect(__liveDocPoolSize()).toBe(0);
     expect(lastProvider().destroyed).toBe(true);
   });
@@ -147,11 +132,9 @@ describe('useLiveDocText', () => {
     act(() => {
       vi.advanceTimersByTime(LIVE_DOC_SYNC_WATCHDOG_MS + 1);
     });
-    // A second consumer re-acquires the same key AFTER the watchdog fired.
     renderHook(() => useLiveDocText('tests/gone.excalidraw'));
     expect(__liveDocPoolSize()).toBe(1);
 
-    // The first hook's cleanup must be a no-op (its release already ran).
     first.unmount();
     expect(__liveDocPoolSize()).toBe(1);
   });
@@ -205,9 +188,6 @@ describe('useLiveDocText', () => {
   test('the hard cap refuses the overflow acquire as at-capacity, not unreachable', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      // Fill the pool to its cap with distinct keys. Existing keys must
-      // still share (no refusal), and the overflow must be discriminated
-      // so consumers can render truthful capacity copy.
       for (let i = 0; i < LIVE_DOC_POOL_MAX; i++) {
         const acquired = acquireLiveDocProvider('ws://test/collab', `tests/fill-${i}.excalidraw`);
         expect(acquired.ok).toBe(true);
@@ -218,12 +198,10 @@ describe('useLiveDocText', () => {
       expect(overflow).toEqual({ ok: false, reason: 'at-capacity' });
       expect(__liveDocPoolSize()).toBe(LIVE_DOC_POOL_MAX);
 
-      // A doc already in the pool still shares its entry past the cap.
       const shared = acquireLiveDocProvider('ws://test/collab', 'tests/fill-0.excalidraw');
       expect(shared.ok).toBe(true);
       releaseLiveDocProvider('ws://test/collab', 'tests/fill-0.excalidraw');
 
-      // The hook maps the refusal to its own terminal state.
       const { result } = renderHook(() => useLiveDocText('tests/overflow.excalidraw'));
       expect(result.current).toEqual({ kind: 'at-capacity' });
     } finally {

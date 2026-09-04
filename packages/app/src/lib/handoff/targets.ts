@@ -1,22 +1,3 @@
-/**
- * `KNOWN_TARGETS` — pure data describing each Open-in-Agent target. No
- * function fields; dispatch is a hand-rolled switch in `dispatch.ts` with
- * `never` exhaustiveness (not a registry with callbacks).
- *
- * Adding a 5th target is a 5-file change:
- *   (1) `HandoffTarget` union in `packages/core/src/handoff/types.ts`
- *   (2) append an entry here
- *   (3) switch case in `dispatch.ts`
- *   (4) URL builder in `packages/core/src/handoff/<name>-url.ts`
- *   (5) `ALLOWED_SCHEMES` in `packages/desktop/src/main/shell-allowlist.ts`
- * The exhaustiveness check in `dispatch.ts` + the drift-detector test in
- * `shell-allowlist.test.ts` enforce completeness.
- *
- * UI visibility is governed separately by `VISIBLE_TARGETS` below — adding a
- * target here exposes it to dispatch-by-ID but not to render surfaces unless
- * it also clears that allow-list filter.
- */
-
 import type { TargetData } from '@inkeep/open-knowledge-core';
 
 export const KNOWN_TARGETS = [
@@ -37,17 +18,10 @@ export const KNOWN_TARGETS = [
     tagline: "Agentic coding in Claude Desktop's Code tab.",
   },
   {
-    // OpenAI folded the Codex desktop app into the ChatGPT app (July 2026):
-    // the app users see is branded ChatGPT on every OS, while the codex://
-    // scheme, the com.openai.codex bundle ID, and the terminal `codex` CLI
-    // keep the Codex name. The id stays `codex` — Settings overrides and
-    // recorded handoffs key on it.
     id: 'codex',
     displayName: 'ChatGPT',
     appBrandName: 'ChatGPT Desktop',
     schemes: ['codex:'],
-    // The vendor's canonical app homepage (its own .deb metadata names it);
-    // currently 308-redirects to the ChatGPT-branded download page.
     installUrl: 'https://developers.openai.com/codex/app',
     tagline: "OpenAI's ChatGPT desktop app, home of the Codex agent.",
   },
@@ -59,7 +33,6 @@ export const KNOWN_TARGETS = [
     tagline: 'AI-first VS Code fork with multi-file edits.',
   },
   {
-    // Terminal-only target, reached via the `copilot` CLI launch row.
     id: 'copilot',
     displayName: 'GitHub Copilot',
     schemes: [],
@@ -67,12 +40,6 @@ export const KNOWN_TARGETS = [
     tagline: "GitHub's terminal-native coding agent.",
   },
   {
-    // Terminal-only target: no URL scheme (empty `schemes`), so it is never
-    // deep-link-dispatched (no `dispatch.ts` URL case, no `RECIPES` recipe) nor
-    // install-probed via scheme. It surfaces ONLY as a terminal-CLI launch row
-    // (see `TERMINAL_CLIS`/`TERMINAL_CLI_IDS`) and is excluded from
-    // `VISIBLE_TARGETS` below. It lives here so the terminal row reuses the
-    // shared brand-icon + display-name metadata.
     id: 'opencode',
     displayName: 'OpenCode',
     schemes: [],
@@ -80,7 +47,6 @@ export const KNOWN_TARGETS = [
     tagline: 'Open-source terminal coding agent; bring any local model.',
   },
   {
-    // Terminal-only target, same carve-out as `opencode` above.
     id: 'pi',
     displayName: 'Pi',
     schemes: [],
@@ -88,8 +54,6 @@ export const KNOWN_TARGETS = [
     tagline: 'Minimal open-source terminal coding agent, extensible in TypeScript.',
   },
   {
-    // Terminal-only target, same carve-out as `opencode`/`pi` above. Reached
-    // via the `agy` CLI launch row; the IDE/app are not deep-link targets.
     id: 'antigravity',
     displayName: 'Antigravity',
     schemes: [],
@@ -97,8 +61,6 @@ export const KNOWN_TARGETS = [
     tagline: "Google's agentic IDE + `agy` terminal agent.",
   },
   {
-    // Terminal-only target, same carve-out as above. Reached via the
-    // `openclaw chat` CLI launch row; the gateway/app are not deep-link targets.
     id: 'openclaw',
     displayName: 'OpenClaw',
     schemes: [],
@@ -106,8 +68,6 @@ export const KNOWN_TARGETS = [
     tagline: 'Open-source agent gateway; runs agents against your MCP servers.',
   },
   {
-    // Terminal-only target, same carve-out as above. Reached via the
-    // `hermes chat` CLI launch row.
     id: 'hermes',
     displayName: 'Hermes',
     schemes: [],
@@ -116,16 +76,7 @@ export const KNOWN_TARGETS = [
   },
 ] as const satisfies ReadonlyArray<TargetData>;
 
-// UI-visibility allow-list. `claude-cowork` is intentionally absent: dispatch
-// by ID (deep links, programmatic callers) still works via KNOWN_TARGETS, but
-// no surface renders it. Drop a target here to hide its row from the
-// Open-in-Agent dropdown, FileTree context submenu, command palette agent
-// group, and the empty-state "Create with <agent>" composer.
 export const VISIBLE_TARGETS: ReadonlyArray<TargetData> = KNOWN_TARGETS.filter(
-  // `claude-cowork`: dispatch-by-ID only, no render surface.
-  // `copilot` / `opencode` / `pi` / `antigravity` / `openclaw` / `hermes`:
-  // terminal-only — surfaced via the terminal-CLI rows, not the GUI deep-link
-  // target list, so they must not appear as dispatchable rows.
   (target) =>
     target.id !== 'claude-cowork' &&
     target.id !== 'copilot' &&

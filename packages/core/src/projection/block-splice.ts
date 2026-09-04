@@ -38,7 +38,7 @@
 
 import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
-import { MIN_CARRIED_EDGE_EMPTIES } from '../markdown/doc-edge-blank-runs.ts';
+import { MIN_CARRIED_TRAILING_EMPTIES } from '../markdown/doc-edge-blank-runs.ts';
 import type { MarkdownManager } from '../markdown/index.ts';
 import {
   buildBlockSourceMap,
@@ -435,7 +435,7 @@ function blankRunGapSplice(
       body,
       lineEnd(body, prev.sourceEnd),
       body.length,
-      '\n'.repeat(count >= MIN_CARRIED_EDGE_EMPTIES ? count + 1 : 1),
+      '\n'.repeat(count >= MIN_CARRIED_TRAILING_EMPTIES ? count + 1 : 1),
       shift,
     );
   }

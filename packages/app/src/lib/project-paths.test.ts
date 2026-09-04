@@ -1,6 +1,3 @@
-/**
- * Behavioral coverage for the two pure path helpers.
- */
 import { describe, expect, test } from 'vitest';
 import { isContentDirSafe, relativeToProject } from './project-paths';
 

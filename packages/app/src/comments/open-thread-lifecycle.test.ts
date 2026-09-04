@@ -1,19 +1,5 @@
-/**
- * A thread that goes away stops being the open one.
- *
- * Every OTHER way a thread stands down is a statement about the reader —
- * clicking away in the document, Escape, re-clicking a lit margin marker. This
- * is the case with no reader in it: sending a batch resolves its comments, and
- * a resolved thread drops its highlight AND its margin marker, so nothing is
- * left on screen either pointing at the open thread or offering to clear it.
- * The store is what has to notice, because it is the only thing that sees every
- * mutation — including one made in another window, which arrives over CC1 with
- * no local call to hang the check off.
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-/** The list the mocked client answers with — reassigned per test. */
 let metas: Array<Record<string, unknown>> = [];
 
 function meta(threadId: string, state: string): Record<string, unknown> {
@@ -42,7 +28,6 @@ vi.mock('./comments-client', () => ({
   completeDispatchBatch: vi.fn(async () => ({ results: [] })),
 }));
 
-// The tab request rides every open; nothing here is about the doc panel.
 vi.mock('@/components/doc-panel-events', () => ({ requestDocPanelTab: vi.fn() }));
 
 describe('the open thread across a refresh', () => {
@@ -67,7 +52,6 @@ describe('the open thread across a refresh', () => {
     await store.refresh('notes/rollout');
     store.emitOpenThread('t1');
 
-    // What a send does to every comment it carries.
     metas = [meta('t1', 'resolved')];
     await store.refresh('notes/rollout');
 
@@ -90,8 +74,6 @@ describe('the open thread across a refresh', () => {
     await store.refresh('notes/rollout');
     store.emitOpenThread('t1');
 
-    // Orphaned is not open: the highlight is gone, and the card says so in the
-    // panel instead. Matches what the in-doc card did with the same state.
     metas = [meta('t1', 'orphaned')];
     await store.refresh('notes/rollout');
 
@@ -109,16 +91,10 @@ describe('the open thread across a refresh', () => {
     await store.refresh('notes/rollout');
     stop();
 
-    // A silent clear would leave the margin marker lit for a thread the store
-    // no longer considers open — the exact failure the two-way signal exists
-    // to prevent.
     expect(seen).toEqual([null]);
   });
 
   test('leaves a thread on ANOTHER document alone', async () => {
-    // The queue spans the project, so a doc-scoped refresh routinely runs while
-    // the open thread belongs to a file this refresh was not about. Checking
-    // the per-doc slice would clear it for being absent from the wrong list.
     const store = await import('./store');
     metas = [meta('t1', 'anchored'), { ...meta('t2', 'anchored'), docName: 'notes/other' }];
     await store.refresh('notes/other');

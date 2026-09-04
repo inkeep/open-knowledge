@@ -1,14 +1,3 @@
-/**
- * L1 integration coverage for the agent-facing lint HTTP surface, against a
- * real server + tmp contentDir (hermetic — runs on CI, unlike the git-child
- * constrained MCP-tool unit suite): `GET /api/lint?doc=` (single doc),
- * `GET /api/lint/audit` (project/sub-path), and
- * `POST /api/lint/markdownlint-config` (native rule write).
- *
- * Contract-level assertions only (status codes, wire-schema shape, disk
- * effect) — the write/read internals are free to evolve underneath.
- */
-
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -29,8 +18,6 @@ import { createTestServer, type TestServer } from './test-harness.ts';
 let server: TestServer;
 
 beforeAll(async () => {
-  // markdownlint is opt-in (off by default); this file exercises the lint
-  // endpoints, so enable it for the whole test server.
   server = await createTestServer({ markdownlintEnabled: true });
 }, HARNESS_BOOT_TIMEOUT_MS);
 
@@ -38,7 +25,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-// A hard tab in the body trips MD010, enabled in OK's tuned defaults.
 const TABBED_BODY = '# Doc\n\n\tindented with a hard tab\n';
 
 function api(pathAndQuery: string): string {
@@ -56,9 +42,6 @@ describe('GET /api/lint (single document)', () => {
       const body: LintDocResult = LintDocResultSchema.parse(await res.json());
       expect(body.file).toBe('lint-http/tabbed.md');
       expect(body.ran).toEqual(['markdownlint']);
-      // `ran` is the field that is always present. `warnings` keeps its
-      // documented additive contract — absent when there is nothing to report —
-      // so a consumer branching on its presence is not fired on every clean lint.
       expect(body).not.toHaveProperty('warnings');
       const md010 = body.diagnostics.find((d) => d.code === 'MD010');
       expect(md010).toBeDefined();
@@ -112,7 +95,6 @@ describe('GET /api/lint/audit', () => {
       const full = await fetch(api('/api/lint/audit'));
       expect(full.status).toBe(200);
       const fullBody: LintAuditResponse = LintAuditResponseSchema.parse(await full.json());
-      // Other tests may contribute in-scope docs; assert containment, not equality.
       const fullFiles = fullBody.files.map((f) => f.file);
       expect(fullFiles).toEqual(
         expect.arrayContaining(['lint-http-audit/a.md', 'lint-http-audit/b.md']),
@@ -163,9 +145,7 @@ describe('POST /api/lint/fix', () => {
       expect(body.file).toBe('lint-fix/tabbed.md');
       expect(body.ran).toEqual(['markdownlint']);
       expect(body.fixedCount).toBeGreaterThanOrEqual(1);
-      // MD010 (hard tabs) is auto-fixable — gone from the remaining set.
       expect(body.diagnostics.find((d) => d.code === 'MD010')).toBeUndefined();
-      // Disk effect: the tab is fixed and the frontmatter survives verbatim.
       const onDisk = readFileSync(file, 'utf-8');
       expect(onDisk).not.toContain('\t');
       expect(onDisk).toContain('title: Keep Me');
@@ -186,20 +166,15 @@ describe('POST /api/lint/fix', () => {
     const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
     if (!markdownlint) throw new Error('markdownlint plugin missing');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // `lint` throws; `fix` is a separate plugin entry point and keeps working —
-    // the shape where the write succeeds but the surrounding lint passes degrade.
     const lint = vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('unavailable'));
     try {
       const res = await postFix('lint-fix-degraded/tabbed');
       expect(res.status).toBe(200);
       const body = LintFixResultSchema.parse(await res.json());
       expect(body.ran).toEqual(['markdownlint']);
-      // The lint pass fails before AND after the write; the summarizer
-      // collapses the two reports of the one fault into a single line.
       expect(body.warnings).toEqual([
         'source "markdownlint" lint failed on "lint-fix-degraded/tabbed.md": unavailable',
       ]);
-      // The fix landed and persisted despite the degradation.
       const onDisk = readFileSync(file, 'utf-8');
       expect(onDisk).not.toContain('\t');
       expect(onDisk).toContain('title: Keep Me');
@@ -245,9 +220,6 @@ describe('POST /api/lint/fix', () => {
       const body = LintFixResultSchema.parse(await res.json());
       expect(body.fixedCount).toBeGreaterThanOrEqual(1);
       expect(readFileSync(file, 'utf-8')).not.toContain('\t');
-      // The write is the principal's (or the neutral anonymous writer's) —
-      // either way a `principal-*` id, filtered at the presence-broadcaster
-      // boundary. No phantom agent badge may appear for a UI-initiated fix.
       const presence = await fetch(api('/api/metrics/agent-presence'));
       const map = (await presence.json()) as { agents?: Record<string, unknown> };
       const ids = Object.keys(map.agents ?? map);
@@ -328,7 +300,6 @@ describe('POST /api/lint/markdownlint-config', () => {
     try {
       const res = await postRule('MD012', false);
       expect(res.status).toBe(409);
-      // The executable module is refused, never rewritten.
       expect(readFileSync(cjsFile, 'utf-8')).toBe('module.exports = { MD010: false };\n');
     } finally {
       rmSync(cjsFile, { force: true });

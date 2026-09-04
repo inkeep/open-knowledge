@@ -1,9 +1,3 @@
-/**
- * Runtime guards for `update-notices-store.ts`. The store is a module-level
- * singleton, so this file owns one fake `window.okDesktop` bridge and avoids
- * module mocking entirely.
- */
-
 import { afterAll, describe, expect, test, vi } from 'vitest';
 
 const store = await import('./update-notices-store');

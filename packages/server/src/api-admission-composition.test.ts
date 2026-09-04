@@ -6,18 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the `/api/*` admission gates as experienced over a REAL
- * socket through the composed `bootServer` stack. The gates themselves have
- * unit coverage (predicates) and in-process coverage (`api-request-id.test.ts`
- * invokes `onRequest` directly), but before this suite no test drove them
- * through the actual listener + mcp-mount dispatch + api-extension chain —
- * the exact layering the server refactor rewires. Assertions pin CURRENT
- * behavior — including the read-posture hardening (reads are Host-gated in
- * every mode, the no-auth compensating control): if one of these starts
- * failing, the admission surface changed and the change must be intentional.
- */
-
 let tmpRoot: string;
 let normal: BootedServer;
 let ephemeral: BootedServer;
@@ -65,10 +53,6 @@ describe('/api admission over the composed listener — normal mode', () => {
   });
 
   test('read route under a rebound Host is refused (read-posture hardening)', async () => {
-    // Flipped pin: reads are Host-gated in every mode now, same predicate the
-    // mutating gate uses (loopback names + bind literals + externalUrl host).
-    // A DNS-rebound page's no-Origin fetch can no longer read /api bodies —
-    // the no-auth compensating control.
     const res = await rawRequest(normal.port, '/api/server-info', {
       headers: { Host: 'evil.example' },
     });
@@ -131,12 +115,6 @@ describe('/api admission over the composed listener — normal mode', () => {
   });
 
   test('OPTIONS under a rebound Host still answers 204 — safe by CORS, not by the read gate', async () => {
-    // Documents the intentional gate ORDER: the OPTIONS short-circuit (step 3)
-    // returns 204 before the read gate (step 5), so a rebound-Host preflight is
-    // NOT 403'd. This is not a hole: no Origin was sent, so no
-    // Access-Control-Allow-Origin is reflected, and the rebound page's browser
-    // gets no CORS grant to read any follow-up response. (A present-but-foreign
-    // Origin is rejected by the Origin gate at step 3 instead.)
     const res = await rawRequest(normal.port, '/api/server-info', {
       method: 'OPTIONS',
       headers: { Host: 'evil.example' },
@@ -153,9 +131,6 @@ describe('/api admission over the composed listener — ephemeral mode', () => {
   });
 
   test('EVERY /api route is Host-gated, including reads', async () => {
-    // The ephemeral contentDir is the opened file's parent directory, so the
-    // normal-mode read posture would let a rebound page enumerate sibling
-    // files. Ephemeral mode therefore gates all of /api, not just mutations.
     const res = await rawRequest(ephemeral.port, '/api/server-info', {
       headers: { Host: 'evil.example' },
     });

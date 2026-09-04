@@ -1,25 +1,7 @@
-/**
- * The slides bridge slice, driven over a fake invoker.
- *
- * The seam is carved at the IPC call — the true external boundary — so the
- * narrowing and the wrong-arm guards below are the SAME code the preload runs
- * in production. The renderer-side DOM tests fake `window.okDesktop.slides`
- * wholesale, which sits ABOVE this logic and therefore replaces it rather than
- * exercising it; before this file the two `expected … result` throws existed
- * only in source, with nothing running them.
- *
- * What a fake invoker cannot prove is left to the Electron tier: that
- * `contextBridge` actually exposes this slice on `window.okDesktop`, and that
- * main's handler answers the channel at all.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import type { IpcInvoker } from '../shared/ipc-invoke.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
 
-/** A fake invoker that answers `ok:slides:dispatch` with whatever the test
- *  scripts. Typed loosely at the seam only — the production narrowing above it
- *  is what these tests are here to run. */
 function fakeInvoker(reply: (req: { kind: string; docPath?: string }) => unknown): IpcInvoker {
   return vi.fn((_channel: string, req: unknown) =>
     Promise.resolve(reply(req as { kind: string; docPath?: string })),
@@ -62,9 +44,6 @@ describe('createSlidesBridge — happy path', () => {
 });
 
 describe('createSlidesBridge — wrong-arm guards', () => {
-  // These are the guards that had no coverage at all. A main-process handler
-  // regression that answered the wrong arm would otherwise reach the renderer
-  // as a plausible object of the wrong shape, and fail somewhere further away.
   test('status throws when main answers with the open arm', async () => {
     const bridge = createSlidesBridge(fakeInvoker(() => ({ kind: 'open', ok: true })));
     await expect(bridge.status()).rejects.toThrow('expected status result');

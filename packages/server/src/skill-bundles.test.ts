@@ -12,7 +12,6 @@ import {
   USER_GLOBAL_BUNDLE_IDS,
 } from './skill-bundles.ts';
 
-// Repo root = three levels up from this file (packages/server/src → root).
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 describe('skill-bundles (single source of truth)', () => {
@@ -37,22 +36,10 @@ describe('skill-bundles (single source of truth)', () => {
   });
 
   test("core's RESERVED_PROJECT_SKILL_NAME stays in lock-step with BUNDLE_SKILL_NAME.project", () => {
-    // Core can't depend on server, so it duplicates the reserved project-skill
-    // name. This pins the two so a bundle rename can't silently break the
-    // git-exclude carve-out / `.gitignore` block that key off the core copy.
     expect(RESERVED_PROJECT_SKILL_NAME).toBe(BUNDLE_SKILL_NAME.project);
   });
 
   test('user-global bundles contain no skill refs', () => {
-    // Skill-ref edges between SKILL documents are mirrored, so any ref from a
-    // managed user-global bundle can make that bundle appear referenced and visible.
-    //
-    // Scoped to the user-global bundles because only those become graph nodes:
-    // they install into `~/.{host}/skills/`, which the global skill-graph scan
-    // ingests. The `project` bundle is exempt — its projection is force-added to
-    // the project `.gitignore` on every open, so it is not indexed as content and
-    // never reaches the graph. It legitimately references /open-knowledge-write-skill
-    // for agent routing, and that ref must stay.
     for (const id of USER_GLOBAL_BUNDLE_IDS) {
       const raw = readFileSync(join(REPO_ROOT, bundleSkillMdPath(id)), 'utf-8');
       const refs = extractSkillRefs(raw);
@@ -61,11 +48,6 @@ describe('skill-bundles (single source of truth)', () => {
   });
 
   test('onboarding offers a non-empty subset of the user-global bundles', () => {
-    // The constant is a literal (a `.filter()` would widen to `BundleId[]` and
-    // let a bundle rename silently empty it), so the two properties a filter
-    // used to give for free are asserted here: every onboarding bundle is
-    // actually user-global, and the set is never empty — an empty one would
-    // mean first launch quietly stopped offering any skill.
     expect(ONBOARDING_BUNDLE_IDS.length).toBeGreaterThan(0);
     for (const id of ONBOARDING_BUNDLE_IDS) {
       expect(USER_GLOBAL_BUNDLE_IDS).toContain(id);
@@ -74,9 +56,6 @@ describe('skill-bundles (single source of truth)', () => {
   });
 
   test('write-skill is deliberately NOT an onboarding bundle', () => {
-    // Onboarding covers what decides whether a tool works at all; authoring
-    // helpers wait for Settings or an explicit `ok init`. Recorded here because
-    // the absence is the decision, and absences do not fail loudly on their own.
     expect(USER_GLOBAL_BUNDLE_IDS).toContain('write-skill');
     expect(ONBOARDING_BUNDLE_IDS as readonly string[]).not.toContain('write-skill');
   });

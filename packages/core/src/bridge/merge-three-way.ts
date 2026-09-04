@@ -136,7 +136,7 @@ function extractUniqueSegments(base: string, derived: string): string[] {
   dmp.diff_cleanupSemantic(diffs);
   const out: string[] = [];
   for (const [op, data] of diffs) {
-    if (op !== 1 /* INSERT */) continue;
+    if (op !== 1) continue;
     for (const line of data.split('\n')) {
       const trimmed = line.trim();
       if (trimmed.length === 0) continue;
@@ -152,25 +152,14 @@ function findReorderedSegment(result: string, segments: string[]): string | null
     const idx = result.indexOf(seg, cursor);
     if (idx < 0) {
       const earlierIdx = result.indexOf(seg);
-      if (earlierIdx < 0) continue; // absent → substring check reports it
-      return seg; // appears earlier → order violation
+      if (earlierIdx < 0) continue;
+      return seg;
     }
     cursor = idx + seg.length;
   }
   return null;
 }
 
-/**
- * Invariant (c) + order side-check: every maximal-unique-substring of
- * `(userText \ baseline)` and `(agentText \ baseline)` appears in `result`,
- * and each side's segments appear in result in the same relative order
- * they appear in their source. Throws `BridgeMergeContentLossError`
- * on the first violation; callers decide environment policy.
- *
- * Complexity: O(n log n) for DMP diff per side + O(k · m) for substring
- * checks (k = segment count, m = result length) + O(k) for order check.
- * Empirically sub-millisecond on ~10 KB markdown with k ≤ ~10 segments.
- */
 export function assertContentPreservation(
   baseline: string,
   userText: string,

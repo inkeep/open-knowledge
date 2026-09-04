@@ -70,35 +70,18 @@ import {
   SETTINGS_OPEN_HASH,
 } from '@/lib/use-settings-route';
 
-// Cold-path receive surface: only mounts when main routes a
-// 'project-branch-switch' payload. Lazy-loading keeps its branch-info, checkout,
-// variant, and target-status code out of the main bundle.
 const ShareBranchSwitchDialog = lazy(() =>
   import('@/components/ShareBranchSwitchDialog').then((m) => ({
     default: m.ShareBranchSwitchDialog,
   })),
 );
 
-// Cold-path receive surface: the honest verdict modal for a share deep link
-// whose target is absent on the receiver's branch. It self-gates on
-// `missDialogStore`; lazy-loading keeps verdict-fetch code out of the main
-// bundle until a miss occurs.
 const ShareReceiveMissDialog = lazy(() =>
   import('@/components/ShareReceiveMissDialog').then((m) => ({
     default: m.ShareReceiveMissDialog,
   })),
 );
 
-/**
- * Hashes that open overlay dialogs (Settings, Install Claude Desktop)
- * rather than navigate to a document. NavigationHandler treats these as
- * no-ops so the dialog can mount over the existing editor without
- * `clearTarget()` blowing away the underlying document — the dialog
- * portals atop whatever's already there. Hoisted here (above
- * NavigationHandler) so the predicate can reference both constants;
- * `INSTALL_DIALOG_HASH`'s definition stays where it's used by the
- * trigger component to keep that locality.
- */
 const INSTALL_DIALOG_HASH = '#install-claude-desktop';
 const MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN = /\.(md|mdx)$/i;
 function isAuxiliaryDialogHash(hash: string): boolean {
@@ -119,14 +102,6 @@ function exactOpenMarkdownTabTarget(
   return null;
 }
 
-/**
- * The bundle file a target selects, for the kinds that carry one. A
- * skill-preview tab's identity is deliberately path-independent so one preview
- * tab is reused as the selection moves across bundle files, which means two
- * navigations that differ only in the selected file share both a tab id and a
- * `target` string. Reading the selection separately is what lets a same-tab
- * comparison still tell those two navigations apart.
- */
 function selectedPathForNavigationTarget(target: ResolvedNavigationTarget): string | null {
   switch (target.kind) {
     case 'skill-file':
@@ -154,16 +129,6 @@ function knownTargetsSignature(
     .join('\u0001');
 }
 
-/** Hash is the source of truth for navigation; all navigation sets the hash;
- *  this handler is the single place that resolves the active navigation target
- *  and calls openTargetTransition(). The transition wrapper keeps the
- *  already-revealed doc visible while the next entry suspends on syncPromise
- *  (fast/warm path); on cold paths `openTargetTransition` drops the transition
- *  and lets `<Suspense fallback={<EditorSkeleton />}>` paint immediately.
- *  Agent-driven nav via SystemDocSubscriber flows through
- *  `window.location.hash`, so it inherits the same UX without a separate code
- *  path. Target resolution (asset / doc / folder-index / folder / missing)
- *  lives here plus resolveNavigationTarget. */
 function NavigationHandler() {
   const {
     activeNewTabId,
@@ -175,9 +140,6 @@ function NavigationHandler() {
     tabSessionLoaded,
   } = useDocumentContext();
   const { openTargetTransition } = useDocumentTransition();
-  // Reconcile open skill tabs against the live skills list: an agent/MCP/server-
-  // side scope move only broadcasts `files` (never retargets the client tab),
-  // leaving an open skill tab pointing at a doc that no longer exists.
   useReconcileSkillTabs();
   const {
     assetPaths,
@@ -192,16 +154,7 @@ function NavigationHandler() {
   const { merged } = useConfigContext();
   const previewTabsEnabled = merged?.editor?.previewTabs ?? true;
   const lastSyncedTargetsSignatureRef = useRef<string | null>(null);
-  // Same-tab navigation records hashes with pushState, which stays silent
-  // until history traversal. Pair popstate with its following hashchange so a
-  // replay reuses the preview slot instead of taking the hash handler's append
-  // path. Keyed on the URL rather than a boolean because popstate is dispatched
-  // inside the traversal while hashchange is queued as a later task, so a flag
-  // set by one navigation could be read by another.
   const historyTraversalUrlRef = useRef<string | null>(null);
-  // Last hash whose SURFACE destination was observed live on screen. Only the
-  // tab-id-less surface branches read it (see `isSurfaceHashRepeat`); every
-  // other branch still re-resolves freely.
   const lastResolvedSurfaceHashRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
 
@@ -235,15 +188,6 @@ function NavigationHandler() {
     targetsSignature,
   ]);
 
-  // A repeat app-shell crash armed recovery suppression. The session-restore
-  // paths skip their reads, but the crashed tab is also mirrored into the URL
-  // hash, and the hash effect below re-resolves it on mount and on every dep
-  // change — reopening the very document the recovery just dropped. Drop the
-  // stale hash once instead (no history entry, no hashchange event, storage
-  // untouched); the user's next navigation writes a fresh hash and proceeds
-  // normally. Declared before the hash effect so it runs first at mount.
-  // Overlay-dialog hashes stay: they portal over the editor and cannot reopen
-  // a document.
   useEffect(() => {
     if (
       consumeHashNavigationSuppression() &&
@@ -256,27 +200,15 @@ function NavigationHandler() {
 
   useEffect(() => {
     if (!tabSessionLoaded && window.okDesktop?.config.mode === 'editor') return;
-    // Re-entry from a re-subscribe re-syncs the current URL rather than
-    // announcing a navigation, so it reads the marker and leaves it standing.
     syncTargetFromHash(historyTraversalUrlRef.current);
 
     function onPopState(event: PopStateEvent) {
-      // Only an entry we stamped can be a replay of one of our own opens. A
-      // direct `location.hash = …` also emits popstate in Chromium, but it
-      // creates a fresh entry whose state is null, so it stays classified as a
-      // fresh navigation and keeps the append path.
       historyTraversalUrlRef.current = isManagedHashHistoryState(event.state)
         ? window.location.href
         : null;
     }
 
     function onHashChange() {
-      // The hashchange that closes a traversal is the one event that retires
-      // the marker. This effect re-subscribes on every tab-state change and
-      // re-enters the sync below, and that re-entry can land in the gap between
-      // a traversal's popstate and its hashchange; retiring the marker there
-      // would leave this handler reading the same replay as a fresh navigation
-      // and promoting the tab the replay was meant to reuse.
       const traversedUrl = historyTraversalUrlRef.current;
       historyTraversalUrlRef.current = null;
       syncTargetFromHash(traversedUrl);
@@ -284,26 +216,7 @@ function NavigationHandler() {
 
     function syncTargetFromHash(traversedUrl: string | null) {
       const isHistoryTraversal = traversedUrl === window.location.href;
-      // Marking has to follow the classification, or it would stamp the very
-      // entry being classified.
       markCurrentHashHistoryEntry();
-      // This effect re-runs (and re-resolves) on every workspace change, not
-      // just on a real `hashchange` — deliberately, so a target that could not
-      // resolve yet (page list still loading, collab not connected) resolves
-      // once its data lands. Document-shaped targets tolerate that because
-      // `openHashTarget` compares the resolved tab id against the active one.
-      //
-      // The SURFACE destinations below (Skills home, and the empty hash) carry
-      // no tab id to compare against, so for them a re-run is indistinguishable
-      // from the user navigating there again — it re-activates that surface's
-      // FIRST placeholder rather than the one they selected. They fire on hash
-      // TRANSITIONS only, tracked by `lastResolvedSurfaceHashRef`:
-      //
-      //   - latched only once the surface is observably on screen, so an early
-      //     run whose open no-ops (collab still connecting) stays retryable;
-      //   - cleared by any NON-surface resolution, so leaving for a document and
-      //     coming back — Back/Forward, a sidebar click — reads as the fresh
-      //     arrival it is rather than a stale repeat.
       const isSurfaceHashRepeat = lastResolvedSurfaceHashRef.current === window.location.hash;
       const latchSurfaceHash = () => {
         lastResolvedSurfaceHashRef.current = window.location.hash;
@@ -312,16 +225,7 @@ function NavigationHandler() {
         lastResolvedSurfaceHashRef.current = null;
       };
       const openHashTarget = (target: ResolvedNavigationTarget) => {
-        // Before the already-active early return: whether or not this resolves
-        // to a change, the hash now names a document, so any latched surface is
-        // stale.
         clearSurfaceHash();
-        // Absorbs this effect's own re-entry on the hash a forward open just
-        // wrote. The test is "the same navigation", not "the same tab": a skill
-        // preview keeps one tab across its bundle files, so a hash that moved
-        // only the selection matches on both the tab id and the target string,
-        // and returning there would leave the pane rendering the file the user
-        // navigated away from.
         if (
           tabIdForNavigationTarget(target) === activeTabId &&
           activeTarget?.kind === target.kind &&
@@ -331,9 +235,6 @@ function NavigationHandler() {
           return;
         }
         openTargetTransition(target, {
-          // A replay must not raise a target above the disposition it held
-          // when its entry was created, so it re-derives from the same rule
-          // the sidebar used to open it.
           disposition: isHistoryTraversal
             ? previewOpenDisposition(previewTabsEnabled)
             : 'permanent',
@@ -341,12 +242,6 @@ function NavigationHandler() {
         });
       };
 
-      // Overlay-dialog hashes (settings, install) don't replace the
-      // active document — they portal a Dialog over it. Skipping
-      // here keeps the editor mounted underneath; without this guard
-      // the no-doc-name branch below would call `clearTarget()` and
-      // the editor would flash to <EmptyEditorState> behind the
-      // dialog on every Cmd-,.
       if (isAuxiliaryDialogHash(window.location.hash)) {
         return;
       }
@@ -368,8 +263,6 @@ function NavigationHandler() {
         mark('ok/nav/hash-change', { docName: null, kind: 'skill-file' });
         openHashTarget({
           kind: 'skill-file',
-          // Host is part of the tab identity — two same-named skills in
-          // different host dirs must not share a tab.
           target: `${skillFile.scope}/${skillFile.name}${skillFile.host ? `:${skillFile.host}` : ''}/${skillFile.path}`,
           scope: skillFile.scope,
           name: skillFile.name,
@@ -379,8 +272,6 @@ function NavigationHandler() {
         return;
       }
       if (skillsFromHash(window.location.hash)) {
-        // One blank-tab kind on the single tab strip: any active blank tab
-        // latches, same as the empty-hash branch below.
         if (activeNewTabId !== null) {
           latchSurfaceHash();
           return;
@@ -405,12 +296,6 @@ function NavigationHandler() {
         });
         return;
       }
-      // Content-root sentinel `#/` (the form a root-folder share deep link
-      // navigates to, and `hashFromFolderPath('')` emits) → the content-root
-      // folder overview. Distinct from an EMPTY hash (`''`), which falls
-      // through to the no-doc-name `clearTarget()` branch below. Both
-      // `docNameFromHash('#/')` and `docNameFromHash('')` return null, so the
-      // sentinel check must run BEFORE the null-docName clear.
       if (isContentRootHash(window.location.hash)) {
         mark('ok/nav/hash-change', { docName: null, kind: 'folder' });
         openHashTarget({ kind: 'folder', target: '', folderPath: '' });
@@ -473,16 +358,6 @@ function NavigationHandler() {
   return null;
 }
 
-/**
- * Mounts `InstallInClaudeDesktopDialog` at the App root and opens it when
- * `window.location.hash === '#install-claude-desktop'`. Docs and in-app CTAs
- * link to the hash to deep-link into the dialog. The hash clears when the
- * dialog closes so it reopens only if the user navigates back to the URL
- * fragment.
- *
- * `INSTALL_DIALOG_HASH` is declared above (alongside `isAuxiliaryDialogHash`)
- * so NavigationHandler can short-circuit on it.
- */
 function InstallInClaudeDesktopTrigger() {
   const [open, setOpen] = useState(
     typeof window !== 'undefined' && window.location.hash === INSTALL_DIALOG_HASH,
@@ -499,8 +374,6 @@ function InstallInClaudeDesktopTrigger() {
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next && window.location.hash === INSTALL_DIALOG_HASH) {
-      // Clear the fragment so closing doesn't instantly re-open on refresh.
-      // Uses history.replaceState to avoid adding a history entry.
       replaceHashWithoutNavigation('');
     }
   }
@@ -508,18 +381,6 @@ function InstallInClaudeDesktopTrigger() {
   return <InstallInClaudeDesktopDialog open={open} onOpenChange={handleOpenChange} />;
 }
 
-/**
- * Cmd-, / Ctrl-, opens the Settings dialog. Sibling to
- * `NewItemShortcutHandler` — global keydown listener at App scope, suppresses
- * inside text inputs (`isSettingsShortcut`), routes to the canonical hash so
- * `useSettingsRoute` (mounted by EditorArea) reacts and renders SettingsDialog.
- *
- * Browser-mode-only in practice: Electron's menu accelerator (`CmdOrCtrl+,`
- * on the App / File menu Settings… item) captures the keypress before it
- * reaches the renderer, so this handler firing inside Electron is a no-op
- * because the menu's executeJavaScript already set the same hash. Both code
- * paths produce identical end state.
- */
 function SettingsShortcutHandler() {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -548,37 +409,10 @@ function SettingsShortcutHandler() {
   return null;
 }
 
-/**
- * Pushes the editor area's active target to main via
- * `bridge.editor.notifyActiveTargetChanged`. Drives the macOS File menu's
- * state-aware enable/disable for items like Rename / Move to Trash / Send
- * to AI. Web-host short-circuits when the desktop bridge is absent.
- *
- * Lives at the App-tier where `useDocumentContext()` is already mounted — one
- * push site per window. Main keys the snapshot by SENDING window and reads the
- * focused one, so two windows on one project (a pop-out beside its editor
- * window) no longer fight over the menu's scope. Effect deps are narrowed to
- * the discriminator + identifier so a render that re-creates an equal
- * `activeTarget` reference doesn't re-fire the push — the snapshot main
- * consumes is normalized to the same four shapes. A rename changes the
- * identifier, so the push re-fires, which is what lets a popped-out window's
- * title follow a rename.
- *
- * Snapshot shape mirrors `EditorActiveTargetSnapshot`'s discriminated union
- * (doc / folder / asset / null). `folder-index` and `missing` collapse to
- * `kind: null` because main doesn't need state-aware enable for those
- * scopes today — File menu items either always-enable (Reveal in Finder
- * for contentDir, New File) or always-disable (Rename / Move to Trash
- * with no concrete target).
- */
 function ActiveTargetBridgePush() {
   const { activeTarget } = useDocumentContext();
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
 
-  // Narrow the unbounded ResolvedNavigationTarget union to the shapes the
-  // menu surface understands. doc / folder / asset are enable-bearing
-  // scopes; everything else (folder-index, missing, null) renders as the
-  // project-scope state.
   const kind =
     activeTarget?.kind === 'doc' ||
     activeTarget?.kind === 'folder' ||
@@ -613,23 +447,13 @@ function NewItemShortcutHandler() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const initialDir =
     activeTarget?.kind === 'folder' ? activeTarget.folderPath : defaultInitialDir(activeDocName);
-  // Hoisted out of the dialog so the keydown path can read the resolved
-  // cascade synchronously and decide whether the dialog has anything to ask.
-  // Threaded back in via `folderConfig`, which puts the dialog's own
-  // `useFolderConfig` on its null (no-fetch) branch — same one request.
   const folderConfig = useFolderConfig(initialDir);
   const folderState = folderConfig.state;
-  // Held-down Cmd+N (or an impatient double-press) repeats the keydown while
-  // the first create is still in flight. `pages` cannot grow until `addPage`
-  // runs in the `.then`, so every repeat would pick the same name and lose to
-  // the first with a 409 — a burst of error toasts for one intended doc.
   const createInFlightRef = useRef(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (isOverlayLayerOpen()) return;
-      // KeyboardEvent.target is EventTarget|null — widen to the duck-typed
-      // ShortcutEventLike shape used by the pure predicate.
       const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
       if (
         !isNewItemShortcut({
@@ -644,10 +468,6 @@ function NewItemShortcutHandler() {
         return;
       }
       e.preventDefault();
-      // Nothing to start *from* and nothing else the dialog would ask about:
-      // skip it and drop straight into an `untitled` doc. Any other state
-      // (still loading, fetch failed, templates resolved) opens the dialog,
-      // so the decision never blocks on a request from inside the keydown.
       if (
         folderState.status !== 'ready' ||
         (folderState.data.folder.templates_available ?? []).length > 0
@@ -658,14 +478,8 @@ function NewItemShortcutHandler() {
       if (createInFlightRef.current) return;
       createInFlightRef.current = true;
       const docName = nextUntitledDocName(initialDir, pages);
-      // `.md` is pinned here: the dialog's `.mdx` affordance is a typed-in
-      // extension, and this path never takes a typed name.
       void createPageRequest({ path: `${docName}.md`, kind: 'file' })
         .then((result) => {
-          // A create that loses a race (name taken since the page list last
-          // refreshed) or fails on the wire toasts the reason and falls back to
-          // the dialog rather than swallowing the keypress — the toast keeps the
-          // first failure legible even though the reopened dialog starts clean.
           if (!result.ok) {
             toast.error(result.error);
             setDialogOpen(true);
@@ -673,10 +487,6 @@ function NewItemShortcutHandler() {
           }
           openCreatedPage(result.docName, addPage);
         })
-        // `createPageRequest` never throws, but `openCreatedPage` fans out a
-        // synchronous `documents-changed` dispatch — a throwing listener would
-        // otherwise surface as an unhandled rejection with the doc already
-        // created and navigated to.
         .catch((err: unknown) => {
           console.warn('[NewItemShortcutHandler] create tail failed:', err);
           setDialogOpen(true);
@@ -701,19 +511,8 @@ function NewItemShortcutHandler() {
   );
 }
 
-/**
- * App-tier host that reads `collabUrl` from DocumentContext and passes it to
- * `ConfigProvider` as a prop, keeping `ConfigProvider` (in `lib/`) free of any
- * `editor/` import. That layering inversion is what closed the DocumentContext
- * value-import cycle behind the CI "export not found" flake — don't collapse it
- * back into `<ConfigProvider>` reading `useDocumentContext()` directly.
- */
 function ConfigProviderHost({ children }: { children: ReactNode }) {
   const { collabUrl } = useDocumentContext();
-  // App-lifetime keepalive so an open tab keeps its `ok start` server alive
-  // even with no document open. Independent of the per-doc provider pool;
-  // self-gates to non-desktop. Mounted here because this host already owns the
-  // single app-root `collabUrl` read.
   useServerKeepalive(collabUrl);
   return (
     <ConfigProvider collabUrl={collabUrl}>
@@ -751,40 +550,13 @@ export function App() {
   );
 }
 
-/**
- * App chrome body. Split out from `App` so it sits BELOW `SingleFileModeProvider`
- * and can read `useSingleFileMode()` — the no-project ephemeral session
- * (`ok <file>`) drops project chrome (file sidebar / tabs / project switcher /
- * Settings) here while the editor itself (`EditorPane` → `EditorArea`) stays
- * fully editable.
- */
 function AppBody() {
-  // Workspace omnibar: shared across web and Electron for file/folder
-  // navigation and command dispatch. Electron additionally surfaces
-  // project-level commands when the desktop bridge exists.
-  // Mounted at the App root so Cmd/Ctrl+K works regardless of focus.
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const singleFile = useSingleFileMode();
-  // A popped-out note window shows one document full-window: no workspace
-  // chrome, and none of the app-root singletons that assume the main window.
   const noteWindow = isNoteWindow();
 
-  // "Open in terminal" launcher — desktop-only. Routes a scope-derived prompt
-  // to the docked terminal in EditorPane. `composeTerminalLaunchPrompt` drops
-  // the "Open the OK editor in web view." trailer the web deep-link handoff
-  // carries: the terminal launches next to an already-open editor, so that
-  // directive would point the agent at a surface the user is already viewing.
-  // Null on the web host (no real OS shell) AND on desktop hosts where the PTY
-  // is unavailable (`config.ptyAvailable` is false), so the menu rows that
-  // consume it render nothing rather than a silent no-op: the docked terminal in EditorPane is
-  // gated on the same `ptyAvailable` flag, so a Terminal row here would launch
-  // into a surface that never mounts. Mirrors the gate in EditorPane / Settings
-  // / AppMenubar.
-  // Which launchable CLIs are on PATH — each launch surface gates its rows from
-  // this map via `isTerminalCliEnabled` so a CLI that isn't installed (e.g.
-  // Antigravity, or Claude) doesn't clutter the menu once the probe confirms it absent.
   const installedClis = useInstalledClis();
   const terminalLaunch: TerminalLaunchContextValue | null =
     desktopBridge && desktopBridge.config.ptyAvailable === true
@@ -802,52 +574,33 @@ function AppBody() {
       <BranchRecycleBanner />
       <PageListProvider>
         <NoteWindowMainActionReceiver />
-        {/* Agent-driven hash navigation retargets the window to whatever doc an
-            agent is writing. That is right for the main workspace window and
-            wrong for a pop-out, which the user parked on one specific document
-            on purpose. */}
+        {}
         {!noteWindow && <SystemDocSubscriber />}
         <ValidationFreshness />
-        {/* Explains a skill that lists but can't open (gitignored bundle) and
-            offers the one-line fix. Mounted here because the guard fires from
-            the shared opener, which has no surface of its own. */}
+        {}
         <SkillTrackInGitDialog />
         <NavigationHandler />
         <ActiveTargetBridgePush />
         <NewItemShortcutHandler />
-        {/* Settings is unavailable in single-file mode (config editing is
-            inert), so the Cmd-, route handler isn't mounted. */}
+        {}
         {!singleFile && !noteWindow && <SettingsShortcutHandler />}
         {SHOW_INSTALL_SKILL && <InstallInClaudeDesktopTrigger />}
-        {/* File → New project… opens CreateProjectDialog here.
-            Desktop-only — the `new-project` menu action never fires in
-            the web host, so the dialog stays unmounted there. */}
+        {}
         {desktopBridge ? <CreateProjectMenuTrigger bridge={desktopBridge} /> : null}
-        {/* Help → Report a bug… opens ReportBugDialog here — same
-            desktop-only App-root trigger pattern as CreateProjectMenuTrigger. */}
+        {}
         {desktopBridge ? <ReportBugMenuTrigger /> : null}
-        {/* Help → Send feedback… opens the same FeedbackFormDialog the
-            Resources menu and Cmd+K open. Desktop-only for the same reason as
-            the sibling above: the menu action never fires in the web host. */}
+        {}
         {desktopBridge ? <FeedbackMenuTrigger /> : null}
-        {/* First-launch consent dialog — host-agnostic. Self-gates on
-            the shared `mcpConsentStore` snapshot; renders nothing until
-            main fires `ok:mcp-wiring:show`. Mounted identically in
-            NavigatorApp. */}
+        {}
         <McpConsentDialog />
-        {/* Project-scoped branch-switch surface. Self-gates on the
-            shared shareReceiveStore — mounts only when main routes a
-            'project-branch-switch' payload to this editor window.
-            Clone / locate / consent surfaces live on the Navigator,
-            never in an editor (see NavigatorApp). */}
+        {}
         {desktopBridge ? (
           <Suspense fallback={null}>
             <ShareBranchSwitchDialog bridge={desktopBridge} />
             <ShareReceiveMissDialog />
           </Suspense>
         ) : null}
-        {/* The palette is a workspace navigator; a single-document window has
-            nowhere to navigate to. Deferred, not refused (§15 Future Work). */}
+        {}
         {!noteWindow && (
           <CommandPalette
             bridge={desktopBridge}
@@ -855,11 +608,7 @@ function AppBody() {
             onOpenChange={setCommandPaletteOpen}
           />
         )}
-        {/* Electron BrowserWindow renders with `titleBarStyle: 'hiddenInset'` +
-            `transparent: true` + `vibrancy: 'sidebar'`, so the renderer owns
-            window-drag affordance. Existing chrome rows (EditorHeader,
-            SidebarHeader, EditorTabs) cover y=8..y=56; this 8px strip covers
-            the y=0..y=8 vibrancy band above them. */}
+        {}
         {isElectronHost && (
           <div
             aria-hidden="true"
@@ -868,19 +617,12 @@ function AppBody() {
             className="pointer-events-none fixed inset-x-0 top-0 z-50 h-2 [-webkit-app-region:drag]"
           />
         )}
-        {/* The "Open in terminal" entry point spans both the FileSidebar
-            menus and the EditorHeader/EditorPane, which are siblings here —
-            so the provider wraps both. Its value is desktop-gated; the docked
-            terminal that consumes the launch lives in EditorPane. */}
+        {}
         <TerminalLaunchProvider value={terminalLaunch}>
-          {/* ⇧⌘Enter sends the comment queue, from anywhere. Mounted at the app
-              shell rather than in the queue panel: the queue is project-wide and
-              outlives the tab that displays it, so a listener scoped to that tab
-              would be dead exactly when the panel is closed. */}
+          {}
           <CommentQueueShortcut />
           <SidebarProvider className="h-screen overflow-hidden">
-            {/* No-project single-file mode drops the file sidebar (file tree +
-                project switcher); the editor inset takes the full width. */}
+            {}
             {!singleFile && !noteWindow && (
               <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />
             )}

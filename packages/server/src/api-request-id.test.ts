@@ -1,20 +1,9 @@
-/**
- * Request-identity + access-log behavior of the `onRequest` gate stack:
- * `x-request-id` echo (minted or honored), gate-rejection coverage, the
- * `ok.request.id`/access-log plumbing, and route-TEMPLATE cardinality on the
- * `api.access` line (never the raw path).
- */
-
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-// Import the test-helper wrapper (not the base factory): its `onRequest`
-// dispatches the native route groups ahead of the legacy hook, so ported paths
-// like the dynamic `/api/history/:sha` reach their real handler + access-log
-// template instead of the legacy `/api/*` 404 fallback.
 import { createApiExtension } from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 import { loggerFactory } from './logger.ts';
@@ -36,11 +25,6 @@ function makeReq(url: string, extraHeaders: Record<string, string> = {}): Incomi
   return readable;
 }
 
-/**
- * Mock `ServerResponse` with the surface the gate stack exercises:
- * `setHeader` (header echo), `once` + synchronous `'finish'` dispatch on
- * `end()` (access log), and `statusCode` tracking through `writeHead`.
- */
 function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
   const captured: CapturedResponse = { status: 0, headers: {}, setHeaders: {}, body: '' };
   const listeners: Record<string, Array<() => void>> = {};
@@ -133,10 +117,6 @@ describe('onRequest request identity + access log', () => {
   });
 
   test('origin-gate 403 rejections still carry the x-request-id echo', async () => {
-    // Deliberately an UNREGISTERED path: the origin gate fires before route
-    // resolution, so the pin holds regardless of which router owns any real
-    // route — table-owned paths keep migrating to the native mount during
-    // Wave 2, and this test drives the BASE extension (no native dispatch).
     const captured = await callRoute('/api/nonexistent-route', {
       origin: 'https://evil.example.com',
     });
@@ -156,9 +136,6 @@ describe('onRequest request identity + access log', () => {
   test('emits ONE api.access line with the route TEMPLATE, status, duration, and request id', async () => {
     const log = loggerFactory.getLogger('api');
     const infoSpy = vi.spyOn(log, 'info');
-    // Empty dynamic segment: templated as /api/history/:sha but dispatches
-    // nothing, so the request closes as an api-dispatch 404 without touching
-    // handler dependencies.
     const captured = await callRoute('/api/history/');
     const accessCalls = infoSpy.mock.calls.filter(
       (c) => (c[0] as { event?: string })?.event === 'api.access',

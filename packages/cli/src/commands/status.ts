@@ -1,11 +1,3 @@
-/**
- * `open-knowledge status` — whether the server and UI are running for this
- * project, derived entirely from the server lockfile.
- *
- * Exits 0 regardless of whether processes are live; this is a pure query
- * command. Prints formatted text by default, JSON with `--json`.
- */
-
 import { type Config, lockAdvertisesUi, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
@@ -17,11 +9,7 @@ interface StatusEntry {
   port?: number;
   startedAt?: string;
   host?: string;
-  /** Resolved `alive` verdict — `true` for local-live locks, `false` for
-   *  `missing` / `dead-pid` / `corrupt`, `'unknown'` for foreign-host. */
   alive: boolean | 'unknown';
-  /** UI only: true when the project server itself serves the UI —
-   *  `server.lock` advertises the `ui` capability. */
   servedByServer?: boolean;
 }
 
@@ -32,12 +20,6 @@ interface StatusReport {
 
 export function buildStatusReport(server: LockState): StatusReport {
   const serverEntry = summarize('server', server);
-  // Single-listener topology: plain `ok start` serves the UI from the project
-  // server, so the ui row is derived entirely from server.lock's `ui` capability
-  // via the shared `lockAdvertisesUi` predicate (a missing `capabilities` field
-  // on a pre-v2 server is treated as ui-capable, matching preview_url / the
-  // redirect). A bare `--only server` boot advertises no `ui`, so its ui row is
-  // correctly empty.
   const uiEntry: StatusEntry =
     server.status === 'alive' && lockAdvertisesUi(server.lock)
       ? {
@@ -111,7 +93,6 @@ function renderEntry(entry: StatusEntry): string {
   if (entry.state === 'dead-pid') {
     return `${label}  stale (dead pid=${entry.pid}) — run \`ok clean\``;
   }
-  // alive
   if (entry.servedByServer === true) {
     return `${label}  served by server  pid=${entry.pid} port=${entry.port}`;
   }
@@ -142,11 +123,7 @@ export function statusCommand(getConfig: () => Config): Command {
     .description('Show whether the server and UI are running for this project')
     .option('--json', 'Emit structured JSON instead of formatted text')
     .action((opts: { json?: boolean }) => {
-      // Lock anchor is the project root (cwd for the CLI), not contentDir —
-      // `server-factory.ts` writes `<projectDir>/.ok/local/server.lock`. When
-      // `content.dir` is a sub-folder (git-root-promotion case), resolving
-      // through `resolveContentDir` would look in the wrong tree.
-      getConfig(); // still load config to surface any project-config errors
+      getConfig();
       const lockDir = resolveLockDir(process.cwd());
       runStatus({ lockDir, json: opts.json === true });
     });

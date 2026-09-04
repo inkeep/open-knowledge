@@ -38,9 +38,6 @@ let projectLocalConfig: {
 let projectLocalSynced = true;
 const patches: unknown[] = [];
 
-// The real hook polls, so the badge re-renders when the engine's state moves.
-// The mock keeps a force-render handle so a test can advance `status`
-// mid-interaction (see `advanceStatus`) instead of only seeding it before mount.
 let forceStatusRender: (() => void) | null = null;
 vi.doMock('@/hooks/use-git-sync-status', () => ({
   useGitSyncStatusDetailed: () => {
@@ -63,7 +60,6 @@ type WorktreeTestEntry = {
   path: string;
   code: string;
   syncScoped: boolean;
-  /** Present only for paths the server resolved a navigation target for. */
   open?: { kind: 'doc'; docName: string } | { kind: 'asset'; path: string };
 };
 
@@ -84,7 +80,6 @@ vi.doMock('@/hooks/use-git-worktree-status', () => ({
 }));
 
 const triggered: string[] = [];
-/** When set, `triggerSync` rejects — the offline / server-down shape. */
 let triggerRejection: Error | null = null;
 vi.doMock('@/lib/trigger-sync', () => ({
   triggerSync: (op: string) => {
@@ -93,7 +88,6 @@ vi.doMock('@/lib/trigger-sync', () => ({
   },
 }));
 
-/** Deep-link navigations the popover requested, in order. */
 let settingsNavigations: string[] = [];
 vi.doMock('@/lib/use-settings-route', () => ({
   openSyncSettings: () => {
@@ -153,27 +147,10 @@ async function openPopover() {
   });
 }
 
-/**
- * Reveal the whole working-tree listing.
- *
- * Sections and folder buckets are collapsed on open, so every assertion about
- * rows has to expand first. Scoped to the listing because the sync-mode Select
- * also carries `aria-expanded`, and clicking that opens a dropdown instead.
- * Loops because expanding a section reveals buckets that were not in the DOM
- * when the pass started.
- */
 async function expandWorktreeListing(): Promise<void> {
-  // Three tiers can carry `aria-expanded`: section -> folder bucket -> the
-  // `+N more` control an overflowing bucket reveals. Four passes is one per
-  // tier plus a confirming pass that observes zero collapsed triggers.
-  // Exhaustion throws rather than returning quietly, so a future fifth tier
-  // names itself here instead of surfacing as a missing element in the caller.
   for (let pass = 0; pass < 4; pass++) {
     const listing = screen.queryByTestId('worktree-listing');
     if (!listing) return;
-    // `{ expanded: false }` matches `aria-expanded="false"` only — Testing
-    // Library treats an absent attribute as `undefined`, not `false` — so the
-    // query needs no further filtering.
     const collapsed = within(listing).queryAllByRole('button', { expanded: false });
     if (collapsed.length === 0) return;
     for (const trigger of collapsed) await userEvent.click(trigger);
@@ -183,7 +160,6 @@ async function expandWorktreeListing(): Promise<void> {
   );
 }
 
-/** Move the engine's reported state the way a poll tick would, mid-test. */
 async function advanceStatus(next: GitSyncStatus): Promise<void> {
   status = next;
   await act(async () => {
@@ -191,16 +167,10 @@ async function advanceStatus(next: GitSyncStatus): Promise<void> {
   });
 }
 
-/**
- * The spinner inside a manual-action button, or null. Queried by role rather
- * than class so the assertion survives a styling change; `hidden: true` because
- * the spinner carries `aria-hidden` (the button already names the state).
- */
 function spinnerIn(testId: string): HTMLElement | null {
   return within(screen.getByTestId(testId)).queryByRole('status', { hidden: true });
 }
 
-/** The mode the Select is currently showing, read off the trigger's text. */
 function selectedMode(): string {
   return screen.getByTestId('sync-mode-select').textContent ?? '';
 }
@@ -230,14 +200,10 @@ describe('SyncStatusBadge helper behavior', () => {
       "You don't have access to this private repo. Sign in with an account that does.",
       'Authenticated as bob.',
     ]);
-    // The read-only-collaborator verdict is exactly as account-dependent as
-    // the private-repo 404 — the personal-token-against-org-repo case lands
-    // here, and the identity is what lets the user spot it.
     expect(formatPushPermissionDenied('no-collaborator', { resolvedLogin: 'bob' })).toEqual([
       "You don't have permission to push to this repo.",
       'Authenticated as bob.',
     ]);
-    // No identity on the wire → base copy exactly; the UI never guesses a login.
     expect(formatPushPermissionDenied('private-no-access', {})).toEqual([
       "You don't have access to this private repo. Sign in with an account that does.",
     ]);
@@ -271,8 +237,6 @@ describe('SyncStatusBadge helper behavior', () => {
       "You don't have permission to push to this repo.",
       "Your Git credential configuration names workbot, but that account's credentials couldn't be used.",
     ]);
-    // declaredSource is an open string on the wire: a newer server's declaration
-    // mechanism must degrade to generic wording, not drop the actionable fact.
     expect(
       formatPushPermissionDenied('no-collaborator', {
         declaredLogin: 'workbot',
@@ -284,9 +248,6 @@ describe('SyncStatusBadge helper behavior', () => {
     ]);
   });
 
-  // The miss copy must not blame a specific tool: the wire does not say
-  // whether the GitHub CLI was consulted, absent, or outdated — and desktop
-  // installs with no gh reach the same path via the signed-out short-circuit.
   test('the declared-miss sentence asserts the miss without naming a cause', async () => {
     const { formatPushPermissionDenied } = await import('./SyncStatusBadge');
 
@@ -311,8 +272,6 @@ describe('SyncStatusBadge helper behavior', () => {
     }).join(' ');
     expect(message).toContain('Authenticated as bob.');
     expect(message).not.toContain('Authenticated as alice');
-    // Without a resolvedLogin the identity sentence is omitted entirely —
-    // the declared login must not be promoted into it.
     const fallbackUnnamed = formatPushPermissionDenied('private-no-access', {
       declaredLogin: 'alice',
       declaredSource: 'remote-url',
@@ -321,9 +280,6 @@ describe('SyncStatusBadge helper behavior', () => {
     expect(fallbackUnnamed).toContain('Your remote URL names alice');
   });
 
-  // The engine parks the not-found masquerade as auth-error, but the badge
-  // must not pair "no prescribed fix" copy with a Sign in affordance — the
-  // predicate is what gates the button, the header, and the paused line.
   test('hasNotFoundAsIdentityError keys off either direction error code', async () => {
     const { hasNotFoundAsIdentityError } = await import('./SyncStatusBadge');
 
@@ -395,9 +351,6 @@ describe('SyncStatusBadge helper behavior', () => {
       './SyncStatusBadge'
     );
 
-    // The classifier cannot tell a missing repo from an invisible one (GitHub
-    // answers 404 for both), so the copy asserts only the ambiguity and never
-    // offers sign-in as the fix.
     for (const format of [formatSyncFailureCode, formatPushFailureCode, formatPullFailureCode]) {
       expect(format('auth-not-found-as-identity')).toBe(
         'Repository not found — it may not exist, or the account used may not have access.',
@@ -410,11 +363,6 @@ describe('SyncStatusBadge helper behavior', () => {
       './SyncStatusBadge'
     );
 
-    // A client whose bundle predates a server-added code must render a
-    // meaningful generic line, not an empty styled-red paragraph. The sync
-    // status wire is not schema-validated client-side, so the unknown code
-    // string reaches these formatters as-is — this default branch IS the
-    // version-skew degradation path for the bounded error-code enum.
     const futureCode = 'auth-far-future' as Parameters<typeof formatPushFailureCode>[0];
     expect(formatPushFailureCode(futureCode)).toBe(
       'Push failed — check the server logs for details.',
@@ -435,10 +383,6 @@ describe('SyncStatusBadge helper behavior', () => {
     );
     expect(shouldOfferSignInAgain({ checkStatus: 'denied' })).toBe(false);
     expect(shouldOfferSignInAgain({ checkStatus: 'unknown', unknownError: 'network' })).toBe(false);
-    // ssh-unverified is the abstaining probe result for SSH-origin repos with
-    // no GitHub credential. Signing in can never help there (push auths with
-    // SSH keys), so broadening this predicate to match it would resurrect the
-    // misleading sign-in affordance the transport-keyed probe fix removed.
     expect(shouldOfferSignInAgain({ checkStatus: 'unknown', unknownError: 'ssh-unverified' })).toBe(
       false,
     );
@@ -454,8 +398,6 @@ describe('SyncStatusBadge helper behavior', () => {
     expect(
       displayState({ ...baseStatus, syncMode: 'follow', state: 'idle', conflictCount: 0 }),
     ).toBe('idle');
-    // The unified B1 pull holds every mode idle while ledger conflicts wait,
-    // so the promotion is mode-independent now — full included.
     expect(displayState({ ...baseStatus, syncMode: 'full', state: 'idle', conflictCount: 1 })).toBe(
       'conflict',
     );
@@ -473,10 +415,7 @@ describe('SyncStatusBadge helper behavior', () => {
     expect(tooltipLabel({ ...following, state: 'pulling' })).toBe('Updating');
     expect(tooltipLabel({ ...following, state: 'idle', conflictCount: 2 })).toBe('2 conflicts');
     expect(tooltipLabel({ ...following, state: 'idle', syncEnabled: false })).toBe('Up to date');
-    // Full sync is unchanged.
     expect(tooltipLabel({ ...baseStatus, state: 'idle' })).toBe('Synced');
-    // `syncEnabled: false` is Manual, a resting mode — it still reports real
-    // state rather than the old "Sync off" dead end.
     expect(tooltipLabel({ ...baseStatus, state: 'idle', syncEnabled: false })).toBe('Synced');
     expect(tooltipLabel({ ...baseStatus, state: 'idle', syncEnabled: false, behind: 2 })).toBe(
       '2 behind',
@@ -525,9 +464,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('Manual never renders as a fault — no warning glyph, no "disabled" copy', async () => {
-    // The engine reports `disabled` whenever no automation is scheduled, which
-    // is exactly Manual's resting state. Rendering that as a warning sends the
-    // user hunting for a problem that does not exist.
     status = {
       ...baseStatus,
       state: 'disabled',
@@ -557,9 +493,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('a manual (mode off) project stays visible — Manual is a resting mode, not an opt-out', async () => {
-    // Pre-rewrite this payload hid the badge, which stranded the user in
-    // Settings to reach a Pull button. Manual owns the manual actions, so the
-    // badge has to be reachable.
     status = {
       ...baseStatus,
       state: 'disabled',
@@ -590,10 +523,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('stays visible while a resume is in flight (config active, server still disabled)', async () => {
-    // Resuming from paused flips the local config mode 'off'→active optimistically
-    // (so `paused` clears) while the server status still lags at disabled/off. The
-    // badge must stay mounted in that window — unmounting closes the popover and
-    // flickers the icon (the user toggles on, the popover vanishes, then returns).
     projectLocalConfig = { autoSync: { mode: 'follow' } };
     status = {
       ...baseStatus,
@@ -626,7 +555,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     await renderBadge();
     await openPopover();
 
-    // Legacy `enabled: true` resolves to full.
     expect(selectedMode()).toContain('Auto (Pull and Push)');
   });
 
@@ -658,8 +586,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     await renderBadge();
     await openPopover();
 
-    // Entering a pushing mode crosses a consent boundary — nothing is written
-    // until the dialog is confirmed.
     await userEvent.click(screen.getByTestId('sync-mode-select'));
     await userEvent.click(screen.getByRole('option', { name: 'Auto (Pull and Push)' }));
     expect(patches).toEqual([]);
@@ -681,10 +607,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('conflicts gate Push but never Pull', async () => {
-    // The overlay pull runs WITH ledger conflicts (it re-pins them against the
-    // new tip); only pushing waits for the resolver. Disabling Pull would
-    // leave a Manual project with one conflicted doc unable to receive
-    // anything.
     status = { ...baseStatus, state: 'idle', conflictCount: 1 };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     await renderBadge();
@@ -696,14 +618,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('a real merge conflict blocks Pull, unlike a ledger conflict', async () => {
-    // The companion above covers the LEDGER case (engine idle, conflictCount>0)
-    // where Pull must stay live. This is the other one: `state: 'conflict'` is a
-    // real MERGE_HEAD, and `runOneShotPull` refuses it because git cannot merge
-    // into an unresolved merge — so a live button would be a silent no-op.
-    //
-    // The two are easy to conflate because `displayState` promotes the ledger
-    // case to 'conflict' for rendering; the gate has to read `status.state` to
-    // keep them apart, and this pair is what proves it does.
     status = { ...baseStatus, state: 'conflict', conflictCount: 1 };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     await renderBadge();
@@ -727,9 +641,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('the in-flight spinner lands on the action the user clicked', async () => {
-    // The shared `busy` flag is direction-blind: parking the only spinner on
-    // Pull and Push made a plain Pull light up the one button that was not
-    // running.
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     await renderBadge();
@@ -742,13 +653,9 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(spinnerIn('sync-popover-sync')).toBeNull();
     expect(spinnerIn('sync-popover-push')).toBeNull();
 
-    // Attribution is released with the cycle, so the next automation tick is
-    // free to spin whichever direction it actually runs.
     await advanceStatus({ ...baseStatus, state: 'idle' });
     expect(spinnerIn('sync-popover-pull')).toBeNull();
 
-    // Same contract in the other direction: a manual Push owns the spinner
-    // even though the engine reports the same direction-blind `busy`.
     await userEvent.click(screen.getByTestId('sync-popover-push'));
     await advanceStatus({ ...baseStatus, state: 'pushing' });
 
@@ -758,10 +665,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('a trigger that never reaches the engine does not misattribute the next cycle', async () => {
-    // The clear-on-idle effect keys off `busy`, and a failed trigger starts no
-    // cycle — so `busy` never flips and the effect never fires. Left alone, the
-    // dead attribution outlives the click and lights the button the user
-    // pressed while an entirely different (probably automatic) cycle runs.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       status = { ...baseStatus, state: 'idle' };
@@ -774,10 +677,8 @@ describe('SyncStatusBadge runtime behavior', () => {
       await waitFor(() => expect(warn).toHaveBeenCalled());
       triggerRejection = null;
 
-      // Nothing ran, so nothing spins.
       expect(spinnerIn('sync-popover-pull')).toBeNull();
 
-      // Now an automatic push cycle starts. It must own the spinner.
       await advanceStatus({ ...baseStatus, state: 'pushing' });
       expect(spinnerIn('sync-popover-push')).not.toBeNull();
       expect(spinnerIn('sync-popover-pull')).toBeNull();
@@ -791,8 +692,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     ['fetching', 'fetching', 'sync-popover-pull'],
     ['pushing', 'pushing', 'sync-popover-push'],
   ] as const)('an automation-driven %s cycle spins the matching direction, never Pull and Push', async (_label, state, expectedTestId) => {
-    // No click to attribute, so the engine's own direction decides — claiming
-    // a manual action the user never took would be the same lie in reverse.
     status = { ...baseStatus, state } as GitSyncStatus;
     projectLocalConfig = { autoSync: { mode: 'full' } };
     await renderBadge();
@@ -816,8 +715,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('pull-only conflict surfaces on the badge even though the engine stays idle', async () => {
-    // Pull-only holds the engine idle while a same-line collision waits in the
-    // ledger; the badge promotes conflictCount to the conflict rendering.
     status = {
       ...baseStatus,
       syncMode: 'follow',
@@ -831,8 +728,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('pull-only stays visible even in a disabled-without-reason payload', async () => {
-    // The engine never parks a pull-only project here, but the hide rule must
-    // exempt following projects so one is never silently hidden.
     status = {
       ...baseStatus,
       syncMode: 'follow',
@@ -851,15 +746,12 @@ describe('SyncStatusBadge runtime behavior', () => {
     await openPopover();
 
     expect(selectedMode()).toContain('Auto (Pull only)');
-    // Auto pull-only describes what runs on a timer. An explicit press is the
-    // user acting for themselves, so every action stays reachable.
     expect(screen.getByTestId('sync-popover-pull')).toBeTruthy();
     expect(screen.getByTestId('sync-popover-push')).toBeTruthy();
     expect(screen.getByTestId('sync-popover-sync')).toBeTruthy();
   });
 
   test('a read-only collaborator is the one case that loses the push actions', async () => {
-    // Not a consent rule — the remote would 403, so the button would be a lie.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -906,11 +798,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('a read-only collaborator on full can still see which mode the project is in', async () => {
-    // Radix fills the trigger by portaling the SELECTED item's text into it, so
-    // omitting the `full` item for a project already on `full` left the trigger
-    // blank — and `aria-label` overrides content for the accessible name, so the
-    // mode was neither visible nor announced on the one control that decides
-    // whether edits leave this machine.
     status = {
       ...baseStatus,
       syncMode: 'full',
@@ -938,9 +825,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     await userEvent.click(screen.getByTestId('sync-mode-select'));
     expect(screen.getByRole('option', { name: 'Manual' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Auto (Pull only)' })).toBeTruthy();
-    // Rendered but disabled, not omitted: selecting a mode the server will
-    // refuse must stay impossible, while a project already ON that mode still
-    // has to be able to read its own state off the trigger.
     const pushing = screen.getByRole('option', { name: 'Auto (Pull and Push)' });
     expect(pushing.getAttribute('aria-disabled')).toBe('true');
   });
@@ -960,8 +844,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByTestId('sync-popover-mode-line')).toBeTruthy();
   });
 
-  // The signed-out reconnect arm: the most common auth failure shape, and one
-  // of the two arms that render a Sign in Button outside the live region.
   test('a signed-out denial renders the reconnect line and its Sign in button', async () => {
     status = {
       ...baseStatus,
@@ -972,19 +854,11 @@ describe('SyncStatusBadge runtime behavior', () => {
     await openPopover();
 
     expect(screen.getByText(/signed out — sign in to resume syncing/)).toBeTruthy();
-    // Exactly one Sign in exists here (the header's is gated on auth-error),
-    // so this resolves to the reconnect arm's own button — and it must sit
-    // OUTSIDE the live region: role="status" is implicitly aria-atomic, so a
-    // button inside it would be re-announced on every status text change.
     const signIn = screen.getByRole('button', { name: 'Sign in' });
     expect(signIn).toBeTruthy();
     expect(within(screen.getByRole('status')).queryByRole('button')).toBeNull();
   });
 
-  // Precedence: the signed-out reconnect must beat the paused-reason arm. A
-  // parked engine reaches both, and losing the order strands that user with
-  // "Reconnect required" and no affordance — copy prescribing an action the
-  // popover no longer offers.
   test('a signed-out denial outranks the paused-reason line when the engine is parked', async () => {
     status = {
       ...baseStatus,
@@ -996,21 +870,11 @@ describe('SyncStatusBadge runtime behavior', () => {
     await openPopover();
 
     expect(screen.getByText(/signed out — sign in to resume syncing/)).toBeTruthy();
-    // "Reconnect required" is the trigger's accessible name here, and correctly
-    // so — a signed-out denial IS reconnect-fixable. What must not appear is a
-    // visible copy from the paused-reason arm, which would mean that arm won
-    // the chain and the reconnect affordance was dropped. (The redesigned
-    // popover has no state-label header, so the arm's copy is the only possible
-    // visible occurrence.)
     expect(screen.getByRole('button', { name: 'Sync status: Reconnect required' })).toBeTruthy();
     expect(screen.queryByText('Reconnect required')).toBeNull();
-    // The live region carries status text only — the Sign in row renders
-    // outside it, so a text change never re-announces a button label.
     expect(within(screen.getByRole('status')).queryByRole('button')).toBeNull();
   });
 
-  // The probe-401 arm: the other Sign-in-bearing arm, and the last one in the
-  // chain, so an arm reordered above it silently swallows this state.
   test('a probe-401 renders the sign-in-again line and its button', async () => {
     status = {
       ...baseStatus,
@@ -1039,7 +903,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     await renderBadge();
     await openPopover();
 
-    // Sentences render one per line, so each is asserted as its own element.
     expect(screen.getByText(/don't have access to this private repo/)).toBeTruthy();
     expect(screen.getByText('Authenticated as bob.')).toBeTruthy();
     expect(
@@ -1049,9 +912,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     ).toBeTruthy();
   });
 
-  // The engine parks the not-found masquerade as auth-error, but the popover
-  // must not pair "may not exist / may not have access" copy with a Sign in
-  // button — the copy and the affordance have to agree.
   test('a not-found-as-identity auth error withdraws the Sign in affordance', async () => {
     status = {
       ...baseStatus,
@@ -1065,21 +925,10 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByText(/Repository not found — it may not exist/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
     expect(screen.queryByText('Reconnect required')).toBeNull();
-    // The accessible name reads the same derivation as the visible surfaces —
-    // the redesigned popover has no state-label header, so the trigger's name
-    // below is the surface that names the symptom —
-    // a screen reader must not hear the reconnect prescription the popover
-    // withdrew (queryByText matches text content, never aria-label, so only
-    // a role+name query can pin this).
     expect(screen.getByRole('button', { name: 'Sync status: Repository not found' })).toBeTruthy();
-    // The error/guidance block is a polite live region, so the state flip is
-    // announced to an open popover instead of changing silently.
     expect(screen.getByRole('status')).toBeTruthy();
   });
 
-  // The parked engine keeps the last probe verdict in `pushPermission`; when
-  // that verdict is a denial, its identity sentences must survive into the
-  // parked popover — the account used is the fact this state turns on.
   test('a parked not-found error still names the account when a denied verdict is in hand', async () => {
     status = {
       ...baseStatus,
@@ -1095,26 +944,13 @@ describe('SyncStatusBadge runtime behavior', () => {
     await renderBadge();
     await openPopover();
 
-    // The masquerade's probe also answers `denied`, but that is not a
-    // collaborator verdict — so the Mode chooser stays available here, the
-    // same call Settings makes for the identical status object. Two surfaces,
-    // one status, one answer.
-    // The redesign's mode control is a Select, not the old Full/Follow toggle —
-    // same intent: a failure that says nothing about push rights must not
-    // revoke the mode control.
     expect(screen.getByTestId('sync-mode-select')).toBeTruthy();
     expect(screen.getByText('Authenticated as bob.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
-    // Only the identity tail rides along — the denial's REASON sentence
-    // re-prescribes the sign-in this state withholds (and asserts more than
-    // the 404 proves), so it must not render next to the not-found copy.
     expect(screen.queryByText(/Sign in with an account that does/)).toBeNull();
     expect(screen.queryByText(/don't have access to this private repo/)).toBeNull();
   });
 
-  // A push-permission pause and a genuine read-only collaborator produce the
-  // same sentence, so without the identity tail a two-account user cannot tell
-  // "wrong account" from "you were never a collaborator".
   test('a push-permission pause names the account that was actually used', async () => {
     status = {
       ...baseStatus,
@@ -1130,7 +966,6 @@ describe('SyncStatusBadge runtime behavior', () => {
     await renderBadge();
     await openPopover();
 
-    // The pause is real and stays the headline; the identity rides along.
     expect(screen.getByText("You don't have permission to push to this repo.")).toBeTruthy();
     expect(screen.getByText('Authenticated as bob.')).toBeTruthy();
   });
@@ -1150,9 +985,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('a config left over from the old paused state reads as Manual', async () => {
-    // `resumeMode` was the pre-rewrite memory of what to resume into. Manual
-    // owns the actions now, so the key is inert — the project must simply read
-    // as Manual rather than as a paused dead end.
     status = {
       ...baseStatus,
       state: 'disabled',
@@ -1182,15 +1014,12 @@ describe('SyncStatusBadge runtime behavior', () => {
 
     await userEvent.click(screen.getByTestId('sync-mode-select'));
     await userEvent.click(screen.getByRole('option', { name: 'Auto (Pull only)' }));
-    // The follow variant of the confirm dialog carries its own label.
     await userEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull only)' }));
 
     expect(patches).toEqual([{ autoSync: { mode: 'follow', enabled: null, resumeMode: null } }]);
   });
 
   test('a pre-merge overlap gets the resolution panel, not the paused sentence', async () => {
-    // Every other paused reason is something the user cannot act on from here.
-    // This one they can, so it is the one that gets buttons.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -1220,8 +1049,6 @@ describe('SyncStatusBadge runtime behavior', () => {
   });
 
   test('the manual actions are offered to a never-enabled project', async () => {
-    // Pre-rewrite this project got no manual affordance at all. Manual mode is
-    // exactly the case where the buttons have to be there.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -1252,9 +1079,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test("groups by what Push will do, not by git's index state", async () => {
-    // OK stages into a throwaway index and commits the working tree, so a file
-    // git calls "not staged" is still pushed. Grouping on git's split would
-    // tell the user the opposite of what the button does.
     status = { ...baseStatus, state: 'idle', ahead: 1, behind: 2 };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
@@ -1267,25 +1091,19 @@ describe('SyncStatusBadge working-tree listing', () => {
     await openPopover();
     await expandWorktreeListing();
 
-    // Tense-free and mode-independent: only `full` pushes on its own, so a
-    // "will be pushed" heading would overstate it in Manual and Follow.
     expect(screen.getByText('Push includes')).toBeTruthy();
     expect(screen.getByText('Push skips')).toBeTruthy();
-    // git's own vocabulary is gone from the UI.
     expect(screen.queryByText('Staged')).toBeNull();
     expect(screen.queryByText('Not staged')).toBeNull();
 
-    // An unstaged in-scope edit and an untracked in-scope file both ship.
     const listing = within(screen.getByTestId('worktree-listing'));
     expect(listing.getByText('docs/sync.mdx', { selector: 'span:not(.sr-only)' })).toBeTruthy();
     expect(
       listing.getByText('notes/cadence-draft.md', { selector: 'span:not(.sr-only)' }),
     ).toBeTruthy();
-    // Out-of-scope lands in the other group with its explanation.
     expect(listing.getByText('src/git/status.ts', { selector: 'span:not(.sr-only)' })).toBeTruthy();
     expect(screen.getByText(/Outside what Open Knowledge commits/)).toBeTruthy();
 
-    // Divergence comes from the engine payload, not the worktree read.
     expect(screen.getByText('2 behind')).toBeTruthy();
     expect(screen.getByText('1 ahead')).toBeTruthy();
     expect(screen.getByText('main → origin/main')).toBeTruthy();
@@ -1309,7 +1127,6 @@ describe('SyncStatusBadge working-tree listing', () => {
           syncScoped: true,
           open: { kind: 'asset', path: 'opencode.json' },
         },
-        // No target: a deletion opens on nothing, so it stays plain text.
         { path: 'notes/gone.md', code: 'D', syncScoped: true },
       ],
     };
@@ -1322,37 +1139,20 @@ describe('SyncStatusBadge working-tree listing', () => {
 
     await openPopover();
     await expandWorktreeListing();
-    // Both live under the `notes` bucket, which states that segment in its
-    // header. The visible label is the remainder ("cadence.md"), but the
-    // accessible name is the full path so two folders each holding a file of
-    // the same name stay distinguishable to a screen reader.
     expect(screen.queryByRole('button', { name: 'gone.md' })).toBeNull();
     expect(screen.getByText('gone.md')).toBeTruthy();
-    // The `label !== entry.path` guard is what keeps the full path available to
-    // a screen reader without waiting on the tooltip. Without it, two folders
-    // each holding a `gone.md` are indistinguishable, and nothing else in the
-    // suite would go red.
     const listing = within(screen.getByTestId('worktree-listing'));
     expect(listing.getByText('notes/gone.md', { selector: '.sr-only' })).toBeTruthy();
 
-    // Layout is the actual contract and jsdom computes none, so the guard is
-    // the one class that decides it: the Button base ships `shrink-0`, and a
-    // row that keeps it grows to the length of its path and spills out of the
-    // popover instead of ellipsing.
-    // Token-wise, not substring: the base also carries a `[&_svg]:shrink-0`
-    // that a `.includes` would match.
     const rowClasses = screen.getAllByTestId('worktree-row-open')[0].className.split(' ');
     expect(rowClasses).toContain('shrink');
     expect(rowClasses).not.toContain('shrink-0');
 
-    // Accessible name is the full path (aria-label); visible label is the tail.
     const cadenceBtn = screen.getByRole('button', { name: 'notes/cadence.md' });
     expect(cadenceBtn.textContent).toContain('cadence.md');
     await userEvent.click(cadenceBtn);
 
     expect(window.location.hash).toBe('#/notes/cadence');
-    // The popover overlays the editor, so it closes rather than hiding the
-    // document the click just asked for.
     await waitFor(() => {
       expect(screen.queryByTestId('sync-mode-select')).toBeNull();
     });
@@ -1363,8 +1163,6 @@ describe('SyncStatusBadge working-tree listing', () => {
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
       ...emptyWorktree,
-      // Two locale dirs under a shared prefix: the section hoists
-      // `app/src/locales`, the bucket header shows only what is left of it.
       notStaged: ['ar', 'bn'].flatMap((l) => [
         { path: `app/src/locales/${l}/messages.po`, code: 'M' as const, syncScoped: true },
         { path: `app/src/locales/${l}/messages.json`, code: 'M' as const, syncScoped: true },
@@ -1375,14 +1173,10 @@ describe('SyncStatusBadge working-tree listing', () => {
     await expandWorktreeListing();
 
     const listing = within(screen.getByTestId('worktree-listing'));
-    // The header's visible label is only the remainder after the hoist.
     const header = listing.getByRole('button', { name: /^ar/ });
     expect(header.textContent).toContain('ar');
     expect(header.textContent).not.toContain('app/src/locales');
 
-    // FOCUS, not hover: the tooltip wraps the Button precisely so a keyboard
-    // user reaches it. Radix opens on the trigger's focus, and this assertion
-    // fails if the tooltip is ever moved back onto a nested span.
     (document.activeElement as HTMLElement | null)?.blur();
     header.focus();
     expect(document.activeElement).toBe(header);
@@ -1392,16 +1186,12 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('a non-linking row is reachable by keyboard and its focus opens the full path', async () => {
-    // A deletion row takes the plain-text branch, so the tooltip is the only
-    // truncation recovery a sighted keyboard-only user has — and Radix opens on
-    // the TRIGGER's focus, so a non-focusable span would give them nothing.
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
       ...emptyWorktree,
       notStaged: [
         { path: 'notes/kept.md', code: 'M', syncScoped: true },
-        // No open target → the plain-text branch under test.
         { path: 'notes/gone.md', code: 'D', syncScoped: true },
       ],
     };
@@ -1411,12 +1201,8 @@ describe('SyncStatusBadge working-tree listing', () => {
 
     const listing = within(screen.getByTestId('worktree-listing'));
     const label = listing.getByText('gone.md', { selector: 'span:not(.sr-only)' });
-    // Not a button — this is the branch that has no navigation target.
     expect(label.tagName).toBe('SPAN');
 
-    // No tooltip before focus. Asserting on the text alone would match this
-    // row's own `sr-only` full-path fallback, which is already in the DOM — so
-    // the assertion would pass with the Tooltip deleted outright.
     expect(screen.queryByRole('tooltip')).toBeNull();
 
     (document.activeElement as HTMLElement | null)?.blur();
@@ -1433,7 +1219,6 @@ describe('SyncStatusBadge working-tree listing', () => {
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
       ...emptyWorktree,
-      // One entry: no prefix is hoisted, so `label` IS the full path.
       notStaged: [{ path: 'notes/solo.md', code: 'D', syncScoped: true }],
     };
     await renderBadge();
@@ -1446,9 +1231,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('clickability follows the document, not the group the row landed in', async () => {
-    // `docName` is orthogonal to `syncScoped`: a gitignored note is openable
-    // but never pushed, and an incoming row is openable whenever the file
-    // already exists locally. Neither group gets to gate navigation.
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
@@ -1512,16 +1294,10 @@ describe('SyncStatusBadge working-tree listing', () => {
         selector: 'span:not(.sr-only)',
       }),
     ).toHaveLength(1);
-    // 'A' (staged add) is more specific than the worktree's 'M'.
     expect(screen.getByText('A')).toBeTruthy();
   });
 
   test('a tree that could not be read never claims to be clean', async () => {
-    // Regression: a failed `git status` returned all-empty lists, which the
-    // renderer could not tell apart from a genuinely clean tree — so the panel
-    // asserted "Nothing to commit, working tree clean" about data it had not
-    // read, at the moment the user is deciding whether to reset or switch
-    // machines.
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = { ...emptyWorktree, readable: false };
@@ -1558,7 +1334,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('shows what a pull would bring in, above what a push would send', async () => {
-    // The incoming half is the one the user did not author, so it leads.
     status = { ...baseStatus, state: 'idle', behind: 1 };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
@@ -1598,8 +1373,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('incoming-only is not a clean tree', async () => {
-    // Nothing local has changed, but there IS something to report — saying
-    // "working tree clean" here would hide the whole reason to open the panel.
     status = { ...baseStatus, state: 'idle', behind: 2 };
     projectLocalConfig = { autoSync: { mode: 'off' } };
     worktree = {
@@ -1614,9 +1387,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('"Updated" tracks the last sync RUN, not the last content change', async () => {
-    // A Pull against an already-current repo changes nothing, so `lastSyncUtc`
-    // stays put. Showing that reads as "the button did nothing" to the user who
-    // just pressed it. `lastRunUtc` advances whenever an op completes.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -1633,9 +1403,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('never sources "Updated" from the fetch time', async () => {
-    // `lastFetchUtc` advances on the panel-open fetch. Falling back to it would
-    // make the line read "just now" every time the user opened the popover,
-    // claiming a sync that never ran — the exact bug this chain must not have.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -1653,7 +1420,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   });
 
   test('hides the line entirely when nothing has ever synced', async () => {
-    // "Updated never" is noise on a project that simply has not run yet.
     status = {
       ...baseStatus,
       state: 'idle',
@@ -1681,8 +1447,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   test('a row list with more than the cap shows only the cap and an overflow button', async () => {
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
-    // 7 entries exceed MAX_ROWS_PER_GROUP (6), so the last entry hides behind
-    // the overflow button until the user asks for more.
     worktree = {
       ...emptyWorktree,
       notStaged: Array.from({ length: 7 }, (_, i) => ({
@@ -1694,9 +1458,6 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
-    // Manually open only the section trigger. expandWorktreeListing() would also
-    // click the "+N more" button (it carries aria-expanded=false) and reveal all
-    // rows — defeating what this test measures.
     await userEvent.click(screen.getByRole('button', { name: /Push includes/ }));
 
     expect(screen.getByTestId('worktree-rows-show-all')).toBeTruthy();
@@ -1706,7 +1467,6 @@ describe('SyncStatusBadge working-tree listing', () => {
   test('a row list at or below the cap shows all entries without an overflow button', async () => {
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
-    // 6 entries exactly match MAX_ROWS_PER_GROUP — all visible, no overflow.
     worktree = {
       ...emptyWorktree,
       notStaged: Array.from({ length: 6 }, (_, i) => ({
@@ -1740,9 +1500,6 @@ describe('SyncStatusBadge settings affordance', () => {
   });
 
   test('the popover offers a way into the Sync settings section', async () => {
-    // The popover deliberately hosts only the mid-edit controls; without this
-    // pointer the committed shared default and the cycle cadence are reachable
-    // only by knowing the header gear exists.
     await renderBadge();
     await openPopover();
 
@@ -1752,8 +1509,6 @@ describe('SyncStatusBadge settings affordance', () => {
   });
 
   test('choosing Settings closes the popover', async () => {
-    // Settings opens as a dialog over the editor; a popover left open would sit
-    // on top of it.
     await renderBadge();
     await openPopover();
 
@@ -1765,8 +1520,6 @@ describe('SyncStatusBadge settings affordance', () => {
   });
 
   test('the settings link is present before the first cycle, when no freshness line is', async () => {
-    // The footer row pairs the two; an implementation that hung the link off
-    // the freshness line would hide it on a project that has never synced.
     status = { ...baseStatus, lastRunUtc: null, lastSyncUtc: null } as GitSyncStatus;
 
     await renderBadge();
@@ -1786,14 +1539,7 @@ describe('SyncStatusBadge freshness line', () => {
     status = null;
   });
 
-  /**
-   * The accessible sentence, not the visual row: the visual half is arrows plus
-   * bare durations, which reads as "4m" with no direction. Asserting the label
-   * checks the meaning a user actually gets.
-   */
   function freshnessLabel(): string {
-    // The version-skew fallback renders its sentence visibly instead of via an
-    // sr-only twin, so fall back to the whole line when the label is absent.
     return (
       screen.queryByTestId('sync-popover-last-sync-label')?.textContent ??
       screen.getByTestId('sync-popover-last-sync').textContent ??
@@ -1801,7 +1547,6 @@ describe('SyncStatusBadge freshness line', () => {
     );
   }
 
-  /** The abbreviated durations shown next to the arrows. */
   function freshnessVisual(): string {
     return (
       screen.getByTestId('sync-popover-last-sync').textContent?.replace(freshnessLabel(), '') ?? ''
@@ -1809,8 +1554,6 @@ describe('SyncStatusBadge freshness line', () => {
   }
 
   test('reports the two directions separately when both have run', async () => {
-    // One combined stamp could not say WHICH leg ran, so a prompt pull read as
-    // though the push had gone out too — the whole reason for the split.
     status = {
       ...baseStatus,
       lastPullOkUtc: AT_2_MIN,
@@ -1821,14 +1564,12 @@ describe('SyncStatusBadge freshness line', () => {
     await openPopover();
 
     expect(freshnessLabel()).toBe('Pulled 2m ago · pushed 5m ago');
-    // Visually it is ↓ 2m · ↑ 5m — the durations without the verbs.
     expect(freshnessVisual()).toContain('2m');
     expect(freshnessVisual()).toContain('5m');
     expect(freshnessVisual()).not.toContain('Pulled');
   });
 
   test('a project that has only pulled shows one half, not "pushed never"', async () => {
-    // Pull-only mode schedules no push, so the push leg is legitimately absent.
     status = { ...baseStatus, lastPullOkUtc: AT_2_MIN, lastPushOkUtc: null } as GitSyncStatus;
 
     await renderBadge();
@@ -1847,8 +1588,6 @@ describe('SyncStatusBadge freshness line', () => {
   });
 
   test('an engine without the split falls back to direction-blind wording', async () => {
-    // Version skew: naming a direction from the combined stamp would be a guess,
-    // since it records that SOMETHING ran, not which.
     status = { ...baseStatus, lastRunUtc: AT_2_MIN } as GitSyncStatus;
 
     await renderBadge();
@@ -1858,8 +1597,6 @@ describe('SyncStatusBadge freshness line', () => {
   });
 
   test('a project that has never run shows no freshness line but keeps the footer link', async () => {
-    // The row is justify-between; collapsing the empty slot would slide the
-    // settings link left.
     status = {
       ...baseStatus,
       lastRunUtc: null,

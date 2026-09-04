@@ -2,17 +2,6 @@ import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import type { OkPackId } from '@/lib/desktop-bridge-types';
 
-/**
- * Long-form pack copy for the surfaces that configure a pack before it is
- * applied — the in-project seed dialog and the create-new-project dialog.
- * Both have room for more than the one-line card blurb on the picker grid: a
- * sentence or two on why you'd reach for this pack and what you'd do with it.
- *
- * Dialog-only copy, so it lives here rather than on the pack wire (which would
- * make it a drift-guarded three-way mirror). Descriptors rather than strings so
- * the lookup can live at module scope; callers resolve with `t(...)` from
- * `useLingui()`. Unmapped packs fall back to the short wire `description`.
- */
 export const PACK_BLURBS: Partial<Record<OkPackId, MessageDescriptor>> = {
   'knowledge-base': msg`Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later.`,
   'software-lifecycle': msg`Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke.`,

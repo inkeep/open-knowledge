@@ -1,11 +1,3 @@
-/**
- * RTL tests for the shared built-in-skill row (Settings + first launch). They
- * assert the truthful pair: the skill's own description, and its reach through
- * the existing agent-icon cluster (including a custom-root path shown verbatim,
- * and the zero-hosts copy that replaces the cluster). Token cost is deliberately
- * absent from this row. The reach cluster runs for real — only the Lingui
- * macros are shimmed to their English passthrough.
- */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -54,7 +46,6 @@ describe('SkillConsentRow', () => {
   test('with zero hosts the cluster is replaced by explanatory copy', () => {
     renderRow({ hosts: [] });
     expect(screen.getByTestId('skill-consent-row-no-hosts')).toBeTruthy();
-    // No agent marks at all — nothing claims a reach that does not exist.
     expect(screen.queryByLabelText('Claude')).toBeNull();
   });
 

@@ -1,26 +1,3 @@
-/**
- * Shared per-recent removal affordances used by the project switcher and the
- * command palette — the VS Code "Open Recent" remove controls:
- *   - `RecentRemoveButton`: a trailing "×" revealed on row hover. Rendered as a
- *     SIBLING of the row's menu/option item (never nested inside it) so its click
- *     can't fall through to the item's open action. `tabIndex={-1}` keeps it out
- *     of the menu's Tab order (Radix/cmdk trap Tab), and `aria-hidden` keeps this
- *     mouse-only control out of the accessibility tree so it isn't a non-menuitem
- *     control owned by the enclosing `role="menu"`/`role="listbox"` (an axe
- *     `aria-required-children` violation). `aria-hidden` + `tabIndex={-1}` is the
- *     documented-safe pairing — no `aria-hidden-focus` regression. Keyboard / AT
- *     users remove via the context menu.
- *   - `RecentItemContextMenu`: wraps a row so right-click (or the context-menu
- *     key on the focused row) offers "Remove from recent projects" — the
- *     Welcome-page affordance and the keyboard-reachable path the mouse-only ×
- *     can't provide.
- *
- * Removal itself (the `bridge.project.removeRecent` call + optimistic list
- * update) lives in each surface's owner; these controls only wire the gesture
- * to the passed `onRemoveRecent`. `testIdPrefix` namespaces the emitted
- * `data-testid`s per surface (`project-switcher-recent` / `command-palette-recent`).
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -52,10 +29,6 @@ export function RecentRemoveButton({
       variant="ghost"
       size="icon-sm"
       tabIndex={-1}
-      // Hidden from the accessibility tree (see file header): a mouse-only "×"
-      // owned by a role="menu"/"listbox" would otherwise trip axe
-      // aria-required-children. The context menu is the keyboard / AT removal
-      // path, and the aria-label stays for the visible title + as intent doc.
       aria-hidden="true"
       aria-label={t`Remove ${name} from recent projects`}
       title={t`Remove from recent projects`}

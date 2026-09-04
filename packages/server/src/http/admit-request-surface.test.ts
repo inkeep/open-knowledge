@@ -1,15 +1,27 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
-import { buildIngressPolicy } from '../ingress-policy.ts';
+import { beforeEach, describe, expect, test } from 'vitest';
+import {
+  __resetWarnedForwardedHeaderRefusalForTests,
+  buildIngressPolicy,
+  warnForwardedHeaderRefusalOnce,
+} from '../ingress-policy.ts';
+import type { PinoLogger } from '../logger.ts';
 import { admitRequestSurface } from './http-app.ts';
 
-// admitRequestSurface is the surface-wide admission prelude the mount runs
-// BEFORE dispatch for EVERY request — /mcp, /api, the static SPA shell, and
-// project content assets. Under `allowExternal` consent it validates Host with
-// the consolidated predicate (loopback + bind literals + externalUrl), so a
-// rebound / foreign Host cannot read the static shell or content while the
-// peer is admitted.
+beforeEach(() => {
+  __resetWarnedForwardedHeaderRefusalForTests();
+});
+
+function capturingLog(): { log: PinoLogger; warns: string[] } {
+  const warns: string[] = [];
+  const log = {
+    warn: (_fields: unknown, message?: string) => {
+      if (typeof message === 'string') warns.push(message);
+    },
+  } as unknown as PinoLogger;
+  return { log, warns };
+}
 
 function req(
   host: string | undefined,
@@ -68,10 +80,6 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('Gate 1: refuses forwarding headers the policy does not tolerate, before Gate 2 (403)', () => {
-    // The tripwire runs ahead of the Host gate. A pure-local server that never
-    // opted into exposure but receives X-Forwarded-* is fronted by an
-    // unexpected proxy/tunnel — refuse rather than serve it with full local
-    // trust. This pins the composed prelude to the predicate, not just Gate 2.
     const { res, status } = fakeRes();
     expect(
       admitRequestSurface(
@@ -85,9 +93,6 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('Gate 1: a consented policy with a externalUrl tolerates forwarding headers', () => {
-    // Under consent with a declared externalUrl the server sits behind a reverse
-    // proxy / tunnel on purpose, so forwarded headers are expected and
-    // tolerated; the Host still gates in Gate 2 (admitted here via externalUrl).
     const { res, status } = fakeRes();
     expect(
       admitRequestSurface(
@@ -101,14 +106,64 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('a pure-local policy (no exposure) does NOT Host-gate the surface here', () => {
-    // Gate 2 only runs under exposure. Pure-local rebinding defense lives
-    // with the legs behind this prelude instead: the `/api` pipeline read
-    // gate, the content-serve gate in `asset-serve-middleware.ts`, and the
-    // unconditional `/mcp` gate. The SPA shell (the remaining surface) is
-    // deliberately ungated — public bundle code.
     const local = buildIngressPolicy({});
     const { res, status } = fakeRes();
     expect(admitRequestSurface(req('evil.example'), res, local, 'mcp-mount')).toBe(true);
     expect(status()).toBeUndefined();
+  });
+
+  test('a Host refusal does not emit the forwarded-header diagnostic', () => {
+    const { log, warns } = capturingLog();
+    const { res } = fakeRes();
+    expect(admitRequestSurface(req('evil.example'), res, consentPolicy, 'mcp-mount', log)).toBe(
+      false,
+    );
+    expect(warns).toEqual([]);
+  });
+
+  test('a tolerated forwarded request emits no diagnostic', () => {
+    const { log, warns } = capturingLog();
+    const { res } = fakeRes();
+    expect(
+      admitRequestSurface(
+        req('laptop.tail:55222', '100.64.0.7', { 'x-forwarded-for': '203.0.113.7' }),
+        res,
+        consentPolicy,
+        'mcp-mount',
+        log,
+      ),
+    ).toBe(true);
+    expect(warns).toEqual([]);
+  });
+
+  test('the latch is shared across callers — a WS-site warn suppresses the HTTP-site one', () => {
+    const { log, warns } = capturingLog();
+    const local = buildIngressPolicy({});
+    warnForwardedHeaderRefusalOnce(log, 'ws-upgrade');
+    expect(warns.length).toBe(1);
+    expect(
+      admitRequestSurface(
+        req('localhost', '127.0.0.1', { 'x-forwarded-for': '203.0.113.7' }),
+        fakeRes().res,
+        local,
+        'mcp-mount',
+        log,
+      ),
+    ).toBe(false);
+    expect(warns.length).toBe(1);
+  });
+
+  test('the first forwarded-header refusal warns ONCE with the two-knob remedy; repeats stay quiet', () => {
+    const { log, warns } = capturingLog();
+    const local = buildIngressPolicy({});
+    const forwarded = () => req('localhost', '127.0.0.1', { 'x-forwarded-for': '203.0.113.7' });
+    expect(admitRequestSurface(forwarded(), fakeRes().res, local, 'mcp-mount', log)).toBe(false);
+    expect(warns.length).toBe(1);
+    expect(warns[0]).toContain('server.externalUrl');
+    expect(warns[0]).toContain('server.allowExternal');
+    expect(warns[0]).toContain('.ok/local/config.yml');
+    expect(warns[0]).toContain('ok.api.error.count');
+    expect(admitRequestSurface(forwarded(), fakeRes().res, local, 'mcp-mount', log)).toBe(false);
+    expect(warns.length).toBe(1);
   });
 });

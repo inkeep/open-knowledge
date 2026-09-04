@@ -30,8 +30,6 @@ describe('ProblemTypeSchema cluster C URN tokens', () => {
   });
 });
 
-// ─── read endpoint success schemas ────────────────────────────
-
 describe('DocumentReadSuccessSchema', () => {
   test('parses a flat success body with lifecycle: null (no status set)', () => {
     expect(
@@ -150,10 +148,6 @@ describe('DocumentListEntrySchema', () => {
     ).toBe(true);
   });
   test('parses an asset entry with mediaKind: null (non-renderable extension)', () => {
-    // Regression guard: server emits `mediaKind: null` for asset entries whose
-    // extension is in ASSET_EXTENSIONS but not in SIDEBAR_RENDERABLE_ASSET_EXTENSIONS
-    // (e.g. `.csv`, `.docx`, `.zip` — types with no inline preview). Schema must
-    // accept the `null` discriminant.
     expect(
       DocumentListEntrySchema.safeParse({
         kind: 'asset',
@@ -173,9 +167,6 @@ describe('DocumentListEntrySchema', () => {
   });
 
   test('parses asset entries with mediaKind: pdf and audio (sidebar-renderable)', () => {
-    // Pins the schema-side acceptance of the two media kinds added when
-    // `<Pdf>` + `<audio>` rendering joined `AssetPreview` (`.pdf` and the
-    // `AUDIO_EXTENSIONS` set classify here now instead of falling to null).
     expect(
       DocumentListEntrySchema.safeParse({
         kind: 'asset',
@@ -210,9 +201,6 @@ describe('DocumentListEntrySchema', () => {
     ).toBe(true);
   });
   test('parses a folder entry with path only', () => {
-    // Folder variant wired the
-    // folder-index → /api/documents emission path. Pin the refine
-    // contract: folders carry `path`, no `docName`, no asset fields.
     expect(
       DocumentListEntrySchema.safeParse({
         kind: 'folder',
@@ -223,9 +211,6 @@ describe('DocumentListEntrySchema', () => {
     ).toBe(true);
   });
   test('rejects a folder entry with docName present', () => {
-    // Folder rows aren't documents — admitting `docName` on the folder
-    // variant would let the sidebar key on a phantom doc and silently
-    // route folder clicks through the document-open path.
     expect(
       DocumentListEntrySchema.safeParse({
         kind: 'folder',
@@ -257,9 +242,6 @@ describe('DocumentListEntrySchema', () => {
       }).success,
     ).toBe(false);
   });
-  // the `kind:'file'` variant is the wire shape that lets
-  // /api/documents list ALL ContentFilter-passing non-markdown files (not just
-  // referenced renderable assets), so the omnibar + tree see the same set.
   test('parses a file entry with path (and optional assetExt)', () => {
     expect(
       DocumentListEntrySchema.safeParse({
@@ -302,8 +284,6 @@ describe('DocumentListEntrySchema', () => {
     ).toBe(false);
   });
   test('rejects a file entry with mediaKind populated', () => {
-    // `mediaKind` is reserved for the renderable-asset variant — letting a
-    // 'file' entry carry it would conflate the asset/file split.
     expect(
       DocumentListEntrySchema.safeParse({
         kind: 'file',
@@ -381,10 +361,6 @@ describe('DocumentListSuccessSchema', () => {
     ).toBe(true);
   });
   test('round-trips all three truncated shapes: true / false / absent (QA-009 / AC4)', () => {
-    // The `?showAll=true` walk sets `truncated` only when it hit its entry
-    // ceiling. The field is optional so the index-backed branch (never sets
-    // it) and legacy clients stay valid — assert all three shapes parse AND
-    // surface the expected value, not just that parsing succeeds.
     const truncatedTrue = DocumentListSuccessSchema.safeParse({ documents: [], truncated: true });
     expect(truncatedTrue.success).toBe(true);
     if (truncatedTrue.success) expect(truncatedTrue.data.truncated).toBe(true);
@@ -606,8 +582,6 @@ describe('ForwardLinkLocalTargetSchema', () => {
     }
   });
   test('tolerates an unknown status/targetKind value (open enums — forward-compat)', () => {
-    // A client on an older schema must still parse a row whose server added a
-    // new status token later; the enums are deliberately open `z.string()`.
     expect(
       ForwardLinkLocalTargetSchema.safeParse({
         role: 'link',
@@ -660,8 +634,6 @@ describe('ForwardLinksSuccessSchema', () => {
     ).toBe(true);
   });
   test('a legacy response without localTargets stays valid; the field is undefined', () => {
-    // Version skew: an older server omits the sibling collection entirely. The
-    // document/external union is untouched, so the response must still parse.
     const result = ForwardLinksSuccessSchema.safeParse({
       docName: 'alpha',
       forwardLinks: [{ kind: 'doc', docName: 'beta', anchor: null, title: 'Beta', snippet: null }],
@@ -694,7 +666,6 @@ describe('ForwardLinksSuccessSchema', () => {
     const result = ForwardLinksSuccessSchema.safeParse(body);
     expect(result.success).toBe(true);
     if (result.success) {
-      // Fully-specified rows round-trip unchanged (defaults already applied).
       expect(result.data).toEqual(body);
     }
   });

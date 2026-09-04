@@ -9,10 +9,6 @@ import {
   installClientLogForwarder,
 } from './install-client-log-forwarder';
 
-// The forwarder reads `console` / `window` / `document` through injectable
-// seams, so these unit tests run in the plain (non-DOM) tier with fakes — no
-// jsdom, fully deterministic.
-
 let handle: ClientLogForwarderHandle | undefined;
 afterEach(() => {
   handle?.uninstall();
@@ -101,7 +97,6 @@ function install(
 
 describe('installClientLogForwarder', () => {
   test('no-op when no window is available', () => {
-    // No windowObj injected + no global window in the unit-test tier.
     expect(installClientLogForwarder({ fetchImpl: makeFetchSpy() })).toBeUndefined();
   });
 
@@ -115,7 +110,7 @@ describe('installClientLogForwarder', () => {
       documentObj: makeFakeDocument(),
     });
     expect(handle).toBeUndefined();
-    con.warn('not captured'); // console not patched
+    con.warn('not captured');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -150,11 +145,6 @@ describe('installClientLogForwarder', () => {
   });
 
   test('scrubs credentials out of the LIFTED FIELDS too, which no later layer masks', () => {
-    // The message and the fields are parsed from different strings, so scrubbing
-    // the message alone leaves the fields raw — and the ingest handler spreads
-    // them straight into pino, whose keyed redact covers a fixed denylist this
-    // key is not on. The scrub-coverage guard cannot catch the gap either: it
-    // asks whether the file scrubs anywhere, and it does, on the message path.
     const fetchSpy = makeFetchSpy();
     const { con } = install(fetchSpy);
     const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
@@ -172,7 +162,6 @@ describe('installClientLogForwarder', () => {
     con.info('x'.repeat(RENDERER_LOG_MAX_MESSAGE_BYTES + 500));
     handle?.flushNow();
     const message = bodyOf(fetchSpy).entries[0]?.message as string;
-    // A 4096-tightened cap would fail the lower bound; the cap stays at 8192.
     expect(message.length).toBeGreaterThan(4096);
     expect(message.length).toBeLessThanOrEqual(RENDERER_LOG_MAX_MESSAGE_BYTES);
   });
@@ -201,7 +190,7 @@ describe('installClientLogForwarder', () => {
   test('re-entrancy guard: a console call during flush does not recurse', () => {
     let conRef: ConsoleLike | undefined;
     const fetchSpy = vi.fn((_url: string, _init?: RequestInit) => {
-      conRef?.error('error raised while flushing'); // transitive console during flush
+      conRef?.error('error raised while flushing');
       return Promise.resolve(new Response(null, { status: 200 }));
     });
     const { con } = install(fetchSpy);
@@ -280,7 +269,7 @@ describe('installClientLogForwarder', () => {
     con.warn('lost-1');
     con.warn('lost-2');
     handle?.flushNow();
-    await new Promise((r) => setTimeout(r, 0)); // let the rejection handler run
+    await new Promise((r) => setTimeout(r, 0));
 
     failNext = false;
     con.warn('delivered');
@@ -310,13 +299,6 @@ describe('installClientLogForwarder', () => {
   });
 
   test('a sustained failing burst past the entry cap preserves the accumulated drop count on recovery', async () => {
-    // The reconnect-storm scenario the feature targets: entries arrive faster
-    // than they can be delivered while the server is unreachable. Each auto-flush
-    // at the entry cap drains the queue and fails its POST — the failed-batch
-    // accounting must accumulate across cycles and ride the first delivered batch
-    // once the server recovers. (The ring-overflow `shift` in `enqueue` is not
-    // exercised here: the flush-at-cap drains the queue at exactly the cap, so it
-    // never grows past it — the failed-POST path is the real bound.)
     let failNext = true;
     const fetchSpy = vi.fn((_url: string, _init?: RequestInit) =>
       failNext
@@ -325,9 +307,8 @@ describe('installClientLogForwarder', () => {
     );
     const { con } = install(fetchSpy);
 
-    // Two full cap-sized batches, all failing → two auto-flush cycles.
     for (let i = 0; i < RENDERER_LOG_MAX_ENTRIES * 2; i++) con.warn(`storm-${i}`);
-    await new Promise((r) => setTimeout(r, 0)); // let both rejection handlers run
+    await new Promise((r) => setTimeout(r, 0));
 
     failNext = false;
     con.warn('delivered');
@@ -353,7 +334,7 @@ describe('installClientLogForwarder', () => {
     failNext = false;
     con.warn('carries the count');
     handle?.flushNow();
-    await new Promise((r) => setTimeout(r, 0)); // let the success handler subtract
+    await new Promise((r) => setTimeout(r, 0));
 
     con.warn('clean batch');
     handle?.flushNow();
@@ -383,11 +364,9 @@ describe('installClientLogForwarder', () => {
     });
     expect(h1).toBeDefined();
     h1?.uninstall();
-    // Console restored: capturing no longer happens.
     con.warn('after uninstall');
     h1?.flushNow();
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Marker cleared: a second install on the same window succeeds.
     handle = installClientLogForwarder({
       fetchImpl: fetchSpy,
       consoleObj: con,

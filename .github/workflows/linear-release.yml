@@ -94,6 +94,20 @@ name: Linear Release
 # SAFETY
 #   Fully decoupled from the release/publish path — a failure here can never
 #   break a release. The job no-ops cleanly when LINEAR_ACCESS_KEY is absent.
+#   That decoupling cuts both ways, so the final step pages the releases channel
+#   on failure: nothing downstream notices when stamping stops, and without the
+#   page a broken run looks exactly like a healthy one from outside.
+#
+#   What that page does NOT cover, so it is not mistaken for full coverage:
+#   a dispatch that never fires produces no run to attach a guard to, and any
+#   check for that would have to live with the producers (release.yml for beta,
+#   promote-stable.yml for stable). Nor does it cover the containment pass
+#   exiting 0 having reconciled nothing: with LINEAR_API_KEY unset it logs a
+#   notice and returns, and a ticket whose PR attachments all point outside the
+#   private monorepo is filtered out before any API call is made. Credential
+#   faults that DO reach the API throw rather than reading as an answer, so
+#   those go red and this page fires. stamp-by-containment.mjs is the authority
+#   on which paths exit 0; do not restate its branches here.
 
 on:
   repository_dispatch:
@@ -216,7 +230,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::OK_RELEASE_BRIDGE_APP_ID not set — fix commits cannot be resolved, so every ticket will be skipped rather than mis-stamped."
+            echo "::warning::OK_RELEASE_BRIDGE_APP_ID not set — private-monorepo fix commits cannot be resolved, so the containment pass fails rather than mis-stamping."
           fi
 
       - name: Mint cross-repo read token (bridge App)
@@ -241,3 +255,61 @@ jobs:
           # rewriting tickets. Set to `live` on the repo to arm real writes.
           STAMP_MODE: ${{ vars.STAMP_MODE }}
         run: node .github/scripts/stamp-by-containment.mjs
+
+      # Being decoupled from the release path is what makes a failure here easy
+      # to miss: the cut it belongs to goes green, ships, and announces itself,
+      # so nothing about the release looks wrong and only this workflow's own
+      # run is red. Five consecutive stable cuts failed that way over a day
+      # before anyone noticed. The guard covers the whole job rather than one
+      # step, since the useful signal is that stamping did not happen, not which
+      # line of it stopped first — and the no-key path skips every step above
+      # without failing, so an unconfigured repo stays silent.
+      #
+      # `failure() || cancelled()`, not bare `failure()`: the job carries
+      # `timeout-minutes`, and a timeout kill CANCELS the job rather than
+      # failing it, so a run that hangs on the Linear API or on the full-history
+      # checkout would otherwise be the one path that pages nobody. That also
+      # picks up an operator-initiated cancel, which is the right call here —
+      # stamping did not happen either way, and `cancel-in-progress: false`
+      # means no run is ever preempted by a newer one.
+      - name: Alert on failed stamping
+        if: failure() || cancelled()
+        env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CHANNEL: ${{ steps.derive.outputs.channel }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -uo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TAG="${RELEASE_TAG:-an unidentified tag}"
+          # A timeout and an operator cancel are indistinguishable to an
+          # expression — `job.status` exposes no separate timed-out state — so
+          # the page names both rather than guessing which one happened.
+          if [[ "${JOB_STATUS:-}" == "cancelled" ]]; then
+            OUTCOME="was cancelled or timed out"
+          else
+            OUTCOME="failed"
+          fi
+          TEXT="Linear release stamping ${OUTCOME} for ${TAG}${CHANNEL:+ (${CHANNEL})}. The release itself is unaffected; Linear is now out of sync with what shipped. Re-running is safe, though on a stable tag it re-verifies every stable release's stamps rather than just this one. ${RUN_URL}"
+          {
+            echo "## Linear stamping ${OUTCOME}"
+            echo "Tag: \`${TAG}\`"
+            echo "Run: ${RUN_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # A lost notification must never be the thing that fails a release
+          # job, so both the missing-secret and dead-webhook paths warn and
+          # return success — the red run is still the underlying alert.
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::warning::No Slack webhook secret is configured; the workflow failure remains the alert."
+            exit 0
+          fi
+          payload=$(jq -nc --arg text "$TEXT" '{text: $text}')
+          if ! curl -sS --fail --connect-timeout 10 --max-time 30 -X POST \
+            -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$WEBHOOK_URL"; then
+            echo "::warning::Linear stamping failure alert failed to POST."
+          fi

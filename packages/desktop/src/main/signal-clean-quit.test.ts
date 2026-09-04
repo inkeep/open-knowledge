@@ -1,10 +1,3 @@
-/**
- * Signal-clean-quit tests: a fake process emitter records the per-signal
- * handlers the installer registers, and fake `markCleanQuit` / `quit` hooks
- * record call order. No Electron, no real signals — the whole pipeline is
- * exercised by emitting into the fake emitter.
- */
-
 import { describe, expect, test } from 'vitest';
 import { CLEAN_QUIT_SIGNALS, installSignalCleanQuit } from './signal-clean-quit.ts';
 
@@ -65,9 +58,6 @@ describe('installSignalCleanQuit', () => {
 
     rig.emit('SIGTERM');
 
-    // markCleanQuit MUST precede quit: app.quit() teardown is async and may be
-    // cut short by a SIGKILL escalation, so the synchronous sentinel clear has
-    // to have already happened.
     expect(rig.calls).toEqual(['markCleanQuit', 'quit']);
   });
 

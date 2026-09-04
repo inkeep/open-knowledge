@@ -16,18 +16,7 @@ const desktopRelease = readFileSync(
   'utf8',
 );
 
-/**
- * Exact bounds of the alert step: its `- name:` up to the next sibling step.
- * The fixed-length slices this replaces (400 / 4000 / 5000 chars) could run
- * past the step and assert against a neighbouring step's shell.
- */
 const alertStep = (source = desktopRelease) => {
-  // Throw rather than return a degenerate slice. An unguarded `indexOf` yields
-  // -1, `slice(-1)` yields the file's last character, and the tests below whose
-  // only assertions are `not.toMatch` / `not.toContain` then pass against that
-  // one character — so renaming the step turns its own ratchet green instead of
-  // red. Measured: renaming it reddens 7 of 30 tests here but leaves `a blocked
-  // release never pages Discord`, the pure-negative one, passing.
   const start = source.indexOf('- name: Alert on a blocked release');
   if (start === -1) throw new Error('desktop-release.yml has no "Alert on a blocked release" step');
   const rest = source.slice(start);
@@ -58,8 +47,6 @@ describe('alert content', () => {
   });
 
   test('a genuine failure and an infrastructure error read differently', () => {
-    // The responder does different things in each case: a fail is a product
-    // regression to investigate; an error may just need a re-run.
     const fail = JSON.stringify(buildSlackPayload({ ...base, verdict: 'fail' }));
     const error = JSON.stringify(buildSlackPayload({ ...base, verdict: 'error' }));
     expect(fail).not.toBe(error);
@@ -76,11 +63,6 @@ describe('alert content', () => {
   });
 
   test('recovery points at the cause instead of promising a repair-free retry', () => {
-    // v0.58.10 and v0.58.11 were both refused by a deterministic preparation
-    // guard, and the page told the responder to re-fire a command that reads the
-    // same immutable tag and the same repo state — so it could only ever fail
-    // again. The command stays (transient blocks do clear on a re-fire); the
-    // promise around it must not say the re-fire is the whole recovery.
     const body = buildSlackPayload(base).blocks[1].text.text;
     expect(body).toContain('*Recovery');
     expect(body).toContain('fix the cause');
@@ -89,9 +71,6 @@ describe('alert content', () => {
 });
 
 describe('a passing smoke is never rendered as a smoke failure', () => {
-  // The v0.52.2 / v0.52.3 pages: Linux packaging died on a dropped download
-  // while the mac job ran the smoke to a clean pass, and the alert coerced that
-  // pass into `error`, producing "DMG smoke ERRORED — all 13 tests passed".
   const linuxBlocked = {
     ...base,
     verdict: 'pass',
@@ -104,7 +83,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
     expect(text).toContain('Linux packaging');
     expect(text).not.toContain('DMG smoke ERRORED');
     expect(text).not.toContain('DMG smoke FAILED');
-    // It is still unmistakably a blocked release.
     expect(text).toContain('RELEASE BLOCKED');
     expect(text).toContain('nothing shipped');
   });
@@ -113,7 +91,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
     const body = buildSlackPayload(linuxBlocked).blocks[1].text.text;
     expect(body).toContain('Linux packaging failed');
     expect(body).toContain('NOT an app regression');
-    // The smoke result is still reported, just not as the cause.
     expect(body).toContain('smoke itself passed');
   });
 
@@ -123,7 +100,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
   });
 
   test('a genuine smoke failure is unaffected by the blocking-stage plumbing', () => {
-    // Regression guard: the fix must not soften a real product regression.
     const failed = buildSlackPayload({ ...base, verdict: 'fail', blockedBy: 'macOS packaging' });
     expect(failed.text).toContain('DMG smoke FAILED');
     expect(JSON.stringify(failed)).toContain('real product regression');
@@ -137,11 +113,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
   });
 
   test('a no-verdict blocked release still names the job that failed', () => {
-    // The uncovered branch: build-macos dies BEFORE the smoke runs, so the
-    // verdict is empty and the step coerces it to `error` — but the workflow
-    // does know which job failed. Describing that as an error inside the gate
-    // points the responder at a gate that never ran, and disagrees with the
-    // annotation and jq fallback, which both name the job.
     const noVerdict = buildSlackPayload({
       ...base,
       verdict: 'error',
@@ -152,7 +123,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
     expect(noVerdict.text).not.toContain('DMG smoke ERRORED');
     const body = noVerdict.blocks[1].text.text;
     expect(body).toContain('macOS packaging failed');
-    // Still honest that the smoke produced nothing, rather than claiming a pass.
     expect(body).toContain('never reached a verdict');
     expect(body).not.toContain('smoke itself passed');
   });
@@ -166,7 +136,6 @@ describe('a passing smoke is never rendered as a smoke failure', () => {
     expect(describeBlock({ verdict: 'pass', blockedBy: 'Linux packaging' }).smokePassed).toBe(true);
     expect(describeBlock({ verdict: 'fail' }).smokePassed).toBe(false);
     expect(describeBlock({ verdict: 'error' }).smokePassed).toBe(false);
-    // An absent verdict must not be mistaken for a pass.
     expect(describeBlock({}).smokePassed).toBe(false);
     expect(describeBlock({}).subject).toContain('ERRORED');
   });
@@ -241,10 +210,6 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  // Pins the guard in alertStep(). Every other call here reaches a step that
-  // exists, so the throw branch is otherwise dead code, and dropping it would
-  // silently restore the vacuous pass that `a blocked release never pages
-  // Discord` below depends on being impossible.
   test('alertStep() throws on a missing step instead of slicing one character', () => {
     expect(() => alertStep('name: nothing that matches\n')).toThrow(
       /has no "Alert on a blocked release" step/,
@@ -252,11 +217,6 @@ describe('workflow wiring', () => {
   });
 
   test('the alert job fires on a blocked release, never on success', () => {
-    // The blocked-release predicate lives at the ALERT JOB level (a failed
-    // packaging job skips finalize, so a failure()-step inside finalize
-    // could never fire). It keys on finalize's result rather than bare
-    // failure() so a degraded-mode cut that still publishes does not page;
-    // the step keeps only the stable-only channel gate.
     const alertJob = desktopRelease.slice(
       desktopRelease.indexOf('\n  alert:'),
       desktopRelease.indexOf('- name: Alert on a blocked release'),
@@ -267,12 +227,6 @@ describe('workflow wiring', () => {
   });
 
   test('the alert reads its builder from the workflow commit, not the release tag', () => {
-    // On repository_dispatch the workflow runs from the default branch while
-    // the packaging jobs check out client_payload.ref — a tag that can predate
-    // this script. v0.41.0 lost its Slack announcement to exactly that. The
-    // alert job therefore checks out $GITHUB_SHA (a bare checkout, no `ref:`
-    // override) and reads the builder from the working tree, degrading to the
-    // plain-text payload when even that copy is missing.
     const alertJob = desktopRelease.slice(
       desktopRelease.indexOf('\n  alert:'),
       desktopRelease.indexOf('- name: Alert on a blocked release'),
@@ -285,11 +239,6 @@ describe('workflow wiring', () => {
   });
 
   test('the alert reuses the existing webhook secret and introduces none', () => {
-    // "Introduces none" is a claim about THIS step, so it has to be measured at
-    // step scope: every secret the step names must already be consumed
-    // elsewhere in the workflow. Scanning the whole file for the secret the
-    // step uses proves nothing — the announcement steps reference it too, so
-    // the assertion holds even if this step is deleted outright.
     expect(alertStep()).toContain('secrets.SLACK_WEBHOOK_URL');
     const secretsIn = (yaml) =>
       new Set([...yaml.matchAll(/secrets\.([A-Z0-9_]+)/g)].map((m) => m[1]));
@@ -303,22 +252,15 @@ describe('workflow wiring', () => {
 
   test('an unset webhook is a notice-level skip, and a failed POST is a warning', () => {
     const step = alertStep();
-    // Unset secret: annotate and return 0 — never fail the step.
     expect(step).toContain('::notice::${label} webhook not set');
     expect(step).toMatch(/if \[\[ -z "\$webhook" \]\]; then[\s\S]{0,200}?return 0/);
-    // A dead webhook warns; it must not mask the smoke failure that caused it.
     expect(step).toContain('::warning::${label} smoke alert failed to POST');
-    // The channel is actually driven, and through the releases-first
-    // resolution rather than straight at the shared secret.
     expect(step).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
   });
 
   test('a passing smoke verdict is not coerced into an error', () => {
-    // The coercion this replaces was `if [[ "$VERDICT" != "fail" ]]; then
-    // VERDICT="error"; fi`, which relabelled a clean pass as an infra error.
     const step = alertStep();
     expect(step).not.toMatch(/if \[\[ "\$VERDICT" != "fail" \]\]/);
-    // Only a genuinely absent or skipped verdict becomes `error`.
     expect(step).toContain('VERDICT="${SMOKE_VERDICT:-error}"');
     expect(step).toMatch(/skipped.*\]\]; then\s*\n\s*VERDICT="error"/);
   });
@@ -326,26 +268,19 @@ describe('workflow wiring', () => {
   test('the alert tells the payload builder which jobs actually failed', () => {
     const step = alertStep();
     expect(step).toContain('--blocked-by "$BLOCKED_BY"');
-    // Derived from job results, not from the smoke verdict.
     for (const src of ['RESULT_LINUX', 'RESULT_WINDOWS', 'RESULT_MACOS', 'RESULT_PUBLISH']) {
       expect(step).toContain(src);
     }
-    // A skipped downstream job is a consequence, not a cause.
     expect(step).toContain('== "failure"');
   });
 
   test('only REQUIRED platforms count as blockers', () => {
-    // Under the DESKTOP_RELEASE_REQUIRED_PLATFORMS escape valve a non-required
-    // platform can fail while publish-assets and finalize still run. Naming it
-    // would send the responder to a job deliberately excluded from the publish
-    // decision, and would mask a genuine finalize failure behind it.
     const step = alertStep();
     expect(step).toContain('REQUIRED_PLATFORMS');
     expect(step).toContain('is_required()');
     for (const platform of ['mac', 'windows', 'linux']) {
       expect(step).toContain(`is_required ${platform}`);
     }
-    // prepare + publish-assets are never platform-gated; they always block.
     expect(step).toMatch(/RESULT_PREPARE.*==\s*"failure".*\]\]\s*&&\s*blocked\+=/);
   });
 
@@ -360,7 +295,6 @@ describe('workflow wiring', () => {
   });
 
   test('a blocked release never pages Discord', () => {
-    // Rationale: this module's docstring. This test is the ratchet for it.
     const step = alertStep();
     expect(step).not.toMatch(/^\s*post\s+.*Discord\s*$/m);
     expect(step).not.toContain('DISCORD_WEBHOOK_URL');

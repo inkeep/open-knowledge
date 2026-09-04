@@ -1,19 +1,3 @@
-/**
- * Reopening a thread the server died on, all the way from disk to the reader.
- *
- * A crash leaves the persisted metadata behind its own event log — the meta is
- * rewritten on info changes, not per appended event — so the durable log can
- * end far past the `lastSeq` on disk. That skew only matters once, and only
- * here: the polite announcer treats "delivery caught up to the retained log"
- * as the end of history, so a replay that runs past a stale bound starts
- * reciting a dead thread's warnings as if they had just happened.
- *
- * Nothing below hands the client a replay bound. The real manager rehydrates
- * the real files, the real socket announces the window, and the real client,
- * fold, renderer, and announcer do the rest, because a synthetic `subscribed`
- * frame with an accurate bound is precisely the mistake under test.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,12 +19,6 @@ import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-e
 };
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
-/**
- * Environment doubles, not seam doubles: the editor context and workspace hook
- * need providers this suite has no reason to stand up, and the composer's real
- * field is a ProseMirror contentEditable jsdom cannot host. None of them sits
- * between a server frame and a transcript row.
- */
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ systemProvider: null }),
 }));
@@ -56,14 +34,11 @@ const log = getLogger('acp-crash-recovery-test');
 const AGENT_ID = 'codex-acp';
 const AGENT_NAME = 'Codex';
 const SOCKET_URL = 'ws://localhost:5173/collab/thread';
-/** Replay walks the log back in 512-event frames; anything longer takes several. */
 const REPLAY_CHUNK = 512;
 
 const HISTORIC_WARNING_A = fixture.candidates[0].update.content.text;
 const HISTORIC_WARNING_B = fixture.candidates[2].update.content.text;
 const LIVE_WARNING = fixture.candidates[1].update.content.text;
-
-// ── the durable transcript a crash left behind ────────────────────────────
 
 const su = (update: unknown, ts: number): ThreadEvent => ({
   kind: 'session_update',
@@ -77,12 +52,6 @@ const agentChunk = (text: string, ts: number): ThreadEvent =>
 const thoughtChunk = (ts: number): ThreadEvent =>
   su({ sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: '.' } }, ts);
 
-/**
- * One warning early enough to land in the first replay frame and one late
- * enough to land in a later one — the whole point of the fixture. Padding is
- * thought chunks so the transcript stays two warning cards plus a single
- * folded thought, however long the log is.
- */
 function crashedTranscript(): ThreadEvent[] {
   const events: ThreadEvent[] = [{ kind: 'user_message', content: 'check the skills', ts: 1 }];
   events.push(agentChunk(HISTORIC_WARNING_A, 2));
@@ -92,12 +61,7 @@ function crashedTranscript(): ThreadEvent[] {
 }
 
 const CRASHED_EVENTS = crashedTranscript();
-/** The seq the meta would have named had the server survived to write it. */
 const DURABLE_LAST_SEQ = CRASHED_EVENTS.length - 1;
-/**
- * What the meta actually holds: an early seq, from the last info change before
- * the crash. Small enough that delivery passes it inside the first frame.
- */
 const STALE_LAST_SEQ = 1;
 
 function writeCrashedThread(localDir: string, threadId: string): void {
@@ -129,15 +93,6 @@ function writeCrashedThread(localDir: string, threadId: string): void {
   );
 }
 
-// ── a resumable registry agent, reachable without a network ───────────────
-
-/**
- * Registry source is not cosmetic: it is half of the identity both the
- * retention guard and the fold consult, and only a manifest can carry it. The
- * agent is reached the way a registry agent is — an `npx` shim on the
- * manifest's own overlay PATH — and answers `session/resume` so the crashed
- * thread can come back to life.
- */
 function writeResumableRegistryAgent(binDir: string, warningText: string): void {
   const agentPath = join(binDir, 'agent.mjs');
   writeFileSync(
@@ -187,8 +142,6 @@ process.stdin.on('data', (chunk) => {
   writeFileSync(join(binDir, 'npx'), `#!/bin/sh\nexec "${process.execPath}" "${agentPath}"\n`, {
     mode: 0o755,
   });
-  // The launch path probes `node --version` for npx compatibility before it
-  // spawns anything, and the overlay PATH is the only place it can look.
   writeFileSync(
     join(binDir, 'node'),
     `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v${process.versions.node}; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
@@ -227,23 +180,13 @@ function makeManager(contentDir: string, localDir: string, binDir: string): AcpT
     isExcludedPath: () => false,
     isIgnoredPath: () => false,
     log,
-    // Hermetic: every launch merges the login shell's PATH, and a test must
-    // not spawn the developer's shell.
     resolveLoginShellPath: async () => null,
   });
 }
 
-// ── the socket, bridged in-process ────────────────────────────────────────
-
 let manager: AcpThreadManager | null = null;
-/** Every `events` frame the server put on the wire, in order. */
 let replayFrameSizes: number[] = [];
 
-/**
- * The browser primitive, and only it. Constructing one attaches the real
- * server-side handler to the other end, so every frame the client parses was
- * produced by `attachAcpThreadSocket` against a real thread record.
- */
 class BridgedSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -293,8 +236,6 @@ class BridgedSocket {
   }
 }
 
-// ── harness ───────────────────────────────────────────────────────────────
-
 const realWebSocket = globalThis.WebSocket;
 let dirs: string[] = [];
 let threadCounter = 0;
@@ -315,7 +256,6 @@ async function until(predicate: () => boolean, label: string, ms = 15_000): Prom
 
 const render = (ui: ReactNode) => rtlRender(ui, { wrapper: TooltipProvider });
 
-/** Mirrors how the host feeds the view: info comes from the store, live. */
 function ThreadHost({ threadId }: { threadId: string }): ReactNode {
   const state = useAgentThread(threadId);
   return state === null ? null : <ThreadView info={state.info} />;
@@ -328,10 +268,6 @@ const noticeCount = (threadId: string): number =>
   (client().getThreadModel(threadId)?.items ?? []).filter((item) => item.kind === 'agent_notice')
     .length;
 
-/**
- * A settled region cannot tell a queued announcement from an overwritten one —
- * both leave the same final string — so the mutations are what get recorded.
- */
 function recordAnnouncements(region: HTMLElement): () => string[] {
   const spoken: string[] = [];
   const observer = new MutationObserver((records) => {
@@ -354,11 +290,6 @@ function recordAnnouncements(region: HTMLElement): () => string[] {
   };
 }
 
-/**
- * Boot a server over a crash-recovered thread, connect the real client to it,
- * and mount the view before any history has been asked for — the order that
- * puts the announcer on screen while the replay is still to come.
- */
 async function openCrashedThread(): Promise<{ threadId: string; spoken: () => string[] }> {
   threadCounter += 1;
   const threadId = `crashed-${threadCounter}`;
@@ -406,8 +337,6 @@ describe.skipIf(process.platform === 'win32')('crash-recovered transcript', () =
       );
     });
 
-    // Anti-vacuity: one frame carrying everything could not tell an accurate
-    // replay bound from a stale one, so the whole scenario would prove nothing.
     expect(replayFrameSizes.length).toBeGreaterThan(1);
     expect(replayFrameSizes.reduce((a, b) => a + b, 0)).toBe(CRASHED_EVENTS.length);
 
@@ -439,13 +368,9 @@ describe.skipIf(process.platform === 'win32')('crash-recovered transcript', () =
     });
 
     expect(noticeCards()).toHaveLength(3);
-    // The region is cleared a beat before its message lands, so the utterance
-    // is not on screen the instant the card is.
     await act(async () => {
       await until(() => spoken().length > 0, 'the live warning to be announced');
     });
-    // Only the warning that actually just happened, and only one utterance of
-    // it — the two the reader scrolled past stay on the cards.
     expect(spoken()).toEqual([`${AGENT_NAME} reported: ${LIVE_WARNING.trim().split('\n')[0]}`]);
     expect(document.activeElement).toBe(focused);
   }, 30_000);

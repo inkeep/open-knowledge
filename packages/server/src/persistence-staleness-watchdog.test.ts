@@ -18,13 +18,11 @@ interface Rig {
   docs: Map<string, Y.Doc>;
   bases: Map<string, string>;
   disk: Map<string, string>;
-  /** Per-doc ms-since-last-user-tx; missing entry → null (never observed). */
   txAges: Map<string, number>;
   forceCalls: string[];
   clock: { nowMs: number };
   batchActive: { value: boolean };
   inFlight: Map<string, string>;
-  /** Behavior of the injected forceStore. */
   forceBehavior: {
     mode: 'advance-base' | 'no-op' | 'throw';
   };
@@ -68,7 +66,6 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
       return disk.get(documentName) ?? null;
     },
     graceMs: GRACE_MS,
-    // Interval never fires inside a test; sweeps are driven manually.
     sweepIntervalMs: 3_600_000,
     now: () => clock.nowMs,
     getBase: (documentName) => bases.get(documentName),
@@ -98,7 +95,6 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
   };
 }
 
-/** A doc whose memory diverged from base+disk long ago — the wedge shape. */
 function seedWedgedDoc(rig: Rig, name: string): Y.Doc {
   const doc = makeDoc('# edited in memory\n');
   rig.docs.set(name, doc);
@@ -128,7 +124,6 @@ describe('staleness detection and forced store', () => {
     expect(rig.forceCalls).toEqual(['wedged-doc']);
     expect(getMetrics().persistenceStalenessDetected).toBe(1);
     expect(getMetrics().persistenceStalenessForcedStores).toBe(1);
-    // Base advanced by the store; the next sweep sees convergence and stays quiet.
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['wedged-doc']);
   });
@@ -165,10 +160,6 @@ describe('staleness detection and forced store', () => {
   });
 
   test('classifies frontmatter-carrying docs with the store spine comparator', async () => {
-    // Byte-unequal but normalize-equal (trailing newlines): the shared
-    // `normalizedSourceForm` derivation must read this as converged even
-    // through the frontmatter strip/prepend round-trip — the same verdict
-    // the store's no-op skip would reach.
     const fmBase = '---\ntitle: x\n---\n\n# body\n\n\n';
     const doc = makeDoc('---\ntitle: x\n---\n\n# body\n');
     rig.docs.set('fm-doc', doc);
@@ -179,7 +170,6 @@ describe('staleness detection and forced store', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual([]);
 
-    // A frontmatter-only edit IS a divergence and must be rescued.
     doc.getText('source').delete(0, doc.getText('source').length);
     doc.getText('source').insert(0, '---\ntitle: y\n---\n\n# body\n');
     await rig.watchdog.sweep();
@@ -187,9 +177,6 @@ describe('staleness detection and forced store', () => {
   });
 
   test('rescues a blank run the normalized comparator cannot see', async () => {
-    // The comparator collapses blank runs on both sides, so a widened interior
-    // run reads as converged and the backstop would leave the edit in memory
-    // forever. The base and the memory below are deliberately normalize-equal.
     const base = 'Above.\n\nBelow.\n';
     const widened = 'Above.\n\n\n\nBelow.\n';
     expect(normalizeBridge(base)).toBe(normalizeBridge(widened));
@@ -203,14 +190,11 @@ describe('staleness detection and forced store', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['blank-run-doc']);
 
-    // The store advanced the base, so the next sweep sees convergence.
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['blank-run-doc']);
   });
 
   test('leaves a doc alone when the base carries the wider run', async () => {
-    // The reverse direction is the collapse class the comparator exists to
-    // tolerate — forcing a store here would write the narrower form to disk.
     const doc = makeDoc('- a\n\n- b\n');
     rig.docs.set('collapsed-doc', doc);
     rig.bases.set('collapsed-doc', '- a\n\n\n- b\n');
@@ -234,10 +218,6 @@ describe('staleness detection and forced store', () => {
 
 describe('exclusions', () => {
   test('isPersistenceExcludedDoc admits exactly the dedicated-store-path doc classes', () => {
-    // One representative per dedicated-store-path class dispatched in
-    // persistence's onLoadDocument/onStoreDocument. A fifth doc class
-    // added to that dispatch must be added here (and to the predicate) or
-    // the watchdog would force it through the markdown L1 spine.
     for (const name of [
       '__system__',
       '__config__/project',
@@ -281,8 +261,6 @@ describe('exclusions', () => {
   });
 
   test('skips docs frozen by lifecycle status', async () => {
-    // Driven from the registry so a newly added frozen status is covered
-    // here automatically.
     for (const status of FROZEN_LIFECYCLE_STATUSES) {
       const doc = seedWedgedDoc(rig, `lifecycle-${status}`);
       doc.getMap('lifecycle').set('status', status);
@@ -306,11 +284,6 @@ describe('exclusions', () => {
   });
 
   test('a batch activating mid-sweep does not decline the parked store', async () => {
-    // A batch starting inside the forceStore await means persistence PARKED
-    // the store (deferStore) rather than running it — the doc stays
-    // divergent with unchanged content, which must not be classified as a
-    // declined no-op (that would suppress retries even if the batch replay
-    // later drops the parked entry).
     const parkingRig = makeRig({
       forceStore: async (_document, documentName) => {
         parkingRig.forceCalls.push(documentName);
@@ -323,8 +296,6 @@ describe('exclusions', () => {
       await parkingRig.watchdog.sweep();
       expect(parkingRig.forceCalls).toEqual(['parked-doc']);
 
-      // Batch over, base still stale, content unchanged: the next grace
-      // window must retry rather than treat the doc as suppressed.
       parkingRig.batchActive.value = false;
       parkingRig.clock.nowMs += GRACE_MS + 1;
       await parkingRig.watchdog.sweep();
@@ -353,7 +324,6 @@ describe('exclusions', () => {
   });
 
   test('dispose drains an in-flight sweep and stops it before the next doc', async () => {
-    // Two wedged docs; block the first forceStore so dispose lands mid-sweep.
     let releaseFirstStore: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       releaseFirstStore = resolve;
@@ -374,8 +344,6 @@ describe('exclusions', () => {
       await disposePromise;
       await sweepPromise;
 
-      // The in-flight sweep finished its current store but never reached
-      // the second doc.
       expect(blockingRig.forceCalls).toEqual(['doc-a']);
     } finally {
       releaseFirstStore?.();
@@ -392,14 +360,11 @@ describe('external-edit stand-down (disk authority)', () => {
     await rig.watchdog.sweep();
 
     expect(rig.forceCalls).toEqual([]);
-    // Detected and counted as a stand-down, but not forced.
     expect(getMetrics().persistenceStalenessDetected).toBe(1);
     expect(getMetrics().persistenceStalenessForcedStores).toBe(0);
     expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
     expect(rig.disk.get('external-doc')).toBe('# external native edit\n');
 
-    // Verified external state suppresses until content changes — a second
-    // sweep must not re-count the same stand-down.
     await rig.watchdog.sweep();
     expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
   });
@@ -432,12 +397,9 @@ describe('external-edit stand-down (disk authority)', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual([]);
 
-    // Still failing, still inside the retry pace: no hammering.
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual([]);
 
-    // The read fault clears (transient EMFILE/EACCES class): unlike the
-    // verified external-state stand-downs, the doc must NOT stay suppressed.
     rig.diskReadFault.kind = null;
     rig.clock.nowMs += GRACE_MS + 1;
     await rig.watchdog.sweep();
@@ -452,8 +414,6 @@ describe('external-edit stand-down (disk authority)', () => {
     expect(rig.forceCalls).toEqual([]);
     expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
 
-    // A refusal that never clears (symlink-escape / oversized file) must
-    // not inflate the alertable counter or retry across grace windows.
     rig.clock.nowMs += GRACE_MS * 3;
     await rig.watchdog.sweep();
     rig.clock.nowMs += GRACE_MS * 3;
@@ -461,7 +421,6 @@ describe('external-edit stand-down (disk authority)', () => {
     expect(rig.forceCalls).toEqual([]);
     expect(getMetrics().persistenceStalenessStoodDown).toBe(1);
 
-    // Only a content change re-arms the doc.
     rig.diskReadFault.kind = null;
     doc.getText('source').insert(0, 'more ');
     rig.clock.nowMs += GRACE_MS + 1;
@@ -478,8 +437,6 @@ describe('external-edit stand-down (disk authority)', () => {
     expect(rig.forceCalls).toEqual([]);
     expect(getMetrics().persistenceStalenessDetected).toBe(1);
 
-    // External state reconciled (watcher caught up: base = disk), then a new
-    // memory edit wedges again.
     rig.bases.set('rearm-doc', '# external native edit\n');
     doc.getText('source').delete(0, doc.getText('source').length);
     doc.getText('source').insert(0, '# newer memory edit\n');
@@ -499,12 +456,10 @@ describe('retry and suppression discipline', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['noop-doc']);
 
-    // Same content, later sweeps — even past another grace window: no retry.
     rig.clock.nowMs += GRACE_MS * 5;
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['noop-doc']);
 
-    // Content changed — re-armed.
     doc.getText('source').insert(0, 'more ');
     rig.clock.nowMs += GRACE_MS * 5;
     await rig.watchdog.sweep();
@@ -518,11 +473,9 @@ describe('retry and suppression discipline', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['failing-doc']);
 
-    // Immediately after: no hammering.
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['failing-doc']);
 
-    // A grace window later: retried; a recovered disk then clears it.
     rig.clock.nowMs += GRACE_MS + 1;
     rig.forceBehavior.mode = 'advance-base';
     await rig.watchdog.sweep();
@@ -538,8 +491,6 @@ describe('retry and suppression discipline', () => {
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['transient-doc']);
 
-    // Unload, then reload in the same wedged shape: suppression must not
-    // survive the unload (a fresh load re-reads disk and re-bases anyway).
     const doc = rig.docs.get('transient-doc');
     rig.docs.delete('transient-doc');
     await rig.watchdog.sweep();

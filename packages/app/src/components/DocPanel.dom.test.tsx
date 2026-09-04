@@ -1,23 +1,9 @@
-/**
- * Behavioral tests for DocPanel's tab strip: single-file gating + the Problems
- * tab badge.
- *
- * Single-file `ok <file>` keeps only the Outline + Problems tabs — Links/Graph
- * need a multi-doc knowledge base and Timeline is git history, all empty/inert
- * for a lone git-off file, but linting applies to any single file. Asserts the
- * rendered tab set (by `role="tab"` count, so the test doesn't depend on
- * localized label text), that a persisted now-hidden selection coerces back to
- * Outline, and that the Problems tab shows a count badge when there are
- * diagnostics.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-// Radix ToggleGroup/Tooltip reach for ResizeObserver/NodeFilter in jsdom.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -47,12 +33,9 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-// Single-file signal — flipped per test.
 let singleFileValue = false;
 vi.doMock('@/lib/single-file-mode', () => ({ useSingleFileMode: () => singleFileValue }));
 
-// Lint plumbing — DocPanel computes live diagnostics to drive the Problems
-// badge. Stub the source so the test controls the count without a provider/fetch.
 let diagnosticsValue: Array<{ severity: string }> = [];
 let activeProviderValue: unknown = null;
 vi.doMock('@/editor/DocumentContext', () => ({
@@ -69,13 +52,11 @@ vi.doMock('@/editor/validation-audit-client', () => ({
   runValidationAudit: async () => null,
   useDocLinkFindings: () => ({ status: 'loaded', findings: [] }),
 }));
-// Terminal availability drives the Ask-AI gate — null mirrors the web host.
 let terminalLaunchValue: unknown = null;
 vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
   useTerminalLaunch: () => terminalLaunchValue,
 }));
 
-// Stub the heavy panel children so the test stays focused on tab visibility.
 vi.doMock('@/components/OutlinePanel', () => ({
   OutlinePanel: () => <div data-testid="outline-panel" />,
 }));
@@ -130,13 +111,7 @@ describe('DocPanel — tab gating', () => {
 
   test('single-file mode keeps Outline + Problems + Comments', () => {
     singleFileValue = true;
-    // Persisted selection is 'graph' — it must coerce back to Outline rather
-    // than render a now-hidden panel.
     renderPanel('graph');
-    // Links, Graph and Timeline need a knowledge base or a git history and go.
-    // Comments STAYS: a lone file can carry comments like any other, and this
-    // panel is the only place a comment is read — dropping the tab left them
-    // unreachable.
     expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(screen.getByRole('tab', { name: /comments/i })).toBeTruthy();
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
@@ -145,9 +120,6 @@ describe('DocPanel — tab gating', () => {
   test('renders the Problems panel when its tab is active, against the active doc', () => {
     renderPanel('problems');
     expect(screen.getByTestId('problems-panel')).toBeTruthy();
-    // The panel answers a question about one file, so the doc it is handed has
-    // to be the one the editor has open — a stale or absent name would list
-    // another file's problems under this one's tab.
     expect(lastProblemsProps?.docName).toBe('notes');
     expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
   });
@@ -163,7 +135,6 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
     expect(lastProblemsProps?.onAskAi).toBeUndefined();
     expect(typeof lastProblemsProps?.onFix).toBe('function');
     expect(typeof lastProblemsProps?.onAutoFix).toBe('function');
-    // Both AI hand-offs need somewhere to send the paste.
     expect(lastProblemsProps?.onFixWithAi).toBeUndefined();
   });
 
@@ -183,8 +154,6 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
     expect(lastProblemsProps?.onFix).toBeUndefined();
     expect(lastProblemsProps?.onAutoFix).toBeUndefined();
     expect(lastProblemsProps?.onAskAi).toBeUndefined();
-    // The bulk hand-off is the exception: it reads nothing off the open doc's
-    // CRDT, so a settling provider does not withhold it.
     expect(typeof lastProblemsProps?.onFixWithAi).toBe('function');
   });
 });
@@ -193,7 +162,6 @@ describe('DocPanel — Problems badge', () => {
   test('no badge when there are no diagnostics', () => {
     diagnosticsValue = [];
     renderPanel('outline');
-    // The Problems tab is present but carries no count text.
     expect(screen.queryByText('3')).toBeNull();
   });
 

@@ -51,9 +51,6 @@ async function waitForVisibleProseMirrorForDoc(
     );
     return;
   }
-  // Fallback: no registered marker — accept any visible ProseMirror with
-  // substantial content (>500 chars). Scenarios should register markers in
-  // `lib/doc-markers.ts` for deterministic doc-identity detection.
   await page.waitForFunction(
     () => {
       const nodes = document.querySelectorAll('.ProseMirror');
@@ -79,7 +76,6 @@ export default defineScenario({
 
     await installLongtaskObserver(page);
 
-    // ─── Step 1: cold-load the small doc so it is pool-warm. ────────────
     await page.goto(`${opts.target}/#/${encodeURIComponent(SMALL_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -92,7 +88,6 @@ export default defineScenario({
       return;
     }
 
-    // ─── Step 2: navigate to the big doc, wait for it to render. ────────
     await page.goto(`${opts.target}/#/${encodeURIComponent(BIG_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -105,17 +100,11 @@ export default defineScenario({
       return;
     }
 
-    // Breathe — let any pending microtasks / debounces drain before timing
-    // the switch-back. No arbitrary magic number; 250ms matches the
-    // observer-A baseline-settle debounce bound in the repo.
     await page.waitForTimeout(250);
 
-    // ─── Step 3: click sidebar entry for the small doc, measure wall-clock. ─
     const sidebar = page.locator('[data-slot="sidebar-container"]');
     const smallDocRow = sidebar.getByText(`${SMALL_DOC}.md`, { exact: true });
 
-    // Confirm the row is attached BEFORE timing — we measure the switch,
-    // not the sidebar's own first render (which already happened in step 1).
     await smallDocRow.waitFor({ state: 'visible', timeout: 10_000 });
 
     const clickAt = Date.now();

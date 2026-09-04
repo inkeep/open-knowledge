@@ -103,7 +103,6 @@ describe('RecentlyRemovedDocs — onMutate hook (journal wiring point)', () => {
 
     cache.delete('a');
     expect(mutations).toBe(4);
-    // Deleting a missing key changes nothing — no mutation signal.
     cache.delete('a');
     expect(mutations).toBe(4);
   });

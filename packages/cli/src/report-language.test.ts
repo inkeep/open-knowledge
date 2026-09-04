@@ -1,9 +1,3 @@
-/**
- * Tests for the CLI's default interface-language reader. Real disk fixtures
- * (no fs mocks) with an injected home and environment, so nothing here touches
- * the developer's own `~/.ok/global.yml` or `LANG`.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -42,8 +36,6 @@ describe('defaultReadLanguage', () => {
     expect(language.source).toBe('explicit');
   });
 
-  // The distinction the whole block exists for: 'system' resolving to English
-  // and English being chosen are the same `locale` and opposite diagnoses.
   test("an unset preference reads as 'system' and resolves off the OS list", () => {
     const home = makeHome();
 
@@ -73,8 +65,6 @@ describe('defaultReadLanguage', () => {
 
     expect(language.locale).toBe('fr');
     expect(language.source).toBe('override');
-    // The stored choice is still what the user selected — the override says
-    // why the app is not showing it, and erasing it here would hide that.
     expect(language.preference).toBe('es');
   });
 
@@ -87,8 +77,6 @@ describe('defaultReadLanguage', () => {
     expect(language.locale).toBe('en');
   });
 
-  // A config that no longer parses may be the very thing being reported, so the
-  // capture must still produce a bundle.
   test('a corrupt user config degrades to system instead of failing the capture', () => {
     const home = makeHome('appearance: [this is not\n  valid: yaml\n');
 

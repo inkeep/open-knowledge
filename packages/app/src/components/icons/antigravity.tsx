@@ -1,10 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Antigravity brand mark. Rendered monochrome via `currentColor` so the
-// dropdown row's color cascade (and the optional `--ok-brand-color` override in
-// `TargetIcon`) tints it per theme, matching the OpenCode/Pi treatment. A
-// simple geometric "upward" glyph (evoking anti-gravity) stands in for the
-// official multi-color logo, which OK does not ship.
 export function AntigravityIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

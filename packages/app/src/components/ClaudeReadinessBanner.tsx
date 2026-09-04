@@ -1,36 +1,14 @@
-/**
- * Actionable readiness banner for the docked terminal. Shown only for sessions
- * whose launch actually targets the Claude CLI: the launch-time preflight
- * (`resolveLaunchCommand`) produces the verdict, and this strip renders when
- * something blocks that launch:
- *   - `claude` not on PATH → a help affordance (open the Claude Code docs).
- *   - `claude` present but the `open-knowledge` MCP server missing from
- *     `~/.claude.json` → a re-wire affordance (re-arms MCP consent).
- *
- * A launch-less session (bare tab, "run this command" tab, adopted reload
- * survivor) never probes and never shows this strip — a plain terminal open
- * must not nag about claude.
- *
- * Renders nothing when claude is present + wired, or when the probe verdict is
- * `unknown` (a flaky probe must never surface a false "not installed"). The
- * strip is `role="status"` so screen readers announce it when it appears, and
- * dismissible so a non-Claude user (git/npm) isn't nagged. It is a flow strip
- * above the terminal (the parent pushes the canvas down), not an overlay — so
- * it never covers the shell prompt or first output in the degraded states.
- */
 import { useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 
-/** Claude Code docs landing — install + setup instructions live here. */
 const CLAUDE_CODE_DOCS_URL = 'https://docs.claude.com/en/docs/claude-code';
 
 interface ClaudeReadinessBannerProps {
   readonly readiness: ClaudeReadiness;
   readonly bridge: OkDesktopBridge;
-  /** Dismiss the banner for this panel session. */
   readonly onDismiss: () => void;
 }
 
@@ -38,8 +16,6 @@ type BannerKind = 'claude-missing' | 'mcp-needs-rewire';
 
 function bannerKind(readiness: ClaudeReadiness): BannerKind | null {
   if (readiness.claude === 'not-found') return 'claude-missing';
-  // claude must be present before nudging about MCP wiring — `unknown` is not
-  // a green light, and a not-found claude has nothing to wire tools into.
   if (readiness.claude === 'present' && readiness.mcp === 'needs-rewire') {
     return 'mcp-needs-rewire';
   }
@@ -66,9 +42,6 @@ export function ClaudeReadinessBanner({
       void bridge.shell.openExternal(CLAUDE_CODE_DOCS_URL);
       return;
     }
-    // Re-arm MCP wiring. Only dismiss the banner on success — on failure keep
-    // it visible (plus a toast) so the user can retry, rather than silently
-    // swallowing the failure and leaving them with no affordance.
     bridge.terminal
       .rewireClaudeMcp()
       .then((result) => {
@@ -86,10 +59,6 @@ export function ClaudeReadinessBanner({
 
   return (
     <TerminalNoticeBanner
-      // Stable test seam: the editor page carries several app-wide role="status"
-      // nodes (SelectionAnnouncer, ConnectingBanner), so smoke tests scope to this
-      // attribute instead of an ambiguous getByRole('status'). Mirrors the
-      // [data-terminal-status] / settings-terminal-toggle data-testid convention.
       testId="terminal-readiness-banner"
       onDismiss={onDismiss}
       action={

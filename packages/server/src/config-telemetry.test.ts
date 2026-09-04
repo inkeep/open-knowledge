@@ -1,15 +1,3 @@
-/**
- * Integration test for config-edit OTel spans.
- *
- * Registers a `BasicTracerProvider` with an `InMemorySpanExporter`, runs
- * the bindConfigDoc → patch → validate → persist → revert chain end-to-end,
- * and asserts the recorded spans have the expected names, attributes, and
- * parent/child relationships.
- *
- * Bounded enum attributes only — Zod issue paths land in span events, not
- * attributes (cardinality discipline).
- */
-
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,10 +29,6 @@ function setupExporter(): void {
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
   trace.setGlobalTracerProvider(provider);
-  // Required for parent/child span tracking across `startActiveSpan` calls.
-  // Without it, the active-span lookup uses `ROOT_CONTEXT` and every span
-  // becomes a root span. server's initTelemetry() registers this in
-  // production; the test wires the same plumbing locally.
   context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
 }
 
@@ -63,8 +47,6 @@ function attr(span: ReadableSpan, key: string): unknown {
   return span.attributes[key];
 }
 
-/** Pick the first matching span by name; throws if none — biome-friendly
- * alternative to non-null assertions on `spansByName(...)[0]!`. */
 function requireSpan(name: string): ReadableSpan {
   const spans = spansByName(name);
   if (spans.length === 0) throw new Error(`requireSpan: no span named '${name}'`);
@@ -147,7 +129,6 @@ describe('config-edit OTel spans', () => {
       expect(attr(validateSpan, 'config.validation.layer')).toBe('L1');
       expect(attr(validateSpan, 'config.outcome')).toBe('success');
 
-      // config.validate is a child of config.patch (started inside its sync fn).
       expect(validateSpan.parentSpanContext?.spanId).toBe(patchSpan.spanContext().spanId);
     });
 
@@ -155,8 +136,6 @@ describe('config-edit OTel spans', () => {
       const ydoc = new Y.Doc();
       const mock = createMockProvider(ydoc);
       const binding = bindConfigDoc(mock, 'project');
-      // content.dir must be a string — supply a number to fail SCHEMA_INVALID
-      // (not SCOPE_VIOLATION, which would short-circuit before schema validation).
       const result = binding.patch({
         content: { dir: 42 as unknown as string },
       } as ConfigPatch);
@@ -241,9 +220,7 @@ describe('config-edit OTel spans', () => {
       const ctx = {
         projectDir: testDir,
         lkgCache,
-        onConfigRejected: () => {
-          /* noop */
-        },
+        onConfigRejected: () => {},
       };
 
       const outcome = await storeConfigDoc(ydoc, CONFIG_DOC_NAME_PROJECT, undefined, ctx);
@@ -285,15 +262,11 @@ describe('config-edit OTel spans', () => {
 
   describe('zero-overhead when SDK is disabled', () => {
     it('does not throw when no tracer provider is registered (no-op SDK)', async () => {
-      // Tear down the in-memory exporter — the @opentelemetry/api package
-      // returns no-op tracers when no SDK is registered. Spans become inert.
       await teardownExporter();
-      // Re-init the exporter so afterEach's teardownExporter doesn't trip.
       setupExporter();
 
       const ydoc = new Y.Doc();
       const mock = createMockProvider(ydoc);
-      // The act of binding + patching SHOULD NOT throw regardless of SDK state.
       expect(() => {
         const binding = bindConfigDoc(mock, 'project');
         binding.patch({ appearance: { theme: 'system' } } as ConfigPatch);

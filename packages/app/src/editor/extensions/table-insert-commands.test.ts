@@ -6,12 +6,8 @@ import { TableMap } from '@tiptap/pm/tables';
 import { describe, expect, test } from 'vitest';
 import { appendTableColumn, appendTableRow } from './table-insert-commands';
 
-// Build the schema from core's shared extensions (an app dependency) rather
-// than importing `@tiptap/extension-*` directly — those aren't direct deps of
-// this package, only transitive via core, so importing them trips knip.
 const schema = getSchema(sharedExtensions);
 
-/** Build a `rows × cols` table doc; row 0 is header cells, the rest body cells. */
 function makeTableState(rows: number, cols: number): EditorState {
   const cell = (headerRow: boolean) =>
     (headerRow ? schema.nodes.tableHeader : schema.nodes.tableCell).createChecked(
@@ -45,7 +41,7 @@ describe('table-insert-commands', () => {
 
     const map = mapAt(next, 0);
     expect(map.width).toBe(3);
-    expect(map.height).toBe(2); // rows unchanged
+    expect(map.height).toBe(2);
   });
 
   test('appendTableRow grows the table by one row at the bottom edge', () => {
@@ -58,7 +54,7 @@ describe('table-insert-commands', () => {
 
     const map = mapAt(next, 0);
     expect(map.height).toBe(3);
-    expect(map.width).toBe(3); // columns unchanged
+    expect(map.width).toBe(3);
   });
 
   test('returns null when the position is not a table', () => {

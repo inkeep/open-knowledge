@@ -1,13 +1,3 @@
-/**
- * Seam 7 integration: a standalone terminal window — deliberately absent
- * from `windowsByPath` — resolves its PTY cwd from the windowId-keyed
- * terminalWindows registry (or homedir() when project-less) and yields a live
- * PTY. Composes the real registry + the real `resolvePtyProjectRoot` + a real
- * `terminalManager` over a fake pty-host, so the cwd that reaches `create()` is
- * the one the registry/resolver produced. The full real-shell fidelity is the
- * `_electron` smoke (terminal-window.e2e.ts); this is the gate-run rung.
- */
-
 import { afterEach, describe, expect, test } from 'vitest';
 import { createTerminalManager, type PtyUtilityLike } from '../../src/main/terminal-manager.ts';
 import {
@@ -55,8 +45,6 @@ function makeManager() {
   return { mgr, forked };
 }
 
-/** The create handler's terminal-window cwd resolution: a terminal window is
- *  absent from windowsByPath, so cwd comes from the registry (or homedir). */
 function resolveTerminalWindowCwd(windowId: number): string | null {
   return resolvePtyProjectRoot({
     editorProjectPath: null,
@@ -148,7 +136,6 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
 
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
-    // Independent hosts (per-window), so closing one never reaps the other.
     expect(forked).toHaveLength(2);
   });
 });

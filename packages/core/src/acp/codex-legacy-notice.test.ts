@@ -13,19 +13,11 @@ const PBT_NUM_RUNS = 200;
 
 const CODEX: CodexLegacyAgentIdentity = fixture.agents.codexRegistry;
 
-/**
- * The fixture is untyped wire JSON on purpose: several negatives are shapes the
- * SDK's own types forbid, which is exactly what the predicate has to survive.
- */
 const asUpdate = (value: unknown) => value as SessionUpdate;
 
 const agentNamed = (name: string | undefined): CodexLegacyAgentIdentity =>
   name === undefined ? CODEX : (fixture.agents as Record<string, CodexLegacyAgentIdentity>)[name];
 
-/**
- * Literals restated independently of the implementation. A test that imported
- * the module's own constants would stay green through a typo in them.
- */
 const WARNING_PREFIX = 'Warning: ';
 const CONFIG_WARNING_PREFIX = 'Config warning: ';
 const TERMINATOR = '\n\n';
@@ -33,12 +25,6 @@ const TERMINATOR = '\n\n';
 const candidateFrom = (text: string): SessionUpdate =>
   asUpdate({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } });
 
-/**
- * Openings exactly as long as the longer literal, so whatever follows one can
- * never reach back and change whether a prefix matched. Both matching and
- * near-miss members, so a property built on them constrains the rejecting
- * verdict as tightly as the accepting one.
- */
 const HEADS = [
   CONFIG_WARNING_PREFIX,
   `${WARNING_PREFIX}abcdefg`,
@@ -50,7 +36,6 @@ const HEADS = [
   'Notice: abcdefgh',
 ];
 
-/** Endings exactly as long as the terminator, for the same reason. */
 const TAILS = [TERMINATOR, '\nx', 'x\n', '  ', 'ab'];
 
 describe('isCodexLegacyWarningUpdate — recorded producer envelopes', () => {
@@ -69,26 +54,18 @@ describe('isCodexLegacyWarningUpdate — recorded producer envelopes', () => {
   });
 
   test('an internal blank line never turns a near miss into a match', () => {
-    // The same body with the producer's final terminator removed: still full of
-    // blank lines, still not a candidate, and nothing to split on.
     const trimmed = `${WARNING_PREFIX}first paragraph${TERMINATOR}second paragraph`;
 
     expect(isCodexLegacyWarningUpdate(candidateFrom(trimmed), CODEX)).toBe(false);
   });
 
   test('a warning whose own message opens with a space still matches', () => {
-    // Only the literal prefix is fixed. What the adapter interpolates after it
-    // is the agent's message and is never further constrained.
     expect(isCodexLegacyWarningUpdate(candidateFrom(`${WARNING_PREFIX} spaced\n\n`), CODEX)).toBe(
       true,
     );
   });
 
   test('a multi-paragraph body is one verdict for the whole event, never a split', () => {
-    // The characterized adapter cannot emit chrome and answer in one event, so
-    // this shape is hypothetical. If it ever arrived it is classified whole:
-    // carving the leading paragraph out would mean reinterpreting arbitrary
-    // agent prose, which no producer contract supports.
     const { update, expectCandidate } = fixture.atomicity.multiParagraphWarning;
     const text = update.content.text;
 
@@ -112,10 +89,6 @@ describe('isCodexLegacyWarningUpdate — fails closed', () => {
     expect(isCodexLegacyWarningUpdate(asUpdate(fixture.ordinaryAnswer.update), CODEX)).toBe(false);
   });
 
-  // The schema types this field `string | null | undefined`, and the SDK's
-  // runtime validator rewrites anything else to `undefined` — but the app also
-  // folds replayed log bytes and the server bounds events the validator never
-  // saw, so the predicate cannot lean on that normalization.
   test.each([
     ['null', null],
     ['an empty string', ''],
@@ -167,9 +140,6 @@ describe('isCodexLegacyWarningUpdate — fails closed', () => {
   });
 
   test('every gate is independently load-bearing', () => {
-    // Each row flips exactly one gate away from a known-good candidate, so a
-    // gate that silently stopped being checked shows up as a single failure
-    // rather than being masked by the others.
     const body = 'Skill descriptions were shortened.';
     const good = `${WARNING_PREFIX}${body}${TERMINATOR}`;
     expect(isCodexLegacyWarningUpdate(candidateFrom(good), CODEX)).toBe(true);
@@ -224,8 +194,6 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
         (prefix, body, terminated) => {
           const text = `${prefix}${body}${terminated ? TERMINATOR : ''}`;
           const verdict = isCodexLegacyWarningUpdate(candidateFrom(text), CODEX);
-          // A generated body can itself end in the terminator, so the oracle is
-          // the finished bytes rather than the `terminated` flag.
           return verdict === text.endsWith(TERMINATOR);
         },
       ),
@@ -261,16 +229,6 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
   });
 
   test('no interior content changes the verdict, whatever its shape or size', () => {
-    // The verdict must be settled by a bounded window at each end, so splicing
-    // anything at all between those windows has to leave it alone. Stated this
-    // way the claim is enforceable rather than aspirational: a body-length cap,
-    // a corpus or digest lookup, and a rule that re-reads the interior for
-    // paragraph structure each move one of these verdicts without moving the
-    // empty-interior baseline it is compared against.
-    //
-    // Every middle is checked against every head/tail pair rather than sampled,
-    // so detection does not depend on a generator happening to draw the one
-    // combination that discriminates.
     for (const head of HEADS) expect(head).toHaveLength(CONFIG_WARNING_PREFIX.length);
     for (const tail of TAILS) expect(tail).toHaveLength(TERMINATOR.length);
 
@@ -297,9 +255,6 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
   });
 
   test('a multi-megabyte interior changes nothing on either side of the answer', () => {
-    // Kept out of the cross product above so the table stays cheap, and split
-    // across an accepting and a rejecting pair so a cap cannot hide behind a
-    // verdict that was already false.
     const huge = 'x'.repeat(2_000_000);
 
     for (const tail of [TERMINATOR, 'ab']) {
@@ -310,8 +265,6 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
   });
 
   test('an arbitrary generated interior changes nothing either', () => {
-    // Breadth over the shapes the table above cannot enumerate. The empty
-    // interior is the baseline here too, so each draw is its own witness.
     fc.assert(
       fc.property(
         fc.constantFrom(...HEADS),

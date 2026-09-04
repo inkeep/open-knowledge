@@ -1,23 +1,3 @@
-/**
- * Textarea double for the shared `ComposerMentionInput`, for the ThreadView
- * DOM suites' `vi.doMock('@/editor/ComposerMentionInput', ...)`.
- *
- * The real field is a ProseMirror contentEditable, which jsdom cannot type
- * into (`fireEvent.change` is inert and `user.keyboard` needs a real editing
- * host), and whose deferred scroll work is a known source of post-suite
- * crashes under the DOM runner — so ThreadView suites drive this double and
- * the editor's own behavior (chips, `@`-typeahead, IME guard, key handling)
- * is covered against the real TipTap instance in
- * `ComposerMentionInput.dom.test.tsx`.
- *
- * Contract parity, because ThreadView's logic is what these suites test:
- * the full imperative handle (focus / blur / clear / setText / appendText /
- * getContent), `onEmptyChange` on every edit, Enter-submits with the IME
- * guard, Escape → `onEscape` (else blur), and placeholder / disabled /
- * testId as plain DOM attributes. `appendText` reproduces the blank-line
- * join (`existing\n\nappended`) the rescue/staged-draft tests assert.
- */
-
 import type { JSONContent } from '@tiptap/core';
 import { type Ref, useImperativeHandle, useRef } from 'react';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
@@ -46,13 +26,6 @@ export function MockComposerMentionInput({
   testId?: string;
 }) {
   const localRef = useRef<HTMLTextAreaElement>(null);
-  // Both callbacks, on every edit — the real field fires them together, and a
-  // double that only carried `onEmptyChange` left every host reading the live
-  // draft (`ThreadCard`'s click-away commit) looking at a permanent `null`. A
-  // test for "the unmount saves what I typed" then passed with nothing typed.
-  //
-  // A paragraph of plain text: hosts read this back through `getContent`, not
-  // by walking the doc, so the shape only has to be a doc TipTap would accept.
   const notify = () => {
     const value = localRef.current?.value ?? '';
     onEmptyChange(value.trim() === '');

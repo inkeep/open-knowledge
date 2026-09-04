@@ -1,23 +1,3 @@
-/**
- * Comment clipboard contract — `%%…%%` / `<!-- … -->` annotations.
- *
- * The contract: comments travel with copied content WITHIN OK (every
- * paste branch), and NEVER reach external targets in any clipboard
- * flavor. Concretely:
- *
- *   - text/plain and text/html (walker tier, markdown tier, cell tier)
- *     carry ZERO comment bytes — no visible `%%…%%`, no entity-escaped
- *     `<!-- -->` text, no hidden spans or HTML comments.
- *   - An OK-origin copy of a comment-bearing selection carries the full
- *     slice markdown (comments included) on a private clipboard flavor
- *     (`application/x-openknowledge-markdown`); the paste router prefers
- *     that flavor, so OK→OK paste restores the comment on every branch
- *     shape (pm-slice, markdown-first, generic-html).
- *   - Cut and copy behave identically with respect to comment carriage.
- *   - Copies with no comment content don't engage the private flavor at
- *     all (native behavior, byte-identical payloads).
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
@@ -27,7 +7,6 @@ import { createHandlePaste } from './handle-paste.ts';
 import { isMarkdown } from './is-markdown.ts';
 import { createClipboardHtmlSerializer, createClipboardTextSerializer } from './serialize.ts';
 
-/** The private OK→OK clipboard flavor. Pinned here as a contract constant. */
 const INTERNAL_MIME = 'application/x-openknowledge-markdown';
 
 const COMMENT_BYTE_PATTERNS = ['%%', '<!--', '&#x3C;!--', '&lt;!--', 'hidden note'];
@@ -42,7 +21,6 @@ const md = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 const textSerializer = createClipboardTextSerializer({ mdManager: md });
 
-/** Build a real EditorState from markdown, select-all, and run the real text/plain serializer. */
 function copyAllAsPlainText(markdown: string): string {
   const json = md.parse(markdown);
   const doc = schema.nodeFromJSON(json);
@@ -79,8 +57,6 @@ function findNodeTypes(json: unknown, out = new Set<string>()): Set<string> {
   return out;
 }
 
-// ─── text/plain: zero comment bytes ────────────────────────────────────
-
 describe('text/plain (copy) omits comment constructs', () => {
   test('inline %%…%% comment is scrubbed from text/plain', () => {
     const out = copyAllAsPlainText('Plain prose before %%hidden note%% and after.');
@@ -108,10 +84,6 @@ describe('text/plain (copy) omits comment constructs', () => {
   });
 });
 
-// ─── isMarkdown gate: comment forms carry zero markdown signals ────────
-// (Unchanged behavior, pinned: this is WHY text/plain cannot rescue an
-// OK→OK paste and a private flavor is required.)
-
 describe('isMarkdown gate — comment forms carry zero markdown signals', () => {
   test('plain prose + inline %% comment fails the gate', () => {
     expect(isMarkdown('Plain prose before %%hidden note%% and after.')).toBe(false);
@@ -130,8 +102,6 @@ describe('isMarkdown gate — comment forms carry zero markdown signals', () => 
   });
 });
 
-// ─── markdown-tier text/html: zero comment bytes ───────────────────────
-
 describe('markdown-tier text/html omits comment constructs', () => {
   let domInstalled = false;
 
@@ -142,7 +112,6 @@ describe('markdown-tier text/html omits comment constructs', () => {
       domInstalled = true;
     }
     const mgr = new MarkdownManager({ extensions: sharedExtensions });
-    // No view attached → serializeFragment falls to the markdown tier.
     const handle = createClipboardHtmlSerializer({ mdManager: mgr });
     const doc = schema.nodeFromJSON(mgr.parse(markdown));
     const frag = handle.serializer.serializeFragment(doc.content, { document });
@@ -202,8 +171,6 @@ describe('markdown-tier text/html omits comment constructs', () => {
   });
 });
 
-// ─── walker tier: comment omission (already-enforced cells, pinned) ────
-
 describe('walker tier (real EditorView, AllSelection) omits comment content', () => {
   let domInstalled = false;
 
@@ -253,16 +220,11 @@ describe('walker tier (real EditorView, AllSelection) omits comment content', ()
   });
 
   test('comment-only selection yields an empty paragraph, zero comment bytes', async () => {
-    // Documented external artifact for a comment-only copy: the walker keeps
-    // the (now empty) paragraph so PM has an element to stamp data-pm-slice
-    // on; external rich targets receive an empty paragraph, never bytes.
     const html = await walkerHtmlFor('%%only a comment%%');
     expect(html).toMatch(/<p[^>]*><\/p>/);
     expect(html).not.toContain('only a comment');
   });
 });
-
-// ─── copy/cut interception: the private OK flavor ──────────────────────
 
 type CopyModule = typeof import('./handle-copy.ts');
 
@@ -316,9 +278,6 @@ describe('copy/cut interception — private flavor carries the comment, public f
       domInstalled = true;
     }
     const mgr = new MarkdownManager({ extensions: sharedExtensions });
-    // Mirror the production editorProps wiring (TiptapEditor.tsx): the
-    // copy intercept delegates public flavors to these serializers via
-    // view.serializeForClipboard.
     const htmlHandle = createClipboardHtmlSerializer({ mdManager: mgr });
     const editor = new Editor({
       element: document.createElement('div'),
@@ -423,7 +382,6 @@ describe('copy/cut interception — private flavor carries the comment, public f
         }
       });
       expect(cellPositions.length).toBeGreaterThanOrEqual(3);
-      // Select the comment-bearing body cell (third cell: row 2, col 1).
       view.dispatch(
         view.state.tr.setSelection(CellSelection.create(view.state.doc, cellPositions[2])),
       );
@@ -464,9 +422,6 @@ describe('copy/cut interception — private flavor carries the comment, public f
       const view = editor.view;
       htmlHandle.setView(view);
       const doc = view.state.doc;
-      // Strict interior subset of the blockquote's text → the text/plain
-      // carrier historically peeled the `> ` wrapper; the private flavor
-      // must match that shape while keeping the comment bytes.
       view.dispatch(view.state.tr.setSelection(TS.create(doc, 3, doc.content.size - 3)));
       const handler = mod.createCopyCutHandler({ mdManager: mgr });
       const event = fakeClipboardEvent();
@@ -481,8 +436,6 @@ describe('copy/cut interception — private flavor carries the comment, public f
   });
 });
 
-// ─── paste router: the private flavor wins for OK-origin payloads ──────
-
 function fakeDT(data: Record<string, string>): ClipboardEvent {
   return {
     clipboardData: {
@@ -492,8 +445,6 @@ function fakeDT(data: Record<string, string>): ClipboardEvent {
   } as unknown as ClipboardEvent;
 }
 
-// Narrow fake PM view (mirrors handle-paste.test.ts): the router only reads
-// selection/codeBlock lookups before deciding a branch.
 // biome-ignore lint/suspicious/noExplicitAny: narrow fake for router-only test
 function fakeView(parentNodeName = 'paragraph'): any {
   const $from = {
@@ -622,8 +573,6 @@ describe('paste router — private flavor restores comments on every OK→OK bra
   });
 });
 
-// ─── carrier proof: mdManager.parse restores comment constructs ────────
-
 describe('carrier proof — mdManager.parse restores comment constructs from the private flavor', () => {
   test('inline %% form re-parses to a comment mark', () => {
     const json = md.parse('Prose with %%hidden note%% inside.');
@@ -642,8 +591,6 @@ describe('carrier proof — mdManager.parse restores comment constructs from the
   });
 });
 
-// ─── renderHTML omission contract (attribute level, pinned) ────────────
-
 describe('renderHTML stamps the clipboard opt-out attr', () => {
   test('comment mark renders with data-clipboard-omit="true" and no hiding style', () => {
     const json = md.parse('Prose with %%hidden note%% inside.');
@@ -655,8 +602,6 @@ describe('renderHTML stamps the clipboard opt-out attr', () => {
           const spec = mark.type.spec.toDOM?.(mark, true);
           const attrs = (spec as [string, Record<string, string>])?.[1] ?? {};
           expect(attrs['data-clipboard-omit']).toBe('true');
-          // Omission rides the attribute, never a style — the editing
-          // surface has to keep showing whatever the promoter claimed.
           expect(attrs.style ?? '').not.toContain('display: none');
           found = true;
         }

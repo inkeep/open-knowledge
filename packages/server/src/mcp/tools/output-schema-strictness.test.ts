@@ -1,37 +1,6 @@
-/**
- * RED tests for MCP `outputSchema` strictness regression.
- *
- * Reproduces the client-side `Structured content does not match the tool's
- * output schema: data must NOT have additional properties` failure. Mirrors
- * the MCP TS-SDK's emission + validation pipeline so the test fails the same
- * way Claude fails today:
- *
- *   1. `registerTool({outputSchema})` ships a JSON Schema to the client (via
- *      `toJsonSchemaCompat(normalizeObjectSchema(shape), {pipeStrategy: 'output'})`).
- *      Zod's default `z.object(...)` emits `additionalProperties: false`.
- *   2. The client validates `tools/call` results' `structuredContent` against
- *      that JSON Schema with AJV (`AjvJsonSchemaValidator`).
- *   3. `textPlusStructured` auto-injects `text` into `structuredContent`,
- *      but no tool's `outputSchema` declares `text`. AJV strict-mode rejects
- *      it. Tool call is unusable.
- *
- * These tests fail on broken code and pass once the fix lands (a single
- * `outputSchemaWithText` helper that declares `text` on every shape that
- * goes through `textPlusStructured`).
- */
-
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// `@modelcontextprotocol/sdk/server/zod-compat` and `.../zod-json-schema-compat`
-// are reachable only through the SDK's wildcard `./*` export — they are
-// internal-shaped compat-layer modules, not part of the named-export surface.
-// Importing them lets this test mirror exactly the JSON-schema pipeline the
-// SDK uses on `tools/list` (`normalizeObjectSchema` → `toJsonSchemaCompat`
-// with `pipeStrategy: 'output'`, `strictUnions: true`). The SDK is pinned to
-// an exact version in `packages/{server,cli}/package.json` so a minor bump
-// can't silently rename or split these helpers; on every intentional SDK
-// upgrade, re-validate that both import paths still resolve.
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
@@ -86,11 +55,6 @@ function newProject(): string {
   return cwd;
 }
 
-/**
- * Compile the SDK's view of the tool's outputSchema → JSON Schema, exactly the
- * way the SDK does it in `mcp.js#setRequestHandler('tools/list')`. Mirrors
- * `pipeStrategy: 'output'` and `strictUnions: true`.
- */
 function compileOutputSchemaForClient(rawShape: unknown): Record<string, unknown> {
   const normalized = normalizeObjectSchema(rawShape);
   if (!normalized) {
@@ -103,15 +67,6 @@ function compileOutputSchemaForClient(rawShape: unknown): Record<string, unknown
 }
 
 describe('MCP outputSchema strictness — every registerTool+textPlusStructured tool must admit `text`', () => {
-  // Schema-only regression guard for the other six tools that share the same
-  // dual-API combination. Each tool's outputSchema must declare `text` so the
-  // mirror channel `textPlusStructured` injects does not violate the
-  // client-side AJV check.
-  //
-  // Schema-level rather than handler-level: tools like `search` need a live
-  // Hocuspocus server, which is out of scope for a unit-tier regression test.
-  // Compiling the outputSchema and validating a probe payload with `text`
-  // alone catches the regression deterministically without network setup.
   function compileFromRegistration<TDeps>(
     register: (server: ServerInstance, deps: TDeps) => void,
     deps: TDeps,
@@ -140,18 +95,10 @@ describe('MCP outputSchema strictness — every registerTool+textPlusStructured 
   for (const { name, build } of cases) {
     test(`${name}: outputSchema admits the auto-injected \`text\` field`, () => {
       const jsonSchema = build();
-      // Probe with ONLY `text` set — pre-fix, this fails on
-      // `additionalProperties: false`. Post-fix, the schema declares
-      // `text` as optional so the probe passes regardless of which other
-      // (also-optional or required-but-tested-elsewhere) fields exist.
       const validator = new AjvJsonSchemaValidator();
       const probe = { text: 'mirror body' };
       const fn = validator.getValidator(jsonSchema);
       const result = fn(probe);
-      // Required fields may make this validation fail for reasons OTHER
-      // than `text` rejection — that's fine, we only care that the
-      // failure isn't `data must NOT have additional properties` on
-      // the `text` key.
       if (!result.valid) {
         expect(result.errorMessage).not.toMatch(/additional propert/i);
       }
@@ -160,26 +107,6 @@ describe('MCP outputSchema strictness — every registerTool+textPlusStructured 
 });
 
 describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no new tools may regress)', () => {
-  // Self-maintaining sweep: drives the canonical `registerAllTools`
-  // registrar with a recording server, captures every `registerTool`
-  // registration (regardless of whether the maintainer remembered to add
-  // it to the explicit case list above), and verifies each compiled
-  // outputSchema admits `text`. Any new tool joining the
-  // `registerTool` + `textPlusStructured` + `outputSchema` combination
-  // automatically lands in this sweep — the maintainer cannot silently
-  // re-introduce the regression by forgetting
-  // `outputSchemaWithText`.
-  //
-  // Tools that legitimately return WITHOUT `textPlusStructured` (e.g. a
-  // future tool that returns only a typed structuredContent and no
-  // text-mirror channel) can opt out by NOT routing their schema through
-  // `outputSchemaWithText` AND not calling `textPlusStructured`; their
-  // structuredContent will not carry `text` so AJV will not see an extra
-  // field to reject. The probe below is robust to this case because it
-  // sends `{ text: 'mirror body' }`: a stricter schema that omits `text`
-  // would fail this probe with "additional property" — which is exactly
-  // the regression signature, so the test correctly flags the omission.
-
   interface RegisterToolCapture {
     name: string;
     outputSchema?: unknown;
@@ -191,10 +118,7 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
       registerTool(name: string, cfg: { outputSchema?: unknown }, _handler: unknown) {
         captured.push({ name, outputSchema: cfg.outputSchema });
       },
-      tool() {
-        // Legacy `server.tool()` API bypasses strict output-schema
-        // validation; not relevant to this sweep.
-      },
+      tool() {},
     } as unknown as ServerInstance;
     registerAllTools(server, {
       config: BASE_CONFIG,
@@ -204,15 +128,6 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     return captured;
   }
 
-  // Named floor: the sweep MUST discover every tool we already know uses
-  // `outputSchemaWithText`. A name-based assertion (rather
-  // than an opaque count floor) distinguishes "all 8 expected tools
-  // present" from "8 unrelated tools present" — if a tool silently reverts
-  // to `server.tool()` (the legacy API that bypasses strict
-  // output-schema validation), the named floor catches the drop even when
-  // some other tool is added at the same time. The set is the canonical
-  // catalog of `registerTool` callers; adding a new tool means appending
-  // to the set, which is the right surface to require a deliberate update.
   const KNOWN_REGISTER_TOOL_NAMES = new Set([
     'palette',
     'config',
@@ -220,12 +135,9 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'resolve_conflict',
     'search',
     'share_link',
-    // Version flow — output schemas added so the `version` field is
-    // machine-visible (history surfaces `entries[].version`).
     'history',
     'checkpoint',
     'restore_version',
-    // Write-spine output schemas (bounded per-target/per-kind unions).
     'delete',
     'move',
     'conflicts',
@@ -245,17 +157,8 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     for (const name of KNOWN_REGISTER_TOOL_NAMES) {
       expect(capturedNames).toContain(name);
     }
-    // Defense-in-depth floor: even if a future refactor renames a known
-    // tool, the count still requires at least the same number of
-    // schema-backed callers. New tools push the floor up via the
-    // KNOWN_REGISTER_TOOL_NAMES set above.
     expect(registrations.length).toBeGreaterThanOrEqual(KNOWN_REGISTER_TOOL_NAMES.size);
 
-    // Known `textPlusStructured` tools MUST declare `outputSchema` — the
-    // schema is the surface the mirror-channel guard validates against. If
-    // a known tool ever drops its `outputSchema` (regression), the offender
-    // loop below would silently skip it via the `continue`. Catch the drop
-    // here before the loop so the regression is named in the failure.
     const missingSchema = registrations
       .filter((r) => KNOWN_REGISTER_TOOL_NAMES.has(r.name) && r.outputSchema === undefined)
       .map((r) => r.name);
@@ -274,7 +177,6 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     expect(offenders).toEqual([]);
   });
 
-  // Helper isolates the probe shape so the test body reads as intent.
   function fn(
     validator: AjvJsonSchemaValidator,
     jsonSchema: Record<string, unknown>,
@@ -473,10 +375,6 @@ describe('audit and lint emitted coverage validates against the client schema', 
       ),
     ).toContain('No auto-fixable problems in notes.md.\nNo checks ran.');
 
-    // A selected family that degraded is still SELECTED, so the coverage line
-    // below still names it. Without the qualifier on the summary the two most
-    // salient lines both read as reassurance and the only counter-signal is a
-    // bare ⚠ in a channel that also carries benign config nits.
     const degraded = await call(
       { document: 'notes' },
       {
@@ -541,12 +439,6 @@ describe('audit and lint emitted coverage validates against the client schema', 
           errorCount: 0,
           warningCount: 0,
           ran: ['markdownlint'],
-          // The shape the server emits during the deprecation window: the
-          // singular field kept for its existing readers, the same message in
-          // the plural channel so a consumer that reads only `warnings` cannot
-          // mistake a stale-diagnostics response for a clean one. `warning` is
-          // declared in no outputSchema, so `warnings` is the ONLY structured
-          // carrier a schema-driven client can see it through.
           warning: reLint,
           warnings: [reLint],
         }),
@@ -596,8 +488,6 @@ describe('audit and lint emitted coverage validates against the client schema', 
 
     const result = await captured.handler({});
 
-    // Both channels are agent-context-bound, so both get the cap — the same
-    // invariant the sibling `audit` tool states and enforces.
     const structured = result.structuredContent as {
       warnings?: string[];
       omittedWarningCount?: number;
@@ -631,14 +521,6 @@ describe('audit and lint emitted coverage validates against the client schema', 
 });
 
 describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)', () => {
-  // The `{text}`-only sweep above can't catch a payload that carries a field the
-  // schema omits but the sweep never sends. `moveSkillCrossScope` emits
-  // `crossScope` (success) and `bothScopes` (partial-failure) via
-  // `textPlusStructured`, so the SDK-compiled `move` schema must declare both —
-  // otherwise a strict client (Claude/AJV) rejects the whole result with
-  // "data must NOT have additional properties" and the agent loses the
-  // recovery instruction. Validate the EXACT structuredContent both branches
-  // produce, not a synthetic probe.
   function moveOutputJsonSchema(): Record<string, unknown> {
     const cwd = newProject();
     const captured: Array<{ name: string; outputSchema?: unknown }> = [];
@@ -658,8 +540,6 @@ describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)'
     return compileOutputSchemaForClient(move.outputSchema);
   }
 
-  // structuredContent = { ...structured, text } — exactly what
-  // `textPlusStructured(message, structured, isError?)` injects.
   const crossScopeSuccess = {
     ok: true,
     kind: 'skill',
@@ -692,12 +572,6 @@ describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)'
 });
 
 describe('share_link outputSchema admits emitted success and error payloads', () => {
-  // The `{text}`-only sweep can't catch a handler-emitted field the schema
-  // omits (it never sends `freshness`), so validate the EXACT success
-  // structuredContent — with and without freshness — against the compiled
-  // share_link schema. A strict client (Claude/AJV) rejects the whole result
-  // with "additional properties" if `freshness` isn't declared, and the agent
-  // silently loses the warning it was supposed to relay.
   function shareLinkOutputJsonSchema(): Record<string, unknown> {
     const cwd = newProject();
     const captured: Array<{ name: string; outputSchema?: unknown }> = [];
@@ -736,9 +610,6 @@ describe('share_link outputSchema admits emitted success and error payloads', ()
     ...base,
     text: 'Share link for doc `notes` on branch `main`:\nhttps://openknowledge.ai/d/enc',
   };
-  // A folder git holds no object for. The declared enum is what AJV compiles
-  // into the client-side check, so a verdict the tool emits but the enum omits
-  // costs the agent the WHOLE result, not just the warning.
   const withEmptyFreshness = {
     ...base,
     sharedUrl: 'https://github.com/o/r/tree/main/hollow',

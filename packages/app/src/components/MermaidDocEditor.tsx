@@ -30,11 +30,12 @@ import { mermaid } from 'codemirror-lang-mermaid';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab } from 'y-codemirror.next';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { acquireDocUndoManager } from './doc-undo-manager';
 
 const darkTheme = okCmTheme({
   dark: true,
@@ -47,11 +48,6 @@ const lightTheme = okCmTheme({
   gutterBackground: 'var(--muted)',
 });
 
-/**
- * Replace `Y.Text` content with `next` using the smallest edit that spans the
- * change — keep the common prefix/suffix so `yCollab` peers, cursors, and the
- * undo manager see a targeted splice rather than a whole-document churn.
- */
 export function replaceYText(ytext: Y.Text, next: string, origin?: unknown): void {
   const current = ytext.toString();
   if (current === next) return;
@@ -73,12 +69,6 @@ export function replaceYText(ytext: Y.Text, next: string, origin?: unknown): voi
   else apply();
 }
 
-/**
- * Editable CodeMirror bound to the Mermaid doc's `Y.Text('source')`. The
- * shared `undoManager` is passed to `yCollab` so source-pane typing and
- * diagram-mode label edits share a single undo stack — Ctrl/Cmd+Z in
- * either mode walks through the merged history.
- */
 function MermaidSourcePane({
   ytext,
   provider,
@@ -111,19 +101,85 @@ function MermaidSourcePane({
       parent: el,
     });
     return () => view.destroy();
-    // Rebuild only on doc identity / theme change — yCollab keeps content synced.
   }, [ytext, provider, resolvedTheme, undoManager]);
 
   return <div ref={containerRef} className="h-full min-h-0 overflow-auto" />;
 }
 
-/**
- * Stable transaction origin for diagram-mode label commits. Y.UndoManager
- * only tracks edits whose origin is in `trackedOrigins`; the shared
- * manager below adds this symbol so click-to-edit rewrites become undo
- * steps like any other. Undefined origins would drop off the stack.
- */
-const MERMAID_DIAGRAM_EDIT_ORIGIN = Symbol('mermaid-diagram-edit');
+export const MERMAID_DIAGRAM_EDIT_ORIGIN = Symbol('mermaid-diagram-edit');
+
+const mermaidUndoResetByManager = new WeakMap<Y.UndoManager, () => void>();
+
+function insertedDeltaLength(insert: unknown): number {
+  if (typeof insert === 'string' || Array.isArray(insert)) return insert.length;
+  return 1;
+}
+
+function isUntrackedFullTextReplacement(
+  event: Y.YTextEvent,
+  transaction: Y.Transaction,
+  undoManager: Y.UndoManager,
+): boolean {
+  const origin = transaction.origin;
+  if (
+    undoManager.trackedOrigins.has(origin) ||
+    (origin != null &&
+      undoManager.trackedOrigins.has((origin as { constructor?: unknown }).constructor))
+  ) {
+    return false;
+  }
+
+  let deleted = 0;
+  let inserted = 0;
+  let retained = 0;
+  for (const delta of event.delta) {
+    deleted += delta.delete ?? 0;
+    inserted += delta.insert === undefined ? 0 : insertedDeltaLength(delta.insert);
+    retained += delta.retain ?? 0;
+  }
+  const beforeLength = event.target.length + deleted - inserted;
+  return retained === 0 && deleted === beforeLength && deleted + inserted > 0;
+}
+
+function installMermaidUndoReset(
+  provider: HocuspocusProvider,
+  ytext: Y.Text,
+  undoManager: Y.UndoManager,
+): void {
+  if (mermaidUndoResetByManager.has(undoManager)) return;
+
+  const resetStaleHistory = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
+    if (isUntrackedFullTextReplacement(event, transaction, undoManager)) undoManager.clear();
+  };
+  let released = false;
+  const doc = ytext.doc;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    ytext.unobserve(resetStaleHistory);
+    provider.off('destroy', release);
+    doc?.off('destroy', release);
+    if (mermaidUndoResetByManager.get(undoManager) === release) {
+      mermaidUndoResetByManager.delete(undoManager);
+    }
+  };
+
+  mermaidUndoResetByManager.set(undoManager, release);
+  ytext.observe(resetStaleHistory);
+  provider.on('destroy', release);
+  doc?.on('destroy', release);
+}
+
+export function acquireMermaidUndoManager(
+  provider: HocuspocusProvider,
+  ytext: Y.Text,
+): Y.UndoManager {
+  const undoManager = acquireDocUndoManager(provider, ytext);
+  undoManager.removeTrackedOrigin(null);
+  undoManager.addTrackedOrigin(MERMAID_DIAGRAM_EDIT_ORIGIN);
+  installMermaidUndoReset(provider, ytext, undoManager);
+  return undoManager;
+}
 
 export function MermaidDocEditor({
   provider,
@@ -136,9 +192,6 @@ export function MermaidDocEditor({
   const { t } = useLingui();
   const ytext = provider.document.getText('source');
 
-  // Live source for the diagram — a label edit committed through the binding (or
-  // a source-pane keystroke) mutates `Y.Text`, and this observer re-renders the
-  // diagram from the new bytes.
   const [source, setSource] = useState(() => ytext.toString());
   useEffect(() => {
     const sync = () => setSource(ytext.toString());
@@ -147,41 +200,19 @@ export function MermaidDocEditor({
     return () => ytext.unobserve(sync);
   }, [ytext]);
 
-  // Shared UndoManager on the Y.Text — tracks both diagram-mode commits
-  // (via MERMAID_DIAGRAM_EDIT_ORIGIN) and source-pane typing (yCollab
-  // adds its own sync-conf origin internally via `addTrackedOrigin`).
-  // Ctrl/Cmd+Z in either mode walks through the merged stack.
-  // The Y.UndoManager listens on the Y.Doc via `afterTransactionHandler`.
-  // Don't call `.destroy()` in a StrictMode/HMR cleanup cycle — the same
-  // useState instance is re-used on the second effect run, and destroying
-  // it silently unhooks the handler so subsequent commits are dropped
-  // (visible as an empty undo stack after every edit). The UM is torn
-  // down naturally when the Y.Doc is disposed on unmount.
-  const [undoManager] = useState(
-    () => new Y.UndoManager(ytext, { trackedOrigins: new Set([MERMAID_DIAGRAM_EDIT_ORIGIN]) }),
-  );
+  const undoManager = acquireMermaidUndoManager(provider, ytext);
 
   const editBinding: MermaidSourceBinding = {
     canEdit: true,
     commitChart: (next) => replaceYText(ytext, next, MERMAID_DIAGRAM_EDIT_ORIGIN),
   };
 
-  // Diagram-mode keyboard shortcut — Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z drive
-  // the shared UndoManager. Wired at the window level (rather than on
-  // the wrapper div) so the shortcut fires without needing focus on the
-  // diagram surface itself — SVG has no natural focus target the user
-  // clicks into. Source mode's keybinding is owned by yCollab's own
-  // y-undomanager keymap (already active while the CodeMirror view has
-  // focus, so it wins over this listener when the source pane is open).
   useEffect(() => {
     if (isSourceMode) return;
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (!mod || e.key.toLowerCase() !== 'z') return;
-      // Undo belongs to whatever layer sits above the diagram.
       if (isOverlayLayerOpen()) return;
-      // If the user is typing in an input overlay (label editor) or any
-      // contenteditable, let the platform undo handle that input instead.
       const target = e.target;
       if (target instanceof HTMLElement) {
         const tag = target.tagName;

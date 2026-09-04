@@ -61,7 +61,6 @@ describe('FileEmbeddingsBackend — project + endpoint scoped', () => {
   test('a key is bound to the endpoint it was set for — never travels to another', async () => {
     const s = store();
     await s.setForProject(projectA, CUSTOM, KEY);
-    // Same project, DIFFERENT endpoint → no key (this is the structural exfil guard).
     expect((await s.resolveForProject(projectA, 'https://other.host/v1')).key).toBeNull();
   });
 
@@ -79,7 +78,7 @@ describe('FileEmbeddingsBackend — project + endpoint scoped', () => {
     await s.setForProject(projectA, CUSTOM, KEY_2);
     await s.setForProject(projectA, OPENAI, 'sk-replaced');
     expect((await s.resolveForProject(projectA, OPENAI)).key).toBe('sk-replaced');
-    expect((await s.resolveForProject(projectA, CUSTOM)).key).toBe(KEY_2); // untouched
+    expect((await s.resolveForProject(projectA, CUSTOM)).key).toBe(KEY_2);
   });
 
   test('clearForProject removes only that endpoint; returns whether one existed', async () => {
@@ -88,14 +87,13 @@ describe('FileEmbeddingsBackend — project + endpoint scoped', () => {
     await s.setForProject(projectA, CUSTOM, KEY_2);
     expect(await s.clearForProject(projectA, CUSTOM)).toBe(true);
     expect((await s.resolveForProject(projectA, CUSTOM)).key).toBeNull();
-    expect((await s.resolveForProject(projectA, OPENAI)).key).toBe(KEY); // sibling kept
-    expect(await s.clearForProject(projectA, CUSTOM)).toBe(false); // already gone
+    expect((await s.resolveForProject(projectA, OPENAI)).key).toBe(KEY);
+    expect(await s.clearForProject(projectA, CUSTOM)).toBe(false);
   });
 
   test('endpoint identity is normalized — trailing slash / case do not create a miss', async () => {
     const s = store();
     await s.setForProject(projectA, 'https://API.OpenAI.com/v1', KEY);
-    // Different spelling of the same endpoint resolves the same slot.
     expect((await s.resolveForProject(projectA, 'https://api.openai.com/v1/')).key).toBe(KEY);
   });
 });
@@ -112,7 +110,6 @@ describe('legacy flat key — default-OpenAI-host-only fallback', () => {
   test('the flat key does NOT leak to a custom endpoint', async () => {
     mkdirSync(join(dir, '.ok'), { recursive: true });
     writeFileSync(secretsFile, `OPENAI_API_KEY: ${KEY}\n`);
-    // The pre-per-project single key must never travel to a custom host.
     expect((await store().resolveForProject(projectA, CUSTOM)).key).toBeNull();
   });
 
@@ -143,7 +140,6 @@ describe('file permissions + atomic writes', () => {
     chmodSync(secretsFile, 0o644);
     await store().setForProject(projectA, CUSTOM, KEY);
     expect(statSync(secretsFile).mode & 0o777).toBe(0o600);
-    // An unrelated top-level field is preserved through the read-modify-write.
     expect(parse(readFileSync(secretsFile, 'utf-8')).other).toBe('keep-me');
   });
 
@@ -216,8 +212,6 @@ describe('describe + list + canonicalProjectKey', () => {
   test('canonicalProjectKey resolves a symlinked dir to its real path', () => {
     const link = join(dir, 'link-to-a');
     symlinkSync(projectA, link);
-    // A resolve-keyed store would file the CLI (link) and server (real) under
-    // different keys — realpath collapses them to one identity.
     expect(canonicalProjectKey(link)).toBe(canonicalProjectKey(projectA));
   });
 

@@ -9,13 +9,6 @@ import {
 } from '../../src/main/main-i18n.ts';
 import { translateEnglish } from '../../src/main/menu-translator.ts';
 
-/**
- * These run against the REAL committed catalogs in `packages/app/src/locales`,
- * not fixtures. The whole point of the design is that main reads the same
- * compiled files the renderer does, keyed by a hash of the English source — a
- * fixture catalog would prove the hashing works against itself and nothing
- * about whether the two sides actually agree.
- */
 const REAL_CATALOG_DIR = join(import.meta.dirname, '..', '..', '..', 'app', 'src', 'locales');
 
 describe('loadCompiledCatalog', () => {
@@ -37,8 +30,6 @@ describe('loadCompiledCatalog', () => {
 describe('createMenuTranslator', () => {
   test('translates a menu label through the shared catalog', () => {
     const translate = createMenuTranslator(REAL_CATALOG_DIR, 'es');
-    // Spanish and English share no menu vocabulary here, so a passthrough
-    // implementation cannot produce this.
     expect(translate('Reveal in Finder')).toBe('Mostrar en el Finder');
     expect(translate('Copy path')).toBe('Copiar ruta');
   });
@@ -77,11 +68,6 @@ describe('createMenuTranslator', () => {
 });
 
 describe('every menu string main can render resolves to a real catalog key', () => {
-  // The renderer-side parity suite checks these by string VALUE, because that
-  // package aliases the Lingui macros to an English passthrough and its
-  // descriptors carry no real id. This is the other half: the exact hash main
-  // computes, against the real catalog. A source string missing here renders
-  // English in every language, and nothing else would notice.
   const catalog = loadCompiledCatalog(REAL_CATALOG_DIR, 'en') ?? {};
   const sources = [...Object.values(NATIVE_MENU_LABELS), ...Object.values(MENU_LABELS)];
 

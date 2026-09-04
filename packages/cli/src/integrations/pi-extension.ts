@@ -1,31 +1,3 @@
-/**
- * Pi bridge-extension builder + recognizers.
- *
- * Pi (badlogic's `pi` coding agent) has no MCP support and no MCP config
- * surface at all — its only extension point is a TypeScript extension module
- * auto-discovered from the project's `.pi/extensions/` dir (loaded after the
- * user trusts the folder). OK's integration is therefore a whole managed FILE,
- * not a config entry: `ok init` drops `.pi/extensions/open-knowledge.ts`,
- * whose runtime spawns OK's MCP stdio server through the same resilient
- * launcher every other editor's config embeds (`buildManagedServerEntry`),
- * hand-rolls the newline-delimited JSON-RPC MCP handshake, and registers each
- * MCP tool as a native Pi tool.
- *
- * The generated file must be DEPENDENCY-FREE: Pi loads extensions with jiti
- * and only guarantees Node builtins plus Pi's own bundled modules — a single
- * dropped file cannot rely on npm packages (`@modelcontextprotocol/sdk` is not
- * available). Tool parameter schemas pass through as plain JSON Schema, which
- * Pi's validator accepts alongside TypeBox schemas.
- *
- * Versioning mirrors the chain-entry contract in `commands/editors.ts`:
- * `PI_EXTENSION_VERSION_SENTINEL` on the FIRST LINE is the up-to-date check
- * (reclaim's leave-alone gate) and `PI_EXTENSION_OWNERSHIP_MARKER` — its
- * version-agnostic prefix — is the removal gate. Dev-mode (`--dev-mcp`) files
- * carry the marker but a `-dev` suffix instead of the version sentinel, so
- * sweeps migrate them forward to published exactly like dev chain entries,
- * while removal still recognizes them as OK's own.
- */
-
 import {
   buildManagedServerEntry,
   type McpInstallOptions,
@@ -34,34 +6,16 @@ import {
   PI_MANAGED_FILE_ENTRY_COMMAND,
 } from '../commands/editors.ts';
 
-/** First line of a dev-mode (`--dev-mcp`) drop: owned, never version-current. */
 const PI_EXTENSION_DEV_HEADER = `${PI_EXTENSION_OWNERSHIP_MARKER}-dev`;
 
-/**
- * True when raw file text is recognizably OK's own managed Pi extension (any
- * version, including dev drops) — the gate for whole-file removal. First-line
- * strict: a user's own file at the same path that merely mentions the marker
- * somewhere in its body is NOT claimed.
- */
 export function isOwnPiExtensionSource(text: string): boolean {
   return text.startsWith(PI_EXTENSION_OWNERSHIP_MARKER);
 }
 
-/**
- * True when raw file text carries the CURRENT version sentinel on its first
- * line — the `isEntryUpToDate` equivalent for the managed file. Body drift
- * below line one is tolerated (same leave-alone posture as the chain-entry
- * sentinel check); a stale or dev header fails and triggers a rewrite by the
- * repair/reclaim sweeps.
- */
 export function isPiExtensionSourceUpToDate(text: string): boolean {
   return text.startsWith(PI_EXTENSION_VERSION_SENTINEL);
 }
 
-/**
- * `isOwnPiExtensionSource` lifted to the synthetic-entry shape — the removal
- * gate consumed by `isRemovableOwnEntry` in `mcp-config-removal.ts`.
- */
 export function isOwnPiManagedFileEntry(entry: unknown): boolean {
   if (typeof entry !== 'object' || entry === null) return false;
   const e = entry as Record<string, unknown>;
@@ -70,33 +24,10 @@ export function isOwnPiManagedFileEntry(entry: unknown): boolean {
   return typeof text === 'string' && isOwnPiExtensionSource(text);
 }
 
-/**
- * Wrap raw managed-file text in the synthetic entry shape the shared
- * classify → `isEntryUpToDate` → rewrite/remove machinery consumes.
- * `classifyExistingMcpEntry` synthesizes this for `format: 'file'` targets so
- * every generic consumer (CLI repair sweep, desktop boot + project-open
- * reclaim, surgical removal) flows without per-host branches. `args[0]` is the
- * raw text; telemetry consumers already bound it via `truncatePriorEntry`.
- */
 export function makePiManagedFileEntry(text: string): Record<string, unknown> {
   return { command: PI_MANAGED_FILE_ENTRY_COMMAND, args: [text] };
 }
 
-/**
- * Build the full contents of `.pi/extensions/open-knowledge.ts`.
- *
- * Byte-deterministic for a given `options` value, so idempotent `ok init`
- * re-runs skip the write on content equality. Published mode embeds BOTH
- * platforms' launcher shapes and picks by `process.platform` at runtime —
- * unlike a static JSON config entry, the dropped file is a program, so one
- * committed artifact serves macOS/Linux and Windows teammates alike. Dev mode
- * (`--dev-mcp`) embeds the machine-local `node dist/cli.mjs mcp` launcher on
- * both slots.
- *
- * The generated source avoids template literals and backticks entirely so the
- * template below never needs escaping gymnastics; launcher shapes are injected
- * as JSON (valid JS expressions by construction).
- */
 export function buildPiExtensionSource(options: McpInstallOptions = {}): string {
   const dev = options.mode === 'dev';
   const header = dev ? PI_EXTENSION_DEV_HEADER : PI_EXTENSION_VERSION_SENTINEL;

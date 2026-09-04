@@ -1,26 +1,6 @@
-/**
- * Portability guard: no MCP tool schema may advertise an intra-schema `$ref`.
- *
- * `zod-to-json-schema` (and Zod v4's native emitter) hoist a reused/recursive
- * schema into a top-level `definitions`/`$defs` block and reference it with
- * `"$ref": "#/definitions/__schemaN"`. Lenient clients (Claude) resolve that;
- * constrained-decoding hosts (LM Studio) and some function-calling APIs (Gemini)
- * do NOT — they reject the whole tool with a schema-conversion error. The
- * regression that motivated this: `write`/`edit` advertised a recursive
- * `frontmatter` value → `$ref: "#/definitions/__schema0"` → LM Studio 400.
- *
- * This sweep compiles EVERY registered tool's input AND output schema through
- * the SDK's exact `tools/list` pipeline and fails if any emits a `$ref` or a
- * `definitions`/`$defs` block — so a future recursive/reused schema can't
- * silently re-break local-inference and function-calling clients.
- */
-
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// Internal SDK compat modules — the exact conversion `mcp.js` runs on
-// `tools/list`. Reachable only via the SDK's wildcard `./*` export; the SDK is
-// pinned to an exact version so a minor bump can't silently rename them.
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { describe, expect, test } from 'vitest';
@@ -42,7 +22,6 @@ function captureAllRegistrations(cwd: string): Registration[] {
     registerTool(name: string, cfg: { inputSchema?: unknown; outputSchema?: unknown }) {
       captured.push({ name, inputSchema: cfg.inputSchema, outputSchema: cfg.outputSchema });
     },
-    // Legacy `server.tool()` API bypasses schema compilation; not relevant here.
     tool() {},
   } as unknown as ServerInstance;
   registerAllTools(server, {
@@ -53,7 +32,6 @@ function captureAllRegistrations(cwd: string): Registration[] {
   return captured;
 }
 
-/** Every `$ref` pointer + whether a definitions/$defs block is present. */
 function refOffenders(rawShape: unknown, pipeStrategy: 'input' | 'output'): string[] {
   const normalized = normalizeObjectSchema(rawShape);
   if (!normalized) return [];

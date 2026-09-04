@@ -78,7 +78,6 @@ describe('parseWorktreeListPorcelain', () => {
   });
 
   test('branch line without refs/heads/ prefix is returned verbatim', () => {
-    // git always emits the prefix, but be tolerant of variant tooling
     const stdout = ['worktree /repo', 'HEAD abc', 'branch some-other-ref', ''].join('\n');
     expect(parseWorktreeListPorcelain(stdout)[0]?.branch).toBe('some-other-ref');
   });
@@ -144,7 +143,6 @@ describe('parseWorktreeListPorcelain', () => {
       'worktree /b',
       'HEAD b1',
       'branch refs/heads/feat',
-      // no trailing blank line
     ].join('\n');
     const entries = parseWorktreeListPorcelain(stdout);
     expect(entries).toHaveLength(2);
@@ -165,8 +163,6 @@ describe('parseWorktreeListPorcelain', () => {
   });
 
   test('detached overrides a preceding branch line within the same block (defensive)', () => {
-    // git won't emit both, but we don't trust the wire — the explicit
-    // `detached` token wins.
     const stdout = ['worktree /repo', 'HEAD abc', 'branch refs/heads/main', 'detached', ''].join(
       '\n',
     );
@@ -178,7 +174,6 @@ describe('parseWorktreeListPorcelain', () => {
       'worktree /a',
       'HEAD a1',
       'branch refs/heads/main',
-      // no blank line
       'worktree /b',
       'HEAD b1',
       'branch refs/heads/feat',
@@ -202,7 +197,6 @@ describe('parseWorktreeListPorcelain', () => {
   });
 
   test('path with spaces is preserved (git emits raw path; no escaping)', () => {
-    // git does not escape paths in --porcelain output today; spaces survive
     const stdout = [
       'worktree /Users/My Documents/repo',
       'HEAD abc',

@@ -5,33 +5,8 @@ import { beforeAll, describe, expect, it, test } from 'vitest';
 import { i18n } from '@/lib/i18n';
 import { MENU_LABEL_TEXT_MESSAGES, NATIVE_MENU_MESSAGES } from '@/lib/native-menu-catalog';
 
-/**
- * Parity guard for the labels the NATIVE menu renders and the renderer does
- * not: Electron's `role:` labels, the menu-bar titles, the recents submenus,
- * and the two context menus.
- *
- * The main process resolves each by hashing its English source to a message id
- * and looking that id up in the compiled catalog, so a string that never
- * reached the catalog silently renders English in every language. Extraction
- * only walks `packages/app/src`, which is why the descriptors in
- * `native-menu-catalog.ts` exist at all — this file proves they still say the
- * same thing as the constants main passes, and that the catalog carries them.
- *
- * Membership is checked by STRING VALUE, not by descriptor id: this package's
- * vitest config aliases the Lingui macros to an English-passthrough shim, so a
- * descriptor here has no real hashed id to look up. The desktop suite checks
- * the id side, against the same catalog, using the same hash main uses.
- */
-
-/** Every message the compiled catalog carries, back in ICU source form. */
 const catalogMessages = new Set<string>();
 
-/**
- * Rebuild a compiled entry's source text. Lingui stores a plain message as a
- * bare string and an interpolated one as a token array — `"About {appName}"`
- * compiles to `["About ", ["appName"]]` — so a flat string sweep would never
- * find the four placeholder-bearing menu labels.
- */
 function sourceFormOf(compiled: unknown): string | null {
   if (typeof compiled === 'string') return compiled;
   if (!Array.isArray(compiled)) return null;
@@ -42,15 +17,12 @@ function sourceFormOf(compiled: unknown): string | null {
     } else if (Array.isArray(token) && typeof token[0] === 'string' && token.length === 1) {
       out += `{${token[0]}}`;
     } else {
-      // Plurals and selects — not a shape any native-menu label uses.
       return null;
     }
   }
   return out;
 }
 
-/** Placeholder-bearing sources render an empty slot when no values are given,
- *  so the comparison substitutes the placeholder name back into itself. */
 const SELF_VALUES = { appName: '{appName}', word: '{word}' };
 
 beforeAll(() => {
@@ -92,8 +64,6 @@ describe('every native-menu descriptor matches its shared constant', () => {
 });
 
 describe('registry menu-only labels reach the catalog too', () => {
-  // `menuLabelText` overrides the command's own `labelKey` for the native menu
-  // and has no palette counterpart, so nothing else puts these in the catalog.
   const registryLabels = [
     ...new Set(
       COMMAND_IDENTITIES.flatMap(

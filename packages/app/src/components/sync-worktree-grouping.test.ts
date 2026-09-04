@@ -12,8 +12,6 @@ function entry(path: string): GitWorktreeEntry {
 
 describe('commonDirPrefix', () => {
   test('compares whole segments, never partial names', () => {
-    // A character-wise prefix would hoist 'notes/' plus the shared 'a', which
-    // is not a path any row could be stated relative to.
     expect(commonDirPrefix(['notes/alpha/x.md', 'notes/apex/y.md'])).toBe('notes');
   });
 
@@ -45,14 +43,11 @@ describe('groupWorktreeEntries', () => {
       entry('public/ok/reports/b.md'),
     ]);
     expect(prefix).toBe('public/ok/reports');
-    // Nothing left to bucket under the prefix, so both are loose rows.
     expect(groups).toEqual([]);
     expect(loose.map((r) => r.label)).toEqual(['a.md', 'b.md']);
   });
 
   test('a lone file never gets its own disclosure', () => {
-    // The shape that looked wrong in the popover: five folders, four holding a
-    // single file, each costing a click to reveal one row.
     const { groups, loose } = groupWorktreeEntries([
       entry('root/.agents/skills/one.md'),
       entry('root/.codex/skills/two.md'),
@@ -74,8 +69,6 @@ describe('groupWorktreeEntries', () => {
       entry('root/a.md'),
       entry('root/b.md'),
     ]);
-    // Relative to the prefix, not just the basename — two `index.md` files in
-    // different folders would otherwise render identically.
     expect(loose.map((r) => r.label)).toContain('deep/nested/only.md');
   });
 
@@ -88,14 +81,8 @@ describe('groupWorktreeEntries', () => {
       ]),
     );
     expect(prefix).toBe('app/src/locales');
-    // Ten locale dirs exceed MAX_WORKTREE_GROUPS (8), so the roll-up algorithm
-    // collapses them all one level to the shared prefix. Once every key is ''
-    // (directly under the prefix), all entries land in loose — not in folder
-    // groups — so both these assertions must be checked on the full result, not
-    // just on groups (which would be vacuously true on an empty array).
     expect(groups).toEqual([]);
     expect(loose).toHaveLength(20);
-    // Every original entry survives in loose exactly once.
     const paths = loose.map((r) => r.entry.path).sort();
     const expected = locales
       .flatMap((l) => [`app/src/locales/${l}/messages.po`, `app/src/locales/${l}/messages.json`])
@@ -116,8 +103,6 @@ describe('groupWorktreeEntries', () => {
     ]);
     expect(groups.length).toBeLessThanOrEqual(MAX_WORKTREE_GROUPS);
     const dirs = groups.map((g) => g.dir);
-    // The shallow pairs were already legible and must not be rolled up just
-    // because the deep ones were noisy.
     expect(dirs).toContain('core');
     expect(dirs).toContain('server');
   });

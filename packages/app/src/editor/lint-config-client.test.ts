@@ -97,9 +97,6 @@ describe('fixLintDoc', () => {
   it('resolves a stalled request to a terminal failure after the fix timeout', async () => {
     vi.useFakeTimers();
     try {
-      // A request that never responds on its own — it settles only when the fix
-      // timeout aborts it. Without the timeout the project-scope sweep, which can
-      // only cancel between files, would hang on this one file indefinitely.
       stubFetch(
         (_input, init) =>
           new Promise<Response>((_resolve, reject) => {
@@ -110,8 +107,6 @@ describe('fixLintDoc', () => {
       );
       const outcome = fixLintDoc('doc-a');
       await vi.advanceTimersByTimeAsync(LINT_FIX_TIMEOUT_MS);
-      // Network-throw-shaped: a null status means the sweep will not mistake the
-      // aborted request for a retryable capacity refusal.
       await expect(outcome).resolves.toEqual({
         ok: false,
         errorDetail: null,

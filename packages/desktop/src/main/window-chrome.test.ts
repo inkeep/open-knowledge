@@ -9,7 +9,6 @@ import {
   TITLEBAR_OVERLAY_HEIGHT,
 } from './window-chrome.ts';
 
-/** An active palette's resolved chrome, as the renderer reports it. */
 const LIVE: OkChromeColors = { bg: '#282a36', symbol: '#f8f8f2' };
 
 describe('computeTitleBarOverlay', () => {
@@ -34,16 +33,11 @@ describe('computeTitleBarOverlay', () => {
   });
 
   test('chrome tokens stay in lockstep with the committed FOUC-guard values', () => {
-    // chrome-tokens-vite-plugin.ts resolves --sidebar to exactly these and
-    // substitutes them into packages/app/index.html; the window chrome must
-    // paint the same solid base or first-frame chrome mismatches the page.
     expect(CHROME_BG.light).toBe('#fafafa');
     expect(CHROME_BG.dark).toBe('#171717');
   });
 
   test("the renderer's live colors take precedence over the default-theme snapshot", () => {
-    // Without this the OS-drawn chrome stays on #fafafa/#171717 no matter
-    // which palette is active — the gap the live report exists to close.
     expect(computeTitleBarOverlay(true, LIVE)).toEqual({
       color: LIVE.bg,
       symbolColor: LIVE.symbol,
@@ -52,7 +46,6 @@ describe('computeTitleBarOverlay', () => {
   });
 
   test('live colors win in either mode — the palette, not isDark, picks them', () => {
-    // A light-mode scheme reporting dark chrome must not be re-lightened.
     expect(computeTitleBarOverlay(false, LIVE)).toEqual(computeTitleBarOverlay(true, LIVE));
   });
 
@@ -68,9 +61,6 @@ describe('buildNonDarwinChromeOpts', () => {
     expect(opts.titleBarOverlay).toEqual(computeTitleBarOverlay(true));
     expect(opts.backgroundColor).toBe(CHROME_BG.dark);
     expect(opts.autoHideMenuBar).toBe(true);
-    // The darwin-only vibrancy stack must never leak in here — a transparent
-    // frameless window with no vibrancy is the "no usable chrome" failure
-    // mode this module exists to fix.
     expect('vibrancy' in opts).toBe(false);
     expect('transparent' in opts).toBe(false);
   });

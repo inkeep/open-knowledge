@@ -1,13 +1,3 @@
-/**
- * Drift guard: the settings sidebar list (`LINT_PLUGIN_META`) must cover exactly
- * the lint plugin registry. The list is hand-authored (kept free of heavy core
- * imports so the settings shell stays light — deriving it from LINT_PLUGINS would
- * pull the lint engines into the shell bundle), so a forgotten entry would
- * silently drop a plugin's panel from the sidebar. The id→Section map in
- * `lint-plugins.tsx` is already compile-time complete (`Record<LintPluginId>`);
- * this covers the remaining array.
- */
-
 import { LINT_PLUGINS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { LINT_PLUGIN_META } from './lint-plugin-meta.ts';

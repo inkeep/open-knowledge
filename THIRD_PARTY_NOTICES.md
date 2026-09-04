@@ -765,6 +765,56 @@ Homepage: https://github.com/oramasearch/orama
 
 Copyright 2023 OramaSearch Inc
 
+### `@pierre/diffs@1.3.6`
+
+Copyright 2025 Pierre Computer Company
+
+### `@pierre/theme@2.0.0`
+Homepage: https://github.com/pierrecomputer/pierre/tree/main/packages/theme
+
+Copyright 2025 Pierre Computer Company
+
+NOTICE:
+
+```
+This theme was built on top of
+[GitHub's Visual Studio Code Theme](https://github.com/primer/github-vscode-theme),
+reusing its technique and build tooling, which we have since iterated on for
+more specific language tokens.
+
+`@pierre/theme` is licensed under Apache-2.0 (see `LICENSE`). The original MIT
+license for `primer/github-vscode-theme` is included below for attribution.
+
+Original license for `primer/github-vscode-theme`:
+
+```
+MIT License
+
+Copyright (c) 2020 Primer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+```
+
+### `@pierre/theming@1.0.1`
+
+Copyright 2025 Pierre Computer Company
+
 ### `@pierre/trees@1.0.0-beta.4`
 
 Copyright 2025 Pierre Computer Company
@@ -819,7 +869,7 @@ Homepage: https://github.com/gr2m/before-after-hook
 
 Copyright 2018 Gregor Martynus and other contributors.
 
-### `browser-fs-access@0.29.1`
+### `browser-fs-access@0.38.0`
 Homepage: https://github.com/GoogleChromeLabs/browser-fs-access#readme
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -1261,18 +1311,13 @@ Homepage: https://code.haverbeke.berlin/codemirror/lint
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/merge@6.12.2`
-Homepage: https://code.haverbeke.berlin/codemirror/merge
-
-Copyright (C) 2018-2022 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
 ### `@codemirror/search@6.7.1`
 Homepage: https://code.haverbeke.berlin/codemirror/search
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/state@6.6.0`
-Homepage: https://github.com/codemirror/state
+### `@codemirror/state@6.7.1`
+Homepage: https://code.haverbeke.berlin/codemirror/state
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1306,7 +1351,17 @@ Homepage: https://github.com/clauderic/dnd-kit
 
 Copyright (c) 2021, Claudéric Demers
 
-### `@excalidraw/excalidraw@0.18.1`
+### `@excalidraw/common@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/element@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/excalidraw@0.18.0-abeeaeb`
 Homepage: https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
@@ -1319,6 +1374,11 @@ Copyright (c) 2023 Excalidraw
 Homepage: https://github.com/danestves/markdown-to-text.git
 
 Copyright (c) 2020 Daniel Esteves
+
+### `@excalidraw/math@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `@excalidraw/mermaid-to-excalidraw@2.2.2`
 
@@ -2070,6 +2130,11 @@ Homepage: https://github.com/shikijs/shiki#readme
 Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
 
 ### `@shikijs/themes@3.23.0`
+Homepage: https://github.com/shikijs/shiki#readme
+
+Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
+
+### `@shikijs/transformers@3.23.0`
 Homepage: https://github.com/shikijs/shiki#readme
 
 Copyright (c) 2021 Pine Wu Copyright (c) 2023 Anthony Fu <https://github.com/antfu>
@@ -4142,6 +4207,11 @@ Homepage: https://github.com/wooorm/lowlight
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
+### `lru_map@0.4.1`
+Homepage: https://github.com/rsms/js-lru#readme
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
 ### `markdown-table@3.0.4`
 Homepage: https://github.com/wooorm/markdown-table
 
@@ -4673,11 +4743,6 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 Homepage: https://github.com/sindresorhus/open
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
-
-### `open-color@1.9.1`
-Homepage: https://github.com/yeun/open-color
-
-Copyright (c) 2016 heeyeun
 
 ### `ora@8.2.0`
 Homepage: https://github.com/sindresorhus/ora
@@ -6426,6 +6491,11 @@ Homepage: https://github.com/kpdecker/jsdiff
 
 Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
 
+### `diff@9.0.0`
+Homepage: https://github.com/kpdecker/jsdiff
+
+Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
+
 ### `fast-uri@3.1.5`
 Homepage: https://github.com/fastify/fast-uri
 
@@ -6574,7 +6644,7 @@ Copyright (c) 2015, Yeoman team
 
 The following packages are under licenses that do not require attribution (BlueOak-1.0.0, 0BSD, WTFPL, Unlicense, CC0-1.0). Listed for completeness and traceability.
 
-- `fractional-indexing@3.2.0` — CC0-1.0
+- `@excalidraw/fractional-indexing@0.18.0-abeeaeb` — CC0-1.0
 - `isexe@3.1.5` — BlueOak-1.0.0
 - `minimatch@10.2.5` — BlueOak-1.0.0
 - `robust-predicates@3.0.3` — Unlicense
@@ -6628,7 +6698,9 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | Package | Patch file |
 | --- | --- |
 | `@handlewithcare/remark-prosemirror@0.1.5` | `patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch` |
+| `@hocuspocus/provider@4.0.0-rc.1` | `patches/@hocuspocus%2Fprovider@4.0.0-rc.1.patch` |
 | `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
+| `@pierre/diffs@1.3.6` | `patches/@pierre%2Fdiffs@1.3.6.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |

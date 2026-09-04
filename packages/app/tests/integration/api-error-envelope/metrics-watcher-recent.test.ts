@@ -1,22 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleMetricsWatcherRecent`.
- *
- * Asserts the canonical RFC 9457 wire shape for
- * `GET /api/metrics/watcher-recent`. Shares the same
- * auth-before-method-dispatch ordering as `handleMetricsAgentEffects`
- * (loopback gate → host-allowlist gate → method check) so a bad Host never
- * leaks "verb the endpoint expects" via 405.
- *
- * Coverage:
- *   - happy path: 200 + `application/json` + body parses against
- *     `MetricsWatcherRecentSuccessSchema`, no `ok` discriminator; every
- *     entry's `doc.name` is a normalized path (never absolute).
- *   - DNS-rebinding Host → 403 `urn:ok:error:host-not-allowed` (must
- *     emit BEFORE the method check).
- *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
- *     with `Allow: GET`.
- */
-
 import {
   MetricsWatcherRecentSuccessSchema,
   ProblemDetailsSchema,
@@ -47,8 +28,6 @@ describe('metrics-watcher-recent envelope (RFC 9457)', () => {
     expect(parsed.success).toBe(true);
     expect((body as Record<string, unknown>).ok).toBeUndefined();
     if (!parsed.success) return;
-    // Paths are pre-normalized at record time — an absolute path in the wire
-    // body would be a cardinality/privacy regression.
     for (const decision of parsed.data.decisions) {
       expect(decision['doc.name'].startsWith('/')).toBe(false);
     }
@@ -60,7 +39,6 @@ describe('metrics-watcher-recent envelope (RFC 9457)', () => {
       'evil.example.com',
       { method: 'POST' },
     );
-    // Auth-before-method-dispatch ordering: bad Host → 403, NOT 405.
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
 

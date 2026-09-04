@@ -60,13 +60,6 @@ interface PageHeaderProps {
   provider: HocuspocusProvider;
 }
 
-/**
- * Read the initial frontmatter snapshot synchronously from the provider
- * — same direct-read pattern as `PropertyPanel.readInitialSnapshot`. We
- * read the source bytes once and parse, avoiding the
- * allocate-binding-and-immediately-dispose pattern an earlier draft of
- * this file used.
- */
 function readInitialSnapshot(provider: HocuspocusProvider): FrontmatterSnapshot {
   const ytext = provider.document.getText('source').toString();
   const { map, parseError } = readFmRegionWithError(ytext);
@@ -78,13 +71,9 @@ export function PageHeader({ provider }: PageHeaderProps) {
   const [snapshot, setSnapshot] = useState<FrontmatterSnapshot>(() =>
     readInitialSnapshot(provider),
   );
-  // Kept in a ref so the drag handler can commit into it without the
-  // component needing to re-render on binding creation.
   const bindingRef = useRef<FrontmatterBinding | null>(null);
 
   useEffect(() => {
-    // Wrapped like PropertyPanel's: a cover reframe is a user edit, and it
-    // reaches the editors as a sync-origin Y.Text change they can't attribute.
     const next = withPreviewTabPromotion(
       bindFrontmatterDoc(provider),
       provider.configuration.name ?? '',
@@ -129,11 +118,6 @@ export function PageHeader({ provider }: PageHeaderProps) {
             if (!b) return;
             const result = b.patch({ [`${coverKey}_y`]: y });
             if (!result.ok) {
-              // Same log-and-continue posture as PropertyPanel.commitPatch:
-              // silent-drop hides malformed-YAML + region-too-large failures
-              // from the operator. The frame reverts visually because the
-              // subscribe callback won't fire; the console breadcrumb is the
-              // only signal the write was rejected.
               console.warn('[PageHeader] focal-Y patch rejected:', result.error);
             }
           }}
@@ -152,16 +136,6 @@ interface CoverBannerProps {
 
 function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
   const { t } = useLingui();
-  // Drag state: while pointer is down we render `dragY` instead of `focalY`
-  // for live feedback; on release we commit once. Keyboard adjustment
-  // commits immediately (no drag session).
-  //
-  // The drag is DELTA-based (image moves WITH the pointer, not TO it) — a
-  // pure click would otherwise snap the focal point to wherever the pointer
-  // landed, jerking the frame on every mousedown. We store the initial
-  // client-Y + initial focal-Y at pointerdown and apply the delta on each
-  // move. dragY stays null until the first move, so a click that never moves
-  // never commits.
   const [dragY, setDragY] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef<{ clientY: number; focal: number } | null>(null);
@@ -170,11 +144,7 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
   const percent = Math.round((displayY ?? 0.5) * 100);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    // Non-primary buttons (right-click, middle-click) shouldn't drag.
     if (e.button !== 0) return;
-    // Skip touch: a swipe across the full-width 200px banner is far more
-    // often the user trying to scroll the doc than reframe the cover.
-    // Repositioning on touch will get its own explicit affordance later.
     if (e.pointerType === 'touch') return;
     e.currentTarget.setPointerCapture(e.pointerId);
     dragStartRef.current = { clientY: e.clientY, focal: focalY ?? 0.5 };
@@ -186,11 +156,6 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
     if (!start || !el) return;
     const rect = el.getBoundingClientRect();
     if (rect.height === 0) return;
-    // Delta is inverted: `object-position` Y% counts from the TOP of the
-    // image, so dragging the pointer DOWN should DECREASE focalY (the frame
-    // scrolls up over the image → the image visibly moves down, WITH the
-    // pointer). Without the negation, drag polarity reads as scroll — image
-    // moves against the finger.
     const delta = (start.clientY - e.clientY) / rect.height;
     let next = start.focal + delta;
     if (next < 0) next = 0;
@@ -203,11 +168,7 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
     dragStartRef.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // Pointer capture may have been lost already (e.g. window blur);
-      // release throws in that case and the state cleanup below is what
-      // matters.
-    }
+    } catch {}
     const committed = dragY;
     setDragY(null);
     if (committed !== null && committed !== focalY) {
@@ -216,11 +177,6 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    // Arrow keys follow the WAI-ARIA slider pattern (Up/Right = increase,
-    // Down/Left = decrease). focalY is measured from the top of the image
-    // (0 = top, 1 = bottom), so ArrowUp INCREASES focalY → shows more of
-    // the image bottom. That aligns with drag: dragging up over the frame
-    // reveals more of the image bottom, same as ArrowUp.
     const current = focalY ?? 0.5;
     let next: number | null = null;
     if (e.key === 'ArrowUp' || e.key === 'ArrowRight') next = Math.min(1, current + 0.05);
@@ -234,9 +190,7 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
 
   return (
     <div className="page-header-cover" data-testid="page-header-cover">
-      {/* Interactive slider wraps the img; the img itself stays decorative
-          (empty alt). The slider is the only element in this region that
-          participates in the a11y tree. */}
+      {}
       <div
         ref={wrapperRef}
         role="slider"
@@ -256,17 +210,12 @@ function CoverBanner({ cover, focalY, onCommitFocalY }: CoverBannerProps) {
         data-testid="page-header-cover-slider"
         data-dragging={dragY !== null || undefined}
       >
-        {/* `<img>` (not CSS `background-image`) so the browser's native
-            loader shows the image, respects `loading="lazy"`, and an
-            `onError` could fall back to a placeholder later. */}
+        {}
         <img
           src={cover.value}
           alt=""
           draggable={false}
           loading="lazy"
-          // `cover.value` can be an attacker-controlled external host
-          // (`url` kind). Match `Embed` / `CodeBlockView` / `Image` —
-          // never leak the doc path + query params in Referer.
           referrerPolicy="no-referrer"
           className="page-header-cover-img"
           style={{ objectPosition }}
@@ -285,16 +234,12 @@ function PageIconBlock({ icon, hasCover }: { icon: ResolvedPageIcon; hasCover: b
       </span>
     );
   }
-  // `url` / `path` — rendered as an `<img>`. `path` is already
-  // `toDesktopAssetHref`-wrapped in resolvePageIcon.
   return (
     <span className={overlay} data-testid="page-header-icon" data-kind={icon.kind}>
       <img
         src={icon.value}
         alt=""
         draggable={false}
-        // External-host icons leak Referer without this — same posture
-        // as the cover banner above.
         referrerPolicy="no-referrer"
         className="page-header-icon-img"
       />

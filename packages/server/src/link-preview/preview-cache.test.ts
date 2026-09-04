@@ -26,7 +26,6 @@ function ok(domain: string, extra: Partial<LinkPreviewMetadata> = {}): LinkPrevi
   return { ok: true, metadata: { domain, ...extra } };
 }
 
-/** A compute closure plus a call counter — the seam that proves hit vs miss. */
 function counter(outcome: LinkPreviewOutcome): [() => Promise<LinkPreviewOutcome>, () => number] {
   let n = 0;
   return [
@@ -38,7 +37,6 @@ function counter(outcome: LinkPreviewOutcome): [() => Promise<LinkPreviewOutcome
   ];
 }
 
-/** A compute that fails the test if it runs — asserts a lookup was a cache hit. */
 const mustNotFetch = async (): Promise<LinkPreviewOutcome> => {
   throw new Error('expected a cache hit, but compute ran');
 };
@@ -75,7 +73,6 @@ describe('LinkPreviewCache', () => {
 
     const reopened = makeCache();
     await reopened.init();
-    // Fragment differs but normalizes to the same key — still a disk hit.
     expect(await reopened.load('https://example.com/page#section', mustNotFetch)).toEqual({
       ok: true,
       metadata,
@@ -91,7 +88,6 @@ describe('LinkPreviewCache', () => {
     );
     expect(first).toEqual({ ok: false, reason: 'private-ip' });
 
-    // A later hover offering a *different* outcome must still get the cached failure.
     const [compute, calls] = counter(ok('n.com'));
     expect(await cache.load('https://n.com/', compute)).toEqual({
       ok: false,
@@ -110,12 +106,12 @@ describe('LinkPreviewCache', () => {
 
     const [withinTtl, withinCalls] = counter(ok('s.com'));
     await cache.load('https://s.com/', withinTtl);
-    expect(withinCalls()).toBe(0); // still fresh → hit
+    expect(withinCalls()).toBe(0);
 
-    clock += 6000; // past the 5s success TTL
+    clock += 6000;
     const [afterTtl, afterCalls] = counter(ok('s.com'));
     await cache.load('https://s.com/', afterTtl);
-    expect(afterCalls()).toBe(1); // expired → recompute
+    expect(afterCalls()).toBe(1);
   });
 
   test('a negative past its short TTL recomputes so a dead link recovers', async () => {
@@ -124,7 +120,7 @@ describe('LinkPreviewCache', () => {
     await cache.init();
     await cache.load('https://nt.com/', counter({ ok: false, reason: 'timeout' })[0]);
 
-    clock += 2000; // past the 1s negative TTL
+    clock += 2000;
     const [compute, calls] = counter(ok('nt.com'));
     expect(await cache.load('https://nt.com/', compute)).toEqual(ok('nt.com'));
     expect(calls()).toBe(1);
@@ -162,7 +158,6 @@ describe('LinkPreviewCache', () => {
       }),
     ).rejects.toThrow('boom');
 
-    // The failed compute was not cached and the slot is free → the next load runs.
     const [compute, calls] = counter(ok('y.com'));
     expect(await cache.load('https://y.com/', compute)).toEqual(ok('y.com'));
     expect(calls()).toBe(1);
@@ -173,47 +168,42 @@ describe('LinkPreviewCache', () => {
     await cache.init();
     await cache.load('https://a.com/', counter(ok('a.com'))[0]);
     await cache.load('https://b.com/', counter(ok('b.com'))[0]);
-    await cache.load('https://c.com/', counter(ok('c.com'))[0]); // evicts a (oldest)
+    await cache.load('https://c.com/', counter(ok('c.com'))[0]);
     expect(cache.size).toBe(2);
 
     const [reA, reACalls] = counter(ok('a.com'));
     await cache.load('https://a.com/', reA);
-    expect(reACalls()).toBe(1); // a was evicted → recompute
+    expect(reACalls()).toBe(1);
 
-    // c was accessed more recently than b, so it survived — a hit.
     await cache.load('https://c.com/', mustNotFetch);
 
     await cache.persist();
-    // Only the two live entries have blobs on disk; the evicted one is GC'd.
     expect(readdirSync(join(dir, 'meta')).length).toBe(2);
   });
 
   test('a hit bumps recency so the next eviction drops the older un-accessed key', async () => {
     const cache = makeCache({ maxEntries: 2 });
     await cache.init();
-    await cache.load('https://a.com/', counter(ok('a.com'))[0]); // {a}
-    await cache.load('https://b.com/', counter(ok('b.com'))[0]); // {a,b}
-    await cache.load('https://a.com/', mustNotFetch); // hit bumps a → {b,a}
-    await cache.load('https://c.com/', counter(ok('c.com'))[0]); // adding c evicts b (now oldest) → {a,c}
+    await cache.load('https://a.com/', counter(ok('a.com'))[0]);
+    await cache.load('https://b.com/', counter(ok('b.com'))[0]);
+    await cache.load('https://a.com/', mustNotFetch);
+    await cache.load('https://c.com/', counter(ok('c.com'))[0]);
 
-    // The bump moved a's recency above b, so b — not a — was the eviction victim.
-    // Assert a's survival before recomputing b, since recomputing b would itself
-    // evict the next-oldest entry.
-    await cache.load('https://a.com/', mustNotFetch); // a survived → hit
+    await cache.load('https://a.com/', mustNotFetch);
     const [reB, reBCalls] = counter(ok('b.com'));
     await cache.load('https://b.com/', reB);
-    expect(reBCalls()).toBe(1); // b was evicted → recompute
+    expect(reBCalls()).toBe(1);
   });
 
   test('a corrupt manifest is treated as empty and never throws', async () => {
     writeFileSync(join(dir, 'manifest.json'), 'not-json{{{');
     const cache = makeCache();
-    await cache.init(); // must not throw
+    await cache.init();
     expect(cache.size).toBe(0);
 
     const [compute, calls] = counter(ok('c.com'));
     await cache.load('https://c.com/', compute);
-    expect(calls()).toBe(1); // empty cache → computes
+    expect(calls()).toBe(1);
   });
 
   test('a success blob that no longer matches the schema drops the entry', async () => {
@@ -222,13 +212,13 @@ describe('LinkPreviewCache', () => {
     await cache.load('https://b.com/page', counter(ok('b.com'))[0]);
     await cache.persist();
     const [blob] = readdirSync(join(dir, 'meta'));
-    writeFileSync(join(dir, 'meta', blob as string), '{"unexpected":true}'); // valid JSON, wrong shape
+    writeFileSync(join(dir, 'meta', blob as string), '{"unexpected":true}');
 
     const reopened = makeCache();
-    await reopened.init(); // drops the entry, no throw
+    await reopened.init();
     const [compute, calls] = counter(ok('b.com'));
     await reopened.load('https://b.com/page', compute);
-    expect(calls()).toBe(1); // unusable blob → recompute
+    expect(calls()).toBe(1);
   });
 
   test('drops an already-expired entry on init (no resurrection)', async () => {
@@ -238,7 +228,7 @@ describe('LinkPreviewCache', () => {
     await cache.load('https://g.com/', counter({ ok: false, reason: 'timeout' })[0]);
     await cache.persist();
 
-    clock += 2000; // the persisted entry is now stale
+    clock += 2000;
     const reopened = makeCache({ negativeTtlMs: 1000, now: () => clock });
     await reopened.init();
     expect(reopened.size).toBe(0);
@@ -252,9 +242,9 @@ describe('LinkPreviewCache', () => {
     await cache.init();
     const [compute, calls] = counter(ok('m.com'));
     await cache.load('https://m.com/', compute);
-    await cache.load('https://m.com/', compute); // hit
+    await cache.load('https://m.com/', compute);
     expect(calls()).toBe(1);
-    await expect(cache.persist()).resolves.toBeUndefined(); // no-op, no throw
+    await expect(cache.persist()).resolves.toBeUndefined();
     expect(readdirSync(dir).length).toBe(0);
   });
 
@@ -270,20 +260,18 @@ describe('LinkPreviewCache', () => {
 
     const [compute, calls] = counter(ok('w.com'));
     await cache.load('https://w.com/', compute);
-    expect(calls()).toBe(1); // memory cleared → recompute
+    expect(calls()).toBe(1);
   });
 
   test('persist is best-effort when the cache directory is unwritable', async () => {
-    // A regular file where the cache dir should be → mkdir(meta) fails with ENOTDIR.
     const blocker = join(dir, 'blocker');
     writeFileSync(blocker, 'x');
     const cache = new LinkPreviewCache({ cacheDir: join(blocker, 'nested') });
-    await cache.init(); // no throw
+    await cache.init();
 
     await cache.load('https://e.com/', counter(ok('e.com'))[0]);
-    await expect(cache.persist()).resolves.toBeUndefined(); // swallows the fs error
+    await expect(cache.persist()).resolves.toBeUndefined();
 
-    // The failed flush left the in-memory cache intact — still a hit.
     const [compute, calls] = counter(ok('e.com'));
     expect(await cache.load('https://e.com/', compute)).toEqual(ok('e.com'));
     expect(calls()).toBe(0);

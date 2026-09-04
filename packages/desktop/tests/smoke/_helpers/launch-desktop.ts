@@ -1,53 +1,19 @@
-/**
- * One launch convention for the Electron smoke suite.
- *
- * The suite runs in two structurally different shapes. Unpackaged it launches
- * `electron` against `out/main/index.js`, passing that main entry as the first
- * element of `args`. Packaged it launches the bundle's own binary via
- * `executablePath` and must NOT pass a main entry at all — a path swap between
- * the two does not work, which is why every call site routes through here.
- *
- * Mode is selected by `OK_DESKTOP_PACKAGED_APP`: set it to an `.app` bundle to
- * run the same test files against a packaged build. Absent, the suite behaves
- * exactly as it did before this helper existed.
- *
- * `env` is deliberately optional and never defaulted. Eight of the suite's
- * launch sites pass no `env` today; handing them a default that included
- * `OK_DESKTOP_E2E_SMOKE` would silently change behavior at
- * `dialog-helpers.ts:readTestPickedPath` and `index.ts:resolveEffectiveInstanceName`,
- * both of which read that variable unconditionally.
- */
-
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { _electron as electron } from '@playwright/test';
 
-/** Playwright's own launch-options shape, so `env` stays exactly its type. */
 type ElectronLaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
 export type SmokeLaunchEnv = NonNullable<ElectronLaunchOptions['env']>;
 
 const HELPERS_DIR = dirname(fileURLToPath(import.meta.url));
 
-/**
- * `packages/desktop`. Exported so smoke files can resolve package-relative
- * paths without each re-deriving `__dirname` — which is not a runtime global
- * under this package's `"type": "module"`, and which `@types/node` declares
- * ambiently so a stale reference typechecks clean and only fails at import.
- */
 export const DESKTOP_ROOT = resolve(HELPERS_DIR, '..', '..', '..');
 
-/** Env var naming a packaged `.app` bundle to run the smoke subset against. */
 export const PACKAGED_APP_ENV = 'OK_DESKTOP_PACKAGED_APP';
 
-/** `electron-vite` output the unpackaged suite launches. */
 export const UNPACKAGED_MAIN_ENTRY = join(DESKTOP_ROOT, 'out', 'main', 'index.js');
 
-/**
- * Where `electron-builder --mac` drops the unpacked bundle locally. Only used
- * by suites that are packaged-only and get no env override — CI supplies the
- * override, so this is the local-developer convenience path.
- */
 export const DEFAULT_LOCAL_PACKAGED_APP = join(
   DESKTOP_ROOT,
   'dist-desktop',
@@ -59,26 +25,17 @@ export type DesktopLaunchMode = 'packaged' | 'unpackaged';
 
 export interface DesktopTarget {
   mode: DesktopLaunchMode;
-  /** `.app` bundle root in packaged mode; undefined otherwise. */
   appPath?: string;
-  /** The main entry (unpackaged) or the bundle executable (packaged). */
   targetPath: string;
   exists: boolean;
-  /** Ready-to-use `test.skip` reason when `exists` is false. */
   missingReason: string;
 }
 
 export interface ResolveDesktopTargetOptions {
   env?: NodeJS.ProcessEnv;
-  /**
-   * Resolve a packaged target even without the env override, falling back to
-   * the local `electron-builder` output. For suites that only make sense
-   * against a packaged bundle.
-   */
   requirePackaged?: boolean;
 }
 
-/** `<bundle>.app/Contents/MacOS/<bundle>` — electron-builder's layout. */
 export function executableForAppBundle(appPath: string): string {
   return join(appPath, 'Contents', 'MacOS', basename(appPath, '.app'));
 }
@@ -113,13 +70,9 @@ export function resolveDesktopTarget(options: ResolveDesktopTargetOptions = {}):
 }
 
 export interface DesktopLaunchOptionsInput {
-  /** Defaults to `resolveDesktopTarget()`. */
   target?: DesktopTarget;
-  /** Arguments after the main entry (`--user-data-dir=…`, deep links, flags). */
   args?: string[];
-  /** Passed through verbatim. Omitted entirely when absent. */
   env?: SmokeLaunchEnv;
-  /** Defaults to 30_000, matching every call site before this helper. */
   timeout?: number;
 }
 
@@ -132,11 +85,6 @@ export interface DesktopLaunchOptions {
 
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 30_000;
 
-/**
- * Build the `electron.launch` options for the active mode. Unpackaged prepends
- * the main entry to `args` and sets no `executablePath`; packaged sets
- * `executablePath` and leaves `args` as the caller supplied them.
- */
 export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): DesktopLaunchOptions {
   const target = input.target ?? resolveDesktopTarget();
   const extraArgs = input.args ?? [];
@@ -147,17 +95,5 @@ export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): Des
       ? { args: [...extraArgs], timeout, executablePath: target.targetPath }
       : { args: [target.targetPath, ...extraArgs], timeout };
 
-  // Every smoke launch runs in English. Several of these walk the real
-  // application menu by exact English label — they are release gates, not i18n
-  // tests — and the app now resolves its menu language from the running user's
-  // `~/.ok/global.yml` plus the OS preferred-language list. Without the pin, a
-  // developer who has chosen another language in Settings watches that whole
-  // tier fail on their machine and nowhere else.
-  //
-  // Spreading `process.env` rather than assigning `env: input.env` alone:
-  // Playwright REPLACES the child environment when `env` is given, so a bare
-  // `{ OK_LANG }` would strip PATH from every no-env call site. Callers that do
-  // pass `env` already spread `process.env` themselves; theirs still wins over
-  // the inherited copy, and only the language pin sits above it.
   return { ...base, env: { ...process.env, ...input.env, OK_LANG: 'en' } };
 }

@@ -1,7 +1,5 @@
 import type { SVGProps } from 'react';
 
-// npm mark (simple-icons path) — fill-based, tracks `currentColor` like the
-// other nav icons.
 export function NpmIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

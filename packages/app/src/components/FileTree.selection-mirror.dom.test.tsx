@@ -150,9 +150,6 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
   });
 
   test('navigating to a doc with no visible tree row deselects the previous row', async () => {
-    // Quiet-tree contract: when the active doc's row is absent from the model
-    // (filtered out, or not fetched yet), the previously active row must not
-    // keep a stale highlight while the editor shows a different doc.
     const model = makeStubModel(['A.md', 'B.md', 'C.md']);
     render(<Harness initialPath="A.md" model={model} />);
 
@@ -165,10 +162,6 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
   });
 
   test('absent active row still expands visible ancestors while clearing stale selection', () => {
-    // A partially-hidden path: `parent/` has a visible row, the active child
-    // does not. The mirror must expand the visible ancestor (ancestor
-    // priority) AND clear the stale selection left on another row — the
-    // quiet-tree deselect must not short-circuit the expansion loop.
     let parentExpanded = false;
     let parentExpandCallCount = 0;
     let otherSelected = true;
@@ -235,16 +228,8 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
   });
 
   test('non-empty activeAncestorTreePathsSignature expands every collapsed ancestor', () => {
-    // Builds a stub model whose `parent/` ancestor reports expanded=false +
-    // a working expand() — without this test the ancestor-expansion loop
-    // (use-selection-mirror.ts) is never exercised because every other
-    // test passes an empty signature.
     let parentExpanded = false;
     let parentExpandCallCount = 0;
-    // Ancestor items must return isDirectory()===true to satisfy
-    // asDirectoryHandle()'s contract (use-selection-mirror.ts) — for any
-    // item returning false the cast returns null and the expansion loop
-    // short-circuits.
     const items = new Map<string, StubItem>([
       [
         'parent/',
@@ -300,47 +285,26 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
   });
 
   test('preserves deliberate multi-selection when activeTreePath is already among the selected paths', () => {
-    // Regression guard for the cmd+A race: when a multi-select gesture populates
-    // Pierre's selection directly and React commits the new activeTreePath
-    // AFTER the multi-select burst, the singleton-collapse must NOT fire.
-    // The mirror's invariant is "active row IS selected," not "active row is
-    // SOLE selected." Removing the multi-selection guard in use-selection-mirror.ts
-    // causes the next two assertions to fail (B.md and C.md would be deselected).
     const model = makeStubModel(['A.md', 'B.md', 'C.md']);
-    // Pre-populate a multi-selection (simulates cmd+A having already fired).
     model.getItem('A.md')?.select();
     model.getItem('B.md')?.select();
     model.getItem('C.md')?.select();
 
     render(<Harness initialPath="A.md" model={model} />);
 
-    // The mirror saw `currentSelection.length > 1` and `isSelected('A.md')`,
-    // taking the early-return and leaving the multi-selection intact.
     expect(model.getSelectedPaths()).toContain('A.md');
     expect(model.getSelectedPaths()).toContain('B.md');
     expect(model.getSelectedPaths()).toContain('C.md');
-    // The guard-path branch must still call item.focus() so arrow-key
-    // navigation works after a multi-select gesture. Pinning this independently
-    // from the singleton-collapse path (which also calls focus()) catches a
-    // regression where focus() is removed from only the guard branch.
     expect(model.getItem('A.md')?.getFocusCount()).toBe(1);
   });
 
   test('singleton-collapse still fires when activeTreePath is absent from a multi-selection (true navigation)', async () => {
-    // Companion to the multi-selection-preserved test above: when navigation
-    // changes activeTreePath to a row NOT in the existing multi-selection,
-    // the singleton invariant should still apply (deselect others, select
-    // the new active). Otherwise navigation between tabs while a stale
-    // multi-selection exists would visually accumulate.
     const model = makeStubModel(['A.md', 'B.md', 'C.md']);
-    // Pre-populate a multi-selection that does NOT include the initial activeTreePath.
     model.getItem('B.md')?.select();
     model.getItem('C.md')?.select();
 
     render(<Harness initialPath="A.md" model={model} />);
 
-    // Mirror sees `currentSelection.length > 1` but `!isSelected('A.md')`, so it
-    // falls through to selectOnlyTreeItem — deselecting B and C, selecting A.
     expect(model.getSelectedPaths()).toEqual(['A.md']);
   });
 

@@ -1,14 +1,3 @@
-/**
- * Lenient dirty-tree detection for branch-switch and git-sync pre-checks.
- *
- * `dirtyFilesOverlapWith` returns the intersection of the working-tree's dirty
- * file set and the set of files that would change when moving from the current
- * ref to `targetRef`. It mirrors git's own behaviour: only files that would be
- * overwritten by the switch block the operation. Untracked files at overlapping
- * paths count as conflicts because `git checkout` refuses to silently overwrite
- * them.
- */
-
 import { createGitInstance } from './git-handle.ts';
 import { listNames, listPorcelainPaths } from './git-paths.ts';
 
@@ -17,39 +6,17 @@ export interface DirtyOverlapResult {
   files: string[];
 }
 
-/**
- * Returns the intersection of dirty working-tree files and files changed by
- * switching from the current ref to `targetRef`.
- *
- * - `{conflicts: false, files: []}` when either set is empty or the sets are
- *   disjoint.
- * - `{conflicts: true, files: [...]}` when at least one path appears in both
- *   sets. `files` is sorted ascending and deduped.
- *
- * Throws if `targetRef` cannot be resolved by git (matches simple-git's error
- * propagation). Callers receive the original simple-git error so they can
- * surface a meaningful reason to the user.
- *
- * Read-only; does not acquire `withParentLock`.
- */
 export async function dirtyFilesOverlapWith(
   cwd: string,
   targetRef: string,
 ): Promise<DirtyOverlapResult> {
-  // Local-only: `rev-parse --git-dir` and status reads never reach a remote.
   const { git } = createGitInstance(cwd, { credentialConfig: [] });
 
   const [dirtyResult, changedResult] = await Promise.allSettled([
     listPorcelainPaths(git),
-    // Two-dot diff — all files differing between HEAD and targetRef, in either
-    // direction. Three-dot (`HEAD...targetRef`) resolves to merge-base..targetRef
-    // and misses files HEAD changed since divergence, which `git checkout` would
-    // still restore to the target's view.
     listNames(git, ['diff', '--name-only', `HEAD..${targetRef}`]),
   ]);
 
-  // A missing target ref rejects the diff. Wait for the status process too so
-  // callers can safely tear down or replace the repository after this returns.
   if (changedResult.status === 'rejected') throw changedResult.reason;
   if (dirtyResult.status === 'rejected') throw dirtyResult.reason;
 

@@ -17,31 +17,21 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-// Sonner is loaded by the SUT — stub to mute its real toaster.
 const toastError = vi.fn(() => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
-// The rows are fed by `/api/skills` — the same list every other skills surface
-// reads. The desktop bridge below is the INTRO's source only, so the two are
-// controlled separately here on purpose: a bridgeless render must still produce
-// rows.
 let skillsState: { status: string; data?: readonly SkillsListEntry[]; message?: string } = {
   status: 'loading',
 };
 vi.doMock('@/hooks/use-skills', () => ({ useSkills: () => skillsState }));
 
-// The row's entire contract is "open the skill's own preview", so the opener is
-// spied rather than exercised — the tab machinery behind it is covered where it
-// lives.
 const openPreviewSpy = vi.fn();
 vi.doMock('@/lib/open-managed-artifact-tab', async () => {
   const actual = await vi.importActual<typeof import('@/lib/open-managed-artifact-tab')>(
     '@/lib/open-managed-artifact-tab',
   );
-  // Calls THROUGH: a sibling test asserts the real hash this writes, so
-  // replacing the implementation would quietly gut it.
   return {
     ...actual,
     openSkillPreviewTab: (target: Parameters<typeof actual.openSkillPreviewTab>[0]) => {
@@ -51,16 +41,12 @@ vi.doMock('@/lib/open-managed-artifact-tab', async () => {
   };
 });
 
-// Spy on the perf-mark instrumentation while keeping the module's other exports.
 const markSpy = vi.fn();
 vi.doMock('@/lib/perf', async () => {
   const actual = await vi.importActual<typeof import('@/lib/perf')>('@/lib/perf');
   return { ...actual, mark: markSpy };
 });
 
-// The store's own fail-soft logic is unit-tested in
-// `skills-studio-intro-store.test.ts`; here we only need to CONTROL "seen", and
-// happy-dom on Node 26 has no localStorage to control it through.
 let introSeen = true;
 vi.doMock('@/lib/skills-studio-intro-store', () => ({
   SKILLS_STUDIO_INTRO_KEY: 'ok-skills-studio-intro-seen-v1',
@@ -73,7 +59,6 @@ vi.doMock('@/lib/skills-studio-intro-store', () => ({
 const { BuiltInSkillsSection } = await import('./BuiltInSkillsSection');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
-/** Production mounts under the app-level TooltipProvider (main.tsx). */
 function renderSection() {
   return render(
     <TooltipProvider>
@@ -84,8 +69,6 @@ function renderSection() {
 
 const discovery: SkillsListEntry = {
   name: 'open-knowledge-discovery',
-  // The real frontmatter shape: a trigger prompt aimed at an agent, which is
-  // exactly why the row renders the human blurb instead.
   description:
     'Read when the user asks what OpenKnowledge is, wants to install it on a repository. Do NOT load to perform OpenKnowledge reads/writes.',
   scope: 'global',
@@ -110,8 +93,6 @@ const writeSkill: SkillsListEntry = {
   size: { alwaysOn: 156, onTrigger: 3218, onDemand: 916 },
 };
 
-/** An ordinary authored global skill + the project built-in: both must stay out
- *  of this block, which is the user-global built-ins only. */
 const authored: SkillsListEntry = {
   name: 'grill-me',
   scope: 'global',
@@ -130,8 +111,6 @@ const projectBuiltin: SkillsListEntry = {
   managed: true,
 };
 
-/** The bridge snapshot backs the first-visit intro ONLY — which bundles setup
- *  already asked about (`onboarding`) is knowledge the endpoint does not have. */
 const baseStatus: OkIntegrationsStatus = {
   available: true,
   editors: [],
@@ -189,8 +168,6 @@ function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
   return { setCalls };
 }
 
-/** Most tests exercise the page, not the first-visit intro; default to "seen"
- *  so the dialog does not sit over the rows they assert on. */
 beforeEach(() => {
   introSeen = true;
   skillsState = { status: 'ready', data: [authored, discovery, writeSkill, projectBuiltin] };
@@ -214,25 +191,17 @@ describe('BuiltInSkillsSection', () => {
       expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
     });
     expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
-    // An authored global skill belongs to the manager below; the PROJECT
-    // built-in belongs to the project block. Both filter the same list, so a
-    // slip here puts one skill on the page twice.
     expect(screen.queryByText('grill-me')).toBeNull();
     expect(screen.queryByText('open-knowledge')).toBeNull();
   });
 
   test('the rows render without the desktop bridge', async () => {
-    // They used to come from the bridge, so the whole block vanished in the
-    // browser — on a page whose other half rendered there fine. Nothing is
-    // installed here, which is exactly when the bridge would have been asked.
     renderSection();
     await waitFor(() => {
       expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
     });
     const rows = screen.getAllByTestId('skill-consent-row-preview');
     expect(rows.length).toBe(2);
-    // Zero hosts is the state the row exists FOR (install it back) — a re-added
-    // disabled guard would regress that silently.
     for (const row of rows) {
       expect(row.hasAttribute('disabled')).toBe(false);
       expect(row.getAttribute('aria-disabled')).toBeNull();
@@ -240,9 +209,6 @@ describe('BuiltInSkillsSection', () => {
   });
 
   test('the row prints the human blurb, never the agent-facing frontmatter description', async () => {
-    // `description` is trigger text for a model — discovery's ends in a
-    // `Do NOT load` clause — so a settings row that renders it hands the user a
-    // prompt written for something else.
     renderSection();
 
     await waitFor(() => {
@@ -253,8 +219,6 @@ describe('BuiltInSkillsSection', () => {
   });
 
   test('a bundle the copy module does not know falls back to its description', async () => {
-    // A newer server shipping a bundle this build has no localized line for must
-    // still render a row that says something.
     skillsState = {
       status: 'ready',
       data: [{ ...writeSkill, name: 'open-knowledge-future' }],
@@ -267,8 +231,6 @@ describe('BuiltInSkillsSection', () => {
   });
 
   test('the row is the control — there is no separate button to write from', async () => {
-    // Settings owning a second write of the same state is what let one surface
-    // say "installed" while the skill's own page said which agents.
     renderSection();
     await waitFor(() => {
       expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
@@ -293,15 +255,11 @@ describe('BuiltInSkillsSection', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
     });
-    // Settings is a hash-driven dialog (#settings); navigating to a preview hash
-    // is exactly what dismisses it.
     window.location.hash = '#settings';
 
     await userEvent.click(screen.getAllByTestId('skill-consent-row-preview')[0]);
 
     expect(openPreviewSpy).toHaveBeenCalledWith(
-      // The bundle DIR, not the SKILL.md the list reports — a preview addressed
-      // at the file resolves nothing.
       expect.objectContaining({
         flavor: 'builtin',
         name: 'open-knowledge-discovery',
@@ -314,9 +272,6 @@ describe('BuiltInSkillsSection', () => {
   });
 
   test('an UNINSTALLED built-in row still opens the preview, addressed at the shipped bundle', async () => {
-    // The row's whole reason to survive uninstall is being the way back in —
-    // with no host projection on disk, the preview must address the bundle OK
-    // ships (the list's absolutePath), not a home copy that no longer exists.
     renderSection();
     await waitFor(() => {
       expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
@@ -374,21 +329,15 @@ describe('BuiltInSkillsSection', () => {
 
   describe('first-visit intro', () => {
     test('offers the skill setup no longer installs, and installs it on confirm', async () => {
-      // First-launch setup no longer offers write-skill. Undiscoverable is not
-      // the intended replacement for unwanted, so the offer moves here.
       introSeen = false;
       const { setCalls } = installBridge();
       renderSection();
 
       const dialog = await screen.findByTestId('skills-studio-intro');
-      // Explains the page first — the tab label was the thing that told nobody
-      // anything, so the intro leads with what this surface is.
       expect(dialog.textContent).toContain('Skills teach your AI tools repeatable tasks');
-      // Then the offer, disclosed as fully as the confirm modal would.
       expect(within(dialog).getByText('open-knowledge-write-skill')).toBeTruthy();
       expect(within(dialog).getByText('How to write a new skill and install it.')).toBeTruthy();
       expect(within(dialog).getByText('~/.agents/skills/open-knowledge-write-skill')).toBeTruthy();
-      // Discovery is already installed, so it is not re-offered.
       expect(within(dialog).queryByText('open-knowledge-discovery')).toBeNull();
 
       await userEvent.click(screen.getByTestId('skills-studio-intro-install'));
@@ -401,8 +350,6 @@ describe('BuiltInSkillsSection', () => {
     });
 
     test('a bundle setup already asked about is never re-offered, even uninstalled', async () => {
-      // Uninstalled + onboarding means the user DECLINED it at first launch.
-      // Offering it back in a modal is the app not taking no for an answer.
       introSeen = false;
       installBridge({
         status: {
@@ -415,7 +362,6 @@ describe('BuiltInSkillsSection', () => {
       renderSection();
 
       const dialog = await screen.findByTestId('skills-studio-intro');
-      // Explainer only — discovery is declined, write-skill is installed.
       expect(screen.queryByTestId('skills-studio-intro-install')).toBeNull();
       expect(within(dialog).queryByText('open-knowledge-discovery')).toBeNull();
       expect(screen.getByTestId('skills-studio-intro-ack')).toBeTruthy();
@@ -438,7 +384,6 @@ describe('BuiltInSkillsSection', () => {
           "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
         );
       });
-      // No silent revert: the rows still report what the endpoint says.
       expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
     });
 
@@ -473,8 +418,6 @@ describe('BuiltInSkillsSection', () => {
     });
 
     test('declining leaves the offer standing on the page', async () => {
-      // "Not now" must cost the user nothing — no decision is recorded, and the
-      // row underneath still reaches the skill.
       introSeen = false;
       const { setCalls } = installBridge();
       renderSection();
@@ -496,14 +439,11 @@ describe('BuiltInSkillsSection', () => {
 
       const dialog = await screen.findByTestId('skills-studio-intro');
       expect(dialog.textContent).toContain('Skills teach your AI tools repeatable tasks');
-      // No offer to make, so no Install/Not now pair — one acknowledging button.
       expect(screen.queryByTestId('skills-studio-intro-install')).toBeNull();
       expect(screen.getByTestId('skills-studio-intro-ack')).toBeTruthy();
     });
 
     test('a bridgeless build shows rows and simply no intro', async () => {
-      // The intro is the one bridge-dependent thing left here. Without a bridge
-      // it must fail quiet, not take the rows down with it.
       introSeen = false;
       renderSection();
       await waitFor(() => {

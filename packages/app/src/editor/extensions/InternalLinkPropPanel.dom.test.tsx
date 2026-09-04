@@ -64,11 +64,6 @@ vi.doMock('./use-headings', () => ({
   useHeadings: () => [],
 }));
 
-// External-preview infrastructure. `loadHarness` stands in for the local-server
-// round-trip (its `calls` prove the egress gate suppresses the request);
-// `configHarness` drives the `linkPreviews.enabled` gate; the passthrough
-// InteractionPropPanel renders the panel body inline so the pill + card are
-// assertable without the Radix Popover / floating-ui positioning.
 const loadHarness: { calls: number; result: LinkPreviewMetadata | null } = {
   calls: 0,
   result: null,
@@ -88,9 +83,6 @@ vi.doMock('../../lib/config-provider', () => ({
   }),
 }));
 
-// The create-missing-page boundary. The real implementation writes a file;
-// the panel's contract is what it does with the name it gets back, so the mock
-// hands one straight to `onCreated`.
 let createdDocName = 'created/doc';
 vi.doMock('../../lib/create-page', () => ({
   createPageFromSeedAndUpdate: async (
@@ -325,11 +317,6 @@ describe('InternalLinkPropPanel', () => {
   });
 
   test('creating a missing page navigates to the created doc, not past its `#`', () => {
-    // The writer this pins is the one the source lint rule cannot see: the rule
-    // catches a re-inlined `#/` prefix, not a builder called on the wrong value
-    // or an assignment dropped altogether. Assert through the reader rather
-    // than on the hash string, so the test states the contract the user cares
-    // about — the created page is the one that opens.
     createdDocName = 'targets/# 2 - Tokens';
     currentMarkInfo = {
       id: 'm1',
@@ -441,12 +428,10 @@ describe('InternalLinkPropPanel — external link preview', () => {
 
     const { container } = renderExternalPanel();
 
-    // The URL pill (with edit + remove actions) is present immediately.
     expect(pillText(container)).toContain(EXTERNAL_URL);
     expect(container.querySelector('[data-slot="internal-link-prop-panel-edit"]')).toBeTruthy();
     expect(container.querySelector('[data-slot="internal-link-prop-panel-remove"]')).toBeTruthy();
 
-    // The card fills in once the preview resolves (progressive enhancement).
     expect(await screen.findByText('Example Domain')).toBeDefined();
     expect(externalCard(container)).toBeTruthy();
     expect(loadHarness.calls).toBe(1);

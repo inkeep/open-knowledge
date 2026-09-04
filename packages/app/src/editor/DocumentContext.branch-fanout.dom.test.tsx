@@ -4,8 +4,6 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 
-// Use a dummy ws URL: pool constructs but providers never reach the wire,
-// matching `branch-invalidation.test.ts`'s established pattern.
 vi.doMock('@/lib/use-collab-url', () => ({
   useCollabUrl: () => ({
     collabUrl: 'ws://localhost:1/collab',
@@ -52,7 +50,6 @@ describe('DocumentContext branch-switch derived-view fan-out', () => {
       const user = userEvent.setup();
       await user.click(screen.getByRole('button', { name: 'Switch' }));
 
-      // Allow handleBranchSwitched's awaited microtasks to flush.
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const branchFanout = received.find(

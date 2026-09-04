@@ -1,27 +1,6 @@
-/**
- * Cluster G: LocalOp + auth handlers.
- *
- * Six handlers: `handleLocalOpOkInit`, `handleLocalOpAuthLogin`,
- * `handleLocalOpAuthStatus`, `handleLocalOpAuthRepos`,
- * `handleLocalOpAuthSignout`, `handleLocalOpAuthSetIdentity`. Login + repos
- * are NDJSON streaming endpoints — the streaming pattern applies (pre-stream
- * errors emit
- * `application/problem+json`; mid-stream errors emit a typed `{ type:
- * 'error', problem: ProblemDetails }` event). set-identity
- * / ok-init / signout / status are non-streaming.
- */
-
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
-/**
- * Request body for `POST /api/local-op/ok-init`. The share-receive
- * consent dialog calls this when the user opts into initializing a
- * CLI-managed worktree that lacks `.ok/config.yml`. `projectPath` MUST be
- * an absolute path inside a git working tree; the server gates with the
- * same `isAbsolute` + git-dir-kind checks the candidate-selection
- * algorithm uses upstream.
- */
 export const LocalOpOkInitRequestSchema = z
   .object({
     projectPath: z.string().min(1),
@@ -29,35 +8,12 @@ export const LocalOpOkInitRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpOkInitRequest = z.infer<typeof LocalOpOkInitRequestSchema>;
 
-/**
- * Discriminator for `POST /api/local-op/ok-init` failure mode.
- *
- * - `'not-a-git-worktree'` — `projectPath` has no `.git` directory or
- *   pointer. The endpoint refuses to scaffold `.ok/` outside a git tree.
- * - `'init-failed'` — symlink-guard tripped, filesystem permission error,
- *   or some other filesystem failure during scaffold writes.
- */
 export const LocalOpOkInitFailureReasonSchema = z.enum([
   'not-a-git-worktree',
   'init-failed',
 ]) satisfies StandardSchemaV1;
 export type LocalOpOkInitFailureReason = z.infer<typeof LocalOpOkInitFailureReasonSchema>;
 
-/**
- * Response body for `POST /api/local-op/ok-init`, discriminated on `ok`.
- *
- * Both branches return HTTP 200; protocol-level errors (400 malformed
- * body, 500 unexpected) use the standard RFC 9457 problem+json envelope.
- *
- * On success: `projectPath` is the realpath-collapsed path that was
- * scaffolded (callers compare against their input to detect symlink
- * resolution). The endpoint is idempotent — calling on an already-OK
- * project returns `{ok: true}` without rewriting `config.yml`.
- *
- * On failure: `reason` discriminates the user-facing recovery path
- * (not-a-git-worktree → re-pick a different folder; init-failed →
- * surface the message and let the user inspect manually).
- */
 export const LocalOpOkInitResponseSchema = z.discriminatedUnion('ok', [
   z
     .object({
@@ -75,13 +31,6 @@ export const LocalOpOkInitResponseSchema = z.discriminatedUnion('ok', [
 ]) satisfies StandardSchemaV1;
 export type LocalOpOkInitResponse = z.infer<typeof LocalOpOkInitResponseSchema>;
 
-/**
- * Request body shared by `POST /api/local-op/auth/{login,status,repos,signout}`.
- *
- * `host` is optional — defaults to `github.com` server-side. Empty / non-string
- * `host` falls back to the default (history of permissive coercion preserved
- * via `.optional()`).
- */
 export const LocalOpAuthHostRequestSchema = z
   .object({
     host: z.string().min(1).optional(),
@@ -89,13 +38,6 @@ export const LocalOpAuthHostRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthHostRequest = z.infer<typeof LocalOpAuthHostRequestSchema>;
 
-/**
- * Request body for `POST /api/local-op/auth/pat` — store a Personal Access
- * Token for a host (the enterprise sign-in path, since the OAuth device flow
- * only works on github.com). `host` optional (defaults to the workspace origin
- * host server-side); `token` REQUIRED. The token travels renderer → loopback
- * POST and is handed to the CLI over stdin, never argv/env.
- */
 export const LocalOpAuthPatRequestSchema = z
   .object({
     host: z.string().min(1).optional(),
@@ -104,7 +46,6 @@ export const LocalOpAuthPatRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthPatRequest = z.infer<typeof LocalOpAuthPatRequestSchema>;
 
-/** Success payload for `POST /api/local-op/auth/pat`: the stored identity. */
 export const LocalOpAuthPatSuccessSchema = z
   .object({
     host: z.string(),
@@ -113,12 +54,6 @@ export const LocalOpAuthPatSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthPatSuccess = z.infer<typeof LocalOpAuthPatSuccessSchema>;
 
-/**
- * Request body for `POST /api/local-op/embeddings/set-key`. `key` REQUIRED
- * non-empty — the embeddings provider API key. Travels renderer → loopback POST
- * body → the 0600 `~/.ok/secrets.yml` file; NEVER logged, spanned, or echoed
- * back. Loopback + Origin gated like the other local-op handlers.
- */
 export const LocalOpEmbeddingsSetKeyRequestSchema = z
   .object({
     key: z.string().min(1),
@@ -126,11 +61,6 @@ export const LocalOpEmbeddingsSetKeyRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpEmbeddingsSetKeyRequest = z.infer<typeof LocalOpEmbeddingsSetKeyRequestSchema>;
 
-/**
- * Success body for the embeddings set/clear handlers. `keyPresent` reflects the
- * post-mutation state (true after set, false after clear) so the UI can update
- * without a second round-trip. Never carries the key.
- */
 export const LocalOpEmbeddingsMutationSuccessSchema = z
   .object({
     keyPresent: z.boolean(),
@@ -140,14 +70,6 @@ export type LocalOpEmbeddingsMutationSuccess = z.infer<
   typeof LocalOpEmbeddingsMutationSuccessSchema
 >;
 
-/**
- * Why a live embeddings connection probe failed.
- *
- * The six provider-call outcomes mirror the server's `EmbeddingErrorReason`
- * classification 1:1 (a compile-time assertion in `api-extension.ts` keeps the
- * two in step), plus two states resolvable before any request leaves the
- * machine: no key configured, and a base URL the plaintext-key guard refuses.
- */
 export const EmbeddingsTestFailureReasonSchema = z.enum([
   'no_key',
   'invalid_endpoint',
@@ -160,20 +82,6 @@ export const EmbeddingsTestFailureReasonSchema = z.enum([
 ]) satisfies StandardSchemaV1;
 export type EmbeddingsTestFailureReason = z.infer<typeof EmbeddingsTestFailureReasonSchema>;
 
-/**
- * Response body for `POST /api/local-op/embeddings/test` — one tiny probe embed
- * of a fixed innocuous string (never user content) against the SAVED endpoint +
- * the resolved key, discriminated on `ok`. Both branches return HTTP 200: a
- * provider that rejects us is a successful test with a negative result, not a
- * server error.
- *
- * `endpoint` / `model` echo what was actually probed, so the UI can tell the
- * user their just-typed change hasn't reached the server yet instead of
- * reporting a result for the previous endpoint. `dimensions` is the detected
- * vector length — the readout that replaces a manual dimensions field.
- * `status` carries the provider's HTTP status when there was one; no provider
- * response body is ever echoed.
- */
 export const LocalOpEmbeddingsTestResponseSchema = z.discriminatedUnion('ok', [
   z
     .object({
@@ -195,11 +103,6 @@ export const LocalOpEmbeddingsTestResponseSchema = z.discriminatedUnion('ok', [
 ]) satisfies StandardSchemaV1;
 export type LocalOpEmbeddingsTestResponse = z.infer<typeof LocalOpEmbeddingsTestResponseSchema>;
 
-/**
- * Request body for `POST /api/local-op/auth/set-identity`. `name` and `email`
- * REQUIRED non-empty (after `.trim()` — empty-after-trim values fail schema
- * via `.refine`). The handler writes these to repo-local git config.
- */
 export const LocalOpAuthSetIdentityRequestSchema = z
   .object({
     name: z.string().refine((s) => s.trim().length > 0, { message: 'name must be non-empty' }),
@@ -208,13 +111,6 @@ export const LocalOpAuthSetIdentityRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthSetIdentityRequest = z.infer<typeof LocalOpAuthSetIdentityRequestSchema>;
 
-/**
- * Success body for `POST /api/local-op/auth/status`. `authenticated` is the
- * load-bearing field; the CLI may emit additional fields (`login`,
- * `host`, …) which `.loose()` preserves. The handler returns the CLI's last
- * JSON line directly — schema is permissive to accommodate evolving CLI
- * output without lockstep migration.
- */
 export const LocalOpAuthStatusSuccessSchema = z
   .object({
     authenticated: z.boolean(),
@@ -222,18 +118,6 @@ export const LocalOpAuthStatusSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthStatusSuccess = z.infer<typeof LocalOpAuthStatusSuccessSchema>;
 
-/**
- * Request body for `POST /api/local-op/auth/cancel` — the explicit,
- * user-initiated stop for a streaming device-flow sign-in. `channel` picks
- * which of the two streaming flows to cancel (`/auth/login` vs
- * `/auth/gh-login`), since each holds its own concurrency slot. Defaults to
- * `login`, the flow every non-enterprise client runs.
- *
- * This exists because a transport disconnect is deliberately NOT treated as a
- * cancel: on loopback the stream can be severed by an inspection proxy or a
- * backgrounded tab, and killing the flow there strands a sign-in the user is
- * still completing on github.com. Intent needs its own signal.
- */
 export const LocalOpAuthCancelRequestSchema = z
   .object({
     channel: z.enum(['login', 'gh-login']).default('login'),
@@ -241,12 +125,5 @@ export const LocalOpAuthCancelRequestSchema = z
   .loose() satisfies StandardSchemaV1;
 export type LocalOpAuthCancelRequest = z.infer<typeof LocalOpAuthCancelRequestSchema>;
 
-/**
- * Success body for `POST /api/local-op/auth/signout`,
- * `POST /api/local-op/auth/set-identity`, and
- * `POST /api/local-op/auth/cancel`. Empty object — clients only branch
- * on HTTP status (200 = success). `.loose()` for forward-compat (e.g., a
- * future `signedOutAt: ISO` echo).
- */
 export const LocalOpAuthEmptySuccessSchema = z.object({}).loose() satisfies StandardSchemaV1;
 export type LocalOpAuthEmptySuccess = z.infer<typeof LocalOpAuthEmptySuccessSchema>;

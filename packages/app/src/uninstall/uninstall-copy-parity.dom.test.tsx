@@ -6,32 +6,6 @@ import { UninstallPickerScreen } from './UninstallPickerScreen';
 import { UninstallProgressScreen } from './UninstallProgressScreen';
 import { UninstallSurveyScreen } from './UninstallSurveyScreen';
 
-/**
- * Copy lock for the render-swap: the picker, survey, and progress screens moved
- * their user-facing copy out of hand-written inline HTML and into Lingui
- * `<Trans>` / t`…`. This freezes the strings each screen renders today and
- * asserts the migrated React screens still render them verbatim, so an
- * accidental reword fails a test rather than passing an eyeball.
- *
- * Provenance differs by screen, so read this as a current-copy lock, not a
- * verbatim-parity-with-the-old-windows gate. The survey and progress strings
- * are the pre-migration originals, captured from the inline-HTML builders
- * (`buildDesktopUninstall{Feedback,Progress}Html`) and checked
- * substring-for-substring against their rendered output before those builders
- * were deleted. The picker's copy was deliberately reworked during the
- * migration — the description merged into one line and reworded to name the
- * project selection, the muted hint and scroll line dropped, the open/running
- * tags collapsed to `active`, and the footer count restyled into a header
- * selected-of-total fraction — so the picker strings below are the current
- * intended copy, not the pre-migration originals.
- *
- * The notice screens are out of scope here: their copy is main-process data
- * (`desktopUninstall{Confirm,Completion,Failure,FinalStep}Notice`) rendered
- * through, not migrated to, Lingui, and stays pinned by the desktop notice
- * builder tests.
- */
-
-/** Text, accessible names, and placeholders — everything the user can read. */
 function readableCopy(container: HTMLElement): string {
   const attrs: string[] = [];
   for (const el of container.querySelectorAll('[aria-label], [placeholder]')) {
@@ -95,11 +69,7 @@ describe('uninstall copy parity', () => {
     const copy = readableCopy(container);
 
     for (const line of PICKER_COPY) expect(copy, line).toContain(line);
-    // Status badges intentionally diverge from the inline-HTML open/running/recent
-    // tags: open + running collapse to `active` (the open/server split is not a
-    // user decision), leaving `active` / `recent`. twoProjects has one of each.
     for (const status of ['active', 'recent']) expect(copy).toContain(status);
-    // Header selected-of-total counter (none selected yet, two projects).
     expect(copy).toContain('0 / 2');
   });
 

@@ -7,7 +7,6 @@ import {
   type SkillCostInput,
 } from './skill-cost.ts';
 
-/** A well-formed SKILL.md with a body of `bodyLen` `b` characters after its frontmatter. */
 function skillMd(bodyLen: number): string {
   return `---\nname: x\n---\n${'b'.repeat(bodyLen)}`;
 }
@@ -23,7 +22,6 @@ describe('estimateSkillCost', () => {
       files: [{ relPath: 'references/a.md', content: 'c'.repeat(12) }],
     });
     expect(cost).toEqual({ alwaysOn: 4, onTrigger: 5, onDemand: 3 });
-    // No summed/total field leaks onto the output — three tiers, exactly.
     expect(Object.keys(cost).sort()).toEqual(['alwaysOn', 'onDemand', 'onTrigger']);
   });
 
@@ -34,7 +32,6 @@ describe('estimateSkillCost', () => {
   });
 
   test('on-trigger counts only the body after frontmatter, not the frontmatter', () => {
-    // Long frontmatter, short body: on-trigger reflects the body alone.
     const md = `---\nname: n\ndescription: ${'d'.repeat(400)}\n---\nshort body`;
     expect(estimateSkillCost({ ...emptyInput, skillMd: md }).onTrigger).toBe(
       Math.round('short body'.length / 4),
@@ -50,12 +47,10 @@ describe('estimateSkillCost', () => {
         { relPath: 'notes.txt', content: 'c'.repeat(4) },
       ],
     });
-    expect(cost.onDemand).toBe(3); // (4+4+4)/4
+    expect(cost.onDemand).toBe(3);
   });
 
   test('excludes scripts, overlay.yaml and evals JSON from on-demand', () => {
-    // Mirrors the real bundle shape (turbopack/shadcn/deep-investigate): only the
-    // readable-extension files count; extension-blind counting would overstate.
     const cost = estimateSkillCost({
       ...emptyInput,
       files: [
@@ -67,7 +62,7 @@ describe('estimateSkillCost', () => {
         { relPath: 'assets/data.template.json', content: 'x'.repeat(1000) },
       ],
     });
-    expect(cost.onDemand).toBe(4); // (8+8)/4, config/scripts excluded
+    expect(cost.onDemand).toBe(4);
   });
 
   test('excludes SKILL.md itself from on-demand even when passed among the files', () => {
@@ -99,13 +94,10 @@ describe('estimateSkillCost', () => {
     const nullish = estimateSkillCost({ name: null, description: null, skillMd: '', files: [] });
     expect(nullish).toEqual({ alwaysOn: 0, onTrigger: 0, onDemand: 0 });
 
-    // Description absent, name present — count what is there.
     expect(estimateSkillCost({ ...emptyInput, name: 'abcd' }).alwaysOn).toBe(1);
   });
 
   test('an overlay-vendored upstream/ mirror is excluded from on-demand', () => {
-    // The overlay.yaml + upstream/ pair is a regeneration COPY of prose the
-    // bundle already carries — counting it doubled the figure.
     const files = [
       { relPath: 'references/a.md', content: 'a'.repeat(400) },
       { relPath: 'upstream/SKILL.md', content: 'b'.repeat(400) },
@@ -116,7 +108,6 @@ describe('estimateSkillCost', () => {
       files: [...files, { relPath: 'overlay.yaml', content: 'x: 1' }],
     });
     expect(vendored.onDemand).toBe(100);
-    // WITHOUT the overlay marker, upstream/ is ordinary authored content.
     const plain = estimateSkillCost({ ...emptyInput, files });
     expect(plain.onDemand).toBe(300);
   });

@@ -4,8 +4,6 @@ import { countVisibleEntries } from './onboarding-document-count';
 
 type Entry = DocumentListSuccess['documents'][number];
 
-// The wire entry carries several always-present fields; the counting rule only
-// reads `kind` / `docName` / `path`, so the rest are inert defaults.
 const base = {
   docExt: '.md',
   size: 0,
@@ -51,9 +49,6 @@ describe('countVisibleEntries', () => {
   });
 
   test('sidebar view toggles cannot alter the count — the counter has no axis input', () => {
-    // Entries a view toggle could reveal (dot-path via show-hidden, .ok via
-    // show-ok) or drop (non-markdown via only-markdown) must not move the
-    // onboarding gate: the count always uses default visibility.
     expect(
       countVisibleEntries([
         doc('welcome'),

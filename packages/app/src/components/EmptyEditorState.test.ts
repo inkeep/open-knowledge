@@ -1,14 +1,3 @@
-/**
- * EmptyEditorState — unit coverage for the `countEntries` onboarding gate.
- *
- * Repo convention: full DOM coverage lives in Playwright; this layer guards
- * the pure rule that decides whether the user sees `OnboardingView` or
- * `AgentHandoffView`. The hidden-segment rule is the load-bearing piece —
- * a refactor to `entry.docName.startsWith('.')` would miss
- * `brain/.archived/note.md` and re-introduce the false-positive that hidden
- * folders fill the empty state with infrastructure.
- */
-
 import { describe, expect, test } from 'vitest';
 import { countEntries } from './EmptyEditorState';
 
@@ -41,8 +30,6 @@ describe('countEntries() — onboarding gate', () => {
   });
 
   test('skips entries with a hidden segment at any depth', () => {
-    // Matches shell `ls` semantics — anything inside a dot-prefixed parent
-    // is hidden, regardless of how deep the parent sits in the tree.
     expect(
       countEntries([
         { kind: 'document', docName: 'brain/.archived/note' },
@@ -63,10 +50,6 @@ describe('countEntries() — onboarding gate', () => {
   });
 
   test('returns 0 when every entry is hidden — gates onboarding view', () => {
-    // The motivating scenario: user opens a project containing only
-    // dotfile-prefixed folders with markdown inside. Without this rule the
-    // gate would route them to `AgentHandoffView` despite no visible
-    // content. With it, `OnboardingView` shows.
     expect(
       countEntries([
         { kind: 'folder', path: '.private' },
@@ -76,9 +59,6 @@ describe('countEntries() — onboarding gate', () => {
   });
 
   test('sidebar view toggles cannot alter the gate — the counter has no axis input', () => {
-    // Entries a view toggle could reveal (dot-path via show-hidden, .ok via
-    // show-ok) must not move the onboarding gate: the count always uses
-    // default visibility.
     expect(
       countEntries([
         { kind: 'document', docName: 'INDEX' },

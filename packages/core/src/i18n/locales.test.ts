@@ -8,10 +8,6 @@ import {
   type SupportedLocale,
 } from './locales.ts';
 
-// Independent oracle for the negotiation key: canonicalize, add likely
-// subtags, keep language + script. The matcher derives the same key, so this
-// deliberately recomputes it from `Intl` rather than importing it — a shared
-// helper would let a broken reduction agree with itself.
 function reducedKey(tag: SupportedLocale): string {
   const canonical = Intl.getCanonicalLocales(tag)[0];
   if (canonical === undefined) throw new Error(`not a locale: ${tag}`);
@@ -27,9 +23,6 @@ describe('SUPPORTED_LOCALES', () => {
     expect(nonCanonical).toEqual([]);
   });
 
-  // A collision (adding bare `pt` beside `pt-BR`, say — both reduce to
-  // `pt-Latn`) would make negotiation resolve to whichever entry the matcher
-  // happened to scan first, which is silent and order-dependent.
   test('no two locales share a reduced language-Script key', () => {
     const keys = SUPPORTED_LOCALES.map(reducedKey);
     expect(new Set(keys).size).toBe(SUPPORTED_LOCALES.length);
@@ -42,17 +35,11 @@ describe('PICKER_LOCALES', () => {
     expect(PICKER_LOCALES.filter((tag) => !enumerated.has(tag))).toEqual([]);
   });
 
-  // The only reason to withhold an enumerated locale is a layout that renders
-  // it wrongly. Not being read is not one — a language nobody can select is a
-  // language nobody can correct.
   test('withholds exactly the locales whose layout is unfinished', () => {
     const held = new Set<string>(LAYOUT_DEFERRED_LOCALES);
     expect(PICKER_LOCALES).toEqual(SUPPORTED_LOCALES.filter((tag) => !held.has(tag)));
   });
 
-  // Order is what the Settings picker renders, and it reads as a ranking. The
-  // enumerated order is by total speakers, which is a reason; any other order
-  // is an accident of when each locale was promoted.
   test('keeps the enumerated order', () => {
     const positions = PICKER_LOCALES.map((tag) => SUPPORTED_LOCALES.indexOf(tag));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -60,9 +47,6 @@ describe('PICKER_LOCALES', () => {
 });
 
 describe('LAYOUT_DEFERRED_LOCALES', () => {
-  // The reason these two are held back is that the chrome does not lay out
-  // right-to-left yet. Pinning the direction here is what keeps the list from
-  // being read as a general quality gate and quietly growing into one.
   test('holds back exactly the right-to-left locales', () => {
     const rightToLeft = SUPPORTED_LOCALES.filter((tag) => localeDirection(tag) === 'rtl');
     expect([...LAYOUT_DEFERRED_LOCALES]).toEqual(rightToLeft);
@@ -82,8 +66,6 @@ describe('AUTO_DETECTABLE_LOCALES', () => {
     expect(AUTO_DETECTABLE_LOCALES).toEqual(SUPPORTED_LOCALES.filter((tag) => !held.has(tag)));
   });
 
-  // Order is the tie-break rule the matcher walks, so it has to survive the
-  // filter rather than being rebuilt in some other order.
   test('keeps the enumerated order', () => {
     const positions = AUTO_DETECTABLE_LOCALES.map((tag) => SUPPORTED_LOCALES.indexOf(tag));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));

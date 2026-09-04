@@ -28,7 +28,6 @@ function makeStore(name: string, body = '# Steps'): string {
   return dir;
 }
 
-/** OK-style relative symlink projection at `<editorRel>/<name>` → the store dir. */
 function linkProjection(editorRel: string, name: string): string {
   const hostRoot = join(root, editorRel);
   mkdirSync(hostRoot, { recursive: true });
@@ -60,17 +59,14 @@ describe('migrateStoreSkillsInPlace', () => {
 
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
     expect(r.migrated).toContainEqual({ name: 'foo', to: '.claude/skills/foo' });
-    // Canonical is now a REAL dir at the claude host; store dir gone.
     const canonical = join(root, '.claude/skills/foo');
     expect(lstatSync(canonical).isDirectory()).toBe(true);
     expect(lstatSync(canonical).isSymbolicLink()).toBe(false);
     expect(existsSync(join(skillsRoot, 'foo'))).toBe(false);
-    // The codex projection became a real copy (still loads there).
     const codex = join(root, '.codex/skills/foo');
     expect(lstatSync(codex).isDirectory()).toBe(true);
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(codex, 'SKILL.md'), 'utf-8')).toContain('# Body');
-    // Marker entry dropped — the in-place scan is truth now.
     expect(readInstalledSkills(root).skills.foo).toBeUndefined();
   });
 
@@ -110,16 +106,12 @@ describe('migrateStoreSkillsInPlace', () => {
 
   test('a differing real dir at the only existing host skips without fabricating a fallback', async () => {
     makeStore('clash', '# Store version');
-    // The hub slot is occupied by a genuinely different skill; no projections.
     const hub = join(root, '.agents/skills/clash');
     mkdirSync(hub, { recursive: true });
     writeFileSync(join(hub, 'SKILL.md'), '---\nname: clash\ndescription: other.\n---\n# DIFFERENT');
 
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
     expect(r.migrated).toEqual([]);
-    // Pin WHY it skipped: the hub root exists so it is the authorized target,
-    // and its slot is occupied by a different skill. A `no-usable-target` here
-    // would mean the hub was never considered, which is a different bug.
     expect(r.skipped).toContainEqual({
       name: 'clash',
       reason: expect.stringContaining('target-occupied:.agents/skills'),
@@ -132,17 +124,6 @@ describe('migrateStoreSkillsInPlace', () => {
   });
 
   test('a free lower-precedence host does NOT rescue an occupied higher one', async () => {
-    // DELIBERATE INVERSION. Target selection now takes the highest-precedence
-    // host whose ROOT exists, regardless of whether that host's skill slot is
-    // free; it used to walk past an occupied slot to the next host that had a
-    // free one. So `.claude` occupied while `.cursor` exists and is free is a
-    // reported conflict, not a migration into `.cursor`.
-    //
-    // Fail closed on purpose: scattering the skill to whichever host happened
-    // to be free lands it somewhere the user never chose and never looks, and
-    // it silently diverges from the canonical the rest of the system resolves.
-    // Reporting `target-occupied` leaves the store bundle intact and the
-    // conflict visible in the boot log for the user to resolve.
     makeStore('crowded', '# Store version');
     const claude = join(root, '.claude/skills/crowded');
     mkdirSync(claude, { recursive: true });
@@ -150,7 +131,6 @@ describe('migrateStoreSkillsInPlace', () => {
       join(claude, 'SKILL.md'),
       '---\nname: crowded\ndescription: theirs.\n---\n# DIFFERENT',
     );
-    // Exists, free, lower precedence — and must NOT be picked.
     mkdirSync(join(root, '.cursor/skills'), { recursive: true });
 
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
@@ -169,7 +149,6 @@ describe('migrateStoreSkillsInPlace', () => {
 
   test('a foreign symlink at a host is never touched (D7)', async () => {
     makeStore('linked', '# L');
-    // Foreign symlink in .claude pointing somewhere else entirely.
     const elsewhere = join(root, 'elsewhere');
     mkdirSync(elsewhere, { recursive: true });
     writeFileSync(join(elsewhere, 'SKILL.md'), '---\nname: linked\ndescription: x.\n---\n# E');
@@ -177,8 +156,6 @@ describe('migrateStoreSkillsInPlace', () => {
     symlinkSync(elsewhere, join(root, '.claude/skills/linked'), 'dir');
 
     const r = await migrateStoreSkillsInPlace({ projectDir: root, skillsRoot });
-    // Foreign link isn't a usable target and no other root exists — the skill
-    // is SKIPPED (never clobbered, never inventing .agents), link untouched.
     expect(r.migrated).toEqual([]);
     expect(r.skipped).toContainEqual({
       name: 'linked',
@@ -192,7 +169,6 @@ describe('migrateStoreSkillsInPlace', () => {
   test('GLOBAL roots: a user-home store skill migrates against user editor dirs', async () => {
     const { USER_HOST_ROOTS_BY_PRECEDENCE } = await import('./skill-migrate.ts');
     const store = makeStore('worldly', '# G');
-    // Same-hash copy at pi's USER root (`.pi/agent/skills`, ≠ project `.pi/skills`).
     const piDir = join(root, '.pi/agent/skills/worldly');
     mkdirSync(piDir, { recursive: true });
     writeFileSync(join(piDir, 'SKILL.md'), readFileSync(join(store, 'SKILL.md')));
@@ -245,10 +221,7 @@ describe('migrateStoreSkillsInPlace', () => {
 describe('genuineInPlaceNames', () => {
   test('a symlink projection INTO the store is excluded (so the drain migrates it)', () => {
     makeStore('proj');
-    linkProjection('.claude/skills', 'proj'); // .claude/skills/proj → ../../.ok/skills/proj
-    // The scan would report `proj` as in-place (its canonical is the symlink),
-    // but that canonical resolves into the store — it's a projection, not a
-    // placement. Excluding it lets the drain relocate the store dir.
+    linkProjection('.claude/skills', 'proj');
     const names = genuineInPlaceNames(root, [{ name: 'proj', dir: '.claude/skills/proj' }]);
     expect(names.has('proj')).toBe(false);
   });
@@ -264,10 +237,6 @@ describe('genuineInPlaceNames', () => {
 
 describe('migrateStoreSkillsInPlace — a deliberate placement is not residue', () => {
   test('a skill RECORDED at `.ok/skills` stays put; unrecorded residue still drains', async () => {
-    // `.ok/skills` is an ordinary custom root: you can place a skill there, and
-    // no other custom root has its contents relocated out from under it. The
-    // ledger is what separates "the user chose this folder" from "left over
-    // from the retired store" — residue has no ledger entry.
     makeStore('chosen', '# Chosen');
     makeStore('residue', '# Residue');
     mkdirSync(join(root, '.claude', 'skills'), { recursive: true });

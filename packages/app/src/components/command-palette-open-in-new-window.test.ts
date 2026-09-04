@@ -4,12 +4,6 @@ import { PALETTE_COMMANDS, type PaletteCommandContext } from './command-palette-
 const openDocInNoteWindow = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('@/lib/open-note-window', () => ({ openDocInNoteWindow }));
 
-/**
- * The palette's half of "Open in New Window". The row must disappear rather
- * than grey out when there is nothing to pop: the palette's availability
- * mechanism only hides, so a row that survives with no active document would be
- * a dead click.
- */
 function ctx(over: Partial<PaletteCommandContext>): PaletteCommandContext {
   return {
     bridge: {} as PaletteCommandContext['bridge'],

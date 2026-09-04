@@ -23,10 +23,6 @@ if (!LOG_MD_TEMPLATE) throw new Error('knowledge-base pack is missing log.md');
 const ENTITY_VAULT_PACK = STARTER_PACKS['entity-vault'];
 const CODEBASE_WIKI_PACK = STARTER_PACKS['codebase-wiki'];
 
-// The "document body" a new doc receives — single-block templates carry the
-// identity under `template:` and the doc-frontmatter as top-level keys, so the
-// starter content is the doc-frontmatter block + markdown (identity stripped).
-// `parseTemplateFile` normalizes legacy two-block templates the same way.
 function stripTemplateMetadata(body: string): string {
   return parseTemplateFile(body).starterContent;
 }
@@ -54,7 +50,6 @@ describe('STARTER_FOLDERS — Karpathy three-layer starter pack', () => {
       expect(folder.title.length).toBeGreaterThan(0);
       expect(folder.description.length).toBeGreaterThan(20);
       expect(folder.tags.length).toBeGreaterThan(0);
-      // starterTemplate must reference a registered template body.
       expect(STARTER_TEMPLATES[folder.starterTemplate]).toBeDefined();
     }
   });
@@ -106,7 +101,6 @@ describe('STARTER_TEMPLATES', () => {
       expect(body.startsWith('---\n')).toBe(true);
       expect(body).toContain('title:');
       expect(body).toContain('tags:');
-      // Sanity: name appears in either the body or frontmatter description.
       expect(body.toLowerCase()).toContain(name.replace('-', ' ').slice(0, 3));
     }
   });
@@ -142,8 +136,6 @@ describe('LOG_MD_TEMPLATE', () => {
   });
 
   test('is slim — log discipline lives in the pack skill, not in the log body', () => {
-    // The verbose "What to log" list + example-shape comment moved to the
-    // knowledge-base pack skill so the file a user sees stays clean.
     expect(LOG_MD_TEMPLATE).not.toContain('<!-- Example entry shape:');
     expect(LOG_MD_TEMPLATE).not.toContain('What to log:');
     expect(LOG_MD_TEMPLATE).toContain('knowledge-base skill');
@@ -158,8 +150,6 @@ describe('STARTER_FOLDER_FRONTMATTER_FILENAME', () => {
 
 describe('STARTER_PACKS — all packs structural validation', () => {
   test('STARTER_PACK_IDS contains exactly the 8 expected packs (pinned to detect silent additions/deletions)', () => {
-    // Pinned count + name set — drift surfaces in the test diff rather than
-    // silently passing with a smaller loop in downstream structural tests.
     expect(STARTER_PACK_IDS.length).toBe(8);
     expect([...STARTER_PACK_IDS].sort()).toEqual([
       'codebase-wiki',
@@ -184,13 +174,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
     }
   });
 
-  // The empty-state canvas + SeedDialog picker render each description in a
-  // card that line-clamps to 2 lines (PackCardGrid). At that card's ~32
-  // chars/line, two lines hold ~64 chars; past that the clamp truncates with
-  // an ellipsis. line-clamp-2 is the hard visual guarantee — this budget is
-  // the authoring guardrail that keeps source descriptions short enough that
-  // the clamp never actually has to truncate. Keep in sync if the card's
-  // clamp/width changes.
   const MAX_PACK_DESCRIPTION_LENGTH = 64;
   test(`every pack description fits the picker card's 2-line budget (<= ${MAX_PACK_DESCRIPTION_LENGTH} chars)`, () => {
     const tooLong = Object.values(STARTER_PACKS)
@@ -232,10 +215,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
   });
 
   test('every folder path uses kebab-case per segment (nested paths allowed, e.g. wiki/architecture)', () => {
-    // Folder paths may nest (the `codebase-wiki` pack uses `wiki/architecture`,
-    // … so it scaffolds under `wiki/` without `--root`). Each
-    // slash-separated segment must still be kebab-case (the scaffolder's
-    // path-safety layer rejects `..`, absolute, and escaping paths separately).
     for (const pack of Object.values(STARTER_PACKS)) {
       for (const folder of pack.folders) {
         for (const segment of folder.path.split('/')) {
@@ -249,9 +228,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
   });
 
   test('every template name uses filename-safe characters (alphanumeric + hyphens + underscores, matches the cascade resolver regex)', () => {
-    // Matches the filename validator in `templates-write.ts` — broader than
-    // strict kebab-case so template authors can use snake_case if they want.
-    // Folder paths are kebab-case-only.
     for (const pack of Object.values(STARTER_PACKS)) {
       for (const name of Object.keys(pack.templates)) {
         expect(name).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -269,11 +245,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
   });
 
   test('every template body has a description: frontmatter line (load-bearing customer convention)', () => {
-    // description: is the one-line surface shown in folder listings, the picker
-    // UI's per-doc preview, and search results. The cascade resolver leans on
-    // it. Every template across every pack ships with one — adding a template
-    // without description: produces docs that read inconsistent next to the
-    // rest of the vault. Hard-fail in CI rather than relying on review catch.
     for (const pack of Object.values(STARTER_PACKS)) {
       for (const [name, body] of Object.entries(pack.templates)) {
         const { description } = parseTemplateFile(body).identity;
@@ -286,7 +257,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
   });
 
   test('no template body is registered without being referenced from some folder', () => {
-    // Catches the inverse drift: orphaned template bodies that nothing scaffolds.
     for (const pack of Object.values(STARTER_PACKS)) {
       const referenced = new Set<string>();
       for (const folder of pack.folders) {
@@ -313,10 +283,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
     }
   });
 
-  // OKF reserved files follow their format-specific frontmatter contracts rather
-  // than the starter registry's general `title` convention. The root index may
-  // declare only `okf_version`; log frontmatter is unconstrained when a pack
-  // chooses to ship one.
   const OKF_RESERVED_ROOTFILES = new Set(OKF_RESERVED_FILENAMES);
 
   test('every non-reserved rootFile body has frontmatter with a non-empty title', () => {
@@ -348,13 +314,6 @@ describe('STARTER_PACKS — all packs structural validation', () => {
   });
 
   test('every rootFile key is a safe relative path (forward-slash nesting allowed, no escape)', () => {
-    // rootFiles keys are usually bare filenames (`log.md`), but may carry a
-    // forward-slash folder prefix so the file lands in a pack subfolder
-    // (`codebase-wiki` ships `wiki/OVERVIEW.md` + `wiki/log.md`). The
-    // apply path runs every entry through `assertEntryPathInProject` for
-    // containment; this static guard keeps the registry keys themselves clean:
-    // relative, no backslash, no `..`, no absolute, every segment non-empty and
-    // not a dotfile.
     for (const pack of Object.values(STARTER_PACKS)) {
       for (const filename of Object.keys(pack.rootFiles ?? {})) {
         expect(filename.length, `Pack "${pack.id}" has an empty rootFile key`).toBeGreaterThan(0);
@@ -388,12 +347,8 @@ describe('Entity vault pack — GBrain-compatible Markdown shape', () => {
   });
 
   test('display name is the plain-language "Personal CRM"; copy stays novice-friendly', () => {
-    // GBrain-compatibility lives in the pack's file shape (id + templates +
-    // frontmatter), NOT the display name — the card title is plain-spoken like
-    // every other pack, and the description carries no insider mechanics.
     expect(ENTITY_VAULT_PACK.name).toBe('Personal CRM');
     expect(ENTITY_VAULT_PACK.description).toContain('people, companies, and meetings');
-    // No replacement-engine claim — OK is the editor, not a GBrain replacement.
     expect(ENTITY_VAULT_PACK.description).not.toMatch(/replaces?\s+gbrain/i);
   });
 
@@ -438,8 +393,6 @@ describe('Entity vault pack — GBrain-compatible Markdown shape', () => {
   });
 
   test('the meeting template carries the recorder dedup key and a verbatim transcript section', () => {
-    // `meetings/<source>-<source_meeting_id>` is the doc path, so re-syncing a
-    // meeting rewrites it in place instead of creating a duplicate.
     expect(ENTITY_VAULT_PACK.templates.meeting).toContain('source:');
     expect(ENTITY_VAULT_PACK.templates.meeting).toContain('source_meeting_id:');
     expect(ENTITY_VAULT_PACK.templates.meeting).toContain('## Transcript');
@@ -521,7 +474,6 @@ describe('buildStarterFolderFrontmatterYaml()', () => {
       tags: [],
       starterTemplate: 'clip',
     });
-    // Description with a colon must be quoted to be valid YAML.
     expect(yaml).toContain('description: "A description: with a colon"');
   });
 });
@@ -563,18 +515,11 @@ describe('listStarterPacks() — wire-shape + entryCounts', () => {
   test('folder-only packs (no extras, no rootFiles) report files === folders.length', () => {
     const plainNotes = listStarterPacks().find((p) => p.id === 'plain-notes');
     expect(plainNotes).toBeDefined();
-    // plain-notes has 2 folders, 1 starter template each, no extras, no rootFiles.
     expect(plainNotes?.entryCounts).toEqual({ files: 2, folders: 2 });
   });
 });
 
 describe('seeded content keeps illustrative example links out of the link graph', () => {
-  // Placeholder targets used in instructional examples across the packs. None
-  // may ever be EXTRACTED from a seeded rootFile or template body: an example
-  // link must live in a code fence (block) or inline code (inline), so docs
-  // instantiated from the seed don't carry phantom dead-links / "missing"
-  // graph nodes. A bare HTML comment does NOT exclude links — that is the bug
-  // this guards against.
   const EXAMPLE_TARGET_FRAGMENTS = [
     'acme',
     'jane-founder',
@@ -607,7 +552,6 @@ describe('seeded content keeps illustrative example links out of the link graph'
         assertNoExampleLeak(`${packId} rootFile ${name}`, body);
       }
       for (const [name, body] of Object.entries(pack.templates ?? {})) {
-        // Strip the template-identity block so we test the instantiated doc body.
         assertNoExampleLeak(`${packId} template ${name}`, parseTemplateFile(body).starterContent);
       }
     }
@@ -617,8 +561,6 @@ describe('seeded content keeps illustrative example links out of the link graph'
     const packsDir = join(import.meta.dir, '..', '..', 'assets', 'skills', 'packs');
     for (const packId of STARTER_PACK_IDS) {
       const skillPath = join(packsDir, packId, 'SKILL.md');
-      // Every pack ships a SKILL.md; fail loud (not silent skip) if one goes
-      // missing, so the sweep can't quietly stop covering a pack.
       expect(existsSync(skillPath), `${packId} pack is missing SKILL.md`).toBe(true);
       assertNoExampleLeak(`${packId} SKILL.md`, readFileSync(skillPath, 'utf-8'));
     }

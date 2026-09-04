@@ -1,26 +1,4 @@
 #!/usr/bin/env node
-/**
- * Report per-locale catalog coverage, and fail when a locale the Settings picker
- * offers is not complete.
- *
- * Sibling to `check-i18n-new-string-translations.mjs` and deliberately the other
- * shape: that one is a delta, so the untranslated backlog on the eight
- * unpromoted catalogs stays out of it; this one is absolute, because a locale a
- * user can actually select must be complete — a picker entry backed by a partial
- * catalog means someone chooses a language and gets half of it in English, which
- * is worse than not offering it at all.
- *
- * The gated set is `PICKER_LOCALES`, read from core rather than restated, so
- * promoting a locale is still the one-line change in core it is meant to be.
- * Coverage is reported for every enumerated locale so the unpromoted ones stay
- * visible instead of silently rotting.
- *
- * `en` is complete by construction: its msgstr IS the English text, so measuring
- * it against itself would only ever confirm the tautology.
- *
- * Usage:
- *   node scripts/check-i18n-picker-completeness.mjs
- */
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,7 +15,6 @@ const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LOCALES_TS = 'packages/core/src/i18n/locales.ts';
 const CATALOG_REL = (locale) => `packages/app/src/locales/${locale}/messages.po`;
 
-/** The reviewed subset the Settings picker offers, from core's own tuple. */
 export function readPickerLocales(source) {
   const block = /export const PICKER_LOCALES\s*=\s*\[([\s\S]*?)\]/.exec(source);
   if (!block) {
@@ -50,14 +27,6 @@ export function readPickerLocales(source) {
   return tags;
 }
 
-/**
- * One locale's coverage against the source catalog.
- *
- * Keyed off the SOURCE catalog's message set rather than the target's, so a
- * locale whose catalog is stale — missing entries entirely rather than holding
- * empty ones — counts those as untranslated instead of scoring 100% on a
- * smaller denominator.
- */
 export function measureCoverage({ locale, sourceMessages, catalog, isSource = false }) {
   const total = sourceMessages.size;
   if (isSource) {

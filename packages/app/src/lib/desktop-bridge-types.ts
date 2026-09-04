@@ -1,8 +1,3 @@
-/**
- * Compatibility exports for renderer consumers. The desktop host contract is
- * defined by the dedicated core leaf so app and preload consumers share one
- * declaration without importing the core barrel.
- */
 import type {
   OkCheckTargetExistsResult,
   OkDesktopBridge,

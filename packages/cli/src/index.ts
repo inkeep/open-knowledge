@@ -1,15 +1,3 @@
-// Public surface consumed by `@inkeep/open-knowledge-desktop` from Electron
-// main. Lifted from CLI internals so desktop can import via the package
-// name (`@inkeep/open-knowledge`) instead of reaching into
-// `../../../cli/src/commands/...`. The workspace-dep declaration on
-// desktop's package.json makes turbo's `^build` topology key on these
-// symbols — a CLI internal refactor now correctly invalidates desktop's
-// cache.
-
-// `makeLazyEmbeddingsKeyStore` is NOT re-exported here — it now lives in
-// `@inkeep/open-knowledge-server` (alongside the secrets-store), and desktop
-// imports it straight from there. Re-exporting an external package's symbol
-// through this bundled public surface breaks the .d.ts bundler.
 export {
   detectGh,
   detectGhAccounts,
@@ -21,8 +9,6 @@ export {
   makeLazyProbeTokenStore,
   type TokenStore,
 } from './auth/token-store.ts';
-// Desktop's utility process wires this into `bootServer()` as the ACP thread
-// manager's `probeHarnessManagedMcpEntry` seam (same wiring as `ok start`).
 export {
   type OwnManagedMcpEntryHit,
   probeOwnManagedEditorMcpEntry,
@@ -33,9 +19,6 @@ export {
   defaultBugReportZipPath,
   okBugReportsDir,
 } from './commands/bug-report-bundle.ts';
-// The bug-report secret scrub — shared with the desktop send path so the
-// note travelling in upload metadata / the mailto body gets the same
-// treatment as the note.txt copy inside the bundle.
 export { redactContent } from './commands/bug-report-redact.ts';
 export {
   ALL_EDITOR_IDS,
@@ -76,14 +59,8 @@ export {
   buildMcpConfigMigrateEvent,
   type McpConfigMigrateEvent,
   type McpConfigMigrateScope,
-  // `truncatePriorEntry` is marked `@internal` on its declaration in
-  // `mcp-migrate-event.ts` — workspace-only consumption (Desktop project-mcp-
-  // reclaim sibling event applies identical truncation bounds). External
-  // consumers should use `buildMcpConfigMigrateEvent` instead.
   truncatePriorEntry,
 } from './commands/mcp-migrate-event.ts';
-// Desktop's utility process wires these into `bootServer()` as the ACP thread
-// manager's Pi bridge seams (same wiring as `ok start`).
 export {
   type EnsurePiBridgeResult,
   ensurePiBridge,
@@ -94,11 +71,6 @@ export {
   type PiTrustWriteAction,
   probePiBridgeState,
 } from './commands/pi-acp-bridge.ts';
-// `runStop` is the path-addressable stop primitive: SIGTERM the server pid
-// recorded in `<lockDir>/server.lock`, unless live collaboration clients are
-// attached — pass `force: true` to terminate anyway. Desktop's
-// `ok:fs:remove-git-folder` IPC reuses it (with `force`) to deterministically
-// tear down a worktree's own collab server before deleting its `.git`.
 export { runStop } from './commands/stop.ts';
 export { type LoadConfigResult, loadConfig } from './config/loader.ts';
 export { type PreviewResult, previewContent } from './content/preview.ts';
@@ -116,10 +88,6 @@ export {
   parseGitHubTreeUrl,
   parseGitUrl,
 } from './github/url.ts';
-// PATH-shim contract — the single source of truth shared by the desktop
-// installer (`main/path-install.ts` imports these fence markers + marker path +
-// marker shape) and the CLI `ok uninstall` reverter, so install and revert can
-// never disagree about the managed block or where the manifest lives.
 export {
   PATH_SHIM_BEGIN,
   PATH_SHIM_BLOCK_RE,
@@ -144,11 +112,6 @@ export {
   type ProjectAiIntegrationsResult,
   writeProjectAiIntegrations,
 } from './integrations/write-project-ai-integrations.ts';
-// Security-critical symlink-escape guard for project-scope writes. Re-exported
-// so the Desktop's skill-reclaim sweep shares the one canonical implementation
-// rather than duplicating it (precedent: single source of truth for guards).
-// `removeProjectSkill` is the Settings-driven uninstall reverse of
-// `writeProjectSkill` (which the Desktop reaches via `applyProjectIntegrations`).
 export {
   assertProjectPathSafe,
   type ProjectSkillRemoveResult,
@@ -157,8 +120,6 @@ export {
   writeProjectSkill,
 } from './integrations/write-project-skill.ts';
 export { getNativeTomlMcpEditor } from './native/toml-config-engine.ts';
-// Leveled bug-report capture — shared by `ok bug-report` and the desktop
-// report-a-bug flow so the two stay in lockstep.
 export {
   type CollectReportBundleOptions,
   collectReportBundle,
@@ -166,8 +127,6 @@ export {
   type ReportBundleResult,
   type ReportBundleSummary,
 } from './report-bundle.ts';
-// The value type of `collectReportBundle`'s `readLanguage` seam, so the desktop
-// app can inject the language it is actually rendering in.
 export type { LanguageMetadata } from './report-language.ts';
 export {
   addOkPathsToGitExclude,

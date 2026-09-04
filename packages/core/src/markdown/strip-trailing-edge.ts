@@ -16,8 +16,6 @@ function respellAsHtmlBreak(node: Break): void {
   node.data.sourceStyle = 'html';
 }
 
-/** True for a plain text node whose bytes are its visible value — no stored
- * sourceRaw provenance that re-emits different bytes. */
 function isPlainText(node: RootContent | undefined): node is Text {
   if (!node || node.type !== 'text') return false;
   const sourceRaw = (node.data as { sourceRaw?: unknown } | undefined)?.sourceRaw;
@@ -27,8 +25,6 @@ function isPlainText(node: RootContent | undefined): node is Text {
 const TRAILING_INSIGNIFICANT_WS = /[ \t]+$/;
 const WS_ONLY = /^[ \t]*$/;
 
-/** True when the block still holds content other than insignificant-whitespace
- * text — the anchor that licenses dropping a whitespace-only tail node. */
 function hasNonWhitespaceContent(children: RootContent[]): boolean {
   return children.some((child) => !(isPlainText(child) && WS_ONLY.test(child.value)));
 }
@@ -70,10 +66,6 @@ function stripTrailing(children: RootContent[], isWrapperContent = false): void 
 
 const BLOCK_CONTAINERS = new Set(['paragraph', 'heading', 'tableCell']);
 
-/** In-place: canonicalize the trailing edge of every block whose phrasing
- * content can end in a construct whose markdown spelling is meaningless at a
- * block edge — re-spelling the ones that have a surviving form, dropping the
- * ones that do not. */
 export function stripTrailingEdge(tree: Nodes): void {
   const visit = (node: Nodes): void => {
     if (BLOCK_CONTAINERS.has(node.type) && 'children' in node) {

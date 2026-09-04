@@ -1,14 +1,3 @@
-/**
- * Tests for chunkedYTextInsert — large-paste chunking.
- *
- * Verifies three behaviors:
- *   - <500KB payloads insert in 1 transaction (no chunking overhead).
- *   - ≥501KB payloads split into ≥2 transactions with yields between.
- *   - Chunk size constant is tunable.
- *
- * Uses injectable yieldFn so tests don't depend on rAF/timers.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   ChunkedInsertError,
@@ -92,13 +81,11 @@ describe('chunkedYTextInsert — FR-21 large-paste chunking', () => {
   test('chunk-size constant tunable via options', async () => {
     const { doc, text } = makeFake();
     const payload = 'a'.repeat(300 * 1024);
-    // Force chunking with a low threshold + small chunk size.
     await chunkedYTextInsert(doc, text, 0, payload, {
       thresholdBytes: 10 * 1024,
       chunkSizeBytes: 50 * 1024,
       yieldFn: async () => {},
     });
-    // 300KB / 50KB per chunk = 6 chunks.
     expect(doc.transactions).toBe(6);
   });
 
@@ -129,8 +116,6 @@ describe('chunkedYTextInsert — FR-21 large-paste chunking', () => {
   });
 
   test('mid-stream failure throws ChunkedInsertError with partial-progress info', async () => {
-    // Fake that throws on the 3rd insert call to simulate e.g. Y.Text length
-    // limit hit, doc destroyed, or peer concurrently truncating.
     let callCount = 0;
     const failingText: InsertableYText = {
       get length() {
@@ -146,7 +131,7 @@ describe('chunkedYTextInsert — FR-21 large-paste chunking', () => {
         return fn();
       },
     };
-    const payload = 'a'.repeat(300 * 1024); // 6 chunks at 50KB
+    const payload = 'a'.repeat(300 * 1024);
     let caught: unknown;
     try {
       await chunkedYTextInsert(doc, failingText, 0, payload, {
@@ -168,9 +153,6 @@ describe('chunkedYTextInsert — FR-21 large-paste chunking', () => {
 
   test('resolveOffset callback re-resolves absolute index per chunk', async () => {
     const { doc, text } = makeFake();
-    // Simulate a concurrent writer who inserts 2 chars before our writeIndex
-    // between each chunk. resolveOffset compensates by returning an offset
-    // shifted by the number of chunks already completed.
     const payload = 'a'.repeat(150 * 1024);
     let chunkIdx = 0;
     const resolvedOffsets: number[] = [];
@@ -179,15 +161,12 @@ describe('chunkedYTextInsert — FR-21 large-paste chunking', () => {
       chunkSizeBytes: 50 * 1024,
       yieldFn: async () => {},
       resolveOffset: (logical) => {
-        const resolved = logical + chunkIdx * 2; // each prior yield += 2 external chars
+        const resolved = logical + chunkIdx * 2;
         resolvedOffsets.push(resolved);
         chunkIdx++;
         return resolved;
       },
     });
-    // First chunk at logical 0 → resolved 0.
-    // Second chunk at logical 50*1024 → resolved 50*1024 + 2.
-    // Third at logical 100*1024 → resolved 100*1024 + 4.
     expect(resolvedOffsets).toEqual([0, 50 * 1024 + 2, 100 * 1024 + 4]);
   });
 });

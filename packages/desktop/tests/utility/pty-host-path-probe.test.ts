@@ -3,17 +3,6 @@ import { win32 } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { resolveShellWithDetails } from '../../src/utility/pty-host.ts';
 
-/**
- * Coverage for the DEFAULT Windows `pwsh` PATH probe — the branch the
- * production host actually takes. `pty-host.test.ts` injects `pathProbe` in
- * every win32 case, so the real `execFileSync` body has no coverage there;
- * these tests deliberately omit the injection so the default runs.
- *
- * `execFileSync` is the seam: the probe's failure mode (a `PATH` entry on an
- * unreachable network location making `where.exe` block) cannot be synthesized
- * on a non-Windows host, and the probe is synchronous, so the bound it hands to
- * the child-process API is the only observable form of "this call is bounded".
- */
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
   execFileSync: vi.fn(),
@@ -26,7 +15,6 @@ const WIN_ENV = {
   ProgramFiles: 'C:\\Program Files',
 } as const;
 
-/** Options object handed to `execFileSync` by the probe on the Nth call. */
 function probeOptions(call = 0): { timeout?: number } | undefined {
   return execFileSyncMock.mock.calls[call]?.[2] as { timeout?: number } | undefined;
 }
@@ -46,8 +34,6 @@ describe('defaultWindowsPathProbe (via resolveShellWithDetails, no pathProbe inj
 
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
     const timeout = probeOptions()?.timeout;
-    // The probe runs synchronously on the PTY host's single message loop, so
-    // an unbounded call freezes input/resize/kill for every tab in the window.
     expect(timeout).toBe(5_000);
   });
 
@@ -66,8 +52,6 @@ describe('defaultWindowsPathProbe (via resolveShellWithDetails, no pathProbe inj
       logger: { warn: (entry) => warnings.push(entry) },
     });
 
-    // Treating a timeout as "not found" is what lets the bound be added without
-    // a new error path; a rethrow here would take down the create handler.
     expect(resolution.shell).toBe('C:\\Program Files\\PowerShell\\7\\pwsh.exe');
     expect(resolution.rung).toBe('pwsh-known-install');
     expect(warnings).toContainEqual({
@@ -112,21 +96,6 @@ describe('defaultWindowsPathProbe (via resolveShellWithDetails, no pathProbe inj
   });
 });
 
-/**
- * Stand-in for `where.exe`, calibrated against its measured behaviour on
- * Windows 11 (build 26200) rather than assumed from its argv:
- *
- * - `where pwsh` run inside a directory holding `pwsh.exe` prints that
- *   directory's copy, and when the name is also on `PATH` it prints the
- *   working-directory copy FIRST.
- * - `where $PATH:pwsh` run in the same directory prints nothing and exits 1;
- *   with the name on `PATH` it prints only the `PATH` copy.
- * - Both forms append `PATHEXT`'s `.exe` to an extension-less pattern.
- *
- * The real failure needs a Windows host and a working directory the test
- * cannot choose, so the seam is `execFileSync` and this fake supplies the
- * search semantics the probe's argv selects.
- */
 function fakeWhereExe(options: {
   files: readonly string[];
   cwd: string;
@@ -165,9 +134,6 @@ describe('the implicit pwsh probe is scoped to PATH', () => {
       shellExists: (path) => files.includes(path),
     });
 
-    // The PTY host inherits the launcher's working directory, so a checkout
-    // that happens to contain `pwsh.exe` must not be able to nominate the
-    // shell the first terminal tab spawns without an explicit override.
     expect(resolution.shell).not.toBe(win32.join(PROJECT_DIR, 'pwsh.exe'));
     expect(resolution.shell).toBe(KNOWN_INSTALL_PWSH);
     expect(resolution.rung).toBe('pwsh-known-install');
@@ -185,8 +151,6 @@ describe('the implicit pwsh probe is scoped to PATH', () => {
       shellExists: (path) => files.includes(path),
     });
 
-    // `where.exe` lists the working-directory match ahead of the PATH match,
-    // and the probe takes the first line, so an unscoped lookup loses here.
     expect(resolution.shell).toBe(onPath);
     expect(resolution.rung).toBe('pwsh-path');
   });

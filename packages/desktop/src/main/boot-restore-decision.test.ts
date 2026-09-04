@@ -142,9 +142,6 @@ describe('bootRestoreDecision', () => {
     expect(decision).toEqual({ clearSnapshot: false, action: 'navigator' });
   });
 
-  // urlLaunch: a launch-claiming URL (single-file deep-link or valid share) owns
-  // the window, so the boot path opens NO default window (the URL flush owns it),
-  // outranking even a non-empty snapshot.
   test('urlLaunch suppresses lastOpened restore (action none)', () => {
     const decision = bootRestoreDecision({
       pendingRestore: null,
@@ -168,14 +165,6 @@ describe('bootRestoreDecision', () => {
   });
 
   test('urlLaunch overrides a non-empty snapshot restore (action none, snapshot still consumed)', () => {
-    // An explicit file or share open is a deliberate "view just this" intent, so
-    // it wins over the clean-exit snapshot and the previous session's windows
-    // stay closed. The snapshot is still consumed (`clearSnapshot`) so it cannot
-    // resurface on the next boot.
-    //
-    // The only case here that pins that ranking: rank the snapshot first again
-    // and this is the one assertion that flips (to `restore`). Don't fold it
-    // into the Option-held sibling below, which passes under either ordering.
     const decision = bootRestoreDecision({
       pendingRestore: [proj('/projects/a'), proj('/projects/b')],
       lastOpenedProject: '/projects/last',
@@ -187,11 +176,6 @@ describe('bootRestoreDecision', () => {
   });
 
   test('urlLaunch with the Option key held still suppresses restore (action none)', () => {
-    // Two suppressors at once. Neither cancels the other and neither promotes
-    // the snapshot: the boot opens nothing and still consumes it. Says nothing
-    // about the URL-vs-snapshot ranking, since Option already empties
-    // `restorable` and this passes under either ordering. See the sibling above
-    // for that guard.
     const decision = bootRestoreDecision({
       pendingRestore: [proj('/projects/a'), proj('/projects/b')],
       lastOpenedProject: '/projects/last',
@@ -204,10 +188,6 @@ describe('bootRestoreDecision', () => {
 });
 
 describe('resolveRestoreActions (file→project collapse + dedup ordering)', () => {
-  // A resolver that maps loose files into projects per `fileToProject`, keeps
-  // files in `ephemeral` as loose files, and rejects everything else (→ null,
-  // the "vanished / non-markdown" skip that `prepareSingleFileOpen` throwing
-  // produces in production).
   function resolverFrom(fileToProject: Record<string, string>, ephemeral: Set<string>) {
     return (filePath: string): RestoredWindow | null => {
       const root = fileToProject[filePath];
@@ -257,9 +237,6 @@ describe('resolveRestoreActions (file→project collapse + dedup ordering)', () 
   });
 
   test('the LATER (more-recent) duplicate wins position so the raise target is last', () => {
-    // /proj appears first (as a project), then again via a later loose file that
-    // re-derives to it — the collapsed entry must move to the END so the
-    // most-recently-focused window is the one raised.
     const { orderedKeys } = resolveRestoreActions(
       [proj('/proj'), proj('/other'), file('/proj/inner.md')],
       resolverFrom({ '/proj/inner.md': '/proj' }, new Set()),
@@ -289,8 +266,6 @@ describe('resolveRestoreActions (popped-out note windows)', () => {
   const DOC: RestoredWindow = { kind: 'doc', projectPath: '/tmp/a', docName: 'notes/alpha' };
 
   test('a pop-out opens after its project, whatever the focus order said', () => {
-    // The open loop is sequential, so this ordering is what gives the pop-out a
-    // server to attach to. Focus recency put the pop-out first here.
     const { orderedKeys } = resolveRestoreActions([DOC, PROJECT], identity);
 
     expect(orderedKeys).toHaveLength(2);
@@ -299,9 +274,6 @@ describe('resolveRestoreActions (popped-out note windows)', () => {
   });
 
   test('a pop-out whose project is absent is dropped silently', () => {
-    // The project was removed, or its window did not survive. A lone pop-out
-    // has nothing to attach to, and an error window for a document the user
-    // did not ask to reopen is worse than its absence.
     const { orderedKeys, actionByKey } = resolveRestoreActions([DOC], identity);
 
     expect(orderedKeys).toEqual([]);

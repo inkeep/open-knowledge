@@ -135,7 +135,6 @@ describe('parseCC1BranchSwitched', () => {
 });
 
 describe('parseCC1DiskAck', () => {
-  // Helper: minimal valid base64 of a 4-byte payload.
   const validBase64 = Buffer.from(new Uint8Array([0xde, 0xad, 0xbe, 0xef])).toString('base64');
 
   test('parses a valid disk-ack and decodes sv to Uint8Array', () => {
@@ -154,13 +153,6 @@ describe('parseCC1DiskAck', () => {
     expect(Array.from(result.sv)).toEqual([0xde, 0xad, 0xbe, 0xef]);
   });
 
-  // Contract test: the module docstring promises "null on parse failure,
-  // never throws — the stateless listener sees a steady stream of payloads
-  // and must skip ones it doesn't recognize without surfacing exceptions
-  // to React." atob() throws on invalid base64; this test locks the
-  // try/catch in parseCC1DiskAck — a future refactor that drops the
-  // catch (e.g., relying on Zod's z.string().base64() check) breaks the
-  // test BEFORE the React error boundary surface notices.
   test('returns null on malformed base64 in sv (does NOT throw)', () => {
     const malformed = JSON.stringify({
       v: CC1_CONTRACT_VERSION,
@@ -255,7 +247,6 @@ describe('parseCC1DiskAck', () => {
 });
 
 describe('dispatchCC1Stateless', () => {
-  // Helper: minimal valid base64 of a 4-byte payload.
   const validBase64 = Buffer.from(new Uint8Array([0xde, 0xad, 0xbe, 0xef])).toString('base64');
 
   test('routes server-info to onServerInfo', () => {
@@ -323,8 +314,6 @@ describe('dispatchCC1Stateless', () => {
   });
 
   test('omitted handler is a no-op (no throw, no consumer fires)', () => {
-    // Harness pattern: subscribe to disk-ack but not branch-switched.
-    // A branch-switched payload should silently drop without throwing.
     let diskAckFired = false;
     expect(() => {
       dispatchCC1Stateless(
@@ -341,8 +330,6 @@ describe('dispatchCC1Stateless', () => {
   });
 
   test('parsers are mutually exclusive — disk-ack payload does NOT fire onDerivedView', () => {
-    // disk-ack and derived-view both have a `ch` field; the schema's
-    // ch-literal pinning makes them mutually exclusive.
     let diskAckFired = false;
     let derivedFired = false;
     dispatchCC1Stateless(

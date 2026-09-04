@@ -1,19 +1,3 @@
-/**
- * Drift guard for the project-skill editor-id single source.
- *
- * The editor ids a project skill installs into must have ONE source:
- * `EDITOR_PROJECT_SKILL_ROOT` (an editor is a valid target iff its root is
- * non-null) → `PROJECT_SKILL_EDITOR_IDS` (the runtime filter) →
- * `SkillTargetEditorSchema` (the wire/MCP enum, whose `.options` the install
- * verb, the `SkillEditorActions` install menu, and the `SkillTargetsPicker` all
- * consume). If anyone re-hardcodes the list or the chain desyncs, this fails.
- *
- * This is the "add a 4th editor and it flows through everywhere" guard: adding
- * an editor with a non-null `EDITOR_PROJECT_SKILL_ROOT` automatically appears in
- * all three derived surfaces with no other code change, and these assertions
- * prove the derivation rather than a duplicated literal.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   ALL_EDITOR_IDS,
@@ -30,9 +14,6 @@ import {
 import { SkillTargetEditorSchema } from './schema.ts';
 
 describe('project-skill editor-id single source', () => {
-  // Compare as plain strings — `.filter()` widens the element type back to
-  // EditorId, so a typed `.toEqual` trips variance; the value identity is what
-  // matters here.
   const asStrings = (xs: readonly string[]) => xs.map(String);
 
   test('PROJECT_SKILL_EDITOR_IDS = exactly the editors with a non-null project-skill root', () => {
@@ -45,11 +26,6 @@ describe('project-skill editor-id single source', () => {
   });
 
   test('HOSTS_WITH_USER_SKILL_DIR derives from the same editors (CLI repair-skills ↔ desktop skill-reclaim share it)', () => {
-    // Single source for the host-dir sweep both the CLI and desktop run.
-    // editorId set === PROJECT_SKILL_EDITOR_IDS minus the documented Pi and
-    // Copilot carve-outs. Their user-global skills dirs do not follow the
-    // `~/<hostDir>/skills` layout this project-shaped sweep assumes. Their
-    // concrete global roots are covered separately by USER_SKILL_HOSTS.
     expect(asStrings(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId))).toEqual(
       asStrings(PROJECT_SKILL_EDITOR_IDS.filter((id) => id !== 'pi' && id !== 'copilot')),
     );
@@ -60,18 +36,12 @@ describe('project-skill editor-id single source', () => {
   });
 
   test('Pi IS a project-skill install target but NOT a user-global host-dir sweep member', () => {
-    // Pi scans project `.pi/skills` natively (trust-gated), so it belongs in
-    // the install-projection enum; its user-global layout (`~/.pi/agent/skills`
-    // + the central `~/.agents/skills` hub) has no `~/.pi/skills`, so the
-    // project-shaped sweep must not fabricate one.
     expect(SkillTargetEditorSchema.options).toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('pi');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.pi');
   });
 
   test('Copilot IS a project-skill install target but NOT a user-global host-dir sweep member', () => {
-    // Copilot scans `.github/skills` per project, but keeps global skills at
-    // `~/.copilot/skills`, which USER_SKILL_HOSTS preserves directly.
     expect(SkillTargetEditorSchema.options).toContain('copilot');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.editorId)).not.toContain('copilot');
     expect(HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir)).not.toContain('.github');
@@ -93,17 +63,12 @@ describe('project-skill editor-id single source', () => {
   });
 
   test('Claude Desktop is NOT a project-skill install target (user-global only, null root)', () => {
-    // Regression: the install menu / picker must not offer claude-desktop —
-    // it has no project skill surface (reads user-global skills only).
     expect(EDITOR_PROJECT_SKILL_ROOT['claude-desktop']).toBeNull();
     expect(SkillTargetEditorSchema.options).not.toContain('claude-desktop');
   });
 });
 
 describe('receivesProjectIntegrationWrite', () => {
-  // Surface membership is necessary but not sufficient: this predicate is what
-  // a project-scoped picker owes the user, because it answers "will ticking
-  // this produce a file?" rather than "could it in principle?".
   const installed = { userMcpEntryInstalled: true };
   const notInstalled = { userMcpEntryInstalled: false };
 
@@ -129,10 +94,6 @@ describe('receivesProjectIntegrationWrite', () => {
   });
 
   test('Copilot writes only once its user-global entry exists', () => {
-    // Copilot is skill-only at project scope (`.github/skills`) and
-    // `isProjectSkillPrerequisiteMet` refuses to write that skill until
-    // Copilot's user-global OpenKnowledge entry is there — the skill would sit
-    // on disk unloaded. Until then, a project setup writes nothing for it.
     expect(EDITOR_PROJECT_CONFIG_PATH.copilot).toBeNull();
     expect(USER_MCP_GATED_EDITOR_IDS.map(String)).toContain('copilot');
     expect(receivesProjectIntegrationWrite('copilot', notInstalled)).toBe(false);
@@ -140,9 +101,6 @@ describe('receivesProjectIntegrationWrite', () => {
   });
 
   test('every gated editor is skill-only — a project MCP config would make the gate moot', () => {
-    // The gate exists because the skill is the ONLY project artifact. An editor
-    // that also writes a project MCP config would short-circuit to true above,
-    // silently making its presence in the list decorative.
     for (const id of USER_MCP_GATED_EDITOR_IDS) {
       expect(EDITOR_PROJECT_CONFIG_PATH[id]).toBeNull();
       expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
@@ -151,11 +109,6 @@ describe('receivesProjectIntegrationWrite', () => {
 });
 
 describe('HUB_READER_EDITORS', () => {
-  // The docblock's rule is "reads the hub AND has no root of its own at that
-  // scope". Pinning two example exclusions (OpenCode, Pi) by name does not stop
-  // a future `{ editorId: 'codex', dotDir: '.codex', scope: 'project' }` — which
-  // violates the rule, compiles cleanly, and reintroduces the double-load hazard
-  // silently. This pins the invariant.
   test('every member has a null skill root at its declared scope', () => {
     for (const { editorId, scope } of HUB_READER_EDITORS) {
       const map = scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
@@ -164,9 +117,6 @@ describe('HUB_READER_EDITORS', () => {
   });
 
   test('a host with its own root at that scope is rejected by the rule', () => {
-    // The counter-case the rule exists for, stated as a property rather than a
-    // name: OpenCode and Pi read `.agents` too, but both have project roots, so
-    // neither may be a member.
     for (const id of ['opencode', 'pi'] as const) {
       expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
       expect(HUB_READER_EDITORS.some((r) => r.editorId === id)).toBe(false);

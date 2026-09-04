@@ -3,7 +3,6 @@ import { parseSkillsShPublisherPage } from './publisher.ts';
 
 const OURS = 'inkeep/open-knowledge-skills';
 
-/** Two listing rows in the page's real shape: anchor href, heading, count span. */
 function row(owner: string, skill: string, installs: string): string {
   return (
     `<a class="group grid" href="/${owner}/${skill}">` +
@@ -36,8 +35,6 @@ describe('parseSkillsShPublisherPage', () => {
   });
 
   test('ignores rows belonging to another publisher', () => {
-    // A "related skills" module or footer link must not smuggle a foreign skill
-    // into a list the caller presents as one publisher's.
     const html = row(OURS, 'knowledge-base', '21') + row('acme/repo', 'their-skill', '999');
     expect(parseSkillsShPublisherPage(html, OURS).map((r) => r.name)).toEqual(['knowledge-base']);
   });
@@ -53,9 +50,6 @@ describe('parseSkillsShPublisherPage', () => {
   });
 
   test('a row with no count is skipped rather than borrowing the next row’s', () => {
-    // The failure this guards: a permissive gap match let a countless row take
-    // the following row's number, so every later skill reported its neighbor's
-    // installs — plausible-looking and undetectable downstream.
     const html =
       `<a class="group grid" href="/${OURS}/countless"><h3>countless</h3></a>` +
       row(OURS, 'real', '42');

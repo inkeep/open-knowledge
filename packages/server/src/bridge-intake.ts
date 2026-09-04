@@ -56,53 +56,19 @@ import type { DeriveLossDetectOptions } from './bridge-loss-detector.ts';
 import { mdManager, schema } from './md-manager.ts';
 import { withSpanSync } from './telemetry.ts';
 
-/**
- * Embed-resolver context threaded through `mdManager.parseWithFallback`
- * so `![[photo.png]]` wiki-embed refs resolve to the right disk path
- * before PM dispatch. Same shape both intake surfaces accept.
- *
- * `resolveSize` returns the byte size of the resolved file for
- * `FILE_ATTACHMENT_EXTENSIONS` wikilinks (`.pdf` / `.docx` / `.zip` / …)
- * so the File row's size span survives reloads. Optional — call sites
- * that don't have fs access (or don't care about size resolution) leave
- * it undefined and the parser's wikiLinkEmbed handler omits the `size`
- * prop on the resulting jsxComponent.
- */
 interface EmbedResolverContext {
   resolveEmbed: (basename: string, sourcePath: string) => string | null;
   resolveSize?: (basename: string, sourcePath: string) => number | null;
   sourcePath: string;
 }
 
-/**
- * `false` opts out explicitly: the caller composes its own bytes and does
- * NOT want `parseWithFallback` to re-resolve `![[file.ext]]` references.
- * Functionally equivalent to `undefined`; the `false` literal makes the
- * opt-out auditable at call sites (managed-rename ships pre-composed bytes
- * via `applyRenameMap`).
- */
 type EmbedResolverArg = EmbedResolverContext | false | undefined;
 
-/**
- * Off-thread parse result a caller computed BEFORE entering its
- * `doc.transact` (see `parse-pool.ts`). The primitives honor it only when
- * `rawContent` byte-matches the bytes being applied in this call — the
- * guard makes staleness structurally impossible: a doc that moved between
- * the precompute and the transact fails the byte compare and the primitive
- * parses inline exactly as it always has. Callers therefore never need to
- * re-validate a precompute themselves.
- */
 export interface PrecomputedParse {
-  /** Exact full-document bytes (frontmatter + body) the parse came from. */
   rawContent: string;
-  /** `mdManager.parseWithFallback(stripFrontmatter(rawContent).body, ...)` output. */
   parsedJson: JSONContent;
 }
 
-/**
- * Byte-guarded parse: use the precompute when it matches the bytes being
- * applied, else parse inline (the pre-pool behavior, unchanged).
- */
 function parseBodyWithPrecompute(
   document: Y.Doc,
   rawContent: string,
@@ -136,26 +102,10 @@ function buildParseOpts(embedResolver: EmbedResolverArg):
     : undefined;
 }
 
-/**
- * Serialize a fragment's current markdown body — the at-risk pending content a
- * paired derive is about to rebuild over. Captured BEFORE the rebuild so a loss
- * detector can compare it against the post-rebuild forms. Called only when a
- * detector is wired; the serialize cost is off otherwise.
- */
 function serializeFragmentBody(xmlFragment: Y.XmlFragment): string {
   return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON());
 }
 
-/**
- * After a paired derive rebuilds the fragment, hand the wired detector the
- * canonical before/after representations so it can checkpoint + observe content
- * the rebuild discarded. All bodies are canonical markdown (frontmatter-
- * stripped, one serializer) so the comparison is normalization-sound.
- *
- * `restoreFrontmatter` is the FM the recovery payload prepends to `pendingBody`
- * — the pre-derive FM, so a restore reconstructs the document that held the
- * pending content.
- */
 function reportPairedDeriveLoss(
   detect: DeriveLossDetectOptions,
   pendingBody: string,
@@ -165,12 +115,7 @@ function reportPairedDeriveLoss(
   parseOpts: ReturnType<typeof buildParseOpts>,
 ): void {
   const rebuiltBody = serializeFragmentBody(xmlFragment);
-  // The parse result re-serialized directly — a canonical post-op derivation
-  // independent of the live fragment updateYFragment just mutated.
   const ytextDerivedBody = mdManager.serialize(parsedJson);
-  // The pre-operation body canonicalized to the same space, so content the
-  // operation legitimately removed (which this baseline held) is excluded from
-  // the loss verdict — only never-propagated fragment content can trip.
   const { body: baselineRawBody } = stripFrontmatter(detect.baselineFullMd);
   const baselineBody = mdManager.serialize(mdManager.parseWithFallback(baselineRawBody, parseOpts));
   detect.report({
@@ -178,11 +123,6 @@ function reportPairedDeriveLoss(
     baselineBody,
     ytextDerivedBody,
     rebuiltBody,
-    // The one checkpoint kind whose contents are compose-derived rather than
-    // Y.Text's own bytes. Un-guarded, a payload whose body opens with a rule
-    // pair cannot restore what it captured — the restore re-partitions and
-    // loses the span again, so the recovery channel inherits the bug it exists
-    // to recover from.
     restorePayload: composeWithDerivedBody(restoreFrontmatter, pendingBody).md,
   });
 }
@@ -207,28 +147,6 @@ function reportPairedDeriveLoss(
  * @param document Y.Doc holding the doc's `default` XmlFragment and `source` Y.Text.
  * @param rawContent Full document bytes (frontmatter + body) to write to Y.Text verbatim.
  * @param embedResolver `![[file.ext]]` resolver context, or `false` to opt out for pre-composed-bytes callers.
- */
-/**
- * Surface tag for `composeAndWriteRawBody`. Required, no fallback: every
- * call site declares its bridge-write context so the
- * `bridge.composeAndWriteRawBody` span attribute carries semantically
- * useful provenance for OTLP queries.
- *
- * Live values:
- *   - `'agent'` — `applyAgentMarkdownWrite` in `agent-sessions.ts`.
- *   - `'file-watcher'` — `applyDiskContentToDoc` in `external-change.ts`.
- *   - `'managed-rename'` — `_applyManagedRenameRewrite` in
- *     `api-extension.ts`. Composes pre-rewritten bytes via
- *     `applyRenameMap` and ships them through the substrate; opts out of
- *     embed re-resolution since bytes are already final.
- *
- * Reserved (no current call site; kept as forward-compat slots so a
- * future path-unification can adopt the surface without a type-shape
- * change):
- *   - `'undo'` — agent-undo currently uses direct primitives via
- *     `applyAgentUndo` → `deriveFragmentFromYtext`, not this compose path.
- *   - `'frontmatter'` — property-panel writes use `bindFrontmatterDoc`
- *     (Y.Text-only, paired:false), not this compose path.
  */
 export type ComposeWriteSurface =
   | 'agent'
@@ -259,32 +177,11 @@ export function composeAndWriteRawBody(
       const ytext = document.getText('source');
       const currentYText = ytext.toString();
 
-      // Fragment derives from BODY (without FM): the markdown parser only handles
-      // body markdown. FM lives in the YAML region of Y.Text directly — the
-      // fragment side never carries it.
       const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
 
-      // Capture the at-risk fragment content BEFORE the rebuild overwrites it —
-      // only when a detector is wired (the paired origin classified `detect`),
-      // so an ordinary write pays no serialize cost.
       const pendingBody = detect ? serializeFragmentBody(xmlFragment) : undefined;
 
-      // Y.Text gets the raw bytes FIRST, then fragment derives. The order matters:
-      // Yjs transactions don't roll back on throw, so a partial failure mid-call
-      // leaves whichever side wrote last in the new state and the other side stale.
-      // Under the contract (precedent #38, Y.Text-is-truth), Y.Text is the source
-      // of truth — if applyFastDiff succeeds and updateYFragment then throws,
-      // ytext holds the correct user bytes and the next non-paired observer
-      // dispatch re-derives fragment via parse(ytext). Reversed order would leave
-      // fragment correct and ytext stale — and Observer B Phase 1 on the next
-      // non-paired ytext mutation would re-derive fragment from the STALE ytext
-      // bytes, silently reverting the write.
-      //
-      // Both writes happen inside the caller's outer transact for atomicity and
-      // to share one origin object. applyFastDiff is a line-aligned diff that
-      // preserves unrelated whole-line Y.Text Items + their origins; updateYFragment
-      // is item-preservation aware (precedent #11(a)).
       if (currentYText !== rawContent) {
         applyFastDiff(ytext, currentYText, rawContent);
       }
@@ -307,29 +204,6 @@ export function composeAndWriteRawBody(
   );
 }
 
-/**
- * Replace the entire Y.Text contents with `rawContent` via delete/insert
- * and derive XmlFragment via parse — the atomic-overwrite semantics.
- *
- * The full overwrite (vs `applyFastDiff`'s incremental line-aligned diff)
- * is the load-bearing signal to `Y.UndoManager` that this is a
- * non-incremental replacement: the caller discards the user's recent
- * edits, so diff-based Item preservation would defeat the contract by
- * re-using Items the writer explicitly overwrote.
- *
- * Callers:
- *   - `handleRollback` under `ROLLBACK_ORIGIN` — restore a historical version.
- *   - `applyAgentMarkdownWrite(..., 'replace')` under per-session
- *     `session.origin` — agent atomic full overwrite.
- *
- * MUST be called inside the caller's outer `doc.transact(..., origin)`
- * block. The caller's origin determines `Y.UndoManager` attribution and
- * the paired-write fast-path in `server-observers`.
- *
- * @param document Y.Doc holding the doc's `default` XmlFragment and `source` Y.Text.
- * @param rawContent Full document bytes (frontmatter + body) to write to Y.Text verbatim.
- * @param embedResolver Optional `![[file.ext]]` resolver context.
- */
 export function replaceRawBody(
   document: Y.Doc,
   rawContent: string,
@@ -352,8 +226,6 @@ export function replaceRawBody(
       const parsedJson = parseBodyWithPrecompute(document, rawContent, embedResolver, precomputed);
       const pmNode = schema.nodeFromJSON(parsedJson);
 
-      // Capture the at-risk fragment content BEFORE the rebuild — only when a
-      // detector is wired (the paired origin classified `detect`).
       const pendingBody = detect ? serializeFragmentBody(xmlFragment) : undefined;
 
       const currentText = ytext.toString();
@@ -420,8 +292,6 @@ export function deriveFragmentFromYtext(
   const parsedJson = mdManager.parseWithFallback(body, parseOpts);
   const pmNode = schema.nodeFromJSON(parsedJson);
 
-  // Capture the pre-derive fragment serialization only when a detector is
-  // wired — the extra serializes are off unless loss capture is enabled.
   const pendingBody = detect
     ? mdManager.serialize(yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON())
     : undefined;
@@ -433,12 +303,7 @@ export function deriveFragmentFromYtext(
     const rebuiltBody = mdManager.serialize(
       yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON(),
     );
-    // The parse result re-serialized directly — a canonical post-op ytext
-    // derivation independent of the live fragment updateYFragment just mutated.
     const ytextDerivedBody = mdManager.serialize(parsedJson as JSONContent);
-    // The pre-operation Y.Text body canonicalized to the same space, so content
-    // the operation legitimately removed (which this baseline held) is excluded
-    // from the loss verdict — only never-propagated fragment content can trip.
     const { body: baselineRawBody } = stripFrontmatter(detect.baselineFullMd);
     const baselineBody = mdManager.serialize(
       mdManager.parseWithFallback(baselineRawBody, parseOpts),

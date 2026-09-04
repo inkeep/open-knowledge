@@ -30,14 +30,9 @@ describe('SidebarSearchBar runtime behavior', () => {
   test('renders an accessible icon-only search button with the locked visual contract', async () => {
     await renderSidebarSearchBar();
 
-    // Icon-only: the accessible name comes from the aria-label, not a visible
-    // label span. The keyboard hint moved into the (portal-rendered, hover-only)
-    // tooltip, so the button itself carries no visible text or kbd.
     const button = screen.getByRole('button', { name: 'Search' });
     expect(button.tagName).toBe('BUTTON');
     expect(button.getAttribute('aria-label')).toBe('Search');
-    // `asChild` merges the Radix trigger onto the Button, so `data-slot` reads
-    // `tooltip-trigger` (Radix wins the merge) rather than the Button's own slot.
     expect(button.getAttribute('data-slot')).toBe('tooltip-trigger');
     expect(button.getAttribute('data-variant')).toBe('ghost');
     expect(button.getAttribute('data-telemetry-event')).toBe('ok.sidebar.search_pill.click');

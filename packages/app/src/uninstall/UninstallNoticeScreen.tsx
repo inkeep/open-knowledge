@@ -13,9 +13,7 @@ import { cn } from '@/lib/utils';
 interface UninstallNoticeScreenProps {
   notice: UninstallNoticeSpec;
   onConfirm: () => void;
-  /** Only reachable on a two-button notice. */
   onCancel: () => void;
-  /** Ask main to reveal the cleanup log. Non-terminal — the screen stays up. */
   onRevealLog: () => void;
 }
 
@@ -30,8 +28,7 @@ function NoticeChecklist({ items }: { items: readonly UninstallNoticeChecklistIt
               className="absolute top-[22px] bottom-0.5 left-[9px] w-0.5 bg-border"
             />
           )}
-          {/* The check glyph is a shape channel rather than colour alone, and the
-              visually-hidden word carries the same state to a screen reader. */}
+          {}
           <span
             aria-hidden="true"
             className={cn(
@@ -58,16 +55,6 @@ function NoticeChecklist({ items }: { items: readonly UninstallNoticeChecklistIt
   );
 }
 
-/**
- * The confirm, completion and failure screens. They differ only in the content
- * main sends down, so they are one component rather than three.
- *
- * Two shapes, and the difference is load-bearing: a notice carrying
- * `cancelLabel` is a question whose safe answer is Cancel, so Cancel holds
- * focus and Escape maps to it. A single-button notice is an acknowledgement
- * with nothing else to choose, so Escape confirms. Main maps a window close the
- * same two ways.
- */
 export function UninstallNoticeScreen({
   notice,
   onConfirm,

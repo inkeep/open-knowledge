@@ -11,15 +11,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 export type SeedRootChoice = 'project-root' | 'subfolder';
 
-/**
- * "Where should it live?" chooser for a starter-pack scaffold — project root
- * (the default) or a named subfolder. Shared by the in-project seed dialog and
- * the create-new-project dialog so both offer the same choice with the same
- * default; a pack's `defaultSubfolder` only pre-fills the input, it never
- * silently becomes the destination.
- *
- * `idPrefix` keeps the radio ids unique when two instances could mount at once.
- */
 export function SeedRootPicker({
   choice,
   subfolder,
@@ -41,9 +32,7 @@ export function SeedRootPicker({
   const groupLabelId = `${idPrefix}-group-label`;
   return (
     <div className="space-y-2 py-1">
-      {/* The heading is bound to the group with aria-labelledby, not left as a
-          visual-only <p>: assistive tech announces the radios with no group
-          context otherwise. */}
+      {}
       <p id={groupLabelId} className="text-sm font-medium">
         <Trans>Where should it live?</Trans>
       </p>

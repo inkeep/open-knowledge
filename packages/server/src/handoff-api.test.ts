@@ -21,20 +21,19 @@ describe('createInstalledAgentsProbe', () => {
   });
 
   test('3 calls within TTL produce 1 probe per scheme (cache hit)', async () => {
-    // 3 calls within 60s → 1 probe per scheme.
     const counts: Record<string, number> = {};
     const probeFn = async (scheme: InstalledAgentScheme) => {
       counts[scheme] = (counts[scheme] ?? 0) + 1;
       return true;
     };
 
-    let clockNow = 1_000_000; // arbitrary starting epoch
+    let clockNow = 1_000_000;
     const { probeAll } = createInstalledAgentsProbe({ probe: probeFn, now: () => clockNow });
 
     await probeAll();
-    clockNow += 1000; // +1s
+    clockNow += 1000;
     await probeAll();
-    clockNow += 58_000; // +58s (still within 60s TTL)
+    clockNow += 58_000;
     await probeAll();
 
     expect(counts).toEqual({ claude: 1, codex: 1, cursor: 1 });
@@ -58,13 +57,9 @@ describe('createInstalledAgentsProbe', () => {
   });
 
   test('concurrent calls coalesce into a single probe per scheme', async () => {
-    // In-flight dedup: if 5 requests fire before the probe resolves, all 5
-    // await the same probe.
     const counts: Record<string, number> = {};
     const probeFn = async (scheme: InstalledAgentScheme) => {
       counts[scheme] = (counts[scheme] ?? 0) + 1;
-      // Deliberate microtask-deferred resolution so all 5 callers see the
-      // same in-flight entry.
       await wait(0);
       return true;
     };
@@ -85,9 +80,8 @@ describe('createInstalledAgentsProbe', () => {
       now: () => clockNow,
     });
     expect(await probeWithCache('claude')).toBe(false);
-    clockNow += 10_000; // well within TTL
+    clockNow += 10_000;
     expect(await probeWithCache('claude')).toBe(false);
-    // Only one actual probe call despite two cached calls.
     expect(calls).toBe(1);
   });
 
@@ -115,11 +109,6 @@ describe('handleInstalledAgents', () => {
     method: string,
     headers: Record<string, string> = {},
   ): import('node:http').IncomingMessage {
-    // Real IncomingMessage always exposes a headers object; the mock mirrors
-    // that shape so the capability-tier Host check in handleInstalledAgents
-    // doesn't trip over an undefined `headers`. Default to no Host header,
-    // which `isLocalWebHost` treats as local-web (conservative default — the
-    // route gate has already required a loopback socket to reach here).
     return { method, headers } as import('node:http').IncomingMessage;
   }
 
@@ -242,10 +231,8 @@ describe('createOsProbe', () => {
     const calls: ExecCall[] = [];
     const exec: ExecFileLike = (file, args, _opts, cb) => {
       calls.push({ cmd: file, args });
-      // Pick the first matching key by command prefix.
       const key = Object.keys(responses).find((k) => k === file) ?? file;
       const resp = responses[key] ?? {};
-      // Microtask-defer the callback so the probe Promise is in-flight briefly.
       queueMicrotask(() => {
         cb(resp.err ?? null, resp.stdout ?? '', '');
       });
@@ -266,15 +253,10 @@ describe('createOsProbe', () => {
     const { exec, calls } = makeExecFake({ osascript: { err } });
     const probe = createOsProbe('darwin', exec);
     expect(await probe('codex')).toBe(false);
-    // Every configured candidate must be probed before we conclude not-installed.
     expect(calls.length).toBeGreaterThanOrEqual(1);
   });
 
   test('macOS codex scheme probes only "Codex" — resolved via the app\'s alternate name', async () => {
-    // "Codex" resolves against the ChatGPT-branded app through its
-    // CFBundleAlternateNames; a candidate that fails leaves the probe false
-    // (no further candidates — 'OpenAI Codex' never resolved and 'ChatGPT'
-    // would false-positive on ChatGPT Classic).
     const calls: Array<{ cmd: string; args: readonly string[] }> = [];
     const exec: ExecFileLike = (file, args, _opts, cb) => {
       calls.push({ cmd: file, args });
@@ -291,7 +273,6 @@ describe('createOsProbe', () => {
     const { exec, calls } = makeExecFake({ osascript: { stdout: 'com.openai.codex' } });
     const probe = createOsProbe('darwin', exec);
     expect(await probe('codex')).toBe(true);
-    // Fallback candidate never probed once the first one returned.
     expect(calls.length).toBe(1);
     expect(calls[0]?.args).toEqual(['-e', 'id of app "Codex"']);
   });
@@ -301,8 +282,6 @@ describe('createOsProbe', () => {
     const probe = createOsProbe('win32', exec);
     expect(await probe('cursor')).toBe(true);
     expect(calls[0]?.cmd).toBe('reg');
-    // Querying HKCR catches both HKCU\Software\Classes (user-scope) and
-    // HKLM\Software\Classes (system-wide installer) registrations.
     expect(calls[0]?.args).toEqual(['query', 'HKCR\\cursor', '/ve']);
   });
 
@@ -352,7 +331,6 @@ describe('createOsProbe', () => {
 
 describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   function reqWith(headers: Record<string, string>): import('node:http').IncomingMessage {
-    // Minimal IncomingMessage shape — the helper reads only req.headers.{host,origin}.
     return { headers } as unknown as import('node:http').IncomingMessage;
   }
 
@@ -381,8 +359,6 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 
   test('Host: 127.0.0.1.evil.com → remote-web (rebinding-style hostname is NOT loopback)', () => {
-    // Defense-in-depth: a crafted hostname that starts with the loopback IP
-    // literal must not match. WHATWG URL parses this as a normal DNS name.
     expect(isLocalWebHost(reqWith({ host: '127.0.0.1.evil.com:5173' }))).toBe(false);
   });
 
@@ -399,7 +375,6 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 
   test('malformed Host falls back to Origin when present', () => {
-    // Unparseable Host should not flip the tier when Origin would have answered.
     expect(
       isLocalWebHost(reqWith({ host: '::::not-a-host::::', origin: 'http://localhost' })),
     ).toBe(true);
@@ -414,9 +389,6 @@ describe('isLocalWebHost — capability-tier Host detection (D47)', () => {
   });
 });
 
-// Node's fetch (undici) silently drops a user-supplied Host header and sends the
-// real target host, so the remote-web cases forge Host via a raw node:http
-// request instead — the server's isLocalWebHost gate reads exactly that header.
 async function getWithHostHeader(
   port: number,
   path: string,
@@ -473,13 +445,8 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
       getFileIndex: () => new Map(),
       installedAgentsProbe: async (scheme) => {
         probeCalls[scheme] = (probeCalls[scheme] ?? 0) + 1;
-        // Deterministic mock response: claude + cursor installed, codex not.
         return scheme === 'claude' || scheme === 'cursor';
       },
-      // Declared remote deployment: the /api read gate admits only loopback +
-      // bind literals + the externalUrl host, so the remote-web capability-tier
-      // Hosts below must be declared names to reach the handler at all (an
-      // undeclared foreign Host is refused at the gate; see the gate test).
       ingressPolicy: buildIngressPolicy({
         serverRuntime: {
           port: undefined,
@@ -524,7 +491,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('3 GETs within cache TTL trigger exactly 1 probe per scheme', async () => {
-    // "3 calls within 60s → 1 probe per scheme".
     for (let i = 0; i < 3; i++) {
       const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`);
       expect(res.status).toBe(200);
@@ -548,11 +514,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('rejects cross-origin requests (DNS-rebinding / malicious-page defense)', async () => {
-    // A request that reaches the loopback socket but carries an Origin header
-    // naming a non-loopback host is the DNS-rebinding / cross-origin-fetch
-    // class. The `checkLocalOpSecurity` gate added alongside this endpoint
-    // rejects it; exposing the install fingerprint to co-resident hostile
-    // origins defeats the whole point of the gate.
     const res = await fetch(`http://127.0.0.1:${port}/api/installed-agents`, {
       headers: { Origin: 'https://evil.example.com' },
     });
@@ -572,28 +533,11 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
     expect(body).toEqual({ claude: true, codex: false, cursor: true });
   });
 
-  // ── capability-tier ──────────────────────────────────────────
-  // The route gate (`checkLocalOpSecurity`) accepts loopback sockets with a
-  // loopback Origin. Inside the handler, `isLocalWebHost` then inspects the
-  // browser-supplied Host header to distinguish "browser typed localhost"
-  // (local-web — real probe) from "browser typed a non-loopback URL"
-  // (remote-web — return all-installed and let the OS protocol-dispatch
-  // dialog be the truth signal). The remote-web case is normally reached via
-  // SSH tunnels / reverse proxies where the connection still terminates on
-  // loopback. Since the read-posture hardening, a non-loopback Host reaches
-  // the handler only when the deployment DECLARES it (`server.externalUrl` /
-  // `server.bind`) — the rig's policy above declares both test Hosts, and an
-  // undeclared one is pinned as refused at the gate below.
-
   test('remote-web (Host: example.com) → all-true and probe NOT called', async () => {
-    // Cross-origin Origin is rejected by checkLocalOpSecurity, so only the Host
-    // header carries the remote-web signal here.
     const res = await getWithHostHeader(port, '/api/installed-agents', 'example.com:5173');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ claude: true, codex: true, cursor: true });
-    // The capability-tier short-circuits before the probe runs — the server's
-    // own filesystem must never be fingerprinted on behalf of a remote browser.
     expect(probeCalls).toEqual({});
   });
 
@@ -614,9 +558,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('an UNDECLARED foreign Host is refused at the read gate before the handler', async () => {
-    // Read-posture hardening boundary: without a declaration the server
-    // cannot distinguish an SSH-tunnel user from a DNS-rebound page, so the
-    // gate refuses before any capability-tier logic (or probe) runs.
     const res = await getWithHostHeader(port, '/api/installed-agents', 'evil.example:5173');
     expect(res.status).toBe(403);
     const body = (await res.json()) as { type?: string };
@@ -625,8 +566,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
   });
 
   test('remote-web requests are NOT cached against later local-web requests', async () => {
-    // Capability-tier short-circuits without populating the cache, so a
-    // following local-web request still triggers the real probe.
     const remote = await getWithHostHeader(port, '/api/installed-agents', 'example.com:5173');
     expect(await remote.json()).toEqual({ claude: true, codex: true, cursor: true });
     expect(probeCalls).toEqual({});

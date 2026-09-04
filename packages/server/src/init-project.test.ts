@@ -45,22 +45,13 @@ describe('initContent', () => {
 
     const okDir = join(testDir, OK_DIR);
     expect(existsSync(okDir)).toBe(true);
-    // Runtime subdirs (.ok/local/, .ok/local/cache/, .ok/local/tmp/) are not
-    // scaffolded — writers create them lazily on first use. The committed
-    // contract here is just .ok/ + .gitignore + config.yml.
     expect(existsSync(join(okDir, 'local'))).toBe(false);
     expect(existsSync(join(okDir, 'cache'))).toBe(false);
     expect(existsSync(join(okDir, '.gitignore'))).toBe(true);
     expect(existsSync(join(okDir, 'config.yml'))).toBe(true);
 
-    // The internal .ok/AGENTS.md
-    // README is no longer scaffolded — behavioral guidance ships via the
-    // user-global Agent Skill + MCP instructions + per-tool descriptions.
     expect(existsSync(join(okDir, 'AGENTS.md'))).toBe(false);
 
-    // Content subdirs are NOT scaffolded —
-    // wiki content lives wherever `content.dir` points (project root by default),
-    // not in opinionated subfolders.
     expect(existsSync(join(okDir, 'articles'))).toBe(false);
     expect(existsSync(join(okDir, 'external-sources'))).toBe(false);
     expect(existsSync(join(okDir, 'research'))).toBe(false);
@@ -70,17 +61,13 @@ describe('initContent', () => {
   });
 
   it('is idempotent — does not clobber existing files', () => {
-    // First init
     initContent(testDir);
 
-    // Write custom content to config.yml
     const configPath = join(testDir, OK_DIR, 'config.yml');
     writeFileSync(configPath, 'custom content');
 
-    // Second init
     const result = initContent(testDir);
 
-    // Custom content should be preserved
     expect(readFileSync(configPath, 'utf-8')).toBe('custom content');
     expect(result.skipped.length).toBeGreaterThan(0);
   });
@@ -90,24 +77,14 @@ describe('initContent', () => {
 
     const okDir = join(testDir, OK_DIR);
 
-    // .gitignore is the single source of truth for OK-internal ignores —
-    // a single `local/` rule covers every per-machine runtime path so adding
-    // a new runtime file never requires a `.gitignore` edit, and the project
-    // root .gitignore stays free of OK-internal entries.
     const gitignore = readFileSync(join(okDir, '.gitignore'), 'utf-8');
     expect(gitignore).toContain('local/');
-    // .ok/worktrees/ (desktop worktree selector) is committed-ignored, not
-    // just excluded per-clone via .git/info/exclude.
     expect(gitignore).toContain('worktrees/');
 
-    // config.yml is the fully-commented starter — every section header
-    // present, every key commented out so the file parses to a no-op.
     const configYml = readFileSync(join(okDir, 'config.yml'), 'utf-8');
     expect(configYml).toContain('OpenKnowledge — project configuration');
     expect(configYml).toContain('# content:');
     expect(configYml).toContain('# appearance:');
-    // No uncommented top-level keys — every non-empty, non-comment line
-    // would mean we accidentally shipped an active override.
     const activeLines = configYml
       .split('\n')
       .map((l) => l.trim())
@@ -129,15 +106,10 @@ describe('initContent', () => {
   it('config.yml scaffold does not teach the removed folders: key or a folder-metadata block', () => {
     initContent(testDir);
     const configYml = readFileSync(join(testDir, OK_DIR, 'config.yml'), 'utf-8');
-    // Folder metadata is documented in the reference, not scaffolded into every
-    // project's config.yml. The REMOVED `folders:`
-    // config key must not be taught as live, the picomatch cheatsheet for it is
-    // gone, and the false "exact structure `ok seed` writes" claim must not return.
     expect(configYml).not.toContain('# folders:');
     expect(configYml).not.toContain("#   - match: 'external-sources/**'");
     expect(configYml).not.toContain('Picomatch glob cheatsheet');
     expect(configYml).not.toContain('exact structure');
-    // The folder-metadata explainer block was removed from the scaffold too.
     expect(configYml).not.toContain('Folders: metadata & templates');
   });
 
@@ -179,13 +151,6 @@ describe('initContent', () => {
     expect(after).toContain('local/');
   });
 
-  // Threat: `ok clone <untrusted-url>` calls runInit() on the freshly cloned
-  // tree. `existsSync` / `readFileSync` / `writeFileSync` all follow symlinks.
-  // An upstream that committed `.ok/.gitignore` (or `.ok/`, `.ok/config.yml`,
-  // `.okignore`) as a symlink could either (a) append OK scaffold lines to a
-  // victim file via the read-modify-write in ensureGitignoreEntries, or
-  // (b) plant the OK scaffold contents at an arbitrary path via the
-  // dangling-symlink branch of writeIfMissing.
   describe('symlink-guard against malicious upstream scaffold paths', () => {
     it('refuses to follow .ok/.gitignore symlink with existing target (read-modify-write)', () => {
       const okDir = join(testDir, OK_DIR);
@@ -263,13 +228,6 @@ describe('initContent', () => {
   });
 });
 
-// Walk up from this test file looking for a committed dogfood file.
-// Returns null when nothing is found before hitting the filesystem root.
-// The drift guards below are skipped when the dogfood file is absent —
-// the public mirror lists `.ok/` and `.okignore` in copybara's
-// `forbiddenOutputPrefixes`, so the file simply never lands there and
-// the tree the test is running in legitimately has no committed copy
-// to drift against.
 function findCommittedDogfoodFile(relativePath: string): string | null {
   let dir = import.meta.dirname;
   while (dir !== '/' && !existsSync(join(dir, relativePath))) {
@@ -281,8 +239,6 @@ function findCommittedDogfoodFile(relativePath: string): string | null {
 const COMMITTED_OK_GITIGNORE = findCommittedDogfoodFile(join('.ok', '.gitignore'));
 const COMMITTED_OKIGNORE = findCommittedDogfoodFile('.okignore');
 
-// Drift guard: the committed `.ok/.gitignore` in this repo MUST stay
-// in sync with what `ok init` writes.
 describe.runIf(COMMITTED_OK_GITIGNORE !== null)(
   'committed .ok/.gitignore matches scaffold output',
   () => {
@@ -304,11 +260,6 @@ describe.runIf(COMMITTED_OK_GITIGNORE !== null)(
   },
 );
 
-// Drift guard: the committed project-root `.okignore` in this repo MUST keep
-// `OK_OKIGNORE_TEMPLATE` as its opening block, byte-for-byte. The repo file
-// may append temporary repo-local exclusions BELOW the scaffold block (those
-// are dogfood-only and must never be folded into the template — the scaffold
-// ships to every new user project).
 describe.runIf(COMMITTED_OKIGNORE !== null)('committed .okignore matches scaffold output', () => {
   it('starts with OK_OKIGNORE_TEMPLATE byte-for-byte', () => {
     const tmp = resolve(
@@ -371,16 +322,11 @@ describe('writeRootGitignoreForNewRepo', () => {
   });
 
   it('refuses to follow a symlink at the .gitignore path (threat model: untrusted upstream)', () => {
-    // Plant a symlink pointing to a sentinel outside the project. If the
-    // helper followed it, the write would clobber the sentinel; the guard
-    // throws instead.
     const sentinel = join(testDir, 'sentinel.txt');
     writeFileSync(sentinel, 'do-not-clobber', 'utf-8');
     symlinkSync(sentinel, join(testDir, '.gitignore'));
     expect(() => writeRootGitignoreForNewRepo(testDir)).toThrow(/Refusing to follow symlink/);
-    // Sentinel content is untouched — the guard fired before the write.
     expect(readFileSync(sentinel, 'utf-8')).toBe('do-not-clobber');
-    // And the symlink itself is still in place (we did not delete it).
     expect(lstatSync(join(testDir, '.gitignore')).isSymbolicLink()).toBe(true);
   });
 });
@@ -472,7 +418,6 @@ describe('ensureProjectSkillGitignore', () => {
     for (const p of PROJECT_SKILL_PROJECTION_IGNORE_PATHS) {
       expect(body).toContain(p);
     }
-    // Covers all editor host roots, not just claude.
     expect(body).toContain('.claude/skills/open-knowledge/');
     expect(body).toContain('.cursor/skills/open-knowledge/');
     expect(body).toContain('.codex/skills/open-knowledge/');
@@ -502,8 +447,6 @@ describe('ensureProjectSkillGitignore', () => {
   it('is skill-name-scoped — it never blanket-excludes `.{host}/skills/`', () => {
     ensureProjectSkillGitignore(testDir);
     const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-    // Every emitted line is the reserved-name bundle dir, never a bare
-    // `.{host}/skills/` that would catch authored skills too.
     for (const line of body.split('\n').filter((l) => l.trim() && !l.startsWith('#'))) {
       expect(line).toContain(`/${RESERVED_PROJECT_SKILL_NAME}/`);
     }

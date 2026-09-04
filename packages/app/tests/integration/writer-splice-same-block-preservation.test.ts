@@ -1,19 +1,3 @@
-/**
- * Same-block byte preservation through Observer A's map-driven splice.
- *
- * Contract (per-write-path fidelity): the WYSIWYG serialize path is
- * construct-canonical — it may canonicalize the construct the human actually
- * edited, but agent-authored bytes of constructs the human did NOT touch must
- * survive, including constructs inside the SAME top-level block as the edit
- * and constructs whose byte-form does not round-trip through parse+serialize
- * (blockquote lazy continuation, blank-line runs inside list items, tight
- * ATX-heading adjacency).
- *
- * Multi-client topology per the observer-bridge coverage rule: the edit is
- * authored on client A; assertions run on BOTH clients after convergence,
- * so remote-peer divergence is covered, not just local echo.
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -58,18 +42,11 @@ function findXmlTextContaining(
 interface SpliceCase {
   name: string;
   seed: string;
-  /** text content of the span the simulated human edits (gets " EDITWORD" appended) */
   editMarker: string;
-  /** full expected Y.Text bytes after the edit settles */
   expected: string;
   covers: string;
 }
 
-/**
- * Seed via the agent path (bytes land verbatim by construction), append
- * " EDITWORD" to the edit-target span through client A's XmlFragment (the
- * WYSIWYG write surface), await convergence, and return both clients' Y.Text.
- */
 async function runSpliceCase(c: SpliceCase): Promise<{ texts: string[]; clients: TestClient[] }> {
   const docName = `splice-${crypto.randomUUID()}`;
   const clients = await createTestClients(server.port, {
@@ -143,12 +120,6 @@ describe('same-block byte preservation through Observer A', () => {
     }, 25_000);
   }
 
-  /**
-   * Control pins: attr-covered cosmetic forms already survive same-block
-   * edits via source-form capture/replay. These pin the behavior the fix
-   * must not regress.
-   *
-   */
   test('attr-covered cosmetic forms survive same-block edits (control pins)', async () => {
     const cases: Array<Omit<SpliceCase, 'expected' | 'covers'> & { untouched: string[] }> = [
       {

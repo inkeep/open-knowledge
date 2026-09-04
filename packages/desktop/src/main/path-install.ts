@@ -11,11 +11,6 @@ import {
   writeFileSync as fsWriteFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-// The fence markers, the manifest path, and the manifest shape are the shared
-// install↔revert contract, owned by the CLI (`ok uninstall` reverts what this
-// installs). Importing them here — rather than re-declaring — is what keeps the
-// two sides from ever drifting. Dependency runs desktop→cli, so the CLI can't
-// import back; this lower layer is the single source of truth.
 import {
   PATH_SHIM_BEGIN as BEGIN,
   PATH_SHIM_BLOCK_RE as BLOCK_RE,
@@ -28,8 +23,6 @@ import {
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
-// Re-exported so existing desktop importers (`main/index.ts`, tests) keep their
-// `from './path-install.ts'` path even though the definition now lives in cli.
 export { pathInstallMarkerPath };
 
 const NAMES = ['ok', 'open-knowledge'] as const;
@@ -69,30 +62,15 @@ const DEFAULT_LOGGER: PathInstallLogger = {
 export type EnsureCliOnPathResult =
   | { status: 'skipped'; reason: string }
   | { status: 'healthy-current'; marker: PathInstallMarker }
-  // `installed` carries a non-empty `summary` naming a real, user-facing
-  // disclosure (rc-file edit, opt-out, legacy cleanup). `installed-silent` is
-  // the install path having only repointed the internal `~/.ok/bin` symlinks —
-  // nothing the user can see or act on (the common case on app upgrade / bundle
-  // path change). The distinct status keeps callers from having to treat an
-  // empty summary string as a sentinel; `computePathLeg` maps it to no toast.
   | { status: 'installed'; marker: PathInstallMarker; summary: string }
   | { status: 'installed-silent'; marker: PathInstallMarker }
   | { status: 'failed-all'; error: string };
 
-/** The PATH leg of the combined startup-reclaim toast (consumed by the main
- *  process dispatcher + serialized to the renderer). `none` = stay silent. */
 export type StartupToastPathLeg =
   | { status: 'none' }
   | { status: 'installed'; summary: string }
   | { status: 'failed'; summary: string };
 
-/**
- * Map an `ensureCliOnPath` outcome to the toast's PATH leg. Only a real
- * disclosure (`installed` with its summary) or a failure surfaces; everything
- * else — including `installed-silent` symlink-only repoints — stays silent.
- * Pure + exported so the toast-gating decision is unit-tested directly rather
- * than buried in the dispatcher.
- */
 export function computePathLeg(result: EnsureCliOnPathResult): StartupToastPathLeg {
   switch (result.status) {
     case 'installed':
@@ -104,8 +82,6 @@ export function computePathLeg(result: EnsureCliOnPathResult): StartupToastPathL
     case 'skipped':
       return { status: 'none' };
     default: {
-      // Exhaustiveness guard — a new EnsureCliOnPathResult status must make an
-      // explicit toast decision here rather than silently mapping to `none`.
       const _exhaustive: never = result;
       throw new Error(
         `unhandled ensureCliOnPath status: ${(_exhaustive as { status: string }).status}`,
@@ -131,13 +107,6 @@ interface EnsureCliOnPathOpts {
   ) => Promise<{ code: number | null; stdout: string; stderr: string; timedOut?: boolean }>;
   logger?: PathInstallLogger;
   now?: () => Date;
-  /**
-   * Caller-supplied rc-append consent to finalize — the consent-dialog
-   * confirm path passes the user's decision here. Startup omits it; the
-   * rc append then requires a recorded `consent: granted` on the marker or
-   * grandfather evidence (a healthy managed block already on disk). OK-owned
-   * steps (`~/.ok/bin`, `~/.ok/env.sh`) run regardless.
-   */
   consentDecision?: PathInstallConsent;
 }
 
@@ -151,14 +120,9 @@ function readMarker(
   try {
     const parsed = JSON.parse(fs.readFileSync(path, 'utf8')) as PathInstallMarker;
     if (parsed?.version !== 1) {
-      // Distinct from parse failure — an unknown version means every boot
-      // re-runs the full install path; that deserves its own signal.
       logger.event({ event: 'path-install-marker-version-unknown', foundVersion: parsed?.version });
       return null;
     }
-    // A malformed consent field must not lock the rc gate open or shut —
-    // treat it as absent so grandfather logic re-derives the decision from
-    // on-disk evidence, and leave a breadcrumb for the operator.
     if (
       parsed.consent !== undefined &&
       parsed.consent?.status !== 'granted' &&
@@ -206,33 +170,20 @@ function rcTargets(
   home: string,
   shell: string | undefined,
   fs: PathInstallFsOps,
-  // ensureCliOnPath passes its injected opts.platform (tests exercise both
-  // OSes from any host); the Settings/descriptor helpers run in-process on
-  // the real host, where process.platform is the right answer.
   platform: string = process.platform,
 ): Array<{ path: string; create: boolean; content: string }> {
   const fishConfigDir = join(home, '.config', 'fish');
   const fishDetected =
     (shell?.endsWith('/fish') ?? false) ||
     fs.existsSync(join(fishConfigDir, 'config.fish')) ||
-    // Fish creates fish_variables on first interactive use. Unlike the config
-    // directory and our conf.d file, older OpenKnowledge builds never created
-    // it, so it is independent evidence for users who launch Fish from a
-    // terminal profile while retaining zsh/bash as their login shell.
     fs.existsSync(join(fishConfigDir, 'fish_variables'));
   const base = [
     { path: join(home, '.zshrc'), create: shell?.endsWith('/zsh') ?? false, content: block() },
     {
       path: join(home, '.bash_profile'),
-      // A fresh macOS Bash user needs `create: true`; otherwise the final
-      // filter only keeps entries for files that already exist on disk.
       create: platform === 'darwin' && (shell?.endsWith('/bash') ?? false),
       content: block(),
     },
-    // Linux interactive non-login bash reads ~/.bashrc, not ~/.bash_profile
-    // (which most distros source only on login shells). Kept off macOS so
-    // the shipping darwin behavior — never touching a mac user's .bashrc —
-    // is unchanged.
     ...(platform === 'linux'
       ? [
           {
@@ -242,10 +193,6 @@ function rcTargets(
           },
         ]
       : []),
-    // Fish gets the same current-shell-or-existing-user-config treatment as
-    // zsh/bash. Do NOT use the fish directory or this OK-owned conf.d file as
-    // evidence: older Desktop builds created both unconditionally, including
-    // on machines where Fish was never installed.
     ...(fishDetected
       ? [
           {
@@ -267,9 +214,6 @@ function upsertBlock(path: string, content: string, fs: PathInstallFsOps): boole
     return next !== prior;
   }
   fs.mkdirSync(dirname(path), { recursive: true });
-  // Pad a freshly appended block with a blank line on both sides so it reads
-  // as its own stanza in the user's rc file. The replace branch above keeps
-  // whatever padding the file already has.
   const sep =
     prior === '' ? '' : prior.endsWith('\n\n') ? '' : prior.endsWith('\n') ? '\n' : '\n\n';
   fs.writeFileSync(path, `${prior}${sep}${content}\n`);
@@ -296,10 +240,6 @@ function linkPointsTo(
     return fs.readlinkSync(path) === target;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
-    // ENOENT (missing) and EINVAL (not a symlink) are expected "unhealthy"
-    // answers. Anything else (EACCES on managed devices, iCloud-synced
-    // homes) would otherwise masquerade as a reinstall trigger and get
-    // misattributed to the write path when the reinstall fails too.
     if (code !== 'ENOENT' && code !== 'EINVAL') {
       logger?.event({
         event: 'path-install-readlink-unexpected-error',
@@ -334,9 +274,7 @@ function replaceSymlinkAtomic(link: string, wrapper: string, fs: PathInstallFsOp
   } catch (err) {
     try {
       fs.unlinkSync(tmp);
-    } catch {
-      // Best-effort tmp cleanup; preserve the original rename failure.
-    }
+    } catch {}
     throw err;
   }
 }
@@ -361,10 +299,6 @@ export async function defaultSpawn(
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
       });
-      // A stuck shell (slow .zshrc, network-mounted home) must never hold
-      // the main process open at quit, accumulate output past the timeout,
-      // or survive a SIGTERM it traps — unref everything, detach the pipes
-      // on timeout, and escalate to SIGKILL.
       child.unref();
       let stdout = '';
       let stderr = '';
@@ -403,9 +337,6 @@ async function discoverRealInteractivePath(
   opts: EnsureCliOnPathOpts,
 ): Promise<PathDiscovery | null> {
   const env = opts.env ?? process.env;
-  // $SHELL is set by every login environment we care about; the fallback is
-  // only for stripped launch contexts — zsh has been the macOS default since
-  // Catalina, bash is the near-universal Linux default.
   const shell = env.SHELL ?? (opts.platform === 'linux' ? '/bin/bash' : '/bin/zsh');
   const spawn = opts.spawn ?? defaultSpawn;
   const logger = opts.logger ?? DEFAULT_LOGGER;
@@ -439,16 +370,6 @@ async function discoverRealInteractivePath(
   }
 }
 
-/**
- * Earlier Desktop builds also seeded `ok` / `open-knowledge` symlinks into
- * every writable non-system PATH directory so already-open shells picked up
- * the CLI without a restart. That surprised users (an `ok` appearing in
- * `~/.cargo/bin`, opam switches, etc.), so we no longer create them — this
- * pass only REMOVES the ones a prior install recorded in the marker, and only
- * while they still point at the recorded target. Re-pointed or replaced
- * entries are left on disk (no longer ours) and dropped from the marker;
- * entries that fail to unlink are kept so the next startup retries.
- */
 function removeRecordedExtraSymlinks(
   recorded: PathInstallMarker['extraSymlinks'],
   fs: PathInstallFsOps,
@@ -486,8 +407,6 @@ function markerHealthy(
   if (marker.bundleWrapperPath !== wrapper) return false;
   if (!canonicalHealthy(home, wrapper, fs, logger)) return false;
   if (!marker.rcFiles.every((file) => rcBlockHealthy(file, fs))) return false;
-  // Any recorded extra symlink is pending legacy cleanup — fall through to
-  // the install path so removeRecordedExtraSymlinks runs.
   if (marker.extraSymlinks.length > 0) return false;
   return true;
 }
@@ -505,39 +424,18 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     logger = DEFAULT_LOGGER,
   } = opts;
   if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  // Windows PATH is the installer's job (installer-owned Windows PATH): the NSIS include appends the
-  // wrapper dir to the HKCU user PATH at install and removes it at
-  // uninstall. The rc-file + ~/.ok/bin symlink machinery below is
-  // POSIX-only, so this module never runs there.
   if (platform === 'win32') return { status: 'skipped', reason: 'installer-managed' };
   if (platform !== 'darwin' && platform !== 'linux')
     return { status: 'skipped', reason: 'platform' };
   if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
   const shape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
-  // AppImage mounts relocate every launch — a ~/.ok/bin symlink into the
-  // mount would be dead by next boot. deb (and unpacked-dir) installs are
-  // the Linux PATH-install surface; AppImage users get the npm CLI hint.
   if (shape.kind === 'appimage') return { status: 'skipped', reason: 'appimage-ephemeral' };
   if (shape.kind === 'unsupported') return { status: 'skipped', reason: 'bad-executable-path' };
 
   const wrapper = shape.wrapperPath;
   const prior = readMarker(home, fs, logger);
-  // ANY caller-supplied decision must reach the full install path. The
-  // fast-path below would otherwise swallow a grant on a marker that is
-  // healthy-but-blockless: `markerHealthy` is vacuously true when `rcFiles`
-  // is empty (fresh boot wrote only symlinks + shim; or a Settings uninstall
-  // stripped the blocks and recorded declined), so a same-status re-grant
-  // (granted → granted after a partial write) or a declined → granted flip
-  // from the Settings checkbox would return healthy-current without ever
-  // appending a block. The full path is idempotent, so an explicit decision
-  // re-running it is safe.
   const explicitDecision = opts.consentDecision !== undefined;
   if (prior && !explicitDecision && markerHealthy(prior, home, wrapper, fs, logger)) {
-    // Grandfather stamp: a pre-consent marker whose recorded rc files
-    // all still carry the managed block — markerHealthy just verified them —
-    // is a working silent-era install. Record it as granted so the decision
-    // is durable + observable, without re-running the install pipeline. A
-    // failed stamp write is non-fatal: next boot retries.
     if (!prior.consent && prior.rcFiles.length > 0) {
       const marker: PathInstallMarker = {
         ...prior,
@@ -563,9 +461,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     return { status: 'healthy-current', marker: prior };
   }
 
-  // Phase tracker — the six failable operations below all funnel into a single
-  // outer catch, so without this an operator querying `path-install-failed-all`
-  // can't distinguish a symlink failure from an rc-file permission error.
   let phase:
     | 'installCanonical'
     | 'writeEnvShim'
@@ -591,11 +486,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
 
     phase = 'discoverPath';
     const discovery = await discoverRealInteractivePath(opts);
-    // rc-file reads get their own phase so an EACCES on a dotfile isn't
-    // misattributed to the shell spawn above.
     phase = 'checkRcHealth';
-    // Honor deliberate removal: a recorded rc file that no longer carries the
-    // managed block (or is gone outright) was cleaned by the user.
     const priorOptOuts = prior?.rcOptOuts ?? [];
     const newOptOuts = (prior?.rcFiles ?? []).filter(
       (file) => !priorOptOuts.includes(file) && !rcBlockHealthy(file, fs),
@@ -608,12 +499,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       (target) => !rcOptOuts.includes(target.path),
     );
     const activePriorRcFiles = (prior?.rcFiles ?? []).filter((file) => !rcOptOuts.includes(file));
-    // An explicit grant must never take this shortcut: after a Settings
-    // uninstall `rcFiles` is empty (vacuously "all healthy") and
-    // `okBinAlreadyOnPath` is often stale-true — the probe shell INHERITS the
-    // app's PATH, which still carries `~/.ok/bin` when the app was launched
-    // from a terminal whose session predates the uninstall. Skipping here
-    // would record the grant while writing no block, wedging the checkbox.
     const explicitGrant = opts.consentDecision?.status === 'granted';
     const canSkipRc =
       !explicitGrant &&
@@ -621,12 +506,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       discovery?.okBinAlreadyOnPath === true &&
       activePriorRcFiles.every((file) => rcBlockHealthy(file, fs));
     const nowIso = (opts.now?.() ?? new Date()).toISOString();
-    // Consent resolution. Priority: caller decision (the
-    // consent-dialog confirm path) > recorded marker field > grandfather
-    // evidence — a healthy managed block already on disk, from a
-    // silent-era install or a dotfile-synced rc file. With none of the
-    // three, the user's rc files stay untouched and the first-launch
-    // dialog owns the decision.
     const grandfatherEvidence =
       activePriorRcFiles.some((file) => rcBlockHealthy(file, fs)) ||
       targets.some((target) => rcBlockHealthy(target.path, fs));
@@ -641,19 +520,12 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     if (canSkipRc && prior) {
       rcFiles.push(...activePriorRcFiles);
     } else if (rcConsented) {
-      // Keep no-longer-targeted prior files in the marker so Settings/uninstall
-      // can still clean up footprints from older targeting rules (notably the
-      // Fish file that older Desktop builds created for every user). Only the
-      // currently detected targets are written or refreshed.
       rcFiles.push(...activePriorRcFiles);
       for (const target of targets) {
         if (upsertBlock(target.path, target.content, fs)) changedRcFiles.push(target.path);
         if (!rcFiles.includes(target.path)) rcFiles.push(target.path);
       }
     } else {
-      // Declined or undecided: never write into the user's rc files. Keep
-      // watching recorded files that still hold a block (a dotfile-synced
-      // block under a later decline) so opt-out detection stays live.
       rcFiles.push(...activePriorRcFiles.filter((file) => rcBlockHealthy(file, fs)));
     }
     phase = 'cleanupExtraSymlinks';
@@ -673,9 +545,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       ...(consent ? { consent } : {}),
     };
     writeMarker(home, marker, fs);
-    // Consent telemetry — emitted only when the durable record
-    // actually changed, after the marker write proves it stuck. Attributes
-    // are bounded: a literal source + a count, never paths.
     if (consent && consent.status !== prior?.consent?.status) {
       logger.event({
         event:
@@ -689,7 +558,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     logger.event({ event: 'path-install-symlink-success', binDir: marker.binDir });
     if (changedRcFiles.length > 0)
       logger.event({ event: 'path-install-rc-append-success', rcFiles: changedRcFiles });
-    // Toast copy — name the exact files touched so the disclosure is concrete.
     const parts: string[] = [];
     if (changedRcFiles.length > 0)
       parts.push(
@@ -703,8 +571,6 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
       parts.push(
         `Removed ${cleanup.removedCount} leftover ok symlink(s) created by an older version.`,
       );
-    // No concrete disclosure → the install only repointed `~/.ok/bin` symlinks.
-    // Report `installed-silent` so no toast fires (see EnsureCliOnPathResult).
     if (parts.length === 0) return { status: 'installed-silent', marker };
     return { status: 'installed', marker, summary: parts.join(' ') };
   } catch (err) {
@@ -715,20 +581,9 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
   }
 }
 
-/**
- * PATH-install descriptor for the first-launch consent dialog's PATH row.
- * Read-only — never writes. `rcFilesToTouch` is what a grant would edit
- * (tildified for display; recorded opt-outs excluded — deliberate
- * removals stay respected).
- * `shellDetected: false` (no touchable rc files) hides the row entirely.
- * `alreadyInstalled` renders the row as informational: a managed block is
- * already on disk (grandfathered silent-era install or a dotfile-synced rc
- * file) or consent was already granted — no new decision to solicit.
- */
 export function computePathInstallDescriptor(opts: {
   home: string;
   env?: Record<string, string | undefined>;
-  /** Rc-target platform. Defaults to the real host; tests pin it. */
   platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
@@ -751,17 +606,9 @@ export function computePathInstallDescriptor(opts: {
   };
 }
 
-/**
- * Settings-surface probe: is the managed rc block actually on disk? Distinct
- * from `computePathInstallDescriptor().alreadyInstalled`, which also reads
- * true on a recorded grant with no block — the Settings checkbox reflects the
- * real effect (block present ⇒ `ok` resolves in external terminals), so a
- * failed or reverted grant renders unchecked and stays re-installable.
- */
 export function isPathShimInstalled(opts: {
   home: string;
   env?: Record<string, string | undefined>;
-  /** Rc-target platform. Defaults to the real host; tests pin it. */
   platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
@@ -782,26 +629,9 @@ export type RemovePathShimResult =
   | { status: 'not-installed' }
   | { status: 'failed'; error: string };
 
-/**
- * Settings-surface uninstall — the inverse of the consent-granted rc append.
- * Strips the managed block from every candidate rc file (recorded
- * `marker.rcFiles` plus the current shell targets), deletes the OK-owned fish
- * conf file outright when nothing but the block was in it, and records
- * `consent: declined` with `rcFiles: []` so the startup self-heal never
- * re-appends.
- *
- * Deliberately narrower than `ok uninstall`: `~/.ok/bin` and `~/.ok/env.sh`
- * stay — the built-in terminal injects `~/.ok/bin` itself and MCP wiring runs
- * over npx, so only the EXTERNAL-terminal footprint (the rc blocks) is
- * removed. Stripped files are NOT added to `rcOptOuts` — that list means "the
- * USER removed the block, never write there again", and recording an
- * OK-initiated removal there would break a later re-install from the same
- * Settings checkbox.
- */
 export function removePathShimFromRcFiles(opts: {
   home: string;
   env?: Record<string, string | undefined>;
-  /** Rc-target platform. Defaults to the real host; tests pin it. */
   platform?: string;
   fs?: PathInstallFsOps;
   logger?: PathInstallLogger;
@@ -815,10 +645,6 @@ export function removePathShimFromRcFiles(opts: {
       (target) => target.path,
     ),
     ...(marker?.rcFiles ?? []),
-    // Detection and cleanup intentionally differ: this self-identifying,
-    // OK-owned path is not evidence that Fish is installed, but uninstall
-    // must still find footprints from unconditional older installs even when
-    // their marker is missing or malformed.
     okOwnedFishConf,
   ]);
   const strippedFiles: string[] = [];
@@ -826,14 +652,10 @@ export function removePathShimFromRcFiles(opts: {
     for (const path of candidates) {
       if (!fs.existsSync(path)) continue;
       const prior = fs.readFileSync(path, 'utf8');
-      // Loop: a file that somehow accumulated multiple managed blocks (rc
-      // concatenation, dotfile sync merge) must come out fully clean.
       let next = prior;
       while (BLOCK_RE.test(next)) next = next.replace(BLOCK_RE, '');
       if (next === prior) continue;
       if (next.trim() === '' && path === okOwnedFishConf) {
-        // The whole file was the managed block (OK created it) — remove the
-        // file rather than leave an empty husk behind.
         fs.unlinkSync(path);
       } else {
         fs.writeFileSync(path, next);

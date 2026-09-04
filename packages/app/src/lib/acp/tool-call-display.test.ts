@@ -1,10 +1,3 @@
-/**
- * Payload shapes below are taken from recorded thread transcripts
- * (`~/.ok/threads/*.ndjson`) rather than invented: Claude, Codex, Pi, and
- * Cursor each name the same MCP tool differently, and that spread is the whole
- * reason detection can't key off one spelling.
- */
-
 import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { describeToolCall } from './tool-call-display';
@@ -104,8 +97,6 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
   });
 
   test('the arguments stream in, so a call with none yet still reads as OK work', () => {
-    // Claude sends the tool_call with `rawInput: {}` and fills it in over
-    // subsequent updates — the row must not be blank in between.
     expect(
       describeToolCall({ title: 'mcp__open-knowledge__write', toolKind: 'other', rawInput: {} }),
     ).toEqual({ glyph: 'edit', text: 'OpenKnowledge wrote a document' });
@@ -181,8 +172,6 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
   });
 
   test("a skill's `name` argument is not mistaken for the tool name", () => {
-    // `install` carries the skill at `name`; the title is what says which tool
-    // ran, so it has to win over the argument.
     expect(
       describeToolCall({
         title: 'mcp__open-knowledge__install',
@@ -220,8 +209,6 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
   });
 
   test('every registered tool has its own copy, none falls through', () => {
-    // The generic arm is the fallback for a tool this file has not learned
-    // yet — reaching it for a registered tool means the copy is missing.
     for (const tool of OPEN_KNOWLEDGE_MCP_TOOLS) {
       const { text } = describeToolCall({
         title: `mcp__open-knowledge__${tool}`,
@@ -266,7 +253,6 @@ describe('describeToolCall — everything that is not an OK tool', () => {
   });
 
   test("Cursor's opaque MCP label falls through rather than guessing", () => {
-    // Cursor sends neither server nor tool name, so there is nothing to detect.
     expect(describeToolCall({ title: 'MCP: tool', toolKind: 'other', rawInput: {} })).toEqual({
       glyph: 'other',
       text: 'MCP: tool',

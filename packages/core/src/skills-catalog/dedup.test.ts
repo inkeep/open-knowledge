@@ -19,7 +19,6 @@ describe('groupSkillsByIdentity', () => {
       occ('foo', 'cursor', 'h1'),
     ]);
     expect(groups).toHaveLength(1);
-    // Precedence: claude wins over cursor/codex.
     expect(groups[0]?.canonical.editor).toBe('claude');
     expect(groups[0]?.copies.map((c) => c.editor).sort()).toEqual(['codex', 'cursor']);
     expect(groups[0]?.isFork).toBe(false);
@@ -29,7 +28,6 @@ describe('groupSkillsByIdentity', () => {
     const groups = groupSkillsByIdentity([occ('foo', 'claude', 'h1'), occ('foo', 'codex', 'h2')]);
     expect(groups).toHaveLength(2);
     expect(groups.every((g) => g.isFork)).toBe(true);
-    // Each fork keeps its own occurrence as canonical; no cross-copying.
     const byHash = new Map(groups.map((g) => [g.contentHash, g]));
     expect(byHash.get('h1')?.canonical.editor).toBe('claude');
     expect(byHash.get('h1')?.copies).toHaveLength(0);
@@ -40,9 +38,9 @@ describe('groupSkillsByIdentity', () => {
   test('mixed: a deduped skill and an unrelated fork-pair coexist', () => {
     const groups = groupSkillsByIdentity([
       occ('shared', 'claude', 'a'),
-      occ('shared', 'codex', 'a'), // copy of shared
+      occ('shared', 'codex', 'a'),
       occ('forked', 'claude', 'x'),
-      occ('forked', 'cursor', 'y'), // fork of forked
+      occ('forked', 'cursor', 'y'),
     ]);
     const shared = groups.find((g) => g.name === 'shared');
     expect(shared?.isFork).toBe(false);
@@ -61,7 +59,6 @@ describe('groupSkillsByIdentity', () => {
       occ('foo', 'claude', 'h', 'global'),
     ]);
     expect(groups).toHaveLength(2);
-    // Same name, same hash, DIFFERENT scope → two independent identities, neither a fork.
     expect(groups.every((g) => !g.isFork)).toBe(true);
     expect(groups.map((g) => g.scope).sort()).toEqual(['global', 'project']);
   });

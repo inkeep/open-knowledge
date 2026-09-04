@@ -1,19 +1,3 @@
-/**
- * `palette` MCP tool — return the OK report-authoring palette: the
- * markdown-native forms OK auto-promotes into themed canonical components, the
- * copy-ready themed `html preview` embed starters, and the theme-token subset
- * injected into every preview iframe.
- *
- * Workflow-class: reads pure module-export data (registry descriptors + the
- * generated token constant + the shared embed-starter snippets). No Hocuspocus
- * dependency — works in projects whose server isn't running. Input: `{ cwd? }`.
- * Output: `{ version: 1, components, embedPatterns, tokens }`.
- *
- * Also absorbs the former `get_components`: pass `components: [ids]` to expand a
- * picked set of canonical ids to their full JSX-form schema. The base palette
- * teaches the *authoring forms* — write `> [!NOTE]`, not `<Callout>`.
- */
-
 import {
   type ComponentEntryFull,
   getAgentCanonicalDescriptors,
@@ -108,17 +92,9 @@ const OutputSchema = outputSchemaWithText({
     .describe('Requested `components` ids that did not match any canonical.'),
 });
 
-/**
- * The markdown-native authoring forms. `registryName` (when set) grounds the
- * entry in a live canonical descriptor so the palette can never advertise a
- * component the registry dropped; the `example` + `guidance` are the
- * example-first teaching layer.
- */
 interface AuthoringFormSeed {
   id: string;
-  /** Canonical descriptor name to ground `displayName` in, when one exists. */
   registryName?: string;
-  /** Used when no registry descriptor backs the construct (fences, wiki-embed). */
   fallbackDisplayName: string;
   description: string;
   authoring: 'markdown' | 'jsx';
@@ -213,7 +189,6 @@ interface AuthoringComponent {
   guidance: string;
 }
 
-/** Resolve the authoring forms, grounding `displayName` in the live registry. */
 function buildComponents(): AuthoringComponent[] {
   const byName = new Map(getAgentCanonicalDescriptors().map((d) => [d.name, d]));
   return AUTHORING_FORMS.map((form) => {
@@ -242,9 +217,6 @@ export function register(server: ServerInstance, _deps: GetAuthoringPaletteDeps)
       },
     },
     async (args: { components?: string[]; cwd?: string }) => {
-      // `cwd` is accepted for routing-envelope consistency with the former `get_components`
-      // / `exec` but intentionally not read — the palette is process-global
-      // (registry + generated constant + shared starter snippets).
       void args.cwd;
       const payload: {
         version: 1;
@@ -264,8 +236,6 @@ export function register(server: ServerInstance, _deps: GetAuthoringPaletteDeps)
         })),
         tokens: PREVIEW_THEME_TOKENS.map((t) => ({ name: t.name, light: t.light, dark: t.dark })),
       };
-      // Merged from the former `get_components`: expand requested canonical ids
-      // to their full JSX-form detail.
       if (args.components && args.components.length > 0) {
         const byId = new Map(getAgentCanonicalDescriptors().map((d) => [d.name, d]));
         const details: ComponentEntryFull[] = [];

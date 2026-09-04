@@ -25,18 +25,11 @@
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-// Stub dispatchAssetClick so the button's onClick does not attempt a
-// real shell.openAsset IPC or window.open in jsdom. The no-anchor
-// assertion is the load-bearing proof; the stub keeps the test
-// self-contained and prevents unhandled-promise noise in jsdom.
 const dispatchAssetClickStub = vi.fn(async () => {});
 vi.doMock('@/editor/asset-dispatch', () => ({
   dispatchAssetClick: dispatchAssetClickStub,
 }));
 
-// The asset view hosts the NotInSidebarIndicator, whose config hook throws
-// without a provider — stub the app-default view (all fixtures here use
-// visible paths, so the indicator stays unmounted).
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
@@ -56,7 +49,6 @@ describe('AssetPreview — text-viewer dispatch', () => {
     const { container } = render(<AssetPreview assetPath="docs/sample.json" mediaKind="text" />);
     expect(container.querySelector('[data-text-viewer]')).not.toBeNull();
     expect(container.querySelector('[data-text-viewer-extension="json"]')).not.toBeNull();
-    // The fallback's "Open file" and "View as text" must not appear.
     expect(container.querySelector('[data-testid="asset-preview-open-as-text"]')).toBeNull();
   });
 
@@ -77,10 +69,6 @@ describe('AssetPreview — text-viewer dispatch', () => {
   });
 
   test('fallback pane has no raw <a href="/api/asset"> same-frame nav (FR2)', () => {
-    // "Open file" must never do a top-level navigation to /api/asset —
-    // that renders the API's 415/404 error envelope as the page. The
-    // button dispatches via dispatchAssetClick (OS-handoff on desktop,
-    // new tab on web) instead.
     const { container } = render(<AssetPreview assetPath="docs/data.zip" mediaKind={null} />);
     expect(container.querySelector('a[href*="/api/asset"]')).toBeNull();
     expect(container.querySelector('[data-testid="asset-preview-open-as-text"]')).not.toBeNull();
@@ -109,9 +97,6 @@ describe('AssetPreview — text-viewer dispatch', () => {
     ) as HTMLButtonElement | null;
     expect(btn).not.toBeNull();
     fireEvent.click(btn as HTMLButtonElement);
-    // After the click the text viewer mounts in place (no
-    // navigation / re-mount); the assetPath-keyed reset on the
-    // `<TextViewer>` ensures a fresh fetch.
     expect(container.querySelector('[data-text-viewer]')).not.toBeNull();
     expect(container.querySelector('[data-text-viewer-extension="pdf"]')).not.toBeNull();
   });

@@ -1,12 +1,3 @@
-/**
- * The queue send's one override row.
- *
- * The send is automatic — a live chat takes the batch, none open starts one —
- * so this row exists solely for the case the automatic answer gets wrong: a
- * chat is open, but this batch belongs in a clean one. Without it, having any
- * chat open would make a fresh turn unreachable.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,7 +21,6 @@ vi.doMock('@lingui/react/macro', () => ({
 
 afterEach(() => cleanup());
 
-/** Mounted in an open menu — it is a menu item and needs the menu's context. */
 function renderRow(onStartNewChat = () => {}) {
   return render(
     <DropdownMenu defaultOpen>
@@ -44,8 +34,6 @@ function renderRow(onStartNewChat = () => {}) {
 
 describe('the new-chat override row', () => {
   test('names the act, matching the verb the dock uses', async () => {
-    // "Start" is what the dock's own primary says ("Start an agent") and what
-    // the send button says with no chat open — one verb for one act.
     renderRow();
     const row = await screen.findByTestId('comment-queue-send-new');
     expect(row.textContent).toContain('Start a new chat');

@@ -1,19 +1,3 @@
-/**
- * Durable form of the `RecentlyRemovedDocs` cache at
- * `<projectDir>/.ok/local/removed-docs.json`.
- *
- * Every anti-resurrection signal (removal LRU, per-doc lifecycle markers,
- * reconciledBase) is otherwise per-process — after a restart the server
- * retains zero memory that a deletion or rename ever happened, while
- * clients (a browser tab's y-indexeddb cache) still hold the doc's full
- * Yjs state and would be admitted as a legitimate first write, re-creating
- * the file. Persisting the cache keeps the removal-redirect guard armed
- * across restarts. Stale entries are harmless: the guard is
- * file-existence-first for `deleted` entries (a re-created file drops the
- * entry and admits), and `/api/create-page` plus the watcher `add` arm
- * invalidate eagerly.
- */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
@@ -44,12 +28,6 @@ function isJournalEntry(value: unknown): value is { docName: string } & RemovalE
   return false;
 }
 
-/**
- * Read the persisted removal entries, oldest-first (LRU order preserved so
- * re-populating the cache reproduces the same eviction order). Missing
- * file → empty. Corrupt / wrong-shape file → warn and empty — the guard
- * degrades to today's per-process behavior rather than blocking boot.
- */
 export function loadRemovedDocsJournal(projectDir: string): Array<[string, RemovalEntry]> {
   const path = removedDocsJournalPath(projectDir);
   if (!existsSync(path)) return [];
@@ -72,14 +50,6 @@ export function loadRemovedDocsJournal(projectDir: string): Array<[string, Remov
   }
 }
 
-/**
- * Atomically persist the cache snapshot (tmp + rename for POSIX atomicity so
- * a crash mid-write can't leave a truncated journal). The fixed `.tmp` suffix
- * is safe here — one server per contentDir (`server.lock`) and the debounce
- * coalesces saves, so there is never a concurrent writer — matching the
- * single-writer journal discipline (`managed-rename-journal`), not
- * persistence's UUID-suffixed tmp (which exists for concurrent writers).
- */
 export function saveRemovedDocsJournal(
   projectDir: string,
   entries: ReadonlyArray<[string, RemovalEntry]>,

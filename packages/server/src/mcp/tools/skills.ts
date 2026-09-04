@@ -1,14 +1,3 @@
-/**
- * `skills` MCP tool — the READ half of the skill vocabulary (list + read).
- *
- * Skills are first-class addressed entities (name + scope), like
- * `document`/`folder`/`template`. The mutate verbs (`write`/`edit`/`delete`/
- * `move`/`install` over `skill`) already exist; this is the missing read half.
- * It exposes the SAME index the Skills sidebar uses (`GET /api/skills`, spanning
- * Project + Global scopes) plus per-skill content (`GET /api/skill`), so an agent
- * NEVER browses `.ok/` to find or read a skill — `.ok/` stays opaque (no `ls`,
- * no raw `.ok/skills/...` paths). Read-only; mutation stays with the verb tools.
- */
 import {
   AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
@@ -31,22 +20,10 @@ import {
 import { fetchSkill, readSkillFile, type SkillScope } from './skill-target.ts';
 import { resolveSkillFilePath, SkillScopeArg } from './verb-schemas.ts';
 
-/**
- * Classify a bundle-file path into its kind by its allowed-root prefix. Used to
- * project `GET /api/skill`'s inline `files` list into the `{ path, kind }`
- * shape — the list response drops `text` (no inline content), so an agent
- * lists first, then reads one file via `skills({ name, file })`.
- */
 function bundleFileKind(path: string): 'reference' | 'script' {
   return path.replace(/\\/g, '/').startsWith('scripts/') ? 'script' : 'reference';
 }
 
-/**
- * Project one raw `/api/skills` row into the tool's location-model shape:
- * every physical location with its role (`source` first — the skill's real
- * folder), audience (folder aliases resolving into it), and drift. This is
- * the read half of the location verbs on `install` (add/remove/mode/source).
- */
 function projectListRow(s: Record<string, unknown>): {
   name: unknown;
   scope: unknown;
@@ -71,7 +48,7 @@ function projectListRow(s: Record<string, unknown>): {
   const drift = new Set(Array.isArray(s.driftPaths) ? (s.driftPaths as string[]) : []);
   const rootOf = (h: string): string => {
     if (h === 'agents') return AGENTS_SKILLS_ROOT;
-    if (h.includes('/')) return h; // custom-root id IS its path
+    if (h.includes('/')) return h;
     const map = scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
     return (map as Record<string, string | null>)[h] ?? h;
   };
@@ -92,7 +69,6 @@ function projectListRow(s: Record<string, unknown>): {
       ...(drift.has(path) ? { drift: true } : {}),
     };
   });
-  // Recorded custom placements not already surfaced as scan hosts.
   const placements = Array.isArray(s.customPlacements)
     ? (s.customPlacements as Array<{ path: string; mode: 'copy' | 'link' }>)
     : [];
@@ -121,13 +97,6 @@ function projectListRow(s: Record<string, unknown>): {
   };
 }
 
-/**
- * Teaching error for a READ aimed at one of OK's built-in skills. Without it,
- * an agent told to "load the open-knowledge skill" calls
- * `skills({ name: "open-knowledge" })`, hits a bare `Skill not found.` 404, and
- * falls back to cat-ing the bundled SKILL.md — a confusing dead end. The skill
- * is already in the agent's loaded skill list; it must not be fetched here.
- */
 function internalSkillHint(name: string): string {
   return [
     `"${name}" is one of OpenKnowledge's built-in agent skills — it is NOT managed by this tool and cannot be read or listed here.`,
@@ -136,15 +105,9 @@ function internalSkillHint(name: string): string {
   ].join(' ');
 }
 
-// Scope reads the same on the wire and in the UI — `project` / `global`
-// (matching the verbs, `/api/skills`, and the persisted `__skill__/global/`
-// doc names). Stated overtly so an agent knows exactly which level it targets.
 const SCOPE_FIELD_DESCRIBE =
   'Which level the skill lives at. `project` = lives in this KB (wherever its folder is; shared via git); `global` = user-level under your home dir (available in every project on this machine, not shared).';
 
-/** One LOCATION holding the skill: its id (pass to `install` add/remove/
- *  source), its bundle dir, and what it physically IS there. The `source`
- *  role is the skill itself — one per skill, always present. */
 const SkillLocationEntryOutputSchema = z.object({
   id: z
     .string()
@@ -171,7 +134,6 @@ const SkillLocationEntryOutputSchema = z.object({
     .describe('Something outside OK rewrote this path since OK last wrote it.'),
 });
 
-/** One row of the skills index, as the tool projects it. */
 const SkillListEntryOutputSchema = z.object({
   name: z.string().describe('Skill name (its identity; pass to `edit`/`move`/`delete`/`install`).'),
   scope: z.enum(['project', 'global']).describe(SCOPE_FIELD_DESCRIBE),
@@ -200,7 +162,6 @@ const SkillListEntryOutputSchema = z.object({
     .describe('Host ids where a DIFFERENT skill with this name occupies the slot.'),
 });
 
-/** One bundle-file row in a skill READ: path + kind, NO inline content. */
 const SkillBundleFileEntrySchema = z.object({
   path: z.string().describe('Skill-relative path (e.g. "references/tiers.md").'),
   kind: z
@@ -333,9 +294,6 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         );
       }
 
-      // OK's own built-in skills are runtime/agent skills, never content skills —
-      // short-circuit before touching cwd/server so the error teaches (rather
-      // than 404s) regardless of scope or whether a server is running.
       if (args.name !== undefined && INTERNAL_BUNDLE_SKILL_NAMES.has(args.name)) {
         return textResult(`Error: ${internalSkillHint(args.name)}`, true);
       }
@@ -353,9 +311,6 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
       if (args.query !== undefined) {
         const q = args.query.trim();
         if (q.length < 2) {
-          // Returning an empty result set with `backend: 'skills.sh'` claimed the
-          // marketplace had answered when no request was made, so the agent
-          // concluded nothing was published and stopped instead of broadening.
           return textResult(
             'Error: `query` needs at least 2 characters — the skills.sh search rejects shorter terms.',
             true,
@@ -395,15 +350,12 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         });
       }
 
-      // `file` is a READ-file selector — it needs a `name` to address the skill.
       if (args.file !== undefined && args.name === undefined) {
         return textResult(
           'Error: `file` reads ONE bundle file of a skill — pass `name` too: skills({ name, file: "references/x.md" }).',
           true,
         );
       }
-      // Normalized once here (separators, `.`/empty segments) and reused below —
-      // sending the raw string on would make this validation dead code.
       let bundleFilePath: string | undefined;
       if (args.file !== undefined) {
         const check = resolveSkillFilePath(args.file);
@@ -411,30 +363,17 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         bundleFilePath = check.path;
       }
 
-      // LIST mode — the same index the Skills sidebar uses (both scopes).
       if (args.name === undefined) {
         const listRes = await httpGetRows(url, '/api/skills', 'skills');
         if ('error' in listRes) return textResult(`Error: ${listRes.error}`, true);
         const rawSkills = listRes.rows;
-        // Hide OK's own built-in `open-knowledge*` skills from the LIST: they now
-        // surface in `/api/skills` (managed, read-only) for the editor UI, but
-        // the agent already has them loaded (the READ short-circuit above teaches
-        // that), and LISTing them here would contradict it.
-        // The runtime three stay OUT of
-        // the agent-facing list — an agent browsing its own steering skill is
-        // recursion noise, and the read-only edit gate covers mutation. Packs
-        // and every other first-party skill list ordinarily.
         const authored = rawSkills.filter((s) => !isInternalBundleSkillName(String(s.name)));
-        // `scope` FILTERS the list. Accepting it and then returning both levels
-        // answered a different question than the one asked: an agent asking for
-        // global skills got every project skill too.
         const scoped =
           args.scope === undefined ? authored : authored.filter((s) => s.scope === args.scope);
         const skills = scoped.map((s) => projectListRow(s));
         return textPlusStructured(JSON.stringify({ skills }, null, 2), { skills });
       }
 
-      // READ mode — resolve scope (explicit, else by name across the index).
       let scope = args.scope;
       if (scope === undefined) {
         const listRes = await httpGetRows(url, '/api/skills', 'skills');
@@ -444,16 +383,12 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         if (matches.length === 0) {
           return textResult(`Error: no skill named "${args.name}" (Project or Global).`, true);
         }
-        // Prefer Project when a name exists at both levels (mirrors editor scope
-        // precedence); otherwise use the single matching scope.
         scope =
           matches.find((s) => s.scope === 'project') !== undefined
             ? 'project'
             : (matches[0]?.scope as SkillScope);
       }
 
-      // READ-FILE mode — one bundle file's text (universal read path; works for
-      // scripts + global refs that aren't graph-visible).
       if (args.file !== undefined) {
         const fileRead = await readSkillFile(url, scope, args.name, bundleFilePath ?? args.file);
         if (!fileRead.ok) return textResult(`Error: ${fileRead.error}`, true);
@@ -461,8 +396,6 @@ export function register(server: ServerInstance, deps: SkillsToolDeps): void {
         return textPlusStructured(JSON.stringify({ file }, null, 2), { file });
       }
 
-      // READ-SKILL mode — description + body + the bundle-file list (no inline
-      // text; an agent reads one file via `skills({ name, file })`).
       const read = await fetchSkill(url, scope, args.name);
       if (!read.ok) return textResult(`Error: ${read.error}`, true);
       const skill = {

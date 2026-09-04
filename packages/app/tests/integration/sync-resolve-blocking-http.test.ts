@@ -1,15 +1,3 @@
-/**
- * HTTP contract for `POST /api/sync/resolve-blocking` — the button behind
- * "Changed here and on the remote", which commits exactly the tracked files
- * whose local edits overlap an incoming merge and then resumes sync.
- *
- * The handler has four distinct response paths and the schema deliberately
- * admits only one action. Each is covered here because this is the one route
- * in the sync surface that writes a git commit on the user's behalf: a wrong
- * 200 commits files the user did not choose, and a wrong 409 leaves them stuck
- * behind a pause with no in-app way out.
- */
-
 import { execFile } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,9 +38,6 @@ describe('POST /api/sync/resolve-blocking', () => {
   test(
     'refuses with 409 when nothing is blocking a merge',
     async () => {
-      // The pause is what authorizes the commit. Without one there is no
-      // engine-owned path set, and committing whatever happens to be dirty
-      // would sweep up unrelated work the user never saw named in the panel.
       const server = await createSyncWiredTestServer({ mode: 'full' });
       servers.push(server);
 
@@ -68,11 +53,6 @@ describe('POST /api/sync/resolve-blocking', () => {
   test(
     'commits exactly the blocking paths and reports them back',
     async () => {
-      // The pause fires on the CLASSIC pull path (verb `sync`), for tracked
-      // files OUTSIDE the content scope that the incoming merge also touches.
-      // Content-scoped markdown never reaches it: that path commits dirty
-      // docs itself, and the explicit-Pull verb routes to B1, which records a
-      // ledger conflict instead. `data.json` is the shape that actually blocks.
       const server = await createSyncWiredTestServer({
         mode: 'full',
         originSeed: {
@@ -84,11 +64,7 @@ describe('POST /api/sync/resolve-blocking', () => {
       const { sync } = server;
       const contentDir = server.contentDir;
 
-      // A teammate changes the same non-content file...
       await sync.pushToOrigin({ '.claude/settings.json': '{"v":2}\n' }, 'remote bump');
-      // ...while this machine has an uncommitted local edit to it, plus an
-      // unrelated dirty non-content file the merge does NOT touch, which must
-      // stay out of the commit.
       writeFileSync(join(contentDir, '.claude/settings.json'), '{"v":"local"}\n', 'utf-8');
       writeFileSync(join(contentDir, 'notes.md'), '# Notes\n\nlocal\n', 'utf-8');
 
@@ -108,7 +84,6 @@ describe('POST /api/sync/resolve-blocking', () => {
       expect(body.action).toBe('commit');
       expect(body.paths).toEqual(['.claude/settings.json']);
 
-      // The commit landed and touched only the blocking file.
       const committed = await git(contentDir, ['show', '--name-only', '--format=', 'HEAD']);
       expect(committed.split('\n').filter(Boolean)).toEqual(['.claude/settings.json']);
     },
@@ -118,9 +93,6 @@ describe('POST /api/sync/resolve-blocking', () => {
   test(
     'rejects an unknown action before reaching the engine',
     async () => {
-      // `discard` was deliberately not shipped — reverting uncommitted work is
-      // unrecoverable. The schema is what keeps a future client (or a typo)
-      // from reaching a branch that does not exist.
       const server = await createSyncWiredTestServer({ mode: 'full' });
       servers.push(server);
 

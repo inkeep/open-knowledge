@@ -16,9 +16,6 @@ import {
   runWindowsPathProbe,
 } from '../../src/main/claude-readiness.ts';
 
-/** Spy logger shared by every `getLogger(name)` call inside claude-readiness —
- *  the observation seam for the verdict-observability contract (a probe that
- *  degrades to UNKNOWN must leave an operator-visible trace). */
 const probeLog = vi.hoisted(() => {
   const logger = {
     trace: vi.fn(),
@@ -33,7 +30,6 @@ const probeLog = vi.hoisted(() => {
 });
 vi.mock('../../src/main/desktop-logger.ts', () => ({ getLogger: () => probeLog }));
 
-/** Log records an operator would see at default level (info and above). */
 function operatorVisibleRecords(): unknown[][] {
   return [
     ...probeLog.fatal.mock.calls,
@@ -90,7 +86,6 @@ describe('interpretClaudeProbe', () => {
     expect(interpretClaudeProbe(127)).toBe('not-found');
   });
   test('null (probe could not run) → unknown, NOT not-found', () => {
-    // A flaky probe must not masquerade as a definitive "not installed".
     expect(interpretClaudeProbe(null)).toBe('unknown');
   });
 });
@@ -116,7 +111,6 @@ describe('cliProbeArgs', () => {
       '-c',
       'command -v cursor-agent',
     ]);
-    // The claude argv is just the generic builder applied to `claude`.
     expect(CLAUDE_PROBE_ARGS).toEqual(cliProbeArgs('claude', process.platform));
   });
 });
@@ -203,7 +197,6 @@ describe('runLoginShellProbe', () => {
     const { child, wasKilled } = makeFakeChild();
     const { timers, fireTimeout } = makeFakeTimers();
     const p = runLoginShellProbe(() => child, 'zsh', timers, 5000);
-    // Shell never exits — fire the injected timeout.
     fireTimeout();
     expect(await p).toBe(null);
     expect(wasKilled()).toBe(true);
@@ -214,7 +207,7 @@ describe('runLoginShellProbe', () => {
     const { timers, fireTimeout } = makeFakeTimers();
     const p = runLoginShellProbe(() => child, 'zsh', timers);
     fireTimeout();
-    emitExit(0); // late — already settled to null
+    emitExit(0);
     expect(await p).toBe(null);
   });
 });
@@ -284,7 +277,6 @@ describe('runWindowsPathProbe', () => {
     const { child, wasKilled } = makeFakeChild();
     const { timers, fireTimeout } = makeFakeTimers();
     const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
-    // where.exe never exits — fire the injected timeout.
     fireTimeout();
     expect(await p).toBe(null);
     expect(wasKilled()).toBe(true);
@@ -295,7 +287,7 @@ describe('runWindowsPathProbe', () => {
     const { timers, fireTimeout } = makeFakeTimers();
     const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
     fireTimeout();
-    emitExit(0); // late — already settled to null
+    emitExit(0);
     expect(await p).toBe(null);
   });
 
@@ -304,7 +296,7 @@ describe('runWindowsPathProbe', () => {
     const { timers } = makeFakeTimers();
     const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
     emitError(new Error('spawn where.exe EACCES'));
-    emitExit(0); // Windows emits 'error' then 'exit'; the first settle wins.
+    emitExit(0);
     expect(await p).toBe(null);
   });
 });
@@ -373,11 +365,6 @@ describe('windows probe verdict observability (an UNKNOWN must leave a trace)', 
 });
 
 describe('probe verdict observability (an UNKNOWN must leave a trace)', () => {
-  // The launch gate and the row-hiding installed map both key off this probe's
-  // verdict. Standing contract: every probe-failure resolution must emit an
-  // operator-visible log record (info and above) naming the failure class —
-  // without it, genuine PATH loss and a probe flake leave identical artifacts
-  // and a field report of "isn't installed" is undiagnosable.
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -447,9 +434,6 @@ describe('resolveClaudeReadiness', () => {
   });
 
   test('project pre-approval is independent of global wiring (foreign project entry → false)', async () => {
-    // The supply-chain case: global ~/.claude.json is wired, but the PROJECT's
-    // own `open-knowledge` entry is foreign, so pre-approval is withheld and
-    // Claude's trust prompt stays in place.
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(0),
       classifyMcpEntry: () => 'present',
@@ -572,19 +556,11 @@ describe('resolveCliInstalledMap', () => {
   });
 
   test('a probe-null (UNKNOWN) entry is not collapsed into positive absence', async () => {
-    // The row-gating consumer (`isTerminalCliEnabled`) hides a launch row only
-    // on the positive-absence value `false` and documents fail-open for an
-    // unresolved probe — a contract this map defeats when it collapses `unknown`
-    // to `false`: one flaky probe then hides an installed CLI's rows for the
-    // whole cache TTL. Unknown must stay distinguishable from a genuine
-    // not-found all the way to that consumer.
     const map = await resolveCliInstalledMap({
       probe: (cli) => Promise.resolve(cli === 'pi' ? null : cli === 'codex' ? 127 : 0),
     });
     expect(map.claude).toBe(true);
     expect(map.codex).toBe(false);
-    // Unknown is encoded as key ABSENCE, not an explicit `undefined` value —
-    // `Object.keys`/`in` consumers must not see an unverified entry.
     expect('pi' in map).toBe(false);
   });
 
@@ -635,9 +611,6 @@ describe('probePlatformCliOnPath', () => {
   });
 
   test('Windows passes an UNKNOWN through as null, never collapsing it to a not-found code', async () => {
-    // A wedged / unspawnable where.exe means presence is UNVERIFIABLE. Mapping
-    // it to a definitive exit code here is what turns an infrastructure failure
-    // into a false "not installed" verdict downstream.
     await expect(
       probePlatformCliOnPath({
         platform: 'win32',
@@ -696,9 +669,6 @@ describe('resolvePlatformCliInstalledMap', () => {
       probeWindows: vi.fn(async (bin: string) => (bin === 'claude' ? null : 1)),
     });
 
-    // Omitted (UNKNOWN), NOT `false` — row gating fails open on `undefined`,
-    // and auto-pick requires `=== true`, so an unverifiable CLI is never
-    // rendered as "not installed" off a probe that could not run.
     expect('claude' in map).toBe(false);
     expect(map.codex).toBe(false);
   });

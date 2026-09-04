@@ -106,8 +106,6 @@ describe('terminal smoke shell readiness', () => {
       },
     );
 
-    // Two reads observe the buffer change, `quietPolls` matching reads clear
-    // the gate, then one probe-phase read occurs before the first send.
     expect(commandSentAtRead).toBe(5);
   });
 
@@ -142,8 +140,6 @@ describe('terminal smoke shell readiness', () => {
       );
       expect(commandsSent).toBe(0);
       expect(text).toContain('complete');
-      // The buffer goes quiet, then changes again, so `stable` is positive when
-      // the mismatch arrives and a reset that merely held would resolve early.
       expect(Date.now() - started).toBeGreaterThanOrEqual(55);
     } finally {
       clearTimeout(timer);

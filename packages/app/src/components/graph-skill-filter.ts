@@ -1,22 +1,8 @@
 import { parseGlobalSkillBundleDoc, parseProjectSkillBundleDoc } from '@inkeep/open-knowledge-core';
 import { type GraphData, getGraphLinkEndpointId } from './graph-view-utils';
 
-/**
- * How much of the skill layer the graph draws.
- *
- *  - `all`          — every skill node. The docked local graph, which exists to
- *                     show what a given doc (skill included) connects to.
- *  - `hide-builtins`— the fullscreen default: the user's own skills, but not
- *                     OpenKnowledge's, unless something links at one.
- *  - `none`         — no skill nodes at all.
- */
 export type GraphSkillVisibility = 'all' | 'hide-builtins' | 'none';
 
-/**
- * Identity of the skill bundle a node belongs to, or null when it is not part of
- * one. Scope is part of the key: a project skill and a global skill can share a
- * name while being separate bundles that never link to each other.
- */
 function bundleKeyForDocName(docName: string): string | null {
   const project = parseProjectSkillBundleDoc(docName);
   if (project) return `project:${project.name}`;
@@ -25,20 +11,6 @@ function bundleKeyForDocName(docName: string): string | null {
   return null;
 }
 
-/**
- * Apply skill-node visibility to a graph payload.
- *
- * Which bundles are OpenKnowledge's own is read from the server-set `managed`
- * flag, never re-derived from names here — the reserved names live in the server
- * package, and a second copy in the app would be free to drift.
- *
- * Skill-reference edges are mirrored in the link-graph payload, so direction does
- * not reveal which skill authored a ref. The server-side bundle guard therefore
- * requires managed user-global bundles to author no skill refs. Under that
- * invariant, any edge crossing a managed bundle boundary means another skill
- * references it. Bundle-internal SKILL-to-reference edges do not count because
- * they cross no bundle boundary.
- */
 export function filterGraphSkillNodes(
   data: GraphData,
   visibility: GraphSkillVisibility,

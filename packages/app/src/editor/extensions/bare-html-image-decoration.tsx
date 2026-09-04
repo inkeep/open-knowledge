@@ -1,12 +1,3 @@
-/**
- * Render valid HTML-void `<img ...>` source as an image without rewriting it.
- *
- * Core intentionally preserves the no-slash HTML form as literal text. This
- * app decoration hides only that rendered text range and inserts the same
- * target-aware image leaf used by canonical images; the ProseMirror document
- * and Y.Text keep the exact authored bytes.
- */
-
 import { normalizeDocRelativeAssetUrl, resolveAssetProjectPath } from '@inkeep/open-knowledge-core';
 import { type Editor, Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -28,7 +19,6 @@ export interface RenderableBareHtmlImage extends BareTagMatch {
   props: ImageProps;
 }
 
-/** Find closing `>` outside quoted attributes; `alt="a > b"` stays valid. */
 export function findBareHtmlImageTags(text: string): BareTagMatch[] {
   const matches: BareTagMatch[] = [];
   let cursor = 0;
@@ -62,8 +52,6 @@ export function findBareHtmlImageTags(text: string): BareTagMatch[] {
 
 function imagePropsFromElement(image: HTMLImageElement, sourceDocName: string): ImageProps | null {
   const src = image.getAttribute('src');
-  // An HTML `src` is a URL, so its escapes decode — the same reading the asset
-  // serve path applies when the browser actually fetches it.
   if (src === null || resolveAssetProjectPath(src, sourceDocName, { literal: false }) === null) {
     return null;
   }
@@ -107,7 +95,6 @@ function imagePropsFromElement(image: HTMLImageElement, sourceDocName: string): 
   };
 }
 
-/** Parse one complete, lowercase, non-self-closing local HTML image tag. */
 export function parseBareHtmlImage(raw: string, sourceDocName: string): ImageProps | null {
   if (!raw.startsWith('<img') || raw.endsWith('/>')) return null;
   const template = document.createElement('template');
@@ -127,7 +114,6 @@ function isLiteralOnlyContext(node: ProseMirrorNode, parent: ProseMirrorNode | n
   );
 }
 
-/** Locate only raw-HTML-origin text, excluding escaped and code-shaped literals. */
 export function findRenderableBareHtmlImages(
   doc: ProseMirrorNode,
   sourceDocName: string,

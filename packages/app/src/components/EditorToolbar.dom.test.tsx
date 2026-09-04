@@ -21,9 +21,6 @@ vi.doMock('./EditorBreadcrumb', () => ({
   ),
 }));
 
-// The breadcrumb cell's NotInSidebarIndicator reads merged config through the
-// context hook, which throws without a provider — stub the app-default view
-// (no toggles set, binding absent) so the toolbar mounts standalone.
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: {},
@@ -32,9 +29,6 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-// The skill cluster's real children fetch the skills list and the install
-// state, none of which this toolbar's contract depends on. The stub keeps the
-// REAL Add-properties button so the badge it renders is the one under test.
 vi.doMock('./SkillToolbarControls', async () => {
   const { AddPropertiesButton } = await import('./AddPropertiesButton');
   return {
@@ -63,7 +57,6 @@ vi.doMock('./SkillOriginInline', () => ({
   SkillOriginInline: () => null,
 }));
 
-/** A schema-required property the document does not have. */
 function missing(property: string): LintDiagnostic {
   return {
     range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
@@ -143,8 +136,6 @@ describe('EditorToolbar runtime layout', () => {
     expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
     cleanup();
 
-    // Mermaid docs keep the toggle — diagram (wysiwyg) vs source are two
-    // real surfaces, unlike a text doc's single CodeMirror.
     await renderToolbar('assets/flow.mmd');
     expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
   });
@@ -196,8 +187,6 @@ describe('EditorToolbar runtime layout', () => {
     await renderToolbar('.scratch/hidden-note');
 
     const indicator = screen.getByTestId('not-in-sidebar-indicator');
-    // Same interactive cell as the breadcrumb — the toolbar grid is
-    // pointer-events-none, so anything outside an auto cell is unclickable.
     const breadcrumbCell = screen.getByTestId('editor-breadcrumb-probe').parentElement;
     expect(breadcrumbCell?.contains(indicator)).toBe(true);
     expectVisualClassTokens(breadcrumbCell?.className, ['pointer-events-auto']);
@@ -209,11 +198,6 @@ describe('EditorToolbar runtime layout', () => {
     expect(screen.queryByTestId('not-in-sidebar-indicator')).toBeNull();
   });
 
-  // The button's tooltip promises "click to add and fill them in", and clicking
-  // stages a row per missing property EXCEPT the ones reserved for the doc — a
-  // skill's `name` is its folder identity, renamed by moving the folder. Badging
-  // one would advertise an action the click will not take. The schema violation
-  // is not hidden: the Problems panel still reports it.
   test('a skill badges only the missing properties clicking will stage', async () => {
     const user = userEvent.setup();
     await renderToolbar('__skill__/global/foo', [missing('name'), missing('description')]);
@@ -234,10 +218,6 @@ describe('EditorToolbar runtime layout', () => {
   });
 
   test('two schemas requiring one property badge once and list it once', async () => {
-    // Composed the way EditorArea feeds this prop, because that is where the
-    // per-property collapse happens — two producers each requiring `type` (an
-    // OKF profile beside a project's own schema) is one row to add, and the
-    // tooltip promises exactly what the click will stage.
     const { partitionFrontmatterProblems } = await import('@/editor/useFrontmatterDiagnostics');
     const user = userEvent.setup();
     const bothRequireType = [

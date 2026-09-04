@@ -15,12 +15,6 @@ export interface LinkAuditSeam {
   requiredTiers: readonly LinkAuditTestTier[];
 }
 
-/**
- * Product seams introduced or materially changed by the local-target audit.
- * Paths are relative to the Open Knowledge workspace root. This is a closed
- * inventory of this feature's contracts, not a claim to discover every future
- * boundary in the repository.
- */
 export const LINK_AUDIT_SEAMS: readonly LinkAuditSeam[] = [
   {
     id: 'canonical-occurrence-classification',
@@ -175,8 +169,6 @@ export interface LinkAuditCompositionRoot {
   maskingText?: string;
 }
 
-/** Structural liveness checks for the real composition roots the behavioral
- * tests above mutation-pin. These are enforcement, not behavioral evidence. */
 export const LINK_AUDIT_COMPOSITION_ROOTS: readonly LinkAuditCompositionRoot[] = [
   {
     path: 'packages/server/src/server-factory.ts',

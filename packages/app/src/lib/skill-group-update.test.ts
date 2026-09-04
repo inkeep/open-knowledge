@@ -44,8 +44,6 @@ describe('groupUpdatableSkills', () => {
   });
 
   it('declines a PLUGIN group outright', () => {
-    // Vendor state: the harness replaces those files when the plugin updates,
-    // so offering to re-pull them here would fight the plugin manager.
     const map = new Map([['PROJECT/eng/x', skill('x', 'inkeep/team-skills')]]);
     expect(
       groupUpdatableSkills({
@@ -64,8 +62,6 @@ describe('groupUpdatableSkills', () => {
   });
 
   it('skips a member with no recorded source, and one adopted from a harness', () => {
-    // `adopt:` names a harness rather than a remote — the original is a symlink
-    // to the local copy now, so a re-pull could only error.
     const map = new Map([
       [`${GROUP}/a`, skill('a', 'inkeep/open-knowledge-skills')],
       [`${GROUP}/hand-written`, skill('hand-written')],
@@ -80,8 +76,6 @@ describe('groupUpdatableSkills', () => {
   });
 
   it('ignores rows outside the group, including a prefix that merely starts the same', () => {
-    // `PROJECT/open-knowledge-skills-extra/…` shares the group's leading
-    // characters; without the trailing slash it would be swept in.
     const map = new Map([
       [`${GROUP}/a`, skill('a', 'inkeep/open-knowledge-skills')],
       ['PROJECT/open-knowledge-skills-extra/b', skill('b', 'someone/else')],
@@ -96,7 +90,6 @@ describe('groupUpdatableSkills', () => {
   });
 
   it('returns empty for a group whose members are all unfetchable', () => {
-    // The menu gate keys on length, so this is what withholds the action.
     const map = new Map([[`${GROUP}/adopted`, skill('adopted', 'adopt:claude')]]);
     expect(
       groupUpdatableSkills({ groupPrefix: GROUP, bucket: sourceBucket, skillByPrefix: map }),

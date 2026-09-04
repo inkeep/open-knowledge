@@ -13,15 +13,6 @@ import {
 } from '@/lib/known-skill-dirs';
 import { skillEntryFileLiveDocName, skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 
-/**
- * A project skill dir can be a SYMLINK to a canonical dir elsewhere in the
- * content tree (a repo that keeps its bundles in `plugins/<x>/skills/` and links
- * them into `.agents/skills/`). The document index holds ONE page per inode,
- * under the canonical name — so a tab opened at the alias name has no page and
- * the next page-list sync prunes it: the skill flickers open and vanishes, and
- * the surface falls back to Files. `/api/skills` reports the resolved
- * `canonicalPath`; every doc-name builder must prefer it.
- */
 const aliased: SkillsListEntry = {
   scope: 'project',
   name: 'bug-triage',
@@ -73,10 +64,6 @@ describe('an aliased skill tab survives a page-list sync', () => {
     __resetKnownProjectSkillDirsForTests();
   });
 
-  // `/api/pages` lists the canonical name only. The tab has to survive either
-  // way now (skill docs are the reconciler's to close), but the doc the sidebar
-  // opens must still be the indexed one — opening the alias would put a second
-  // Y.Doc on the same inode.
   const pages = new Set(['plugins/ok/skills/bug-triage/SKILL']);
   const targets = { pages, folderPaths: new Set<string>(), assetPaths: new Set<string>() };
 
@@ -87,21 +74,11 @@ describe('an aliased skill tab survives a page-list sync', () => {
   });
 
   test('the canonical name is recognised as a skill bundle path', () => {
-    // The canonical location is an ORDINARY path — nothing in `plugins/ok/skills/…`
-    // distinguishes it from a repo that merely keeps markdown under a folder
-    // called `skills`. Recognition therefore reads the same `/api/skills` entry
-    // the doc name was built from: `canonicalPath` is what makes this location a
-    // skill, and no path-shape guess can substitute.
     setKnownProjectSkillDirs(projectSkillBundleDirs([aliased]));
     expect(isSkillBundleShapedPath(skillEntryLiveDocName(aliased))).toBe(true);
   });
 
   test('the derived set carries the alias dir as well as the canonical one', () => {
-    // `path` and `canonicalPath` both index as documents, so both belong in the
-    // set. Asserted at the SET level on purpose: `.agents/skills/bug-triage/SKILL`
-    // is already a skill doc by shape (`.agents` is a host root), so asserting
-    // recognition on it would pass with the seeding removed — it would pin the
-    // dot-root half while reading like a check of the derivation.
     expect(projectSkillBundleDirs([aliased])).toEqual(
       new Set(['.agents/skills/bug-triage', 'plugins/ok/skills/bug-triage']),
     );
@@ -113,9 +90,6 @@ describe('staleLocalSkillPreviewTwins', () => {
     skillPreviewTabId({ flavor, source, name: 'ai-sdk', subtitle: 'claude', level });
 
   test('the same skill under a moved source is a twin; a fresh open closes it', () => {
-    // A plugin update bumps the version segment in the cache path, so the same
-    // preview re-opens under a new id while the old tab survives — the
-    // "multiple tabs of the same file, only one focusable" state.
     const oldId = previewId('/cache/eng-3p/1.2.711/skills/ai-sdk', 'global');
     const newId = previewId('/cache/eng-3p/1.2.725/skills/ai-sdk', 'global');
     expect(
@@ -152,9 +126,6 @@ describe('staleLocalSkillPreviewTwins', () => {
   });
 
   test('a same-name copy under a different host subtitle is NOT a twin', () => {
-    // Shagun's shape: "plannotator-review (.agents)" and "(claude)" are two
-    // real copies surfaced as separate rows. Opening one must not close (or
-    // reuse) the other — the subtitle is their only distinguisher.
     const agentsId = skillPreviewTabId({
       flavor: 'detected',
       source: '/p/.agents/skills/ai-sdk',

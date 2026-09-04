@@ -1,16 +1,3 @@
-/**
- * ProjectSwitcher unit tests — mirrors the pattern established in
- * `NavigatorApp.test.ts`: test the extracted pure helpers + the module's
- * bridge-contract consumption without mounting React. Repo convention (see
- * `EditorActivityPool.test.ts`) is no @testing-library/react; full DOM
- * interaction is exercised by Playwright.
- *
- * Coverage surface:
- *   - `runWithToast` success path (no toast fired, no error surfaced)
- *   - `runWithToast` rejection path (toast.error called with resolved message)
- *   - `runWithToast` non-Error rejection falls back to the provided fallback
- *   - setError(null) clear-at-start does NOT surface as a toast
- */
 import { describe, expect, test, vi } from 'vitest';
 
 describe('ProjectSwitcher module', () => {
@@ -64,9 +51,6 @@ describe('runWithToast (IPC rejection → toast feedback)', () => {
   });
 
   test('success path fires NO toast even on the internal setError(null) clear', async () => {
-    // Regression guard — runWithErrorStatePure calls setError(null) first to
-    // clear stale state; our adapter must filter the null out rather than
-    // passing it to toast.error(null).
     const { runWithToast } = await import('./ProjectSwitcher');
     const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.resolve(), 'Failed to open.', toastApi);
@@ -74,9 +58,6 @@ describe('runWithToast (IPC rejection → toast feedback)', () => {
   });
 
   test('falls back to module sonner toast when toastApi is omitted', async () => {
-    // Smoke — calling runWithToast without the test double must not throw.
-    // The default branch uses `toast` from the `sonner` module; we rely on
-    // sonner's no-op-when-no-Toaster-mounted behavior in bun test.
     const { runWithToast } = await import('./ProjectSwitcher');
     await expect(runWithToast(() => Promise.resolve(), 'fallback')).resolves.toBeUndefined();
   });

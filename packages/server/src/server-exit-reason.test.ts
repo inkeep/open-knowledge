@@ -5,11 +5,6 @@ import { describe, expect, test } from 'vitest';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 import type { PinoLogger } from './logger.ts';
 
-/**
- * Shutdown records WHY the server exited. Without it an external stop, an idle
- * self-reap, and the host going away leave byte-identical logs, so the whole
- * class is invisible after the fact.
- */
 interface Entry {
   level: string;
   msg: string;
@@ -61,8 +56,6 @@ describe('server exit reason', () => {
     let fireIdle: (() => Promise<void>) | undefined;
     const booted = await bootCompositionRig(dir, {
       log,
-      // Boot wires the handler around its own destroy; capture it instead of
-      // waiting out a real idle window.
       idleShutdownMs: 60_000,
       idleShutdownHandler: (destroyServer) => {
         fireIdle = destroyServer;

@@ -1,11 +1,3 @@
-/**
- * `ok deinit` — remove OpenKnowledge from ONE project, leaving the user's
- * markdown content untouched. The per-project ring of the shared removal engine
- * (`deinitOps`), reused by `ok uninstall`'s recent-projects sweep.
- *
- * Re-running `ok start` after `ok deinit` re-scaffolds the project cleanly.
- */
-
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -28,17 +20,12 @@ import {
 
 export interface DeinitOptions {
   cwd?: string;
-  /** Override home (test-only). */
   home?: string;
   yes?: boolean;
   dryRun?: boolean;
   json?: boolean;
-  /** Test-only stdin override for the confirmation prompt. */
   confirmStream?: NodeJS.ReadableStream;
-  /** Live-client probe seam (hits the running server over HTTP in production). */
   probeClients?: (lockDir: string) => Promise<number | null>;
-  /** Test-only: stub the machine-touching removal primitives (stop-server, etc.)
-   *  so the failed-exit branch is exercisable without real side effects. */
   runRemovalDeps?: RunRemovalDeps;
 }
 
@@ -52,14 +39,6 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
   const projectRoot = resolve(opts.cwd ?? process.cwd());
   const home = opts.home ?? homedir();
 
-  // Home is never a project, and here that matters more than anywhere else:
-  // `~/.ok/` is OpenKnowledge's USER-GLOBAL directory, so the `.ok/` existence
-  // check below is satisfied on every machine, and the plan would queue
-  // `remove-path` for `global.yml`, `skills/` (the user's own unversioned
-  // skills), `auth.yml` and `secrets.yml`. `--yes` skips the destructive
-  // prompt, and the plan lines read like ordinary project paths. This is also
-  // the command someone reaches for to undo an `ok init` that anchored them to
-  // home, which is the worst possible place for that hazard.
   if (isHomeDir(projectRoot, home)) {
     return {
       status: 'failed',
@@ -72,9 +51,6 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
     };
   }
 
-  // `.ok/` is the project marker; without it there is no OpenKnowledge footprint
-  // to remove here (a stray editor-config entry would be handled by uninstall's
-  // global sweep, not a per-project deinit).
   if (!existsSync(join(projectRoot, '.ok'))) {
     return {
       status: 'no-op',

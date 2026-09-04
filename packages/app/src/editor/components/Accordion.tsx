@@ -38,22 +38,13 @@ import { resolveLucideIcon } from './lucide-icon-allowlist.ts';
 interface AccordionProps {
   title?: string;
   defaultOpen?: boolean;
-  /** Namespaced lucide identifier (e.g. `lucide:Rocket`). */
   icon?: string;
   description?: string;
   id?: string;
-  /** HTML5 <details name=> group identifier. Siblings sharing a name auto-close each other. */
   name?: string;
   children?: React.ReactNode;
 }
 
-/**
- * DIY Accordion. Descriptor-dispatched via `componentMap['Accordion']`.
- *
- * The summary is marked `contentEditable={false}` so PM doesn't try to
- * manage it. Clicking the summary triggers the browser's native toggle
- * behavior; the CSS chevron rotation is keyed on the `[open]` attribute.
- */
 export function Accordion(props: AccordionProps) {
   const IconOverride = resolveLucideIcon(props.icon);
 

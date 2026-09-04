@@ -1,5 +1,3 @@
-/** Live client policy for whether unresolved-link decorations are visible. */
-
 type Listener = () => void;
 
 let enabled = true;

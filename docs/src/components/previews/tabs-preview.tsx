@@ -2,22 +2,11 @@
 
 import { Children, isValidElement, type ReactNode, useState } from 'react';
 
-/**
- * Individual tab panel. Passes its `label` up to the parent
- * `<TabsPreview>` via props inspection — the parent maps every child
- * element into a `(label, body)` pair. No identity comparison, so this
- * works across the server → client boundary MDX pages cross.
- */
 export function TabPreview({ children }: { label: string; children?: ReactNode }) {
   return <>{children}</>;
 }
 
 export function TabsPreview({ children }: { children?: ReactNode }) {
-  // Every element child is treated as a `<TabPreview>` — text-node
-  // whitespace between MDX tags is dropped. Read the label directly off
-  // props so we don't have to compare against the client-side
-  // `TabPreview` reference (which is a different object in server
-  // context).
   const tabs = Children.toArray(children)
     .filter(isValidElement)
     .map((child) => {

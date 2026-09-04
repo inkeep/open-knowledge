@@ -1,10 +1,3 @@
-/**
- * Unit tests for the unified sticky-agent store. The store is ONE source
- * of truth shared by both "Ask AI" composer placements; it carries the CLI
- * sentinel and reads the two legacy v1 keys once as a migration shim so a user's
- * prior pick (from either old surface) survives the consolidation.
- */
-
 import {
   type HandoffTarget,
   type InstallState,
@@ -85,9 +78,6 @@ describe('unified-agent-store — migration shim (read-both legacy keys)', () =>
   });
 
   test('prefers the bottom-composer key (CLI-capable) when both legacy keys are set', () => {
-    // The bottom key is the only one that can hold a CLI sentinel, so it is read
-    // first — a sticky CLI pick is never silently downgraded to the app-only
-    // create value.
     const storage = makeStorage({
       [LEGACY_BOTTOM_KEY]: terminalCliId('claude'),
       [LEGACY_CREATE_KEY]: 'codex',
@@ -97,8 +87,8 @@ describe('unified-agent-store — migration shim (read-both legacy keys)', () =>
 
   test('a later save lands on the unified key and then wins (one-time migration)', () => {
     const storage = makeStorage({ [LEGACY_CREATE_KEY]: 'codex' });
-    expect(loadStickyAgent(storage)).toBe('codex'); // migrated read
-    saveStickyAgent('cursor', storage); // user picks again → unified key
+    expect(loadStickyAgent(storage)).toBe('codex');
+    saveStickyAgent('cursor', storage);
     expect(storage.map.get(UNIFIED_AGENT_KEY)).toBe('cursor');
     expect(loadStickyAgent(storage)).toBe('cursor');
   });
@@ -143,7 +133,7 @@ describe('terminalCliId / parseStickyCliId', () => {
   });
 
   test('a non-CLI id (app target / junk / null) parses to null', () => {
-    expect(parseStickyCliId('codex')).toBeNull(); // the app target, not the CLI sentinel
+    expect(parseStickyCliId('codex')).toBeNull();
     expect(parseStickyCliId('claude-code')).toBeNull();
     expect(parseStickyCliId('not-a-real-agent')).toBeNull();
     expect(parseStickyCliId(null)).toBeNull();
@@ -157,8 +147,6 @@ describe('terminalCliId / parseStickyCliId', () => {
   });
 
   test('a sticky CLI id is ignored by resolveStickyAgent (it resolves app targets only)', () => {
-    // The composer routes CLI mode through parseStickyCliId, not resolveStickyAgent,
-    // so a CLI sentinel must NOT masquerade as an app target here.
     const resolved = resolveStickyAgent(states({ codex: true }), terminalCliId('cursor'));
     expect(resolved?.id).toBe('codex');
   });
@@ -190,15 +178,13 @@ describe('threadAgentId / parseStickyThreadAgent', () => {
   test('a non-thread id (CLI sentinel / app target / junk / null) parses to null', () => {
     expect(parseStickyThreadAgent(terminalCliId('codex'))).toBeNull();
     expect(parseStickyThreadAgent('claude-code')).toBeNull();
-    expect(parseStickyThreadAgent('in-app-thread:bogus:x')).toBeNull(); // unknown source
-    expect(parseStickyThreadAgent('in-app-thread:registry:')).toBeNull(); // empty id
+    expect(parseStickyThreadAgent('in-app-thread:bogus:x')).toBeNull();
+    expect(parseStickyThreadAgent('in-app-thread:registry:')).toBeNull();
     expect(parseStickyThreadAgent(null)).toBeNull();
   });
 
   test('a concrete thread-agent sticky id is invisible to the CLI + app-target readers', () => {
     const id = threadAgentId({ source: 'registry', id: 'acme-agent' });
-    // The unified store is shared with the Ask-AI composers; a concrete agent
-    // pick must degrade to "not mine" for the CLI + app-target resolvers.
     expect(parseStickyCliId(id)).toBeNull();
     expect(resolveStickyAgent(states({ codex: true }), id)?.id).toBe('codex');
   });

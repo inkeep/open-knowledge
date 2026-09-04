@@ -1,15 +1,3 @@
-/**
- * `showItemInFolder` containment: the reveal gate admits paths under the
- * caller's project OR an explicit trusted `allowedRoots` entry (the
- * `~/.ok/bug-reports/` dir the report dialog reveals from), and refuses
- * everything else.
- *
- * Regression guard: before `allowedRoots`, the report dialog's "Reveal in
- * Finder" was silently refused for every bug-report zip — the zip lives
- * outside every project, so an editor window hit `out-of-project` and a
- * Navigator window hit `no-project-bound`.
- */
-
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { userGlobalSkillRoots } from '@inkeep/open-knowledge-core/skills-catalog';
@@ -19,23 +7,14 @@ import { revealAllowedRoots, showItemInFolder } from './ipc-handlers.ts';
 const HOME = '/Users/tester';
 const BUG_REPORTS = '/Users/tester/.ok/bug-reports';
 const PROJECT = '/Users/tester/projects/demo';
-/** The roots main passes for skill reveals — same derivation as `main/index.ts`. */
 const SKILL_ROOTS = userGlobalSkillRoots(HOME);
 
-/**
- * The POLICY the handler feeds its predicate. Asserted independently of the
- * predicate because the main-process wiring is not reachable from tests: with
- * the roots built inline at the call site, dropping them was a silent no-op
- * that every predicate test still passed.
- */
 describe('revealAllowedRoots — the policy the reveal handler passes in', () => {
   test('carries the bug-report dir and every user-global skill root', () => {
     const roots = revealAllowedRoots();
     const home = homedir();
 
     expect(roots).toContain(join(home, '.ok', 'bug-reports'));
-    // Spelled out rather than derived from `userGlobalSkillRoots`: an assertion
-    // built from the function under test shrinks with it and passes vacuously.
     expect(roots).toContain(join(home, '.claude', 'skills'));
     expect(roots).toContain(join(home, '.agents', 'skills'));
     expect(roots).toContain(join(home, '.claude', 'plugins'));
@@ -138,9 +117,6 @@ describe('showItemInFolder — allowedRoots for bug-report zips', () => {
   });
 
   test('a global skill in a harness home is revealed via allowedRoots', () => {
-    // Regression guard: global skills live outside every project, so before
-    // their roots joined `allowedRoots` the Skills panel's Reveal rendered but
-    // did nothing for every one of them.
     const skillMd = join(SKILL_ROOTS[0] ?? '', 'migrate-to-codex', 'SKILL.md');
     const revealed: string[] = [];
     const outcome = showItemInFolder(

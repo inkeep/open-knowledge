@@ -20,14 +20,11 @@ describe('isLoopbackHttpOrigin', () => {
   });
 
   test.each([
-    // The two the shared gate would wave through — the whole point of this gate.
     [undefined, 'absent Origin'],
     ['null', 'opaque / sandboxed-iframe Origin'],
-    // Non-loopback and lookalike authorities.
     ['https://evil.com', 'public origin'],
     ['http://127.0.0.1.evil.com', 'loopback-prefixed rebind lookalike'],
     ['http://localhost.evil.com', 'localhost-prefixed lookalike'],
-    // Wrong scheme / unparseable.
     ['file:///Users/x/app/index.html', 'file scheme (packaged renderer)'],
     ['ftp://localhost', 'non-http scheme'],
     ['not a url', 'unparseable'],
@@ -93,8 +90,6 @@ describe('classifyLinkPreviewRequest', () => {
   });
 
   test('origin is judged before content type', () => {
-    // A null origin with a non-JSON body is refused for the origin, the more
-    // informative reason — not masked by the content-type check.
     expect(classifyLinkPreviewRequest({ origin: 'null', contentType: 'text/plain' })).toEqual({
       ok: false,
       reason: 'origin',

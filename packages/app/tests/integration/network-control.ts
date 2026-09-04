@@ -1,15 +1,3 @@
-/**
- * Network-layer sync control for deterministic CRDT race testing.
- *
- * Provides a WebSocket wrapper that supports pause/resume of inbound message
- * delivery. When paused, inbound messages are queued and delivered FIFO on
- * resume. Outbound is always passthrough.
- *
- * Minimal surface for v1: pauseInbound/resumeInbound only.
- * Future extensions (delaySync, dropInbound, inspectSyncQueue) land when a
- * concrete test motivates them.
- */
-
 type MessageCallback = (event: MessageEvent) => void;
 
 export class ControllableWebSocket {
@@ -23,7 +11,6 @@ export class ControllableWebSocket {
   constructor(url: string | URL, protocols?: string | string[]) {
     this.inner = new WebSocket(url, protocols);
 
-    // Intercept all inbound messages from the real WebSocket
     this.inner.onmessage = (event: MessageEvent) => {
       this.handleInbound(event);
     };
@@ -38,9 +25,7 @@ export class ControllableWebSocket {
   }
 
   private deliverMessage(event: MessageEvent): void {
-    // Deliver to onmessage handler
     this.onMessageHandler?.(event);
-    // Deliver to all addEventListener('message', ...) handlers
     for (const listener of this.addedMessageListeners) {
       listener(event);
     }
@@ -50,14 +35,6 @@ export class ControllableWebSocket {
     this.paused = true;
   }
 
-  /**
-   * Discard outbound frames while enabled — models a lost/throttled update the
-   * provider believes it sent (`unsyncedChanges` stays > 0 with no ack, server
-   * never receives it). A later `provider.forceSync()` re-runs the sync
-   * handshake and reconciles the missing update, so this is how a test proves
-   * the flush-on-hide `forceSync` — not the incremental send — reached the
-   * server.
-   */
   setDropOutbound(drop: boolean): void {
     this.droppingOutbound = drop;
   }
@@ -69,8 +46,6 @@ export class ControllableWebSocket {
       if (msg) this.deliverMessage(msg);
     }
   }
-
-  // ─── WebSocket interface passthrough ───
 
   get url(): string {
     return this.inner.url;
@@ -137,7 +112,6 @@ export class ControllableWebSocket {
     options?: boolean | AddEventListenerOptions,
   ): void {
     if (type === 'message') {
-      // Track message listeners so we can replay queued messages through them
       const cb: MessageCallback =
         typeof listener === 'function'
           ? (listener as MessageCallback)
@@ -168,7 +142,6 @@ export class ControllableWebSocket {
     return this.inner.dispatchEvent(event);
   }
 
-  // WebSocket constants
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
   static readonly CLOSING = 2;

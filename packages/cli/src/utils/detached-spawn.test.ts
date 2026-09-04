@@ -58,7 +58,6 @@ describe('spawnDetachedScrubbed', () => {
       });
 
       expect(captured.opts?.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');
-      // The scrub copies — this process keeps its own env untouched.
       expect(process.env.ELECTRON_RUN_AS_NODE).toBe('1');
     } finally {
       if (prevValue === undefined) delete process.env.ELECTRON_RUN_AS_NODE;

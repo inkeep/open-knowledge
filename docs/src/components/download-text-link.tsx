@@ -22,15 +22,6 @@ interface DownloadTextLinkProps {
   className?: string;
 }
 
-/**
- * Prose-flow counterpart to the split button, for the places a download sits
- * inside a sentence rather than standing on its own. Same detection and same
- * architecture-safe destination; no dropdown, because a menu can't hang off a
- * run of text.
- *
- * Reads "Download it" until the OS is known and "Download it for Windows"
- * after, so the sentence is never wrong for the reader looking at it.
- */
 export function DownloadTextLink({ cta, className }: DownloadTextLinkProps) {
   const [os, setOs] = useState<DetectedOs>('unknown');
 
@@ -44,13 +35,11 @@ export function DownloadTextLink({ cta, className }: DownloadTextLinkProps) {
 
   return (
     <>
-      {/* Raw <a>, never next/link: the SSR target is a 302 handler, and
-          prefetching it before OS detection would start a download. */}
+      {}
       <a href={href} className={className}>
         Download it{suffix ? ` ${suffix}` : ''}
       </a>
-      {/* macOS and the neutral SSR floor still point to a concrete build, so
-          keep the picker escape hatch. Windows/Linux already land there. */}
+      {}
       {href === pickerHref ? null : (
         <>
           <span className="text-slide-muted"> · </span>

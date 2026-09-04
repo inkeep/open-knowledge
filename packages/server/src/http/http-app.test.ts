@@ -10,13 +10,6 @@ import {
 } from './http-app.ts';
 import { createMcpDispatch } from './mcp-route.ts';
 
-/**
- * Adapter-boundary pins the composition suite cannot see: these assert
- * properties of the router mount itself — global-object hygiene, body
- * passthrough to the legacy dispatch, and error finalization after headers
- * are sent — independent of any real route behavior.
- */
-
 const fakeLog = {
   error: () => {},
   warn: () => {},
@@ -92,8 +85,6 @@ describe('createHttpApp adapter boundary', () => {
       throw new Error('post-head boom');
     });
     try {
-      // The onError fallback branch must end the response — a hang here
-      // would leave the fetch pending until the test times out.
       const res = await fetch(`${rig.baseUrl}/partial`, {
         signal: AbortSignal.timeout(5_000),
       });
@@ -106,9 +97,6 @@ describe('createHttpApp adapter boundary', () => {
 });
 
 describe('createHttpApp native /mcp mount', () => {
-  // ONE policy object for both the dispatch closure and createHttpApp —
-  // the leg's gates and the surface prelude are two layers of one admission
-  // decision (see createMcpDispatch's docblock), and the rig models that.
   const policy = buildIngressPolicy({});
 
   function mcpDispatchOver(handle: (req: IncomingMessage, res: ServerResponse) => Promise<void>) {
@@ -147,9 +135,6 @@ describe('createHttpApp native /mcp mount', () => {
   });
 
   test('a Hono-normalized alias of /mcp falls through to the legacy dispatch', async () => {
-    // `/./mcp` normalizes to `/mcp` inside the router, but the raw URL is what
-    // the legacy dispatch always matched — the alias must keep its historical
-    // legacy-dispatch answer instead of reaching the MCP handler.
     let handled = 0;
     let legacyUrl: string | undefined;
     const dispatch = mcpDispatchOver(async (_req, res) => {
@@ -167,7 +152,6 @@ describe('createHttpApp native /mcp mount', () => {
       policy,
     );
     try {
-      // fetch normalizes dot segments client-side; drive the raw path.
       const res = await rawRequest(rig.port, '/./mcp', { method: 'POST' });
       expect(res.status).toBe(404);
       expect(handled).toBe(0);
@@ -217,16 +201,11 @@ describe('assertSingleRouterOwnership', () => {
     expect(() =>
       assertSingleRouterOwnership(['/api/backlinks', '/api/tags/*'], {
         '/api/documents': async () => {},
-        // The base path is OUTSIDE the wildcard's namespace ('/api/tags/*'
-        // claims '/api/tags/…', not '/api/tags' itself).
         '/api/tags': async () => {},
       }),
     ).not.toThrow();
   });
 
-  // The native list is the concatenation of every group's paths — the same
-  // one-router rule applies WITHIN it, or two groups could silently answer
-  // from whichever sits earlier in the dispatch chain.
   test('throws when two native groups claim the same path', () => {
     expect(() =>
       assertSingleRouterOwnership(['/api/backlinks', '/api/metrics/x', '/api/backlinks'], {}),

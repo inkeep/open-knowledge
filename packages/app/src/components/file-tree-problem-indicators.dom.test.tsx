@@ -1,12 +1,3 @@
-/**
- * DOM test for the problem-indicator processor. Mirrors the extension-badge
- * test's approach: build Pierre-shaped rows by hand and exercise
- * `applyProblemIndicators` directly against a counts snapshot. Covers the
- * decision layer — tint attribute + count on problem rows, nothing on clean
- * rows, healing removal, idempotence — while the real shadow-root color is
- * the e2e's job (jsdom doesn't paint unsafeCSS).
- */
-
 import { cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -150,16 +141,12 @@ describe('applyProblemIndicators', () => {
     expect(badge?.getAttribute('aria-label')).toBe(
       '1 problem. 1 warning in this file. Open the Problems panel for details.',
     );
-    // Without a name-from-author role the aria-label is dropped and a screen
-    // reader announces the bare digit, which is the thing this fix is about.
     expect(badge?.getAttribute('role')).toBe('img');
   });
 
   test('the badge title outranks the full-path title FileTree stamps on the row', () => {
     const { root, rows } = buildTree(['guides/a.md']);
     const row = rows.get('guides/a.md');
-    // FileTree stamps the row's own title imperatively; the badge is a
-    // descendant, so only a title of its own resolves under the cursor.
     if (row) row.title = 'guides/a.md';
     applyProblemIndicators(root, new Map([['guides/a', { errorCount: 1, warningCount: 0 }]]));
     const badge = row?.querySelector<HTMLElement>(`[${OK_PROBLEM_BADGE_ATTR}]`);
@@ -168,14 +155,6 @@ describe('applyProblemIndicators', () => {
   });
 
   test('badge stays a pointer hit target so its tooltip can surface', () => {
-    // jsdom does not apply the shadow root's adopted stylesheet, so the
-    // declaration is where this contract is observable here. The rendered
-    // element is pinned at real-browser fidelity in tests/stress/unified-
-    // problems.e2e.ts, which reads getComputedStyle on the live badge.
-    //
-    // Slice to the badge's own rule first: a row-tint selector may one day
-    // want `pointer-events: none` for its own reasons, and that must not red
-    // a test named for the badge.
     const withoutComments = FILE_TREE_PROBLEM_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
     const badgeRule = withoutComments.match(
       new RegExp(`\\[${OK_PROBLEM_BADGE_ATTR}\\]\\s*\\{([^}]*)\\}`),
@@ -201,8 +180,6 @@ describe('applyProblemIndicators', () => {
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 
     expect(activated).toEqual(['guides/a.md']);
-    // The row owns navigation for a row click; a badge click is its own intent
-    // and must not also drive the row's selection.
     expect(rowClicks).toHaveLength(0);
   });
 
@@ -222,7 +199,6 @@ describe('applyProblemIndicators', () => {
     badge?.dispatchEvent(space);
 
     expect(activated).toEqual(['guides/a.md', 'guides/a.md']);
-    // Space on a focused control otherwise scrolls the tree out from under it.
     expect(space.defaultPrevented).toBe(true);
   });
 
@@ -243,8 +219,6 @@ describe('applyProblemIndicators', () => {
       ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
     expect(activated).toHaveLength(0);
-    // Swallowing arrows would strand focus on a badge with no way back to the
-    // tree's own row navigation.
     expect(reachedRow).toEqual(['ArrowDown']);
   });
 
@@ -264,16 +238,11 @@ describe('applyProblemIndicators', () => {
 
     expect(operableBadge?.getAttribute('role')).toBe('button');
     expect(operableBadge?.getAttribute('tabindex')).toBe('0');
-    // Becoming operable must not cost the badge the explanation it already had.
     expect(operableBadge?.getAttribute('aria-label')).toBe(inertBadge?.getAttribute('aria-label'));
     expect(operableBadge?.title).toBe(inertBadge?.title);
   });
 
   test('a focused badge gets a ring instead of the outline reset it inherits', () => {
-    // Same fidelity split as the hit-target test above: jsdom applies no
-    // adopted stylesheet and matches no :focus-visible, so the declaration is
-    // the observable here. `unified-problems.e2e.ts` reads the resolved ring
-    // off a really-focused badge, which is the rung that can see paint.
     const withoutComments = FILE_TREE_PROBLEM_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
     const focusRule = withoutComments.match(
       new RegExp(`\\[${OK_PROBLEM_BADGE_ATTR}\\]:focus-visible\\s*\\{([^}]*)\\}`),
@@ -296,11 +265,6 @@ describe('applyProblemIndicators', () => {
   });
 
   test('the badge keeps a shape under forced colors, and severity stays readable', () => {
-    // Same fidelity split as the focus-ring test: jsdom evaluates no media
-    // query, so the declaration is the observable. Forced colors overrides the
-    // chip's translucent background with the system canvas, which would leave
-    // the badge as a bare digit and make error and warning identical, so the
-    // border is what keeps it a chip and keeps the two apart.
     const withoutComments = FILE_TREE_PROBLEM_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
     const forcedColorsBlock = withoutComments.match(
       /@media\s*\(forced-colors:\s*active\)\s*\{([\s\S]*)\}/,
@@ -318,8 +282,6 @@ describe('applyProblemIndicators', () => {
     const { root, rows } = buildTree(['a.md']);
     const counts = new Map([['a', { errorCount: 1, warningCount: 0 }]]);
     const activated: string[] = [];
-    // The tree's MutationObserver re-runs the whole pass on every re-render, so
-    // a badge outlives far more passes than clicks.
     for (let pass = 0; pass < 4; pass += 1) {
       applyProblemIndicators(root, counts, (treePath) => activated.push(treePath));
     }
@@ -337,8 +299,6 @@ describe('applyProblemIndicators', () => {
     const stale: string[] = [];
     const fresh: string[] = [];
     applyProblemIndicators(root, counts, (treePath) => stale.push(treePath));
-    // Whatever the host passes on the latest pass is what the badge must answer
-    // to — an earlier pass's handler cannot survive alongside it.
     applyProblemIndicators(root, counts, (treePath) => fresh.push(treePath));
     rows
       .get('a.md')
@@ -366,9 +326,6 @@ describe('applyProblemIndicators', () => {
       );
     }
 
-    // The badge has no modified meaning, so it neither activates nor eats the
-    // event: cmd-click adds a row to the selection and shift-click extends it,
-    // and both resolve on the row the badge sits in.
     expect(activated).toHaveLength(0);
     expect(reachedRow).toHaveLength(4);
   });
@@ -410,7 +367,6 @@ describe('applyProblemIndicators', () => {
     badge?.dispatchEvent(
       new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }),
     );
-    // Auto-repeat while the key is still held: one press, one activation.
     for (let tick = 0; tick < 3; tick += 1) {
       badge?.dispatchEvent(
         new KeyboardEvent('keydown', { key: ' ', repeat: true, bubbles: true, cancelable: true }),
@@ -421,17 +377,12 @@ describe('applyProblemIndicators', () => {
   });
 
   test('the operable badge claims a hit area the painted chip is too small for', () => {
-    // jsdom resolves no layout, so the declaration is the observable; the e2e
-    // measures the real box. The chip itself cannot grow — it has to stay beside
-    // the file name in a 26px row — so the target is expanded around it, and
-    // only for the variant that is actually a target.
     const withoutComments = FILE_TREE_PROBLEM_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
     const hitArea = withoutComments.match(
       new RegExp(`\\[${OK_PROBLEM_BADGE_ATTR}\\]\\[role='button'\\]::after\\s*\\{([^}]*)\\}`),
     )?.[1];
     expect(hitArea).toBeDefined();
     expect(hitArea).toMatch(/position:\s*absolute/);
-    // Negative block inset is what lifts the 16px chip over the 24px floor.
     expect(hitArea).toMatch(/inset:\s*-\d/);
     expect(
       withoutComments.match(
@@ -468,10 +419,6 @@ describe('applyProblemIndicators', () => {
   });
 
   test('a badge that heals while focused hands focus back to its row', () => {
-    // The host renders rows as focusable buttons inside an open shadow root,
-    // which is what makes `activeElement` observable at all. A file can heal
-    // while its own badge holds focus, and removing the focused node without
-    // this leaves focus on the body with the tree unreachable by keyboard.
     const host = document.createElement('div');
     document.body.appendChild(host);
     const shadow = host.attachShadow({ mode: 'open' });
@@ -504,8 +451,6 @@ describe('applyProblemIndicators', () => {
       '1 problem. 1 error in this file. Open the Problems panel for details.',
     );
 
-    // Both attributes are written behind separate value-gates, so the update
-    // path has to assert both: breaking one guard leaves the other passing.
     applyProblemIndicators(root, new Map([['a', { errorCount: 3, warningCount: 2 }]]));
     expect(badge?.title).toBe(
       '3 errors and 2 warnings in this file. Open the Problems panel for details.',

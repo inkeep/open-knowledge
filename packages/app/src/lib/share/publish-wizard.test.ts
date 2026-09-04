@@ -1,11 +1,3 @@
-/**
- * Unit tests for the Publish-to-GitHub wizard helpers.
- *
- * Behavioural coverage of the wizard's decision tree lives here, at the
- * pure-function altitude — mirrors the `run-share-action.test.ts` shape
- * and the `share/publish.test.ts` shape.
- */
-
 import type { SharePublishOwner } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -395,17 +387,13 @@ describe('submitPublishRequest', () => {
   });
 
   test('throws on response shape mismatch', async () => {
-    const fakeFetch = vi.fn(async () =>
-      makeJsonResponse({ ok: true /* missing other fields */ }),
-    ) as unknown as typeof fetch;
+    const fakeFetch = vi.fn(async () => makeJsonResponse({ ok: true })) as unknown as typeof fetch;
 
     await expect(
       submitPublishRequest({ owner: 'me', name: 'x', visibility: 'private' }, fakeFetch),
     ).rejects.toThrow('publish response shape mismatch');
   });
 });
-
-// ── helpers ─────────────────────────────────────────────────────────────────
 
 function makeJsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

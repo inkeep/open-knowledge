@@ -4,9 +4,6 @@ import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
 function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
-  // The indeterminate ("mixed") state gets the same filled treatment as checked,
-  // with a dash instead of a check — a checkmark in an unfilled box reads as a
-  // half-broken checked state. Radix emits `data-state="indeterminate"`.
   return (
     <CheckboxPrimitive.Root
       data-slot="checkbox"

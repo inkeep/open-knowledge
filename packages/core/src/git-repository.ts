@@ -4,13 +4,6 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 const MAX_DISCOVERY_DEPTH = 64;
 
-/**
- * Node-only, read-only Git facts shared by CLI, Desktop, and server adapters.
- * HEAD belongs to the per-worktree git dir; config and refs belong to the
- * common dir. Path admission, forge classification, and user-facing failure
- * policy deliberately stay with each caller.
- */
-
 export type GitHeadResult =
   | { readonly kind: 'branch'; readonly branch: string; readonly ref: string }
   | { readonly kind: 'detached'; readonly oid: string }
@@ -101,8 +94,6 @@ class LocalGitRepository implements GitRepository {
       }
     } catch (cause) {
       if (!isMissing(cause)) return { kind: 'unreadable', cause };
-      // Main worktrees and gitfile-based repositories without a separate
-      // common dir use their git dir directly.
     }
     this.cachedCommonDir = commonDir;
     return { kind: 'resolved', path: commonDir };
@@ -191,7 +182,6 @@ export function inspectGitRepository(projectRoot: string): GitRepositoryResult {
   return inspectRepositoryAt(root, '');
 }
 
-/** Find the nearest enclosing repository without treating `~/.git` as a project. */
 export function discoverGitRepository(projectRoot: string): GitRepositoryResult {
   const start = resolve(projectRoot);
   const home = resolve(homedir());
@@ -293,8 +283,6 @@ function unquote(value: string): string {
 
 function isMissing(cause: unknown): boolean {
   const code = (cause as NodeJS.ErrnoException | undefined)?.code;
-  // ENOENT means the artifact is absent. ENOTDIR means a path component cannot
-  // contain it; both classifications let loose-ref reads fall through to packed refs.
   return code === 'ENOENT' || code === 'ENOTDIR';
 }
 

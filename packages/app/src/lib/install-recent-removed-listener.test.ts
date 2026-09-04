@@ -2,7 +2,6 @@ import * as actualSonner from 'sonner';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
-// Capture the plain `toast(...)` call so we can assert the wiring without a DOM.
 const toastPlain = vi.fn((_msg: string) => 'toast-id');
 vi.doMock('sonner', () => ({
   ...actualSonner,
@@ -16,8 +15,6 @@ vi.doMock('sonner', () => ({
   }),
 }));
 
-// Bind the SUT after the sonner mock is registered so its `toast` import is the
-// captured stub (the mock facade only rewrites imports resolved after doMock).
 type Mod = typeof import('@/lib/install-recent-removed-listener');
 let installRecentRemovedListener: Mod['installRecentRemovedListener'];
 let recentRemovedMissingMessage: Mod['recentRemovedMissingMessage'];

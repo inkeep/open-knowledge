@@ -56,8 +56,6 @@ const FULLSCREEN_HUB_LIMIT = 50;
 
 const GRAPH_URL_NODES_DOCKED_KEY = 'ok-graph-docked-url-nodes-v1';
 const GRAPH_URL_NODES_FULLSCREEN_KEY = 'ok-graph-fullscreen-url-nodes-v1';
-// Fullscreen only. The docked view is a 2-hop neighborhood used to inspect what a
-// given doc — including a skill — connects to, so it stays unfiltered by design.
 const GRAPH_SKILL_NODES_FULLSCREEN_KEY = 'ok-graph-fullscreen-skill-nodes-v1';
 
 type FullscreenGraphMode = 'explore' | 'orphans' | 'hubs';
@@ -308,10 +306,6 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
 
   useEffect(() => {
     if (!isExpanded) return;
-    // Capture phase on `window` so the open-layer probe runs before Radix's
-    // DismissableLayer (capture phase on `document`) flips `data-state` —
-    // otherwise Escape collapses the graph out from under the layer it was
-    // meant to dismiss.
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (isOverlayLayerOpen()) return;
@@ -346,8 +340,6 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
 
   const activeMode = isExpanded ? fullscreenMode : 'explore';
   const showUrlNodes = isExpanded ? showUrlNodesFull : showUrlNodesDocked;
-  // Docked stays unfiltered on both axes: it shows every skill node, built-ins
-  // included, because it is the surface for inspecting a skill's neighborhood.
   const skillVisibility: GraphSkillVisibility = !isExpanded
     ? 'all'
     : showSkillsFull
@@ -364,9 +356,6 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
         })
       : null;
   const selectedDocDisplayState = selectedNodeIntent?.displayState ?? 'doc';
-  // Kind-aware hash for the selected node: a global skill bundle reference routes
-  // to the read-only skill-file viewer (`#/__skill-file__/…`); everything else
-  // falls back to the standard `#/<doc>` hash.
   const hashForSelectedNode = (
     selection: Parameters<typeof getHashForGraphDocSelection>[0],
   ): string => selectedNodeIntent?.hash ?? getHashForGraphDocSelection(selection);
@@ -419,8 +408,6 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
                 actionLabel: t`Open link`,
                 secondaryLabel: selectedNode.url,
                 onAction: () => {
-                  // openExternalUrl gates unsafe schemes internally (a node URL can
-                  // carry any authored scheme), then routes to the OS browser / new tab.
                   openExternalUrl(selectedNode.url);
                   setIsExpanded(false);
                 },
@@ -476,10 +463,6 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
           data-slot="graph-controls"
           className={cn(
             'ml-auto flex items-center gap-2',
-            // Opt the controls back out of the header drag region so clicks on
-            // the mode toggle / globe / expand buttons fire instead of starting
-            // a window drag. Each direct child (ToggleGroup, the icon-button
-            // group) is a single DOM node, mirroring EditorHeader's right zone.
             isExpanded && isElectronHost && '[&>*]:[-webkit-app-region:no-drag]',
           )}
         >

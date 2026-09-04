@@ -1,28 +1,3 @@
-/**
- * Icon-picker variant of the PropPanel string input — text field on the
- * left with a popover trigger on the right that opens a searchable grid
- * of allowlisted lucide icons.
- *
- * Why a picker (not a plain text input):
- *   - Authors need to know which `lucide:<Name>` identifiers actually
- *     resolve. The renderer's allowlist (`LUCIDE_ICON_ALLOWLIST`) is
- *     curated, so freeform text input lets authors type names that
- *     silently fall back to the type's default icon.
- *   - The picker grid + name search makes valid choices discoverable
- *     without leaving the editor.
- *
- * The underlying value is still a free string — the picker writes
- * `lucide:<Name>` when an icon is chosen, but authors can paste an
- * emoji or any other string and the field accepts it. The renderer
- * decides what to do with non-allowlist values (Callout falls back to
- * the type default; Accordion to the chevron).
- *
- * Mount: `<IconPickerInput id value onChange autoFocus />`.
- * Selection: clicking an icon writes `lucide:<Name>` and closes the
- * popover. The "Clear" item writes an empty string (treated by the
- * PropPanel's `treatEmptyAsUndefined` logic as a delete signal for
- * optional props).
- */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Command as CommandPrimitive } from 'cmdk';
 import { ChevronDown, X } from 'lucide-react';
@@ -51,9 +26,6 @@ interface IconPickerInputProps {
 export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerInputProps) {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  // The text field is always the source of truth — the picker just
-  // writes into it. Live-resolve the current value to a lucide icon for
-  // the trigger preview (rendered as a small inset chip).
   const PreviewIcon = resolveLucideIcon(value);
   const selectedName = value.startsWith('lucide:') ? value.slice('lucide:'.length) : null;
 
@@ -95,14 +67,7 @@ export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerIn
         </PopoverTrigger>
         <PopoverContent
           align="end"
-          // PropPanel renders inside a z-[60] PopoverContent (see
-          // JsxComponentView.tsx + the matching note on the enum Select
-          // in PropPanel.tsx); both portal to body, so the picker's
-          // default z-50 would paint BEHIND the PropPanel. Bump above.
           className="z-70 w-72 p-0"
-          // Keep focus on the text input rather than stealing it on open;
-          // cmdk's CommandInput inside the popover takes focus when the
-          // user actually starts typing into it.
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <Command label={t`Icon picker`}>
@@ -128,14 +93,7 @@ export function IconPickerInput({ id, value, onChange, autoFocus }: IconPickerIn
                 </CommandGroup>
               )}
               <CommandGroup heading="Lucide">
-                {/*
-                  The grid layout is applied to the CommandPrimitive.Group's
-                  inner `[cmdk-group-items]` slot — Tailwind targets the
-                  data-slot attribute via the parent. We use grid-cols-6 so
-                  the 16-icon allowlist fits in ~3 rows with comfortable
-                  tap targets, and the trigger's `aria-haspopup="listbox"`
-                  is honored by cmdk's keyboard navigation.
-                */}
+                {}
                 <CommandPrimitive.Group className="[&_[cmdk-group-items]]:grid [&_[cmdk-group-items]]:grid-cols-6 [&_[cmdk-group-items]]:gap-1 [&_[cmdk-group-items]]:p-1">
                   {LUCIDE_ICON_ENTRIES.map(([name, Icon]) => {
                     const isSelected = name === selectedName;

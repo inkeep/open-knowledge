@@ -1,25 +1,3 @@
-/**
- * Per-line writing direction for the markdown source editor.
- *
- * Markdown source is the user's own text, so each line has to read in the
- * direction it was written rather than in the interface language's. `direction`
- * inherits from the document element, so without this a right-to-left interface
- * would re-order an English line and a left-to-right one would flatten an Arabic
- * line.
- *
- * Two halves, and neither works alone. `dir="auto"` on each line element is what
- * resolves the direction from the line's own first strong character.
- * `perLineTextDirection` is what makes CodeMirror ask each line instead of
- * assuming one direction for the whole editor — it reads the direction back off
- * the rendered line, so the caret and selection land where the glyphs actually
- * are. Setting the attribute without the facet moves the text out from under the
- * cursor; enabling the facet without the attribute changes nothing, because
- * every line still reports the inherited direction.
- *
- * Decorations are rebuilt from the visible ranges only, so cost tracks the
- * viewport rather than the document.
- */
-
 import type { Extension } from '@codemirror/state';
 import { RangeSetBuilder } from '@codemirror/state';
 import {

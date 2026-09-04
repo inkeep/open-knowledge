@@ -190,9 +190,6 @@ describe('AgentBurstDiffSuccessSchema', () => {
       }).success,
     ).toBe(false);
   });
-  // The nested delta schemas are `.loose()` on purpose: an outer loose object
-  // does not relax its nested ones, and a strict arm would reject a response
-  // from a newer server that added a field.
   test('accepts unknown fields inside the nested property delta', () => {
     expect(
       AgentBurstDiffSuccessSchema.safeParse({
@@ -426,5 +423,3 @@ describe('InstalledAgentsSuccessSchema', () => {
     ).toBe(false);
   });
 });
-
-// LocalOp + auth -----------------------------------------

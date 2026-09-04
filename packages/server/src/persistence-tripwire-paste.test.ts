@@ -1,30 +1,3 @@
-/**
- * The persistence structural-duplication tripwire against a legitimate
- * whole-document paste, on the REAL `onStoreDocument` path.
- *
- * The measured failure: a user hand-types blank-line-separated paragraphs,
- * selects all, copies, pastes. The candidate body is now an exact doubling of
- * the base, so `classifyDuplication` returns `block` — the same verdict the
- * stale-cache merge produces. The tripwire then refuses the disk write AND
- * resets the live Y.Doc from disk under `FILE_WATCHER_ORIGIN`, which is not
- * undo-eligible on either side, so the paste is destroyed silently.
- *
- * The two classes are byte-identical at the classifier: both arrive under a
- * browser `source: 'connection'` origin and both duplicate with agreeing node
- * shapes, so neither transaction origin nor the Observer-A provenance/shape
- * test separates them. What does separate them is WHEN the doubling appears.
- * The stale-cache merge materializes at provider-sync time, before the session
- * has produced a settled write; a paste is an incremental edit on a document
- * that has already persisted cleanly. The tripwire therefore only acts
- * destructively while the document has no settled write behind it, and
- * checkpoints the live content before it does.
- *
- * Fidelity: real `createServer`, real `onStoreDocument`, real on-disk
- * contentDir, real Hocuspocus debounce, real shadow repo. The only test
- * affordance is `debounce`/`maxDebounce`, real `ServerOptions` fields the
- * sibling tripwire tests already use.
- */
-
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -43,15 +16,6 @@ import { getDocumentHistory } from './timeline-query.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'persistence-tripwire.fixtures');
 
-/**
- * The reported document as it lands on disk. WYSIWYG Enter-Enter leaves an
- * EMPTY paragraph node between each typed paragraph, which serializes as a
- * doubled blank line — that is what makes this 51 bytes rather than the 43
- * the same five paragraphs occupy with single blank lines.
- */
-// One blank-line paragraph per gap serializes to three newlines: the canonical
-// block separator plus the blank line itself. Four newlines would be the shape
-// that re-parses to TWO paragraphs per gap, doubling the run on every trip.
 const USER_DOC = 'hello\n\n\nkjnekandkjawnkjd\n\n\nwkajnd\n\n\nwk\n\n\nwwjwj\n';
 const USER_DOC_LINE = 'kjnekandkjawnkjd';
 
@@ -63,7 +27,6 @@ const BROWSER_ORIGIN = {
 const P = (t: string) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
 const EMPTY = { type: 'paragraph' };
 
-/** The nine children Enter-Enter typing of USER_DOC produces. */
 const TYPED_CHILDREN = [
   P('hello'),
   EMPTY,
@@ -122,16 +85,9 @@ interface Rig {
 }
 
 async function setupRig(prefix: string): Promise<Rig> {
-  // Realpath first: on macOS the tmpdir is a symlink, and persistence derives
-  // its shadow tree prefix from `relative(projectDir, contentDir)` — two
-  // spellings of the same directory resolve that to an escaping absolute path.
   const tmpDir = await realpath(mkdtempSync(join(tmpdir(), prefix)));
   const git = simpleGit({ baseDir: tmpDir });
   await git.init();
-  // Pin the branch rather than inheriting `init.defaultBranch`. Checkpoint refs
-  // are namespaced `refs/checkpoints/<branch>` off the real repo HEAD, so a
-  // machine defaulting to `master` files the anchor somewhere this test would
-  // otherwise not look.
   await git.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
   await git.addConfig('user.name', 'Test User');
   await git.addConfig('user.email', 'test@example.com');
@@ -153,7 +109,6 @@ function replaceFragment(doc: Y.Doc, content: unknown[]): void {
   }, BROWSER_ORIGIN);
 }
 
-/** The live fragment's children, as the clipboard would carry them. */
 function liveChildren(frag: Y.XmlFragment): unknown[] {
   const json = yXmlFragmentToProseMirrorRootNode(frag, schema).toJSON() as {
     content?: unknown[];
@@ -179,10 +134,6 @@ describe('persistence tripwire vs a whole-document paste', () => {
   });
 
   test('the classifier still reads a whole-document double as a block verdict', () => {
-    // The discriminator lives at the tripwire call site, not in the classifier:
-    // the shape genuinely IS an integer doubling, and the epoch-recovery guard
-    // still needs that verdict. Pinning it here keeps a future "fix" from
-    // weakening the classifier instead of the action it drives.
     expect(USER_DOC.length).toBe(47);
     expect(classifyDuplication(`${USER_DOC}\n${USER_DOC}`, USER_DOC)).toEqual({
       kind: 'block',
@@ -216,39 +167,27 @@ describe('persistence tripwire vs a whole-document paste', () => {
       if (!serverDoc) return;
       const frag = serverDoc.getXmlFragment('default');
 
-      // The user hand-types five blank-line-separated paragraphs, and that
-      // typing settles to disk as one clean copy. This settled write is what
-      // marks the session as user-driven.
       replaceFragment(serverDoc, TYPED_CHILDREN);
       await waitFor(() => readFileSync(docPath, 'utf-8').length > 0);
       const baseline = readFileSync(docPath, 'utf-8');
       expect(baseline).toBe(USER_DOC);
 
-      // Select all, copy, paste. Derived from the LIVE fragment, so this is
-      // byte-for-byte what the user's own clipboard held.
       const kids = liveChildren(frag);
       replaceFragment(serverDoc, [...kids, ...kids]);
       expect(occurrences(serverDoc.getText('source').toString(), USER_DOC_LINE)).toBe(2);
 
-      // The paste must reach disk rather than being refused as corruption.
       await waitFor(() => readFileSync(docPath, 'utf-8') !== baseline);
       const persisted = await expectStable(() => readFileSync(docPath, 'utf-8'));
       expect(occurrences(persisted, USER_DOC_LINE)).toBe(2);
       expect(persisted.length).toBeGreaterThan(baseline.length);
 
-      // And the live document must still hold it — the destructive half of the
-      // tripwire is what actually took the content away from the user.
       expect(occurrences(serverDoc.getText('source').toString(), USER_DOC_LINE)).toBe(2);
       expect(frag.length).toBeGreaterThan(TYPED_CHILDREN.length);
 
-      // No block fired, so no checkpoint was needed and nothing was reset.
       expect(blockedEvents(warnSpy)).toHaveLength(0);
       expect(getMetrics().persistenceDuplicationReset).toBe(0);
       expect(getMetrics().persistenceDuplicationSpared).toBe(1);
 
-      // The spared breadcrumb carries bounded-cardinality keys only. Pinning the
-      // key SET, not just the values, is what stops a later change from adding a
-      // raw-content field to an event that ships to telemetry.
       const spared = warnSpy.mock.calls
         .map((call) => String(call[0] ?? ''))
         .filter((s) => s.includes('"event":"ok-persistence-duplication-spared"'));
@@ -276,10 +215,6 @@ describe('persistence tripwire vs a whole-document paste', () => {
   }, 30_000);
 
   test('a doubling with no settled write behind it still blocks, resets, and checkpoints', async () => {
-    // The incident shape: the document loads from disk and is immediately
-    // mutated to the doubled candidate, with no settled write in between. The
-    // guard must still act — and the content it destroys must now be
-    // recoverable from a checkpoint of its own kind.
     rig = await setupRig('ok-tripwire-incident-');
     const docName = 'incident-changeset-readme';
     const docPath = join(rig.tmpDir, `${docName}.md`);
@@ -315,22 +250,15 @@ describe('persistence tripwire vs a whole-document paste', () => {
 
       await waitFor(() => blockedEvents(warnSpy).length > 0);
 
-      // Disk untouched, live document reset to the disk canonical state.
       await expectStable(() => readFileSync(docPath, 'utf-8'));
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
       await waitFor(() => serverDoc.getXmlFragment('default').length === baseChildren);
       await waitFor(() => serverDoc.getText('source').toString() === baselineBytes);
       expect(getMetrics().persistenceDuplicationReset).toBe(1);
 
-      // The reset destroys live content, so it owes a restore anchor. Gate on
-      // the completion counter: git creates the ref before the write promise
-      // settles, so polling refs alone can observe a half-finished mint.
       await waitFor(() => getMetrics().persistenceDuplicationResetCheckpointCreated >= 1, {
         timeoutMs: 10_000,
       });
-      // Listed across every branch namespace, not just `refs/checkpoints/main`,
-      // so the assertion pins "exactly one anchor was minted" rather than
-      // "an anchor landed on the branch this test happened to guess".
       const shas = (
         await shadowGit(rig.shadow).raw(
           'for-each-ref',
@@ -345,8 +273,6 @@ describe('persistence tripwire vs a whole-document paste', () => {
       expect(shas).toHaveLength(1);
       const sha = shas[0] ?? '';
 
-      // End to end: the anchor's blob holds the doubled content the reset took
-      // away, and it surfaces as an ordinary restorable timeline row.
       const blob = (await shadowGit(rig.shadow).raw('show', `${sha}:${docName}`)).toString();
       expect(occurrences(blob, 'changeset')).toBeGreaterThan(
         occurrences(baselineBytes, 'changeset'),
@@ -356,9 +282,6 @@ describe('persistence tripwire vs a whole-document paste', () => {
       expect(row?.checkpoint?.kind).toBe('persistence-duplication-reset');
       expect(row?.checkpoint?.metadata).toEqual({ copies: 2, fragmentChildren: baseChildren * 2 });
 
-      // The reset threads `detect` into the paired intake, which is the whole
-      // reason the injectable seam had to widen. Without a ring event here the
-      // widening buys nothing, so pin the detector trip and its anchor.
       const ring = parseLossCaptureLines(
         readFileSync(lossCaptureCurrentPath(rig.tmpDir), 'utf-8'),
       ).filter((e) => e.site === 'persistence-duplication-reset');

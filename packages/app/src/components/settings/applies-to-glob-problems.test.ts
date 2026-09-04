@@ -1,10 +1,3 @@
-/**
- * The parser reads strings composed by the server's `lint/frontmatter-schemas.ts`.
- * Every literal here is the shape that file emits — if these fail after a
- * server-side wording change, the settings panel has stopped attributing glob
- * findings to their globs and the two sides need re-syncing.
- */
-
 import { describe, expect, test } from 'vitest';
 import { indexGlobProblemsByFile, parseAppliesToGlobProblem } from './applies-to-glob-problems';
 
@@ -26,8 +19,6 @@ describe('parseAppliesToGlobProblem', () => {
   });
 
   test('keeps a detail that itself contains parentheses intact', () => {
-    // The mapping suffix is matched from the right precisely so this detail
-    // (the real trailing-slash wording) survives.
     expect(parseAppliesToGlobProblem(SUSPICIOUS)).toEqual({
       kind: 'suspicious',
       pattern: 'blog/',
@@ -58,8 +49,6 @@ describe('parseAppliesToGlobProblem', () => {
   });
 
   test('returns null on a recognized prefix with an unrecognized tail', () => {
-    // Degrading to null keeps the finding in the flat list rather than
-    // dropping it, so a server-side reword loses attribution, not the signal.
     for (const malformed of [
       'unmatched appliesTo glob specs/** — no quotes (frontmatter mapping for s.json)',
       'unmatched appliesTo glob "specs/**" — missing the mapping suffix',

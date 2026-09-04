@@ -1,31 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * Per-project consent dialog implementation — split from
- * `ConsentDialog.tsx` so that file can lazy-load this module via
- * `React.lazy()`. See that file's header for the rationale.
- *
- * Reads as a confirmation screen: sensitive-path warning paragraphs
- * (role="alert"), git-root-promotion notice, a file-count preview line
- * (async + 750 ms throttle; cap surfaces as `≥ 50,000`), the AI-tool decision
- * (`ProjectAiToolsField`) and the config-sharing posture (side-by-side radio
- * cards) stay visible, while the remaining editable controls — content.dir text
- * input with `..`-escape rejection + Browse button, and ignore-patterns
- * textarea — collapse into an "Advanced settings" section (force-opened when
- * content.dir is invalid so its inline error stays reachable). Start
- * primary + Cancel secondary. Picking a
- * folder via
- * the dialog == agreeing to scaffold `.ok/`; users who don't want OK
- * scaffolded simply Cancel. Git is initialized implicitly when the
- * picked path has no real `.git/` (or is shell-only) — no UI toggle.
- *
- * The AI-tool row is one pre-checked checkbox over the tools detected on this
- * machine, the same component and answer shape the create-project dialog uses.
- * It replaced a per-tool multi-select over every supported editor, which asked
- * for a row-by-row audit on a screen most people answer once with "yes" — and
- * offered five user-global-only tools whose boxes wrote nothing at all, since
- * this flow only ever writes project-scoped artifacts. Picking among tools
- * lives in Settings > This project.
- */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
@@ -35,7 +8,7 @@ import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { ProjectAiToolsField } from '@/components/ProjectAiToolsField';
 import {
@@ -55,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { type ConsentStore, consentStore as defaultConsentStore } from '@/lib/consent-store';
 import type {
@@ -67,8 +41,20 @@ import { isContentDirSafe, relativeToProject } from '@/lib/project-paths';
 
 const PROBE_THROTTLE_MS = 750;
 
-// Module-level constants can't use the `t` macro — `msg` produces lazy
-// MessageDescriptors resolved per-render via `useLingui()._`.
+/* STOP: this backstop must exceed the main-process detection ceiling, or it silently truncates
+   working probes instead of catching wedged ones. That ceiling is the SLOWEST SINGLE LEG, and a
+   leg is a SUM, not a max: detectProtocol races getApplicationInfoForProtocol against
+   DEFAULT_PROBE_TIMEOUT_MS = 2000 (desktop/src/main/ipc-handlers.ts) and only THEN awaits the OS
+   probe, which loops MACOS_APP_NAMES candidates SERIALLY at INSTALLED_AGENTS_PROBE_TIMEOUT_MS =
+   2000 each (server/src/handoff-api.ts). One candidate per scheme today, so that leg is 4000; the
+   CLI leg is PROBE_TIMEOUT_MS = 5000 (desktop/src/main/claude-readiness.ts) fanned out in
+   parallel. Ceiling is 5000 and headroom is 3000. Three ways to breach it, none of which any test
+   here catches because the grace-dependent tests inject a small detectionGraceMs: raise any of the
+   three constants (2000 -> 6000 lands at exactly 8000), serialise a parallel fan-out, or add a
+   third MACOS_APP_NAMES alias for one scheme (also exactly 8000, touching no constant named
+   above). */
+const DETECTION_GRACE_MS = 8_000;
+
 const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
   root: msg`You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want.`,
   home: msg`You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files.`,
@@ -82,8 +68,8 @@ const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
 interface ConsentDialogBodyProps {
   store?: ConsentStore;
   toast?: ToastImpl;
-  /** Test-only override for the payload — production reads from `store`. */
   payload?: OkOnboardingShowPayload;
+  detectionGraceMs?: number;
 }
 
 export interface ToastImpl {
@@ -98,52 +84,47 @@ function ConsentDialogBody({
   store = defaultConsentStore,
   toast = defaultToast,
   payload,
+  detectionGraceMs = DETECTION_GRACE_MS,
 }: ConsentDialogBodyProps = {}) {
   const snapshot = payload ?? store.getSnapshot();
   if (!snapshot) return null;
-  return <ConsentDialogForm payload={snapshot} store={store} toast={toast} />;
+  return (
+    <ConsentDialogForm
+      payload={snapshot}
+      store={store}
+      toast={toast}
+      detectionGraceMs={detectionGraceMs}
+    />
+  );
 }
 
 interface ConsentDialogFormProps {
   payload: OkOnboardingShowPayload;
   store: ConsentStore;
   toast: ToastImpl;
+  detectionGraceMs: number;
 }
 
-/** Dialog form — local state, async file-count probe, validation. */
-function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
+function ConsentDialogForm({ payload, store, toast, detectionGraceMs }: ConsentDialogFormProps) {
   const { t } = useLingui();
-  // Initialize-git-repo behavior is implicit: main runs `ensureProjectGit`
-  // whenever gitState is 'absent' or 'shell-only', matching the
-  // create-new-project IPC handler. The IPC payload still carries
-  // `initGit: true` so re-introducing a UI toggle later is a one-file
-  // change.
   const initGit = true;
   const formId = useId();
   const [contentDir, setContentDir] = useState(payload.defaultContentDir);
   const [additionalIgnores, setAdditionalIgnores] = useState('');
-  // Tools detected on this machine that will actually receive a project write,
-  // probed on mount. `null` means the probe is still in flight — distinct from
-  // `[]` ("probed, found nothing"), because the row is always visible and has to
-  // say which of the two it is rather than flashing an empty state.
   const [detectedEditors, setDetectedEditors] = useState<readonly OkMcpWiringEditorId[] | null>(
     null,
   );
-  // Whether to wire those tools on Setup. One decision, pre-checked: the write
-  // set is exactly the detected tools, so there is nothing to seed and no race
-  // with the probe — a late result changes the list the label names, never the
-  // answer the user gave.
   const [connectEditors, setConnectEditors] = useState(true);
   const [sharing, setSharing] = useState<SharingMode>(DEFAULT_SHARING_MODE);
   const [probe, setProbe] = useState<OkOnboardingProbeContentResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [awaitingDetection, setAwaitingDetection] = useState(false);
+  const detectionRef = useRef<Promise<readonly OkMcpWiringEditorId[]> | null>(null);
+  const cancelInFlightRef = useRef(false);
+  const confirmEpochRef = useRef(0);
 
-  // Throttled probe: 750 ms after the last contentDir edit. Probe runs
-  // asynchronously through the bridge — main caps the walk at 50,000
-  // entries and yields to setImmediate so the IPC reply doesn't block the
-  // main loop on huge trees.
   useEffect(() => {
     if (!isContentDirSafe(contentDir)) {
       setProbe(null);
@@ -171,13 +152,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     };
   }, [contentDir, t]);
 
-  // Editor detection, once on mount — this dialog is created fresh per folder
-  // pick, so there is no reopen to re-probe for. Filtered to the tools this
-  // setup will actually write something for (`receivesProjectIntegrationWrite`,
-  // not mere surface membership): a user-global-only tool has nothing to write
-  // here, and Copilot's project skill is gated on its user-global OpenKnowledge
-  // entry, so before that exists the write lands as `skipped-prerequisite`.
-  // Naming either in the checkbox label would promise a file that never appears.
   useEffect(() => {
     const bridge = window.okDesktop;
     if (!bridge) {
@@ -185,55 +159,50 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
       return;
     }
     let cancelled = false;
-    bridge.integrations
+    const detection: Promise<readonly OkMcpWiringEditorId[]> = bridge.integrations
       .status()
       .then((status) => {
-        if (cancelled) return;
-        // `installed` only — deliberately stricter than the write path's own
-        // check, which asks whether ANY entry sits under OpenKnowledge's server
-        // name and so also passes on `foreign` (an entry under that name that
-        // isn't ours). A foreign entry means OK's MCP is not actually
-        // registered, so the skill would tell the agent to call tools that
-        // aren't there.
         const userMcpInstalled = new Set(
           status.editors.filter((e) => e.state === 'installed').map((e) => e.id),
         );
-        setDetectedEditors(
-          status.detectedEditorIds.filter((id) =>
-            receivesProjectIntegrationWrite(id, {
-              userMcpEntryInstalled: userMcpInstalled.has(id),
-            }),
-          ),
+        return status.detectedEditorIds.filter((id) =>
+          receivesProjectIntegrationWrite(id, {
+            userMcpEntryInstalled: userMcpInstalled.has(id),
+          }),
         );
       })
       .catch((err: unknown) => {
-        // Best-effort: settle on an empty list so we never write for a tool we
-        // could not confirm, and the row says so rather than hanging on
-        // "Checking".
         console.warn('[ConsentDialog] editor-detection probe failed:', err);
-        if (!cancelled) setDetectedEditors([]);
+        return [];
       });
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    detectionRef.current = Promise.race([
+      detection,
+      new Promise<readonly OkMcpWiringEditorId[]>((resolve) => {
+        graceTimer = setTimeout(() => {
+          console.warn(
+            `[ConsentDialog] editor detection did not settle within ${detectionGraceMs}ms`,
+          );
+          if (!cancelled) setDetectedEditors([]);
+          resolve([]);
+        }, detectionGraceMs);
+      }),
+    ]);
+    void detection.then((editors) => {
+      clearTimeout(graceTimer);
+      if (!cancelled) setDetectedEditors(editors);
+    });
     return () => {
       cancelled = true;
+      clearTimeout(graceTimer);
     };
-  }, []);
+  }, [detectionGraceMs]);
 
   const contentDirSafe = isContentDirSafe(contentDir);
-  // The detection probe settles independently of everything else on this
-  // screen, so Setup could otherwise fire while `detectedEditors` is still null
-  // and submit `editorIds: []` — a project wired to nothing while the row still
-  // reads "Checking which AI tools you have". Only gate it while the user
-  // actually intends to connect: with the box unticked the list is never read.
-  const detectionPending = connectEditors && detectedEditors === null;
-  const startDisabled = busy || detectionPending || !contentDirSafe;
-  // Advanced settings collapse by default — the dialog reads as a
-  // confirmation screen. Force it open whenever the content dir is invalid
-  // so the inline error (which lives inside the section) can't hide off-screen.
+  const startDisabled = busy || !contentDirSafe;
+  const exitsLive = !busy || awaitingDetection;
   const advancedExpanded = advancedOpen || !contentDirSafe;
 
-  // Named locals so the git-root-promoted `<Trans>` extracts meaningful
-  // placeholder names (`{projectDir}` / `{pickedRelative}`) instead of the
-  // positional `{0}` / `{1}` a member expression would yield.
   const projectDir = payload.projectDir;
   const pickedRelative =
     relativeToProject(payload.projectDir, payload.pickedPath) ?? payload.pickedPath;
@@ -258,13 +227,28 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     setContentDir(relative);
   }
 
+  async function resolveDetectedEditors(): Promise<readonly OkMcpWiringEditorId[]> {
+    if (!connectEditors) return [];
+    if (detectedEditors !== null) return detectedEditors;
+    const pending = detectionRef.current;
+    if (pending === null) return [];
+    setAwaitingDetection(true);
+    const detected = await pending;
+    setAwaitingDetection(false);
+    return detected;
+  }
+
   async function onConfirm() {
+    const epoch = confirmEpochRef.current + 1;
+    confirmEpochRef.current = epoch;
     setBusy(true);
+    const detected = await resolveDetectedEditors();
+    if (confirmEpochRef.current !== epoch) return;
     const result = await store.confirm({
       initGit,
       contentDir,
       additionalIgnores,
-      editorIds: connectEditors ? [...(detectedEditors ?? [])] : [],
+      editorIds: [...detected],
       connectEditors,
       sharing,
     });
@@ -274,13 +258,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     }
   }
 
-  // Enter-on-any-field fires Start. The form wraps just the input fields
-  // inside DialogBody so DialogHeader / DialogBody / DialogFooter remain
-  // direct flex children of DialogContent (preserving its `gap-6` between
-  // sections). The Start button in the footer binds back via the HTML
-  // `form` attribute. Cancel is type="button" so it doesn't submit. Suppress
-  // the default form submission (page reload in a renderer) and route
-  // through the same Start path.
   function onSubmit(e: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     e.preventDefault();
     if (startDisabled) return;
@@ -288,30 +265,27 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   }
 
   async function onCancel() {
+    if (cancelInFlightRef.current) return;
+    cancelInFlightRef.current = true;
+    confirmEpochRef.current += 1;
     setBusy(true);
     const result = await store.cancel();
     if (!result.ok) {
+      cancelInFlightRef.current = false;
+      setAwaitingDetection(false);
       toast.error(result.error);
       setBusy(false);
     }
   }
 
   function onOpenChange(open: boolean) {
-    if (!open && !busy) void onCancel();
+    if (!open && exitsLive) void onCancel();
   }
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-lg"
-        // Radix Dialog autofocuses the first focusable descendant on open. Both
-        // the file-count probe and the editor-detection probe are async, so
-        // ProbePreview and the AI-tools row each render a non-focusable
-        // placeholder at mount — making the sharing-info TooltipTrigger the
-        // first focusable element. A Radix Tooltip opens immediately on focus
-        // (delayDuration 0), so the info popover would pop open unbidden.
-        // Redirect initial focus to the primary control (the first sharing
-        // radio); keyboard users still get the tooltip on a later Tab to it.
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="radio"]')?.focus();
@@ -357,12 +331,7 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
           <form id={formId} onSubmit={onSubmit} data-testid="consent-form" className="space-y-6">
             {contentDirSafe ? <ProbePreview probe={probe} /> : null}
 
-            {/* AI-tool setup, always visible: it decides whether the project is
-              usable from the user's agents at all, which is not an advanced
-              concern. Same row the create-project dialog renders — one
-              pre-checked checkbox whose subtext names the write set, plus a
-              "What changes?" popover with the exact files. Per-tool control
-              lives in Settings > This project. */}
+            {}
             <ProjectAiToolsField
               detectedEditors={detectedEditors}
               checked={connectEditors}
@@ -478,14 +447,20 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
           <Button
             type="button"
             variant="outline"
-            className="font-mono uppercase"
             onClick={() => void onCancel()}
-            disabled={busy}
+            disabled={!exitsLive}
             data-testid="consent-cancel"
           >
             <Trans>Cancel</Trans>
           </Button>
-          <Button type="submit" form={formId} disabled={startDisabled} data-testid="consent-start">
+          <Button
+            type="submit"
+            form={formId}
+            disabled={startDisabled}
+            aria-busy={awaitingDetection}
+            data-testid="consent-start"
+          >
+            {awaitingDetection ? <Spinner aria-hidden="true" /> : null}
             <Trans comment="Primary button — begins scaffolding the project">Setup</Trans>
           </Button>
         </DialogFooter>

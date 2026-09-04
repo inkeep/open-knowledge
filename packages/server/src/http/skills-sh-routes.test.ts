@@ -2,16 +2,6 @@ import { describe, expect, test } from 'vitest';
 import { loggerFactory } from '../logger.ts';
 import { createSkillsShRoutes } from './skills-sh-routes.ts';
 
-/**
- * Table-level pins for the skills.sh proxy group's mutating declaration. The
- * wire cannot pin this: the read half of the DNS-rebinding defense applies
- * the identical loopback + workspace-Host checks to every `/api/*` request,
- * so an emptied mutating set changes no composition-suite response — only
- * which gate (and telemetry tag) fires first. The declared membership is
- * pinned here directly against the legacy `MUTATING_ROUTES` membership it
- * reproduces.
- */
-
 function buildGroup() {
   return createSkillsShRoutes({
     log: loggerFactory.getLogger('test'),

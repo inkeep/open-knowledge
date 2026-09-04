@@ -10,15 +10,12 @@ import {
   planDirectoryIndexRegenerations,
 } from './regenerate-index.ts';
 
-/** Sets carry no meaningful order; compare membership as a sorted array. */
 function sorted(directories: Set<string>): string[] {
   return [...directories].sort();
 }
 
 describe('collectIndexDirectories', () => {
   test('every ancestor of a document is included, even containers with no direct markdown', () => {
-    // `guide` and `guide/deep` hold no markdown directly, only below them, yet
-    // each is a navigation waypoint and gets an index.
     expect(sorted(collectIndexDirectories(['guide/deep/note']))).toEqual([
       '',
       'guide',
@@ -27,8 +24,6 @@ describe('collectIndexDirectories', () => {
   });
 
   test('a directory with no admitted markdown at any depth is excluded', () => {
-    // `archive` holds only a reserved `index`, so it never becomes a directory
-    // that needs one of its own.
     const directories = collectIndexDirectories(['docs/guide', 'archive/index']);
     expect(sorted(directories)).toEqual(['', 'docs']);
     expect(directories.has('archive')).toBe(false);
@@ -78,9 +73,6 @@ describe('planDirectoryIndexRegenerations', () => {
   test('produces one decision per directory, deepest-first, each scoped to its own directory', () => {
     const decisions = planDirectoryIndexRegenerations(directoryDeps(TREE));
 
-    // Paths rebase to each index's own directory, the root alone carries
-    // frontmatter, and a parent links the child's index document rather than a
-    // bare folder. Deepest-first: the child directory precedes its parent.
     expect(decisions).toEqual([
       {
         directory: 'concepts/nested',
@@ -106,8 +98,6 @@ describe('planDirectoryIndexRegenerations', () => {
     const first = planDirectoryIndexRegenerations(directoryDeps(TREE));
     const settled = new Map(first.map((d) => [d.directory, d.markdown]));
 
-    // The fixed point, per directory: each index compared against its own output
-    // reports unchanged, so a converged bundle sitting idle writes nothing.
     const second = planDirectoryIndexRegenerations(
       directoryDeps(TREE, (directory) => settled.get(directory) ?? null),
     );
@@ -121,8 +111,6 @@ describe('planDirectoryIndexRegenerations', () => {
       (d) => d.directory === '',
     )?.markdown;
 
-    // Every directory is handed the ROOT's current bytes. Only the root matches;
-    // a nested index compared against the root's bytes would wrongly settle.
     const changed = new Map(
       planDirectoryIndexRegenerations(directoryDeps(TREE, () => rootBytes ?? null)).map((d) => [
         d.directory,
@@ -152,8 +140,6 @@ describe('planDirectoryIndexRegenerations', () => {
   });
 
   test('a container directory with markdown only below it lists subdirectories and no type section', () => {
-    // `guide` holds no document directly — only `guide/ddd/note` beneath it — so
-    // its index is a pure navigation waypoint into `guide/ddd`.
     const guide = planDirectoryIndexRegenerations(
       directoryDeps({ 'guide/ddd/note': { title: 'Note', type: 'concept' } }),
     ).find((d) => d.directory === 'guide');
@@ -162,8 +148,6 @@ describe('planDirectoryIndexRegenerations', () => {
   });
 
   test('the same documents in any input order produce identical decisions', () => {
-    // Same-depth siblings exercise the tie-break: without a stable order among
-    // equal depths, reversing the input would swap `alpha` and `beta`.
     const docs: Record<string, IndexSourceDoc> = {
       'alpha/one': { title: 'One', type: 'note' },
       'beta/two': { title: 'Two', type: 'note' },
@@ -189,9 +173,6 @@ describe('planDirectoryIndexRegenerations', () => {
       currentMarkdownFor: () => null,
     });
 
-    // A planner that iterated `docs` twice without materializing would see the
-    // documents once (deriving the directory set) and an empty stream on the
-    // second pass (the entries), yielding indexes that link to nothing.
     expect(decisions.map((d) => d.directory).sort()).toEqual(['', 'concepts']);
     expect(decisions.find((d) => d.directory === 'concepts')?.markdown).toContain(
       '* [Aggregate](./aggregate.md)',
@@ -202,13 +183,6 @@ describe('planDirectoryIndexRegenerations', () => {
   });
 });
 
-/**
- * The gate on the highest-volume trigger. `onDiskFlush` fires on every settled
- * keystroke burst in the project, and this predicate is the only thing standing
- * between that and a rebuild — so both directions are load-bearing. Too eager
- * rewrites a tracked file while someone types prose; too lax and the feature
- * goes quietly dead.
- */
 describe('indexedFieldsChanged', () => {
   const BODY = '\n# Heading\n\nSome prose.\n';
   const doc = (fm: string, body = BODY) => `---\n${fm}\n---\n${body}`;
@@ -242,8 +216,6 @@ describe('indexedFieldsChanged', () => {
   });
 
   test('adding a heading below the first does NOT schedule a rebuild', () => {
-    // Only the FIRST heading can feed the title ladder; a later one changes
-    // nothing the index renders.
     const fm = 'title: A\ntype: note';
     const before = doc(fm, '\n# Heading\n\nProse.\n');
     const after = doc(fm, '\n# Heading\n\nProse.\n\n## A later section\n\nMore.\n');
@@ -263,35 +235,26 @@ describe('indexedFieldsChanged', () => {
 
   test('a first write schedules a rebuild with no special case for absent previous bytes', () => {
     const after = doc('title: A\ntype: note');
-    // Both shapes the caller can produce for "there was nothing here before".
     expect(indexedFieldsChanged(null, after, 'notes/a')).toBe(true);
     expect(indexedFieldsChanged(undefined, after, 'notes/a')).toBe(true);
   });
 
   test('a title arriving via the first-heading fallback schedules a rebuild', () => {
-    // No frontmatter title on either side, so the title resolves from the H1 —
-    // the ladder has to be walked, not just the frontmatter compared.
     const before = '# Old heading\n\nProse.\n';
     const after = '# New heading\n\nProse.\n';
     expect(indexedFieldsChanged(before, after, 'notes/a')).toBe(true);
   });
 });
 
-// The API mutation seam has no old bytes to diff — the file index cached the
-// document's rendered fields before the write, so invalidation compares those
-// cached fields against the new bytes instead.
 describe('indexedMetadataChanged', () => {
   const BODY = '\n# Heading\n\nSome prose.\n';
   const doc = (fm: string, body = BODY) => `---\n${fm}\n---\n${body}`;
 
   test('absent cached fields schedule a rebuild', () => {
-    // Where the seam lands when the file index holds no entry for the doc —
-    // scheduling is the safe default the write layer's byte compare then absorbs.
     expect(indexedMetadataChanged(undefined, doc('title: A\ntype: note'), 'notes/a')).toBe(true);
   });
 
   test('cached fields matching the new bytes do NOT schedule a rebuild', () => {
-    // The prose-only write: the body moved but every rendered field held.
     const previous = { title: 'A', description: 'D', type: 'note' };
     const after = doc('title: A\ndescription: D\ntype: note', '\n# A\n\nRewritten prose.\n');
     expect(indexedMetadataChanged(previous, after, 'notes/a')).toBe(false);
@@ -314,8 +277,6 @@ describe('indexedMetadataChanged', () => {
   });
 
   test('an unenriched cached entry with a titled document schedules a rebuild', () => {
-    // A cached entry built without enrichment carries undefined fields; the new
-    // document resolves a real title, so they differ and a rebuild is scheduled.
     const previous = { title: undefined, description: undefined, type: undefined };
     expect(indexedMetadataChanged(previous, doc('title: A\ntype: note'), 'notes/a')).toBe(true);
   });
@@ -335,9 +296,6 @@ describe('directoryChainToRoot', () => {
   });
 });
 
-// The predicate behind the self-trigger guard: it must recognize a generated
-// index by its basename at any depth, since a child index is what a
-// root-name-only check would miss and let schedule its own rebuild.
 describe('isGeneratedIndexDocName', () => {
   test('the root index is a generated index', () => {
     expect(isGeneratedIndexDocName('index')).toBe(true);
@@ -356,8 +314,6 @@ describe('isGeneratedIndexDocName', () => {
   });
 
   test('the reserved log stem is not a generated index', () => {
-    // `log` is reserved from entries but is not an index; its write must still
-    // schedule a rebuild, which the byte comparison then absorbs.
     expect(isGeneratedIndexDocName('log')).toBe(false);
     expect(isGeneratedIndexDocName('concepts/log')).toBe(false);
   });

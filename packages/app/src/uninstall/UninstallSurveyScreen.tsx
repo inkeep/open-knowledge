@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 
-/** What the user left behind; every field is absent when untouched. */
 interface UninstallSurveyAnswers {
   reason?: UninstallFeedbackReason;
   note?: string;
@@ -21,22 +20,10 @@ interface UninstallSurveyAnswers {
 }
 
 interface UninstallSurveyScreenProps {
-  /** Send the answers and continue the uninstall. */
   onSend: (answers: UninstallSurveyAnswers) => void;
-  /** Continue the uninstall having asked nothing. */
   onSkip: () => void;
 }
 
-/**
- * The reason labels, translated.
- *
- * `UNINSTALL_FEEDBACK_REASONS` stays the source of the taxonomy — its order and
- * its `value` slugs are the wire contract — but its `label` half is plain
- * English for the two consumers that have no Lingui (Electron main, the CLI).
- * This window does have Lingui, so it renders its own translated labels and
- * keeps the English ones verbatim. A test pins both halves together, so adding
- * a reason without a label here fails rather than rendering a blank row.
- */
 function useUninstallReasonLabels(): Record<UninstallFeedbackReason, string> {
   const { t } = useLingui();
   return {
@@ -50,15 +37,6 @@ function useUninstallReasonLabels(): Record<UninstallFeedbackReason, string> {
   };
 }
 
-/**
- * The optional churn survey, shown after the uninstall is already confirmed and
- * the removal has already succeeded.
- *
- * Both buttons continue the uninstall — this screen has no cancel path — and
- * nothing here is required, so it deliberately has no Escape handler: the only
- * exits are the two buttons or a deliberate window close, which main maps to
- * "continue with nothing".
- */
 export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenProps) {
   const { t } = useLingui();
   const reasonLabels = useUninstallReasonLabels();
@@ -94,8 +72,7 @@ export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenP
         </p>
       </header>
 
-      {/* A real form, so a malformed address trips the browser's own validation
-          instead of 400-ing the whole ticket away at the intake. */}
+      {}
       <form
         className="flex min-h-0 flex-1 flex-col"
         onSubmit={(event) => {
@@ -110,9 +87,7 @@ export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenP
         }}
       >
         <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-auto px-6 pt-1 pb-4">
-          {/* The heading is a plain element rather than a fieldset/legend: Radix
-              already gives the list `role="radiogroup"`, so a legend would wrap
-              it in a second labelled group and announce the question twice. */}
+          {}
           <div className="mb-6">
             <p id={legendId} className="mb-2 font-medium text-sm">
               <Trans>Before you go, mind sharing why?</Trans>
@@ -168,10 +143,6 @@ export function UninstallSurveyScreen({ onSend, onSkip }: UninstallSurveyScreenP
               autoComplete="email"
               spellCheck={false}
               placeholder={t`you@company.com`}
-              // Disabled, not merely hidden: a hidden-but-validatable field makes
-              // the browser silently refuse the submit (it cannot focus what it
-              // must report on), which would strand the user on a screen with no
-              // visible problem.
               disabled={!emailOptIn}
               value={email}
               onChange={(event) => setEmail(event.target.value)}

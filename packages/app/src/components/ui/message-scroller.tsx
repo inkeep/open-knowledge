@@ -40,9 +40,6 @@ function MessageScrollerViewport({
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       className={cn(
-        // `scroll-fade-b` and `scrollbar-gutter-stable` from the upstream registry
-        // resolve to nothing in this app (their CSS layer wasn't copied); the fade
-        // comes from `scroll-fade-mask` passed at the call site.
         'size-full min-h-0 min-w-0 scrollbar-thin overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
         className,
       )}

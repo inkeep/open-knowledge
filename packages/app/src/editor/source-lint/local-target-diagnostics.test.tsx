@@ -1,11 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Narrow integration for the source-mode target-existence layer: a real
- * `EditorView` with the extension installed, the audit fetch and CC1 push mocked
- * at its subscription boundary, proving the wiring the pure mapping test cannot
- * — settled findings render, a later settled plane heals them, and authored
- * bytes never change.
- */
 
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';
@@ -40,7 +33,6 @@ vi.mock('../validation-audit-client', () => ({
   },
 }));
 
-// Imported after the mocks are registered.
 const { createLocalTargetDiagnosticsExtension } = await import('./local-target-diagnostics.ts');
 
 const DOC = 'See [the report](./missing.pdf) now.\n';
@@ -91,7 +83,6 @@ describe('source-mode local-target diagnostics wiring', () => {
     await vi.waitFor(() => {
       expect(view?.dom.querySelector('.cm-lint-local-target')).not.toBeNull();
     });
-    // Severity survives end-to-end: an `error` finding paints the error range.
     expect(view?.dom.querySelector('.cm-lintRange-error')).not.toBeNull();
   });
 

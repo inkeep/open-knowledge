@@ -1,62 +1,25 @@
-/**
- * Bundle-health assertions.
- *
- * Pins the load-bearing tree-shake outcomes that prove the substrate's
- * DEV-only DCE pattern works:
- *   1. The lazy `telemetry-impl-*.js` OTel chunk is in the documented
- *      ~22 KB ± 1 KB gzipped size band.
- *   2. The `__ok_perf` collector global is absent from every prod chunk.
- *   3. The hand-rolled Histogram class sentinel
- *      (`ok-hdr-histogram-v1`) is absent from prod chunks.
- *   4. The typing-burst-detector sentinel
- *      (`ok-typing-burst-detector-v1`) is absent from prod chunks.
- *   5. The `__acpThreadHarness` ACP thread-injection global is absent
- *      from every prod chunk.
- *   6. The main `index-*.js` gzipped size has not regressed by more
- *      than 2 KB vs the pre-spec baseline.
- *
- * Run by hand after `pnpm run build` in `packages/app`: no vitest tier
- * collects `tests/perf/lib/`, so nothing here executes in CI. The DEV
- * ACP-harness sentinel is separately gated on every production build by
- * `scripts/check-dev-harness-absent.mjs`, which the `build` script invokes
- * against the emitted `dist/`; the entry below is the manual-run twin of that
- * gate, not a second one.
- */
-
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { DEV_HARNESS_SENTINEL } from '../../../scripts/check-dev-harness-absent.mjs';
 
-/**
- * Baseline for `index-*.js` gzipped size,
- * recorded in KB. The assertion below tolerates +2 KB gzipped delta;
- * larger regressions fail.
- */
 export const BASELINE_INDEX_GZIPPED_KB = 340.84;
 
-/** Tolerance band for the OTel lazy chunk in gzipped KB. */
 export const TELEMETRY_CHUNK_GZIPPED_KB_MIN = 21;
 export const TELEMETRY_CHUNK_GZIPPED_KB_MAX = 23;
 
-/** Tolerance for index gzipped delta in KB. */
 export const INDEX_GZIPPED_DELTA_KB_MAX = 2;
 
-/** Forbidden literal — proves the DEV-only collector tree-shook. */
 const FORBIDDEN_SENTINELS = [
   '__ok_perf',
   'ok-hdr-histogram-v1',
   'ok-typing-burst-detector-v1',
-  // Taken from the build gate rather than retyped: a rename that followed the
-  // exported constant would otherwise leave this copy scanning for a string
-  // nothing writes any more.
   DEV_HARNESS_SENTINEL,
 ] as const;
 
 export interface BundleHealthReport {
   ok: boolean;
   failures: string[];
-  // Diagnostic info
   telemetryChunkGzippedKb?: number;
   indexGzippedKb?: number;
   forbiddenHits: Array<{ chunk: string; sentinel: string }>;
@@ -74,15 +37,9 @@ function findFirstMatching(distAssetsDir: string, prefix: string): string | unde
 }
 
 export interface AssertBundleHealthOpts {
-  /** Absolute path to `packages/app/dist/assets`. Defaults to repo-relative. */
   distAssetsDir?: string;
 }
 
-/**
- * Run all 6 assertions. Returns a structured report so callers can
- * decide between hard-fail and soft-warn (e.g. CI variant where dist/
- * isn't built fresh).
- */
 export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHealthReport {
   const distAssetsDir = opts.distAssetsDir ?? defaultDistAssetsDir();
   const failures: string[] = [];
@@ -96,7 +53,6 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
     };
   }
 
-  // ── Assertion 1: telemetry chunk size band ──────────────────────
   const telemetryChunk = findFirstMatching(distAssetsDir, 'telemetry-impl-');
   let telemetryChunkGzippedKb: number | undefined;
   if (!telemetryChunk) {
@@ -116,7 +72,6 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
     }
   }
 
-  // ── Assertions 2-5: forbidden sentinels in main / non-telemetry chunks ──
   const allFiles = readdirSync(distAssetsDir).filter(
     (f) => f.endsWith('.js') && !f.startsWith('telemetry-impl-'),
   );
@@ -132,7 +87,6 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
     }
   }
 
-  // ── Assertion 6: index chunk gzipped size delta ─────────────────
   const indexChunk = findFirstMatching(distAssetsDir, 'index-');
   let indexGzippedKb: number | undefined;
   if (indexChunk) {
@@ -156,6 +110,5 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
 }
 
 function defaultDistAssetsDir(): string {
-  // From packages/app/tests/perf/lib/ → packages/app/dist/assets/.
   return join(import.meta.dir, '..', '..', '..', 'dist', 'assets');
 }

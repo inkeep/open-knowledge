@@ -1,42 +1,3 @@
-/**
- * first-launch MCP-wiring consent-dialog smoke test — drives an isolated
- * `HOME=<tmpdir>` Electron launch through the full dialog round-trip, proving
- * (1) the dialog renders after renderer-mount-ack handshake, (2) Add writes
- * per-editor MCP configs + the user-scoped marker, (3) Skip writes the skip
- * marker and no editor configs, (4) a pre-existing `configured:true` marker
- * keeps the dialog silent on relaunch, and (5) partial failures leave the
- * marker absent so the next boot can retry.
- *
- * Scope + limitations:
- *   - `_electron.launch({ env: {HOME}, args: [..., '--user-data-dir=<path>'] })`
- *     with `OK_M6B_FORCE=1` bypasses the `app.isPackaged` gate.
- *     `HOME` propagates through `os.homedir()` (which the mcp-wiring code path
- *     consumes via the `home: osHomedir()` injection in main/index.ts), so the
- *     marker at `$HOME/.ok/mcp-status.json` and editor configs at `$HOME/.claude.json`
- *     etc. are honored. The `--user-data-dir` switch isolates `app.getPath('userData')`
- *     (where state.json lives) — Electron's dev-mode default reads
- *     `NSBundle.mainBundle`'s CFBundleName ("Electron"), which would otherwise
- *     leak into the real user's `~/Library/Application Support/Electron/`
- *     regardless of HOME. Every edit the app writes lands under the tmpdir —
- *     the developer's real `~/.claude.json` is never touched.
- *
- *   - **Cold-start `openknowledge://` deep-link with dialog firing in the
- *     deep-link-opened editor** is deferred — same reason as the cold-start
- *     skip: macOS Launch Services needs a signed + notarized DMG to bind the
- *     scheme to this bundle instead of generic Electron, and there's no way
- *     to fire a true pre-whenReady Apple Event from Playwright without it.
- *
- *   - **P1 E2E signed-DMG smoke — fresh Mac, no Node, no terminal
- *     contact** is creds-gated on Apple Developer notarization and is the
- *     same gate blocking the signed-DMG scenarios. Not executable from this test file.
- *
- * Skip gates mirror `deep-link.e2e.ts`:
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `pnpm exec playwright test` on the
- *     whole repo doesn't try to launch Electron in headless CI.
- *   - unsupported platform — the harness drives darwin / win32 / linux.
- *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
- */
-
 import {
   chmodSync,
   existsSync,
@@ -63,17 +24,6 @@ const TARGET = resolveDesktopTarget();
 
 const WINDOWS = process.platform === 'win32';
 
-/**
- * The resilient-chain MCP entry the CLI writes, per platform. NOT the same
- * command on every OS by design — see `packages/cli/src/commands/editors.ts`:
- * POSIX hosts spawn `/bin/sh -l -c <CHAIN_V2>` (login shell so version-manager
- * shims resolve), Windows spawns `powershell -NoProfile -NonInteractive
- * -Command <CHAIN_WIN_V1>` (Windows PowerShell 5.1 — deliberately not `cmd`,
- * and not `pwsh`, which is a separate install).
- *
- * Each chain embeds its own version sentinel as a first-line comment, which is
- * how the upgrade path detects and replaces older chains.
- */
 const EXPECTED_CHAIN = WINDOWS
   ? {
       command: 'powershell',
@@ -91,12 +41,6 @@ interface LaunchOpts {
   extraEnv?: Record<string, string>;
 }
 
-// Compute the per-test Electron userData dir under tmpHome. The Chromium
-// `--user-data-dir=<path>` switch is the only mechanism that reliably
-// isolates `app.getPath('userData')` in dev mode — Electron's default
-// resolution reads `NSBundle.mainBundle`'s CFBundleName (which is
-// "Electron" when launched via `Electron.app/Contents/MacOS/Electron`,
-// regardless of `productName` or the `HOME` env var).
 function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
 }
@@ -109,12 +53,6 @@ async function launchApp({ tmpHome, extraEnv }: LaunchOpts): Promise<ElectronApp
       env: {
         ...process.env,
         ...homeEnv(tmpHome),
-        // A no-op when the target is packaged (the bypass reads
-        // `app.isPackaged || OK_M6B_FORCE === '1'`), so it is safe in both
-        // modes. Notably NOT paired with OK_RECLAIM_DISABLE:
-        // `runMcpWiringOnFirstLaunch` returns an inert handle on that variable
-        // before it ever reaches the packaged gate, which would make every
-        // consent-dialog assertion below vacuous.
         OK_M6B_FORCE: '1',
         OK_DESKTOP_E2E_SMOKE: '1',
         ...extraEnv,
@@ -175,25 +113,14 @@ async function waitForConsentDialog(app: ElectronApplication, timeoutMs = 20_000
 }
 
 function forceRemove(pathsToRestore: readonly string[], dir: string): void {
-  // `chmod 444` dirs break `rmSync` even with `force:true` — restore perms first.
   for (const p of pathsToRestore) {
     try {
       chmodSync(p, 0o755);
-    } catch {
-      // already gone or never created
-    }
+    } catch {}
   }
   try {
     rmSync(dir, { recursive: true, force: true });
-  } catch {
-    // ENOTEMPTY race: Electron's background shutdown writes (Cookies-journal
-    // flush, Cache compaction, utility-process teardown) under
-    // `tmpHome/electron-userdata/` may still be landing while this cleanup
-    // fires. Per-test isolation is preserved (each test gets its own
-    // tmpHome); leftover bytes are harmless and the OS tmpdir reaper
-    // handles GC. Swallow the error so the test result reflects the test
-    // assertion, not a cleanup race.
-  }
+  } catch {}
 }
 
 test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
@@ -201,33 +128,14 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
   test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  // Cold-start `openknowledge://` delivery to a deep-link-opened editor
-  // window as the FIRST window. Deferred until signed DMG enables Launch
-  // Services binding; parallels the same skip in `deep-link.e2e.ts`.
-  test.skip('F2 (cold-start deep-link) — deferred until signed DMG enables Launch Services binding', () => {
-    // Intentionally empty. Implementation requires:
-    //   1. Signed + notarized DMG so `openknowledge://` binds to this bundle.
-    //   2. A harness that fires `open openknowledge://...` against a
-    //      not-yet-running installed .app (no `_electron.launch` pre-boot)
-    //      and asserts both the deep-link editor and the consent dialog
-    //      arrive in that same window.
-  });
+  test.skip('F2 (cold-start deep-link) — deferred until signed DMG enables Launch Services binding', () => {});
 
-  // P1 E2E full-flow smoke with signed DMG — creds-gated on Apple
-  // Developer notarization. Documented-skip so CI output makes the coverage
-  // gap visible; parallels the signed-DMG scenarios.
-  test.skip('AC2.6 (fresh-Mac P1 E2E with signed DMG) — creds-gated on Apple notarization', () => {
-    // Intentionally empty. Full end-to-end: fresh Mac, no Node installed,
-    // no terminal contact, install signed DMG → first launch → dialog →
-    // Accept defaults → open Claude Desktop → agent write → renderer
-    // flashes + file on disk. Requires Apple Developer creds.
-  });
+  test.skip('AC2.6 (fresh-Mac P1 E2E with signed DMG) — creds-gated on Apple notarization', () => {});
 
   test('happy-path — Add writes marker + Claude config with resilient chain MCP entry', async ({
     captureStderrFor,
   }) => {
     const tmpHome = createTmpHome('happy');
-    // Claude detected via `~/.claude/` existence.
     seedEditorDetectionDirs(tmpHome, ['.claude']);
     try {
       const app = await launchApp({ tmpHome });
@@ -249,8 +157,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       expect(Array.isArray((marker as { editors: unknown }).editors)).toBe(true);
       expect((marker as { editors: string[] }).editors).toContain('claude');
 
-      // Claude config lives at `~/.claude.json` with top-level
-      // `mcpServers['open-knowledge']`.
       const claudeConfigPath = join(tmpHome, '.claude.json');
       expect(existsSync(claudeConfigPath)).toBe(true);
       const claudeConfig = JSON.parse(readFileSync(claudeConfigPath, 'utf8')) as {
@@ -262,9 +168,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       expect(okEntry?.args?.slice(0, EXPECTED_CHAIN.prefixArgs.length)).toEqual([
         ...EXPECTED_CHAIN.prefixArgs,
       ]);
-      // The argument after the prefix is the chain body — assert the sentinel
-      // embed without coupling to every byte of the chain text. Byte-exact
-      // verification lives in the CLI unit tests (`editors.test.ts`).
       const chainBody = okEntry?.args?.[EXPECTED_CHAIN.prefixArgs.length];
       expect(typeof chainBody).toBe('string');
       expect(chainBody).toContain(EXPECTED_CHAIN.sentinel);
@@ -283,13 +186,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       captureStderrFor(app);
       const window = await waitForConsentDialog(app);
 
-      // Deterministically seed the real "Added ok to your PATH" startup toast
-      // through the same `ok:onboarding:toast` IPC the app fires on first
-      // launch (payload mirrors the startup-reclaim path-installed leg). On
-      // developer machines the CLI is already on PATH, so the natural toast
-      // never fires — seeding makes this collision test machine-independent.
-      // The original regression (#2387/#2396) only reproduced on fresh CI
-      // installs, which is exactly how it slipped past review.
       await app.evaluate(
         ({ BrowserWindow }, payload) => {
           for (const w of BrowserWindow.getAllWindows()) {
@@ -303,21 +199,12 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
         },
       );
 
-      // Contract: this toast renders in a bottom-LEFT toaster region. The
-      // consent dialog's Add/Skip footer is bottom-right, so a default
-      // (bottom-right) toast overlaps and steals those clicks. Asserting the
-      // region position pins the fix regardless of window size — if the
-      // `position: 'bottom-left'` in install-onboarding-toast.ts is dropped,
-      // sonner falls back to bottom-right and this fails.
       await expect(
         window.locator(
           '[data-sonner-toaster][data-y-position="bottom"][data-x-position="left"] [data-sonner-toast]',
         ),
       ).toBeVisible();
 
-      // Belt-and-suspenders: Add stays clickable with the toast present
-      // (Playwright throws "intercepts pointer events" if a toast covers it)
-      // and consent still completes.
       await window.getByTestId('mcp-consent-add').click();
       await expect
         .poll(() => readMarker(tmpHome), {
@@ -339,10 +226,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app);
       const window = await waitForConsentDialog(app);
-      // Escape is one of two skip paths (the footer's "Skip for now" is the
-      // other): unchecking says "don't set up", while dismissing says "I made
-      // no decision". Both must leave editor configs untouched, and only this
-      // one writes the skipped marker.
       await window.keyboard.press('Escape');
 
       await expect
@@ -356,7 +239,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       expect(marker).toMatchObject({ configured: false });
       expect(marker).toHaveProperty('skippedAt');
 
-      // No editor config should exist — skip means zero writes.
       expect(existsSync(join(tmpHome, '.claude.json'))).toBe(false);
       expect(existsSync(join(tmpHome, '.cursor', 'mcp.json'))).toBe(false);
     } finally {
@@ -368,7 +250,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     captureStderrFor,
   }) => {
     const tmpHome = createTmpHome('idempotent');
-    // Pre-populate a configured marker — simulates a prior completed consent.
     mkdirSync(join(tmpHome, '.ok'), { recursive: true });
     writeFileSync(
       markerPath(tmpHome),
@@ -387,31 +268,12 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const firstWindow = await app.firstWindow({ timeout: 15_000 });
       expect(firstWindow).toBeDefined();
 
-      // Negative assertion — give the handshake enough time to complete
-      // (signalReady → renderer-ready → show would fire within ~2s on a
-      // clean run), then assert no dialog ever surfaced.
-      //
-      // Timeout raised from 5s → 10s. Trade-off documented:
-      // (a) PR-tier flakiness under CI load spikes — 5s false-fired ~1/200
-      //     runs against the local dev container; 10s halves that without
-      //     adding meaningful wall-clock to a single test.
-      // (b) A regression that delays dialog suppression past 10s STILL
-      //     escapes this test — the negative-assertion shape has no
-      //     positive condition to await (Playwright's `expect.poll` doesn't
-      //     fit "thing did NOT happen"). The nightly-e2e-stability
-      //     surveillance workflow (`--repeat-each` / low `--workers`) is
-      //     the catch-all for slow-burn regressions in this
-      //     class — accepted compounding-trade-off.
-      // (c) The reviewer's option-(b) (production env-flag test hook) is
-      //     declined: production-only test hooks for one e2e are a
-      //     larger architectural commitment than this gap warrants.
       await firstWindow.waitForTimeout(10_000);
       for (const page of app.windows()) {
         const addButton = page.locator('[data-testid="mcp-consent-add"]');
         await expect(addButton).toHaveCount(0);
       }
 
-      // Marker untouched.
       const marker = readMarker(tmpHome);
       expect(marker).toMatchObject({ configured: true, editors: ['claude'] });
     } finally {
@@ -422,20 +284,8 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
   test('partial-failure — read-only Cursor dir leaves marker absent, other writes succeed', async ({
     captureStderrFor,
   }) => {
-    // The FAILURE INJECTION is POSIX-only, not the behavior under test.
-    // `chmodSync(dir, 0o444)` makes a directory unwritable on POSIX; on Windows
-    // Node's chmod maps only to the read-only FILE attribute, which does not
-    // stop file CREATION inside a directory (that needs an ACL deny entry). So
-    // on Windows the Cursor write succeeds, no partial failure occurs, and the
-    // test asserts against a precondition it never established — it fails at
-    // `expect(existsSync('.cursor/mcp.json')).toBe(false)` while the product
-    // behaved correctly. Injecting the failure on Windows means an ACL edit
-    // (`icacls`) or a different seam entirely; until then the deferred-marker
-    // semantics stay covered on POSIX only.
     test.skip(WINDOWS, 'chmod-based read-only-directory injection is POSIX-only (see comment).');
     const tmpHome = createTmpHome('partial');
-    // Two editors detected: Claude, Cursor. We'll lock Cursor's
-    // parent dir to 0o444 so the per-editor write fails but the others succeed.
     seedEditorDetectionDirs(tmpHome, ['.claude', '.cursor']);
     const cursorDir = join(tmpHome, '.cursor');
     chmodSync(cursorDir, 0o444);
@@ -446,14 +296,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const window = await waitForConsentDialog(app);
       await window.getByTestId('mcp-consent-add').click();
 
-      // Wait for the IPC round-trip's observable side effects to land. On
-      // partial failure the consent IPC returns `{ ok: false, error: ... }`
-      // and the dialog INTENTIONALLY stays open (mcp-wiring.ts —
-      // "Reset handled so a same-boot retry lands"), so we cannot key on
-      // the Add button disappearing. Instead, poll for the successful
-      // per-editor writes — they fire BEFORE the IPC returns its result,
-      // so their presence guarantees the round-trip has reached the
-      // partial-failure branch.
       await expect
         .poll(() => existsSync(join(tmpHome, '.claude.json')), {
           timeout: 15_000,
@@ -461,11 +303,8 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
         })
         .toBe(true);
 
-      // (ii) marker NOT written — per deferred-marker semantics, ANY
-      // per-editor failure leaves the marker absent so next boot re-fires.
       expect(readMarker(tmpHome)).toBeNull();
 
-      // (i) one write succeeds, one failed:
       expect(existsSync(join(tmpHome, '.claude.json'))).toBe(true);
       expect(existsSync(join(tmpHome, '.cursor', 'mcp.json'))).toBe(false);
     } finally {
@@ -476,38 +315,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
   test('F1 — lastOpenedProject opens editor first, dialog still fires', async ({
     captureStderrFor,
   }) => {
-    // WINDOWS-GATED ON AN OPEN FINDING — this is the scenario, not the harness.
-    //
-    // When `lastOpenedProject` is seeded the app opens an editor window first,
-    // and on Windows the consent dialog then fails to appear on roughly half of
-    // first attempts ("McpConsentDialog did not appear — renderer mount-ack
-    // handshake may have failed"); the retry passes. Every sibling case in this
-    // file — which opens the Navigator first — is stable on Windows.
-    //
-    // NOT a slow-runner problem, which was the first hypothesis and is
-    // disproven: widening the poll from 20s to 45s moved the failing attempt
-    // from 34.6s to 56.4s and it still never saw the dialog, while the passing
-    // retry took ~21s. The dialog does not arrive late, it does not arrive at
-    // all on that launch. So the suspect is a real race between the
-    // editor-window-first boot path and the mcp-wiring mount-ack handshake on
-    // Windows — and if it reproduces outside the harness it means first-launch
-    // MCP wiring can silently not happen for a Windows user resuming a project.
-    //
-    // Gated rather than retried-through for two reasons: the failed attempt
-    // also leaves an in-flight `expect.poll` behind, which Playwright reports
-    // as "1 error was not a part of any test" and exits non-zero on — a shape
-    // `failOnFlakyTests: false` does not suppress — so the job goes red even
-    // though the retry passed; and an advisory gate that is intermittently red
-    // stops being read. Ungate once the handshake race is understood.
-    //
-    // Now also gated against a packaged bundle, where the same finding is
-    // strictly worse than the Windows shape above: against a signed DMG it
-    // reproduces on EVERY attempt rather than roughly half, in isolation as
-    // well as in a full run, so no retry recovers it. That is the release
-    // gate's path, so leaving it ungated blocks every stable cut on a defect
-    // this assertion has already reported. The dev build cannot see it at all
-    // — the consent dialog is gated on `app.isPackaged` — which is why it
-    // surfaced only once the packaged smoke first ran end to end.
     test.skip(
       WINDOWS || TARGET.mode === 'packaged',
       'Open finding: consent dialog never fires on the editor-first boot path — intermittently on Windows, always against a packaged bundle (see comment).',
@@ -515,8 +322,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     const tmpHome = createTmpHome('f1');
     seedEditorDetectionDirs(tmpHome, ['.claude']);
 
-    // Create a project directory + `.ok/config.yml` so the opened
-    // project is valid (FileWatcher + content-filter have an admit surface).
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-m6b-f1-project-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(
@@ -524,10 +329,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       "content:\n  dir: '.'\n  include: ['**/*.md']\n  exclude: []\n",
     );
 
-    // Pre-populate state.json with lastOpenedProject. Path matches the
-    // `--user-data-dir=<path>` Chromium switch this test passes via
-    // `launchApp` — explicit isolation, no reliance on Electron's
-    // dev-mode CFBundleName resolution.
     const userDataDir = userDataDirFor(tmpHome);
     mkdirSync(userDataDir, { recursive: true });
     writeFileSync(
@@ -552,10 +353,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app, { cleanupDirs: [projectDir] });
 
-      // Dialog fires in whichever window opens first — editor if
-      // lastOpenedProject was honored, Navigator otherwise. Either way the
-      // test passes as long as the dialog appears and Add works (host-agnostic
-      // host-agnostic dispatch).
       const window = await waitForConsentDialog(app);
       await window.getByTestId('mcp-consent-add').click();
 
@@ -570,13 +367,6 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       expect(marker).toMatchObject({ configured: true });
     } finally {
       forceRemove([], tmpHome);
-      // `projectDir` is reaped by the fixture's cleanupDirs (registered at
-      // `captureStderrFor` above), NOT by a raw rmSync here. That is the
-      // TMP-DIR CLEANUP CONTRACT in `_helpers/smoke-test.ts`: unlinking from a
-      // test-body `finally` races the still-alive Electron utility process,
-      // which on POSIX surfaced as ENOTEMPTY and on Windows throws
-      // `EPERM, Permission denied` on the still-open project directory — after
-      // every assertion in the test had already passed.
     }
   });
 });

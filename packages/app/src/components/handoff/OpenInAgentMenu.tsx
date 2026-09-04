@@ -1,36 +1,3 @@
-/**
- * Popover surface for the toolbar "Open with AI" action.
- *
- * Unlike the right-click submenus (`OpenInAgentContextSubmenu` /
- * `OpenInAgentEmptySpaceSubmenu`), this surface hosts an instruction prompt box
- * above the installed-agent list — the same affordance the editor's "Edit with
- * AI" popover provides for selections. A text field cannot live inside a Radix
- * dropdown menu (the menu's typeahead steals keystrokes and arrow keys move
- * menu focus), so the prompt box requires the popover surface. The typed
- * instruction rides into the file / folder / project directive prompt via
- * `input.instruction` (see `selectScopedPrompt` in `useHandoffDispatch`), so it
- * reaches the deep-link dispatch and the docked-terminal launch alike.
- *
- * Behavior:
- *   - Render the targets `isDesktopTargetEnabled` admits, scoped to
- *     `VISIBLE_TARGETS`: the ones the probe reports installed, plus any the
- *     user explicitly enabled in Settings (those route to their installer),
- *     minus any they turned off.
- *   - Three section labels, in render order: "In app" over the enabled in-app
- *     agents, "Terminal" over the docked-terminal launchers — one row per
- *     enabled CLI (`isTerminalCliEnabled`: CLIs the probe hasn't ruled out),
- *     each with a "<Brand> CLI" accessible name — and "External apps" over the
- *     enabled app targets. Each renders only when it has rows, so an empty
- *     section header never shows, and the terminal section is absent on the
- *     web host (`useTerminalLaunch()` is null — no shell).
- *   - Empty state: when no section has rows, the instruction input (which
- *     renders unconditionally) and the Configure-agents item remain — no
- *     section labels, no hint text.
- *
- * The `input` prop is supplied by the surface (EditorHeader). When `null` (no
- * active doc / workspace not loaded), the trigger is disabled.
- */
-
 import {
   type HandoffTarget,
   type InstallState,
@@ -70,53 +37,26 @@ import {
 import { useInstalledAgents } from './useInstalledAgents';
 
 interface OpenInAgentMenuProps {
-  /** Active doc context. When `null`, the trigger renders disabled (nothing
-   *  to dispatch). Surfaces own the docContext + projectDir + docPath. */
   readonly input: HandoffDispatchInput | null;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
 }
 
 interface OpenWithAiPanelProps {
-  /** User enable/disable overrides — filters the rows to enabled agents. */
   readonly overrides: EnabledOverrides;
-  /** Install state per target — external-app rows are detection-driven. */
   readonly installStates: Record<HandoffTarget, InstallState>;
-  /** Docked-terminal launcher when present (desktop); null on the web host. */
   readonly terminalLaunch: TerminalLaunchContextValue | null;
-  /** Disable every dispatch row — set when there is nothing to dispatch
-   *  (no active doc / workspace not loaded). The trigger is also disabled in
-   *  that state, so this is a defensive guard for the controlled-open path. */
   readonly disabled: boolean;
-  /** Registered in-app agents — the unfiltered list; this panel applies
-   *  `isInAppAgentEnabled` itself. Empty until an agent is registered or the
-   *  server reports a detected harness — `useRegisteredAgents` merges both
-   *  upstream, before this prop is passed.
-   *  When it is empty, or every registered agent is disabled in Configure
-   *  agents, the whole "In app" section is hidden; there is no generic
-   *  fallback row. */
   readonly registeredAgents: readonly RegisteredAgent[];
-  /** Fired when the user picks an agent; carries the typed instruction — the
-   *  empty string when the user dispatched without typing one. */
   readonly onPick: (target: TargetData, instruction: string) => void;
-  /** Fired when the user picks a CLI row; carries the chosen CLI + instruction. */
   readonly onLaunchTerminal: (cli: TerminalCli, instruction: string) => void;
-  /** Fired when the user picks a registered-agent row. */
   readonly onStartThreadWith: (
     agent: { source: 'registry' | 'custom'; id: string },
     instruction: string,
   ) => void;
-  /** Fired when the user picks the "Settings" row (opens Configure agents). */
   readonly onOpenSettings: () => void;
 }
 
-/**
- * Popover body — the instruction input and the In app / Terminal / External apps
- * row sections. Pure: install state, the launcher, and the pick handlers are
- * injected, so it renders deterministically in tests without the dispatch /
- * install-probe hooks. Instruction state is local and resets on each open
- * because the popover unmounts its content when closed.
- */
 function OpenWithAiPanel({
   overrides,
   installStates,
@@ -131,23 +71,13 @@ function OpenWithAiPanel({
   const { t } = useLingui();
   const [instruction, setInstruction] = useState('');
 
-  // External-app rows are the desktop apps detected on this machine, minus
-  // anything the user turned off in Configure agents. An explicitly enabled but
-  // not-installed app still shows and routes to its installer on launch.
   const enabledTargets = VISIBLE_TARGETS.filter((target) =>
     isDesktopTargetEnabled(overrides, target.id, installStates[target.id]?.installed),
   );
-  // Registered in-app agents — explicit picks plus harness-detected suggestions
-  // (`useRegisteredAgents` merges both) — minus anything turned off in Configure
-  // agents, and minus anything the catalog reports unsupported here, which
-  // `isInAppAgentEnabled` force-hides ahead of any override. The `true` is the
-  // default it resolves against: being on the merged list is what shows a row.
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
     isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
   );
 
-  // Terminal CLIs the probe hasn't ruled out, minus anything turned off in
-  // Configure agents (fail-open — see `isTerminalCliEnabled`).
   const terminalClis = terminalLaunch
     ? TERMINAL_CLI_IDS.filter((cli) =>
         isTerminalCliEnabled(overrides, cli, terminalLaunch.installedClis),
@@ -168,11 +98,9 @@ function OpenWithAiPanel({
           data-testid="open-in-agent-instruction"
         />
       </div>
-      {/* The agent sections scroll; the instruction input above and the
-          Configure agents footer below stay put. */}
+      {}
       <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto subtle-scrollbar">
-        {/* In-app agents — shown only when any is enabled; an empty section is
-            hidden entirely. Enablement is managed in Configure agents (footer). */}
+        {}
         {showThreadSection ? (
           <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
             <legend
@@ -212,12 +140,6 @@ function OpenWithAiPanel({
         ) : null}
         <div className="flex flex-col gap-0.5">
           {showTerminalSection ? (
-            // Terminal section (desktop only). CLI launchers run `claude` /
-            // `codex` / `cursor-agent` in the docked terminal with the same
-            // scope prompt (plus instruction) the deep-link puts in `q=`.
-            // Visible text is the brand name; the accessible name is "<Brand>
-            // CLI" so AT users can tell each apart from the matching
-            // external-app row (WCAG 2.5.3 — the name contains the visible label).
             <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
               <legend
                 className="px-1.5 py-1 font-medium text-muted-foreground text-xs"
@@ -246,8 +168,6 @@ function OpenWithAiPanel({
             </fieldset>
           ) : null}
           {showDesktopSection ? (
-            // Detected desktop apps follow the Terminal section. The separator sits
-            // OUTSIDE the <fieldset> — <legend> must be its first child.
             <>
               {showTerminalSection ? <Separator className="my-1" /> : null}
               <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
@@ -259,11 +179,6 @@ function OpenWithAiPanel({
                   <ArrowUpRight aria-hidden="true" className="size-3" />
                 </legend>
                 {enabledTargets.map((target) => {
-                  // Destructure `displayName` so the Lingui macro emits the named
-                  // placeholder `Open with AI {displayName} Desktop` — the same
-                  // catalog message the sibling submenus produce. Interpolating
-                  // `target.displayName` directly would emit a positional `{0}`
-                  // and fork a duplicate entry.
                   const { displayName } = target;
                   return (
                     <Button
@@ -287,10 +202,7 @@ function OpenWithAiPanel({
             </>
           ) : null}
         </div>
-        {/* Settings row — always last. Opens Configure agents so the user
-            manages which agents appear here (replaces the former "Choose
-            another agent" catalog affordance). The separator only renders when a
-            section sits above it, so the all-disabled menu isn't a lone rule. */}
+        {}
         {showThreadSection || showTerminalSection || showDesktopSection ? (
           <Separator className="my-1" />
         ) : null}
@@ -309,11 +221,6 @@ function OpenWithAiPanel({
   );
 }
 
-/**
- * Renders the popover trigger + content. Trigger is a `Sparkles` icon +
- * visible "Open with AI" label (the visible text is the accessible name — no
- * `aria-label`, which would override it and break WCAG 2.5.3 Label in Name).
- */
 export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuProps): ReactNode {
   const { t } = useLingui();
   const { states, refresh } = useInstalledAgents();
@@ -322,21 +229,11 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   const registeredAgents = useRegisteredAgents();
   const overrides = useEnabledOverrides();
   const [internalOpen, setInternalOpen] = useState(false);
-  // Tracks whether a real `pointerdown` reached the trigger this interaction.
-  // See the trigger's onPointerDown/onClick below for why this is load-bearing
-  // on the Electron host.
   const sawPointerDownRef = useRef(false);
   const isEmbedded = useIsEmbedded();
 
   const menuOpen = open ?? internalOpen;
 
-  // Refresh install state on the open edge — whether the open came from a
-  // trigger click or a controlled `open` flip (the Electron click path and a
-  // programmatic open both bypass Radix's own onOpenChange). `useEffectEvent`
-  // keeps `refresh` out of the dependency array so the effect fires on the open
-  // edge only. The probe coordinator handles throttle + dedup, so re-firing is
-  // safe. Declared before the embedded early-return so the hook order stays
-  // stable across renders (rules of hooks).
   const refreshOnOpen = useEffectEvent(() => {
     void refresh();
   });
@@ -355,11 +252,6 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
 
   const triggerDisabled = input === null;
 
-  // Thread the typed instruction onto the dispatch input. When empty, return
-  // the bare `input` rather than `{ ...input, instruction: undefined }` so the
-  // object stays structurally identical to the no-instruction input: the
-  // deep-equality dispatch assertions and the prompt composer then see no
-  // spurious `instruction` key.
   const inputWith = (instruction: string): HandoffDispatchInput | null => {
     if (input === null) return null;
     const trimmed = instruction.trim();
@@ -369,8 +261,6 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   const handlePick = (target: TargetData, instruction: string): void => {
     const next = inputWith(instruction);
     if (next === null) return;
-    // An enabled-but-not-installed desktop app routes to its installer
-    // rather than a failing deep-link dispatch.
     if (states[target.id]?.installed !== true) {
       void openInstallUrl(target);
       handleOpenChange(false);
@@ -387,9 +277,6 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
     handleOpenChange(false);
   };
 
-  // In-app agent thread: compose the scope prompt (same pipeline as the
-  // terminal/deep-link paths). Per-agent rows name their agent; enablement is
-  // managed in Settings → Configure agents (the "Configure agents" row).
   const handleStartThreadWith = (
     agent: { source: 'registry' | 'custom'; id: string },
     instruction: string,
@@ -401,12 +288,6 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
   };
 
   return (
-    // Non-modal (Radix Popover default): keeps the rest of the chrome live and
-    // never sets `body { pointer-events: none }`. The trigger lives in the
-    // editor header's `-webkit-app-region: drag` zone, where the
-    // outside-pointerdown a modal layer relies on for dismissal doesn't reliably
-    // reach Radix (macOS swallows it at the OS chrome level); non-modal + the
-    // `[data-electron-drag]` no-drag rule (globals.css) handle dismissal.
     <Popover open={menuOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
@@ -415,17 +296,6 @@ export function OpenInAgentMenu({ input, open, onOpenChange }: OpenInAgentMenuPr
           disabled={triggerDisabled}
           className="gap-1.5 text-muted-foreground px-1.5"
           data-testid="open-in-agent-trigger"
-          // macOS swallows pointerdown inside the editor header's
-          // `-webkit-app-region: drag` zone before the DOM sees it — even on
-          // this `no-drag` button — so Radix's pointerdown-driven open never
-          // fires in the desktop app and the menu won't open from a click.
-          // The synthesized `click` still arrives, so on the Electron host we
-          // open from it. The ref lets us tell the two paths apart: when a real
-          // pointerdown reached us (browser always; Electron only once the menu
-          // is open and the dismiss rule has flipped the header to no-drag),
-          // Radix already handled the toggle and we stay out of the way; when
-          // it didn't, the click is our only signal and we open. Browsers get
-          // pointerdown normally, so we leave Radix's default untouched there.
           onPointerDown={
             isElectronHost
               ? () => {

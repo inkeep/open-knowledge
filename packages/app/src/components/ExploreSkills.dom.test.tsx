@@ -1,12 +1,3 @@
-/**
- * The Explore tab's Open Knowledge toggle: it fills the SAME grid from our repo
- * rather than linking out, and it is exclusive with the topic chips (they search
- * the directory; this reads one publisher's repo, so the two can't stack).
- *
- * Runs under `pnpm run test:dom` (jsdom). `<Trans>` resolves against the global
- * i18n activated by `tests/lingui-macro-preload.ts`.
- */
-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -79,8 +70,6 @@ describe('ExploreSkills — Open Knowledge toggle', () => {
     await userEvent.click(screen.getByRole('button', { name: 'OpenKnowledge' }));
     await waitFor(() => expect(screen.getByText('open-knowledge')).toBeTruthy());
     expect(discoverSkillsInSource).toHaveBeenCalledWith('inkeep/open-knowledge-skills');
-    // The repo lists open-knowledge SECOND; the publisher page's counts (478 vs
-    // 21) are what puts it first, so this pins the merge, not the repo order.
     const order = screen.getAllByRole('listitem').map((li) => li.textContent ?? '');
     expect(order[0]).toContain('open-knowledge');
     expect(order[1]).toContain('knowledge-base');
@@ -95,9 +84,6 @@ describe('ExploreSkills — Open Knowledge toggle', () => {
   });
 
   test('a list that will not load says so, rather than rendering an empty grid', async () => {
-    // The ranking source failing is a different branch (covered above): that one
-    // still has a list. This is the list source itself failing, which leaves
-    // nothing to show — the only path to the error copy.
     discoverSkillsInSource.mockResolvedValueOnce({ ok: false, error: 'clone failed' } as never);
     renderExplore();
     await userEvent.click(screen.getByRole('button', { name: 'OpenKnowledge' }));
@@ -108,9 +94,6 @@ describe('ExploreSkills — Open Knowledge toggle', () => {
   });
 
   test('search results arrive install-ranked without touching the sort control', async () => {
-    // skills.sh answers in relevance order; the default sort is what reorders
-    // them. Asserting the rendered order (not the control's label) pins the
-    // behavior a user sees.
     searchSkills.mockResolvedValueOnce({
       ok: true,
       results: [

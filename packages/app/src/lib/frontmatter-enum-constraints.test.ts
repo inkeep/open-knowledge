@@ -30,11 +30,6 @@ const DOC_SCHEMA = {
   },
 };
 
-/**
- * The OKF profile is a second source of governing schemas, carrying no files and
- * gated on its own plugin. These exercise the REAL built-in schemas rather than a
- * stand-in, so a change to the shipped `status` vocabulary fails here.
- */
 function configWithOkf(
   okf: { enabled: boolean; rules?: Partial<Record<OkfRuleId, boolean>> },
   frontmatter: { enabled: boolean; schemas: Parameters<typeof configWith>[0] } = {
@@ -74,9 +69,6 @@ describe('enumConstraintsForDoc — the OKF profile', () => {
   });
 
   test('the two sources intersect rather than one winning', () => {
-    // The project's own schema offers draft/review/published; OKF offers
-    // draft/stable/deprecated. Only `draft` satisfies both, and the panel must
-    // offer only what validates against every governing schema.
     const constraints = enumConstraintsForDoc(
       configWithOkf(
         { enabled: true },
@@ -153,9 +145,6 @@ describe('enumConstraintsForDoc', () => {
   });
 
   test('mismatched multi-ness across schemas drops to free text', () => {
-    // Vocabularies are deliberately identical, so only the multi-ness guard can
-    // cause the drop — a scalar enum and an array items.enum cannot both be
-    // satisfied by one widget, and picking either would misrepresent a schema.
     const single = { properties: { tags: { enum: ['x', 'y'] } } };
     const multi = { properties: { tags: { type: 'array', items: { enum: ['x', 'y'] } } } };
     expect(
@@ -167,7 +156,6 @@ describe('enumConstraintsForDoc', () => {
         'docs/guide',
       ).has('tags'),
     ).toBe(false);
-    // Order-independent: whichever is seen first must not decide the shape.
     expect(
       enumConstraintsForDoc(
         configWith([
@@ -180,8 +168,6 @@ describe('enumConstraintsForDoc', () => {
   });
 
   test('three schemas narrow progressively to the running intersection', () => {
-    // A∩B∩C is non-empty, so the field keeps a vocabulary. Folding against the
-    // ORIGINAL values instead of the running intersection would leave 'b' in.
     const a = { properties: { status: { enum: ['a', 'b', 'c'] } } };
     const b = { properties: { status: { enum: ['a', 'b'] } } };
     const c = { properties: { status: { enum: ['a', 'c'] } } };
@@ -197,10 +183,6 @@ describe('enumConstraintsForDoc', () => {
   });
 
   test('a conflict is terminal — a later schema cannot resurrect a vocabulary', () => {
-    // A offers [x,y] as a single-select, B is multi (mismatch, drops to free
-    // text), then C offers [z]. If the drop is not terminal, C re-enters the
-    // "no existing constraint" branch and the panel offers [z] — a value A
-    // forbids, which is exactly the guarantee this module makes.
     const single = { properties: { tags: { enum: ['x', 'y'] } } };
     const multi = { properties: { tags: { type: 'array', items: { enum: ['x', 'y'] } } } };
     const other = { properties: { tags: { enum: ['z'] } } };

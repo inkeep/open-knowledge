@@ -117,11 +117,6 @@ describe('placement ledger path safety', () => {
 
 describe('concurrent ledger writes', () => {
   test('every placement recorded in parallel survives', async () => {
-    // The ledger is one JSON file, so each record is read-all → edit → write-all
-    // with an await in between. Converting a skill's locations fires one request
-    // per location at once; unserialized they all read the same starting file and
-    // overwrite each other, leaving the ledger disagreeing with the disk and the
-    // clobbered locations reporting themselves as "changed outside".
     const paths = [
       '.claude/skills/parallel',
       '.cursor/skills/parallel',
@@ -159,8 +154,6 @@ describe('clearSkillPlacements', () => {
     await clearSkillPlacements(projectDir, 'guarded');
 
     const store = readSkillPlacementsStore(projectDir);
-    // The stale "link" records are what a move leaves behind to be re-read as
-    // drift once the round trip re-creates those locations as copies.
     expect(store.skills.guarded).toBeUndefined();
     expect(store.skills.other).toHaveLength(1);
   });

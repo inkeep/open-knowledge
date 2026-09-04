@@ -39,7 +39,6 @@ describe('handleSeedPlan', () => {
   });
 
   test('returns {ok:false, prerequisite-missing} when .ok/ is absent', async () => {
-    // testDir exists, but no `.ok/` inside — triggers prerequisite error
     const result = await handleSeedPlan({ resolveProjectRoot: () => testDir });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -50,7 +49,6 @@ describe('handleSeedPlan', () => {
 
   test('surfaces internal errors as {ok:false, internal}', async () => {
     scaffoldOkDir(testDir);
-    // Inject a planSeed that throws a non-prerequisite error.
     const result = await handleSeedPlan({
       resolveProjectRoot: () => testDir,
       planSeed: async () => {
@@ -65,8 +63,6 @@ describe('handleSeedPlan', () => {
   });
 
   test('preview mode plans without a bound project and reports every entry as created', async () => {
-    // The create-new dialog runs on the Navigator window, which has no project
-    // bound — without the preview branch it can only ever get `no-project`.
     const result = await handleSeedPlan(
       { resolveProjectRoot: () => undefined },
       { packId: 'knowledge-base', preview: { skillsInstallable: true } },
@@ -75,9 +71,6 @@ describe('handleSeedPlan', () => {
     if (!result.ok) return;
     expect(result.plan.skipped).toEqual([]);
     expect(result.plan.created.some((e) => e.path === 'log.md')).toBe(true);
-    // The throwaway dir has no agent folder, so the raw plan would refuse the
-    // skills outright; the caller's answer wins because create writes the AI
-    // integrations before it seeds.
     expect(result.plan.packSkills?.length).toBeGreaterThan(0);
     expect(result.plan.packSkills?.every((s) => s.pending)).toBe(true);
   });
@@ -93,11 +86,7 @@ describe('handleSeedPlan', () => {
   });
 
   test('rejects an unknown packId rather than falling back to the default pack', async () => {
-    // The renderer picks the id, so this is a trust boundary: a silent fallback
-    // would plan (and then apply) a pack the user never chose.
     scaffoldOkDir(testDir);
-    // Cast through unknown: the whole point is a value the wire type forbids
-    // but an untrusted renderer can still send.
     const options = { packId: 'not-a-real-pack' } as unknown as Parameters<
       typeof handleSeedPlan
     >[1];
@@ -134,7 +123,6 @@ describe('handleSeedPlan', () => {
 
   test('returns {ok:false, invalid-root} when rootDir resolves outside projectDir', async () => {
     scaffoldOkDir(testDir);
-    // Real planSeed (no inject) — exercises the typed-error path end-to-end.
     const result = await handleSeedPlan(
       { resolveProjectRoot: () => testDir },
       { rootDir: '/tmp/escape' },

@@ -1,19 +1,3 @@
-/**
- * QA smoke: the skills-sidebar row survives a project→global→project scope
- * round-trip, in a REAL Electron window against the REAL (detached-shape)
- * server. The field failure this pins: move a skill out and back in one live
- * session and its sidebar row went dead — nothing a DOM test reproduces,
- * because the wedge candidates all live in the real host (provider teardown +
- * IDB clear on the outbound hop, tab retarget on each hop, the re-created doc
- * connecting over the same socket).
- *
- * HOME is redirected at launch so the GLOBAL half of the trip lands in a
- * throwaway home — never the developer's real `~/.claude/skills`. The server
- * half of this contract (list/detail/doc-servability per hop) is pinned in
- * `packages/app/tests/integration/skill-scope-move-roundtrip.test.ts`; the
- * client reconcile matrix in `use-reconcile-skill-tabs.test.ts`.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -41,10 +25,6 @@ test.describe('Skill scope round-trip', () => {
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
     writeFileSync(join(projectDir, 'note.md'), '# Note\n');
-    // An adopted global host, so the outbound move has a destination — and an
-    // adopted PROJECT root, so the create has one (a bare project 400s with
-    // NO_USABLE_SKILL_HOME rather than inventing a layout). Any harness root
-    // works; `.claude` matches the throwaway home's.
     mkdirSync(join(tmpHome, '.claude', 'skills'), { recursive: true });
     mkdirSync(join(projectDir, '.claude', 'skills'), { recursive: true });
 
@@ -71,8 +51,6 @@ test.describe('Skill scope round-trip', () => {
       throw new Error('project window never mounted from the argv deep-link');
     })();
 
-    // The window's own server, via the project lock — API calls hit exactly
-    // the process the sidebar is wired to.
     const lockPath = join(projectDir, '.ok', 'local', 'server.lock');
     await expect(() => {
       expect(existsSync(lockPath)).toBe(true);
@@ -94,8 +72,6 @@ test.describe('Skill scope round-trip', () => {
     });
     expect(put.status).toBe(200);
 
-    // Expand the skills dock and OPEN the doc first — the outbound teardown
-    // against an open doc is the risky half.
     const sidebar = page.locator('[data-slot="sidebar-container"]');
     const trigger = sidebar
       .getByTestId('skills-dock')
@@ -123,8 +99,6 @@ test.describe('Skill scope round-trip', () => {
     const backRow = page.locator(`[data-item-path="Project/${name}/"]`).first();
     await backRow.waitFor({ timeout: 15_000 });
 
-    // The report this pins: after the round-trip the row was dead. One click,
-    // same session, no reload — the doc must land.
     await backRow.click();
     await expect
       .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {

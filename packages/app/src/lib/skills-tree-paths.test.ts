@@ -45,8 +45,6 @@ describe('scope rows', () => {
   });
 
   it('gives an EMPTY scope a sentinel child so its folder + Add menu survive', () => {
-    // A childless directory is dropped from the visible tree, taking the scope
-    // header (and its only entry point for creating a skill) with it.
     const r = build({ skills: [skill({ name: 'a' })] });
     expect(r.paths).toContain(`GLOBAL/${EMPTY_SCOPE_SENTINEL}`);
     expect(r.paths).not.toContain(`PROJECT/${EMPTY_SCOPE_SENTINEL}`);
@@ -66,7 +64,6 @@ describe('segment disambiguation', () => {
   });
 
   it('falls back to the FULL name for two skills that strip to the same thing', () => {
-    // A shared segment collapses both into one row and hides one outright.
     const r = build({
       skills: [skill({ name: 'trip-log' }), skill({ name: 'open-knowledge-pack-trip-log' })],
     });
@@ -136,15 +133,11 @@ describe('detected skills', () => {
   });
 
   it('drops a hard collision rather than stealing the row that got there first', () => {
-    // Both tiers exhausted: the display name is taken and the full name IS the
-    // display name, so there is no third spelling left to fall back to.
     const r = build({ detected: [detectedSkill('notes'), detectedSkill('notes')] });
     expect([...r.detectedByPrefix.keys()]).toEqual(['GLOBAL/notes']);
   });
 
   it('marks a detected skill active and expands its ancestors', () => {
-    // The whole point of extracting this was testability; this branch drives the
-    // sidebar highlight for an un-managed skill whose editable buffer is open.
     const r = build({
       detected: [detectedSkill('found')],
       isDetectedActive: (s) => s.name === 'found',
@@ -155,8 +148,6 @@ describe('detected skills', () => {
   });
 
   it('lets an active MANAGED skill win over an active detected one', () => {
-    // Managed rows are emitted first and the detected branch is `!activePath`
-    // guarded, so two actives must not fight over the highlight.
     const r = build({
       skills: [skill({ name: 'trip-log' })],
       detected: [detectedSkill('found')],
@@ -220,8 +211,6 @@ describe('user-expanded restore', () => {
   });
 
   it('drops a remembered path that no longer names a real folder', () => {
-    // A renamed/deleted skill leaves a stale entry; re-expanding it would
-    // resurrect a row that is not in the tree.
     const r = build({ userExpanded: new Set(['PROJECT/gone/']) });
     expect(r.expanded).not.toContain('PROJECT/gone/');
   });
@@ -242,9 +231,6 @@ describe('isSkillDocActive', () => {
   });
 
   it('is NOT active when the name matches but no tab is open', () => {
-    // The retry case: an open that never landed leaves `activeDocName` pointing
-    // at a doc with no tab. Reading that as active makes the row highlighted and
-    // the tree's click guard swallow the click that would open it.
     expect(
       isSkillDocActive({
         activeTargetKind: 'doc',
@@ -256,8 +242,6 @@ describe('isSkillDocActive', () => {
   });
 
   it('is NOT active while a non-doc target owns the surface', () => {
-    // A skill-file viewer or preview carries no docName, so `activeDocName`
-    // stays stale on the last doc tab — often this very skill.
     expect(
       isSkillDocActive({
         activeTargetKind: 'skill-preview',
@@ -280,8 +264,6 @@ describe('isSkillDocActive', () => {
   });
 });
 
-// ── provenance grouping (appearance.sidebar.showSkillGroups) ──────────────────────
-
 const OKS = 'inkeep/open-knowledge-skills';
 const PLUGIN_DIR = '/home/u/.claude/plugins/cache/mkt/eng/4.0.0/skills/pr';
 
@@ -299,9 +281,6 @@ function pluginDetected(name: string, plugin: string, scope: 'project' | 'user' 
 
 describe('same repo TAIL from different owners never merges', () => {
   it('anthropics/skills and mattpocock/skills form two distinct, owner-labeled groups', () => {
-    // The group id is the repo TAIL, so without the publisher in the identity
-    // (and, on collision, in the visible segment) two unrelated grab-bag repos
-    // merged into one folder ambiguously named "skills".
     const r = build({
       skills: [
         imported('frontend-design', 'anthropics/skills'),
@@ -319,9 +298,6 @@ describe('same repo TAIL from different owners never merges', () => {
   });
 
   it('a generic tail labels by owner even uncontested — the label never flips later', () => {
-    // "skills" is the conventional repo name, so the owner IS the identity;
-    // labeling by tail would also RENAME the folder the day a second owner's
-    // skills repo arrives.
     const r = build({
       skills: [imported('a', 'anthropics/skills'), imported('b', 'anthropics/skills')],
       showSkillGroups: true,
@@ -362,9 +338,6 @@ describe('two-level provenance nesting (repo parent over pack/plugin child)', ()
   });
 
   it('a one-skill pack beside a loose repo sibling nests the full hierarchy', () => {
-    // The seeded-starter-pack shape: the pack ships one skill and the platform
-    // skill shares the repo. The pack is a plugin identity, so it earns its
-    // cube even with one member, and the repo parent holds cube + loose row.
     const r = build({
       skills: [packed('note-taking', 'plain-notes'), imported('open-knowledge', OKS)],
       showSkillGroups: true,
@@ -376,8 +349,6 @@ describe('two-level provenance nesting (repo parent over pack/plugin child)', ()
   });
 
   it('a single pack with no repo siblings collapses the parent away', () => {
-    // A parent of one row is noise — the pack group renders alone at scope
-    // level, exactly as a group of one collapses to a flat skill.
     const r = build({
       skills: [packed('a', 'alpha'), packed('b', 'alpha')],
       showSkillGroups: true,
@@ -405,10 +376,6 @@ describe('two-level provenance nesting (repo parent over pack/plugin child)', ()
   });
 
   it('one marketplace never splits when only some populations know its owner', () => {
-    // A detected plugin carries the marketplace repo URL (owner derivable);
-    // a skill copied out of the plugin cache does not. Unknown is not an
-    // owner — the URL-less population adopts the single known one, or the
-    // marketplace renders as (?) and (inkeep) twin folders.
     const mkt = (name: string, plugin: string) =>
       ({
         name,
@@ -437,9 +404,6 @@ describe('two-level provenance nesting (repo parent over pack/plugin child)', ()
   });
 
   it('a bare-URL import never adopts the owner of a same-tail repo', () => {
-    // Only the marketplace registry key proves sameness. A URL whose tail
-    // happens to be "skills" is NOT provably anthropics/skills — labeling it
-    // "anthropics" would silently file corp skills under a stranger.
     const r = build({
       skills: [
         imported('frontend-design', 'anthropics/skills'),
@@ -498,8 +462,6 @@ describe('bucket size decides the shape', () => {
 
 describe('built-ins are not a population', () => {
   it('buckets under their source beside ordinary imports from it', () => {
-    // Verified against a real `~/.ok/skills-lock.json`: the global built-ins
-    // carry `inkeep/open-knowledge-skills`, so nothing special-cases them here.
     const r = build({
       skills: [
         imported('open-knowledge-discovery', OKS, { scope: 'global' }),
@@ -523,8 +485,6 @@ describe('plugins', () => {
   });
 
   it('counts a copied-out plugin skill WITH its still-detected siblings', () => {
-    // The copy is managed while the siblings are detected. Counting the halves
-    // separately would strand it in a group of one beside the group it belongs to.
     const r = build({
       skills: [imported('pr', PLUGIN_DIR)],
       detected: [pluginDetected('review', 'eng')],
@@ -536,10 +496,6 @@ describe('plugins', () => {
   });
 
   it('keeps a resident visible when the user has ALSO copied it out', () => {
-    // The copy is a separate file, so both are real rows — the resident belongs
-    // to the group (which promises to list what the plugin ships) and the copy
-    // sits wherever its own provenance puts it. Suppressing by name hid the
-    // resident and left the group short of the skills it actually carries.
     const r = build({
       skills: [imported('pr', PLUGIN_DIR)],
       detected: [pluginDetected('pr', 'eng'), pluginDetected('review', 'eng')],
@@ -547,17 +503,10 @@ describe('plugins', () => {
     });
     expect(r.paths).toContain('PROJECT/eng/pr/SKILL.md');
     expect(r.paths).toContain('PROJECT/eng/review/SKILL.md');
-    // The copy holds the plain segment; the resident takes the qualified one.
-    // Redundant-looking inside a group already named for the plugin, and kept
-    // that way deliberately: the alternative is a new translated word in the
-    // path, and the plugin name is already the right answer at scope level.
     expect([...r.detectedByPrefix.keys()]).toContain('PROJECT/eng/pr (eng)');
   });
 
   it('a lone plugin resident still groups under its plugin cube', () => {
-    // A plugin is an installable identity, so even one resident earns the
-    // cube — and nesting is what disambiguates it from the same-named copy
-    // beside it, with no name-mangling needed.
     const r = build({
       skills: [skill({ name: 'pr' })],
       detected: [pluginDetected('pr', 'eng')],
@@ -569,7 +518,6 @@ describe('plugins', () => {
   });
 
   it('still drops a NON-plugin detection of a managed skill', () => {
-    // Unchanged: that one really is OK's own file seen through its symlink.
     const r = build({ skills: [skill({ name: 'dup' })], detected: [detectedSkill('dup')] });
     expect(r.detectedByPrefix.size).toBe(0);
   });
@@ -607,11 +555,6 @@ describe('grouped rows stay navigable', () => {
 
 describe('group ids and skill names share a level', () => {
   it('does not form a group whose id collides with a sibling skill segment', () => {
-    // Both are folder rows at the same depth, so one prefix would serve two rows
-    // and the lookups would resolve to whichever map is consulted first. Renaming
-    // either side is worse than not grouping — the group id is the publisher name
-    // a user recognises, the skill segment is what it installs as — so the bucket
-    // stays flat and degrades to the pre-grouping tree.
     const r = build({
       skills: [imported('a', OKS), imported('b', OKS), skill({ name: 'open-knowledge-skills' })],
       showSkillGroups: true,
@@ -633,10 +576,6 @@ describe('group ids and skill names share a level', () => {
   });
 
   it('groups a plugin named after one of its OWN skills', () => {
-    // The common shape, not a corner case: a plugin ships a flagship skill under
-    // its own name plus variants. That member nests INSIDE the group, so it can
-    // never share a level with the group row — counting it as a collision made
-    // every such plugin refuse to group and render as a flat run of siblings.
     const r = build({
       detected: [
         pluginDetected('ponytail', 'ponytail', 'user'),
@@ -648,13 +587,10 @@ describe('group ids and skill names share a level', () => {
     expect([...r.groupByPrefix.keys()]).toEqual(['GLOBAL/ponytail']);
     expect(r.paths).toContain('GLOBAL/ponytail/ponytail/SKILL.md');
     expect(r.paths).toContain('GLOBAL/ponytail/ponytail-audit/SKILL.md');
-    // The flagship is a MEMBER, not a second row beside the group.
     expect(r.detectedByPrefix.get('GLOBAL/ponytail')).toBeUndefined();
   });
 
   it('still refuses when the colliding skill is OUTSIDE the bucket', () => {
-    // Same id, but the claimant does not nest under the group — it would sit
-    // beside it at scope level, which is the collision the guard exists for.
     const r = build({
       skills: [skill({ name: 'ponytail', scope: 'global' })],
       detected: [
@@ -675,8 +611,6 @@ describe('pinned skills', () => {
   });
 
   it('a GROUPED pinned skill keeps its group row AND floats a marked twin', () => {
-    // The group's promise (list everything from its source) survives the pin;
-    // the floated twin at scope level is the shortcut, and it carries the mark.
     const r = build({
       skills: [imported('a', OKS), imported('b', OKS), skill({ name: 'mine' })],
       showSkillGroups: true,
@@ -722,7 +656,6 @@ describe('pinned skills', () => {
     expect(r.paths).toContain('PROJECT/pr/SKILL.md');
     expect(r.paths).toContain('PROJECT/eng/pr/SKILL.md');
     expect(r.pinnedPrefixes.has('PROJECT/pr')).toBe(true);
-    // The sibling stays in the intact group.
     expect(r.paths).toContain('PROJECT/eng/review/SKILL.md');
   });
 
@@ -755,9 +688,6 @@ describe('pinned skills', () => {
 
 describe('restoring hand-expanded folders across a remount', () => {
   it('accepts a GROUP prefix the user opened', () => {
-    // Group rows are real folder rows, so Pierre records them in `userExpanded`.
-    // If the valid-path set left them out they would silently re-collapse on the
-    // next remount — and a detected skill lazy-loading its files causes one.
     const r = build({
       skills: [imported('a', OKS), imported('b', OKS)],
       showSkillGroups: true,
@@ -767,8 +697,6 @@ describe('restoring hand-expanded folders across a remount', () => {
   });
 
   it('ignores a stale prefix that no longer names anything', () => {
-    // The group's members were uninstalled, so its row is gone. Restoring it
-    // would expand a folder the tree does not have.
     const r = build({
       skills: [skill({ name: 'mine' })],
       userExpanded: new Set(['PROJECT/open-knowledge-skills/']),
@@ -779,8 +707,6 @@ describe('restoring hand-expanded folders across a remount', () => {
 
 describe('sanitizePathSegment', () => {
   it('strips both separators and both quote kinds from a hostile label', () => {
-    // `/` and `\\` would split the segment into fake tree levels; quotes would
-    // break out of the CSS selector the segment is interpolated into.
     expect(sanitizePathSegment('a/b\\c\'d"e', 'fb')).toBe('a b cde');
   });
 

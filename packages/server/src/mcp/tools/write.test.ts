@@ -1,23 +1,9 @@
-/**
- * Unit coverage for `composeWithFrontmatter` — the inline YAML-block composer
- * used when `write({ document })` carries both literal `content` and a
- * `frontmatter` param.
- *
- * when `content` already opened with its own
- * `---…---` block AND a `frontmatter` param was supplied, the composer
- * prepended a SECOND block, stacking two frontmatter blocks on disk. The fix
- * merges the embedded block with the param (param wins) into a single block.
- */
-
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
 import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
 import { composeWithFrontmatter, frontmatterIgnoredNote } from './write.ts';
 
-/** Count leading-or-anywhere `---` fence lines that open a frontmatter block. */
 function frontmatterBlockCount(markdown: string): number {
-  // A doubled block is `---\n…---\n---\n…---`. Re-strip after removing the
-  // first block; a second strip that still finds a block means doubling.
   let remaining = markdown;
   let count = 0;
   while (true) {
@@ -44,7 +30,6 @@ describe('composeWithFrontmatter', () => {
     const result = composeWithFrontmatter({ title: 'Doubled FM', tags: ['demo'] }, content);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // The bug produced 2; the fix must produce exactly 1.
     expect(frontmatterBlockCount(result.markdown)).toBe(1);
     expect(result.markdown).toContain('# Doubled FM');
     expect(result.markdown).toContain('Real body line.');
@@ -57,9 +42,9 @@ describe('composeWithFrontmatter', () => {
     if (!result.ok) return;
     expect(frontmatterBlockCount(result.markdown)).toBe(1);
     const { frontmatter } = stripFrontmatter(result.markdown);
-    expect(frontmatter).toContain('title: Param'); // param wins
-    expect(frontmatter).toContain('author: HeeGun'); // embedded-only key survives
-    expect(frontmatter).not.toContain('Embedded'); // overwritten title gone
+    expect(frontmatter).toContain('title: Param');
+    expect(frontmatter).toContain('author: HeeGun');
+    expect(frontmatter).not.toContain('Embedded');
   });
 
   it('rejects a malformed embedded block instead of doubling', () => {
@@ -99,8 +84,6 @@ describe('composeWithFrontmatter', () => {
   });
 
   it('strips the embedded block entirely when the param clears its only key', () => {
-    // Distinct from the plain-body empty-merge case: here an embedded block
-    // exists but every key it carries is cleared, so the fence is removed too.
     const content = '---\nstatus: draft\n---\n\nBody.';
     const result = composeWithFrontmatter({ status: null }, content);
     expect(result.ok).toBe(true);
@@ -132,8 +115,6 @@ describe('splitPayloadFrontmatter — the shared append/prepend partition rule',
 });
 
 describe('frontmatterIgnoredNote — the two outcomes are distinguishable', () => {
-  // A YAML typo is the only difference between "your frontmatter was dropped"
-  // and "your frontmatter is now body text". The note has to say which.
   const dropped = frontmatterIgnoredNote('append', '---\ntitle: Fine\n---\nbody\n');
   const asBody = frontmatterIgnoredNote('append', '---\ntitle: Foo: Bar\n---\nbody\n');
 
@@ -143,8 +124,6 @@ describe('frontmatterIgnoredNote — the two outcomes are distinguishable', () =
   });
 
   it('says WRITTEN AS BODY for a span that is not a mapping', () => {
-    // Without this branch the malformed case is silent — the write returns 200
-    // and the agent's keys land in the document as literal text with no signal.
     expect(asBody).toContain('written as BODY');
     expect(asBody).toContain('not a YAML mapping');
   });

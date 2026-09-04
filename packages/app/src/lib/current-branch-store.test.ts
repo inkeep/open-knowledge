@@ -1,8 +1,3 @@
-/**
- * Unit tests for `createBranchStore` — exercised directly with stub deps to
- * isolate the cache + listener machinery from the production singleton's
- * window-scoped event channel.
- */
 import { describe, expect, test, vi } from 'vitest';
 import { createBranchStore } from './current-branch-store';
 

@@ -1,10 +1,3 @@
-/**
- * Focused E2E coverage for active-document TipTap find/replace.
- *
- * Each test creates a unique doc via api.seedDocs. Do not hardcode shared
- * document names; Playwright workers run in parallel.
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {

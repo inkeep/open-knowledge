@@ -14,12 +14,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
 
-/**
- * renaming a skill must MOVE it, not leave a copy of the old name
- * behind, and must keep the editors it occupied. Reproduces the reported flow:
- * create a project skill, install it to claude+cursor, rename foo→bar.
- *
- */
 let server: TestServer;
 let tmpHome: string;
 const base = () => `http://127.0.0.1:${server.port}`;
@@ -101,7 +95,6 @@ describe('skill rename moves, never copies (PRD-7603)', () => {
     expect(existsSync(editorCopy('claude', 'foo'))).toBe(true);
     expect(existsSync(editorCopy('cursor', 'foo'))).toBe(true);
 
-    // Rename (the POST /api/skill fromName→toName the dialog uses).
     const rename = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -109,11 +102,9 @@ describe('skill rename moves, never copies (PRD-7603)', () => {
     });
     expect(rename.status).toBe(200);
 
-    // No copy of the OLD name survives in ANY editor.
     expect(existsSync(editorCopy('claude', 'foo'))).toBe(false);
     expect(existsSync(editorCopy('cursor', 'foo'))).toBe(false);
 
-    // The new name still occupies the editors foo held (rename ≠ uninstall).
     expect(existsSync(editorCopy('claude', 'bar'))).toBe(true);
     expect(existsSync(editorCopy('cursor', 'bar'))).toBe(true);
     expect(lstatSync(editorDir('cursor', 'bar')).isSymbolicLink()).toBe(false);
@@ -125,7 +116,6 @@ describe('skill rename moves, never copies (PRD-7603)', () => {
     expect(lock.skills.bar?.source).toBe('https://github.com/acme/skills');
     expect(lock.skills.bar?.localHash).not.toBe('pre-rename-local-hash');
 
-    // The list shows exactly one skill, `bar` — never both foo and bar.
     const names = await listNames();
     expect(names).toContain('bar');
     expect(names).not.toContain('foo');

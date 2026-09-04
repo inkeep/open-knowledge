@@ -1,26 +1,6 @@
-/**
- * CI-exclusion ledger for `tests/stress/*.e2e.ts`.
- *
- * CI's Playwright tier runs the fixed file list in this package's `test:e2e`
- * script — not a glob. Any stress e2e file absent from that list NEVER runs in
- * CI, silently. This ledger is the explicit, reviewed record of every file
- * that is deliberately NOT in the CI list, each with a reason and the local
- * run evidence backing it. The membership meta-guard
- * (`tests/meta/e2e-ci-membership.test.ts`) fails when a stress e2e file is in
- * neither the CI list nor this ledger, when a file is in both, or when either
- * side references a file that no longer exists.
- *
- * To promote a ledgered file into CI: verify it is deterministic-green on
- * consecutive local runs and cheap enough for the 15-minute CI job, append it
- * to the `test:e2e` script in package.json, and delete its entry here.
- */
-
 export interface E2eCiLedgerEntry {
-  /** Bare filename under tests/stress/, e.g. 'okignore-settings.e2e.ts'. */
   file: string;
-  /** Why the file is excluded from the CI `test:e2e` list. */
   reason: string;
-  /** Observed local-run evidence backing the reason (verdict + wall-clock). */
   evidence: string;
 }
 

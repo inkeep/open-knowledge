@@ -9,9 +9,6 @@ const LIST_ITEM_INDENT_RE = /^[ \t]+([-+*]|\d+[.)]|[a-zA-Z][.)])\s/;
 
 const ORDERED_LIST_MARKER_RE = /^\d+([.)])(?=\s)/;
 
-/** Canonical sentinel the ordered-list marker number collapses to. Any digit
- *  run works as long as it is stable across both sides; `1` keeps the
- *  normalized form readable. */
 const ORDERED_LIST_MARKER_CANONICAL = '1';
 
 const EMPHASIS_AROUND_CODE_RE = /\*\*\s*(`[^`]+`)\s*\*\*/g;
@@ -56,9 +53,6 @@ function stripTrailingPipe(line: string): string {
 const CONTINUATION_BLOCK_START_RE =
   /^(?:#{1,6}[ \t]|>|(?:[-+*]|\d{1,9}[.)])[ \t]|`{3,}|~{3,}|=+[ \t]*$|-+[ \t]*$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
 
-/** Line indices inside fenced-code interiors (opening/closing fence lines
- *  excluded). Same opener-char discipline as `findTableRowLines`: a
- *  mismatched fence char inside an open fence is content. */
 function findFenceInteriorLines(lines: readonly string[]): Set<number> {
   const interior = new Set<number>();
   let opener: '`' | '~' | null = null;

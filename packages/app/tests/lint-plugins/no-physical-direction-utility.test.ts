@@ -30,7 +30,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
-// __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx';
 const PLUGIN_REL = './biome-plugins/no-physical-direction-utility.grit';
@@ -40,11 +39,7 @@ function checkFixture(): string {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
   });
-  // Surface a spawn failure explicitly: without this, `status` is null on a
-  // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously,
-  // masking the failure as "0 diagnostics".
   expect(result.error).toBeUndefined();
-  // biome check exits non-zero when any diagnostic (incl. plugin) fires.
   expect(result.status).not.toBe(0);
   return `${result.stdout}\n${result.stderr}`;
 }
@@ -53,11 +48,6 @@ function countMatches(output: string, pattern: RegExp): number {
   return (output.match(pattern) ?? []).length;
 }
 
-/**
- * The source lines biome marked with `>` — the span it reported, without the
- * two lines of context it prints on either side. Asserting against the context
- * instead would let a negative case pass merely by sitting near a positive one.
- */
 function flaggedSource(output: string): string {
   return (output.match(/^\s*>\s*\d+ │ .*$/gm) ?? [])
     .map((line) => line.replace(/^[^│]*│ /, ''))
@@ -72,13 +62,13 @@ describe('no-physical-direction-utility GritQL plugin', () => {
   test('every positive case is reported', () => {
     const flagged = flaggedSource(checkFixture());
     for (const token of [
-      'ml-2 flex items-center', // plain string
-      "isCompact && 'pr-1.5'", // reached through a multi-line cn()
-      'absolute top-2 right-2', // inset
-      'pl-[var(--ok-example-reserve,1rem)]', // arbitrary value
-      'ml-auto shrink-0', // the `auto` keyword
-      'containerClassName="bottom-3 left-3', // a *ClassName prop
-      'sm:-mr-1', // variant prefix + negative margin
+      'ml-2 flex items-center',
+      "isCompact && 'pr-1.5'",
+      'absolute top-2 right-2',
+      'pl-[var(--ok-example-reserve,1rem)]',
+      'ml-auto shrink-0',
+      'containerClassName="bottom-3 left-3',
+      'sm:-mr-1',
     ]) {
       expect(flagged).toContain(token);
     }
@@ -87,15 +77,13 @@ describe('no-physical-direction-utility GritQL plugin', () => {
   test('no negative case is reported', () => {
     const flagged = flaggedSource(checkFixture());
     for (const token of [
-      'ms-2 me-1.5 ps-6 pe-2', // the logical forms
-      'start-0 end-2', // logical inset
-      'inset-x-0', // Tailwind v4 compiles this to inset-inline
-      'left-1/2', // the centering anchor, cancelled by the translate beside it
-      'mt-2 mb-2 inset-0', // spacing with no side
-      'data-side=left', // a side named inside a variant selector
-      'edge="right"', // a side carried by a prop that isn't a class string
-      // The three below match the VALUE pattern and are excluded by the name
-      // predicate alone — they are what holds it in place.
+      'ms-2 me-1.5 ps-6 pe-2',
+      'start-0 end-2',
+      'inset-x-0',
+      'left-1/2',
+      'mt-2 mb-2 inset-0',
+      'data-side=left',
+      'edge="right"',
       'data-token="ml-4"',
       'title="Row indent is pl-2"',
       'token="pr-1.5"',
@@ -106,19 +94,13 @@ describe('no-physical-direction-utility GritQL plugin', () => {
 
   test('the diagnostic names the fix and links this rule section of the docs', () => {
     const output = checkFixture();
-    // Fix-noun: the action a reader applies to make the message go away.
     expect(output).toContain('Use the logical equivalent');
-    // Docs URL — generic URL regex + anchor substring. The anchor check keeps
-    // the regex from being vacuously satisfied by an unrelated URL biome might
-    // surface elsewhere.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-physical-direction-utilitygrit');
   });
 
   test('plugin is registered as an override scoped to the chrome (not workspace-wide)', () => {
     const config = readBiomeConfig(REPO_ROOT);
-    // NOT at root plugins[] — a workspace-wide promotion would fire on the docs
-    // site and on every package whose layout has no reading direction to follow.
     const rootPlugins: string[] = config.plugins ?? [];
     expect(rootPlugins).not.toContain(PLUGIN_REL);
 
@@ -126,7 +108,6 @@ describe('no-physical-direction-utility GritQL plugin', () => {
     const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
     expect(entry).toBeDefined();
     const includes = entry?.includes ?? [];
-    // The fixture must be in scope so the firing tests above can trigger the rule.
     expect(includes).toContain(FIXTURE_REL);
     for (const included of [
       'packages/app/src/**/*.tsx',
@@ -135,8 +116,6 @@ describe('no-physical-direction-utility GritQL plugin', () => {
     ]) {
       expect(includes).toContain(included);
     }
-    // Assert the negative set too, so a removed exclusion is caught here rather
-    // than as a wall of diagnostics on the next unrelated lint run.
     for (const excluded of [
       '!packages/app/src/editor/**',
       '!packages/app/src/components/ui/**',

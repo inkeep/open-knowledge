@@ -1,19 +1,6 @@
-/**
- * One request per refresh.
- *
- * Loading the thread list used to cost `2 + 2N` round trips per mutation — the
- * open doc's threads, the project's threads, then every thread's full event log
- * — to render a panel that only ever shows each thread's newest comment. That
- * regression is invisible to typecheck, to lint, and to every other test here:
- * the data is identical either way, it just arrives N times slower. So the
- * request count itself is the assertion.
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('./comments-client', () => {
-  // Everything the factory needs must be defined INSIDE it — `vi.mock` is
-  // hoisted above module-level declarations.
   const metas = [
     {
       threadId: 't1',
@@ -51,9 +38,6 @@ vi.mock('./comments-client', () => {
 });
 
 describe('refresh fan-out', () => {
-  // A fresh store per test, and fresh call counts: the mocked client module
-  // survives `resetModules`, so without the clear each test would also be
-  // counting the previous one's requests.
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -66,8 +50,6 @@ describe('refresh fan-out', () => {
     await store.refresh('notes/a');
 
     expect(api.listThreads).toHaveBeenCalledTimes(1);
-    // No argument: the project-wide list is a superset of every per-doc view,
-    // so asking for one doc's threads separately is a wasted round trip.
     expect(api.listThreads).toHaveBeenCalledWith();
   });
 
@@ -77,16 +59,12 @@ describe('refresh fan-out', () => {
 
     await store.refresh('notes/a');
 
-    // Guards the guard: an empty store would make the count assertion above
-    // pass for the wrong reason.
     expect(store.getThreads('notes/a').map((t) => t.id)).toEqual(['t1']);
     expect(store.getQueue()).toEqual(['t1', 't2']);
     expect(api.listThreads).toHaveBeenCalledTimes(1);
   });
 
   test('the rendered body comes off the cover sheet, with no log read', async () => {
-    // The projected `latestComment` is what removed the per-thread log fetch —
-    // if it stops being the body source, the N reads come straight back.
     const store = await import('./store');
 
     await store.refresh('notes/a');

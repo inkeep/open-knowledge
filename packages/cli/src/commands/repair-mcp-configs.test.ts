@@ -74,9 +74,6 @@ describe('repairMcpConfigs', () => {
       expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('repaired');
       const written = JSON.parse(readFileSync(configPath, 'utf-8'));
       expect(written.mcpServers['open-knowledge']).toEqual(CHAIN_ENTRY);
-      // Structured `mcp-config-migrate` event carries prior command/args
-      // before the rewrite — operators get "intent to migrate" counters
-      // even on writes that subsequently fail.
       expect(logEvents).toContainEqual({
         event: 'mcp-config-migrate',
         scope: 'user',
@@ -94,10 +91,6 @@ describe('repairMcpConfigs', () => {
     const after1 = statSync(configPath).mtimeMs;
 
     const first = repairMcpConfigs({ projectDir, home: fakeHome });
-    // Pause one tick — file mtime resolution is millisecond-granular but
-    // consecutive same-process operations within sub-ms can share an mtime
-    // even on a real write. The delay falsifies the test: if a spurious
-    // write IS happening, the mtime WILL bump after this delay.
     await new Promise<void>((r) => setTimeout(r, 5));
     const second = repairMcpConfigs({ projectDir, home: fakeHome });
     const after2 = statSync(configPath).mtimeMs;
@@ -105,14 +98,10 @@ describe('repairMcpConfigs', () => {
     expect(first.repairedCount).toBe(0);
     expect(second.repairedCount).toBe(0);
     expect(second.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('canonical');
-    // Critical: no fs.writeFile on the second sweep.
     expect(after2).toBe(after1);
   });
 
   it('leaves the Windows canonical untouched on a non-Windows host (cross-platform no-clobber)', () => {
-    // A committed project config written by a Windows teammate must classify
-    // as canonical here, or the two platforms' startup sweeps would rewrite
-    // the shared file back and forth forever.
     const configPath = writeClaude(WIN_CHAIN_ENTRY);
     const before = readFileSync(configPath, 'utf-8');
 
@@ -204,9 +193,7 @@ describe('repairMcpConfigs', () => {
 
     expect(result.repairedCount).toBe(0);
     expect(result.outcomes).toEqual([]);
-    // Stale entry untouched.
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
-    // One structured event emitted.
     expect(logEvents).toEqual([{ event: 'mcp-config-repair-skipped', reason: 'reclaim-disabled' }]);
   });
 
@@ -219,7 +206,6 @@ describe('repairMcpConfigs', () => {
         home: fakeHome,
         reclaimDisableEnv: env as string | null | undefined,
       });
-      // Either repairs (first iteration) or already-canonical (subsequent).
       expect(['repaired', 'canonical']).toContain(
         result.outcomes.find((o) => o.editorId === 'claude')?.outcome,
       );

@@ -1,26 +1,3 @@
-/**
- * Cursor-style context-chip row for the unified "Ask AI" composer's NON-inline
- * context: the set of whole-file references the user has touched while drafting.
- * Typed `@`-mentions stay INLINE in the prompt (each rendered as its own
- * removable chip by the `composerMention` node view), so a file referenced
- * inline is never also shown here — the top row holds only references that are
- * NOT inline (the host maintains that live invariant).
- *
- * Each chip is a compact LEADING icon + short label (never raw content),
- * Cursor-style. There is no trailing × and no reserved trailing space: the
- * LEADING icon doubles as the remove control. At rest the icon-button shows the
- * file glyph; on chip hover / `:focus-within` (and while the button itself is
- * focused, for keyboard reach) the file glyph cross-fades to an X in the SAME
- * fixed-size cell. The button removes on Enter/Space/click AND on Backspace/Delete
- * (an a11y improvement over Cursor's hover-only ×). Styling mirrors the inline
- * mention chip (`.composer-mention-chip` in globals.css) so the two read as one
- * chip system.
- *
- * Lives at host level (outside the ProseMirror editor subtree) → shadcn
- * primitives, not raw interactive elements. Removing a chip sticky-dismisses its
- * path for the life of the draft (the host owns that).
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { useLingui } from '@lingui/react/macro';
@@ -30,9 +7,6 @@ import { FileEntryPathIcon } from '@/components/file-entry-icon';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-/** Last path segment of a workspace-relative path — the compact chip label
- *  (`specs/foo/SPEC.md` → `SPEC.md`), Cursor-style. Falls back to the whole
- *  string when there is no slash. */
 function chipBasename(path: string): string {
   const slash = path.lastIndexOf('/');
   return slash >= 0 ? path.slice(slash + 1) : path;
@@ -48,15 +22,7 @@ function FileChip({ path, onRemove }: { path: string; onRemove: () => void }) {
       title={path}
       className="group/chip inline-flex max-w-[14rem] items-center gap-1 rounded-md border bg-muted/40 py-0.5 pr-1.5 pl-1 text-muted-foreground text-xs"
     >
-      {/* The LEADING icon IS the remove control (Cursor pattern): no trailing ×,
-          no reserved trailing slot. The button is a fixed-size cell holding two
-          stacked glyphs — the file icon and the X — and the swap is a pure
-          opacity cross-fade in that one cell. The cell never changes size, so the
-          chip box is identical at rest vs hover → no reflow, no flicker. At rest
-          the file glyph shows (opacity 1, X opacity 0); on chip hover /
-          `:focus-within` / button focus they cross-fade (file → 0, X → 1). The
-          button stays focusable so Enter/Space/click removes; Backspace/Delete on
-          it removes too (keyboard parity). opacity only — never layout. */}
+      {}
       <Button
         type="button"
         variant="ghost"
@@ -90,23 +56,11 @@ export function ComposerContextChips({
   className,
   children,
 }: {
-  /** Ordered set of workspace-relative file paths to show as removable top-row
-   *  chips (already deduped against inline mentions + sticky-dismissed by the
-   *  host). Empty (the default) → only `children` (if any) render, which is how
-   *  a composer with no file-context tracking of its own reuses the row. */
   files?: readonly string[];
   onRemoveFile?: (path: string) => void;
   className?: string;
-  /** Extra context chips rendered as siblings in the SAME flex-wrap row (e.g.
-   *  the captured-selection pill), so every reference shares one wrapping row and
-   *  only breaks to a second line on overflow. A child carrying `basis-full`
-   *  (the expanded selection preview) drops onto its own line beneath the chips. */
   children?: ReactNode;
 }) {
-  // `Children.toArray` drops null / undefined / booleans, so a set of children
-  // that all render nothing counts as none. A plain `children == null` held only
-  // while there was ONE conditional child: a second turns it into an array, and
-  // `[null, false] == null` is false, so the row rendered as an empty strip.
   if (files.length === 0 && Children.toArray(children).length === 0) return null;
   return (
     <div

@@ -8,16 +8,6 @@ import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem } from './composition-rig.test-helper.ts';
 import type { ProcessLockMetadata } from './process-lock.ts';
 
-/**
- * Characterization: cross-surface route precedence, readiness, and shutdown
- * as observed over the composed `bootServer` listener. The existing shell
- * end-to-end test pins shell/content/API precedence; this suite pins the
- * surfaces that had no composed-rig coverage — /mcp vs /api vs static
- * discrimination, exact-match quirks (trailing slash, case), 405 method
- * dispatch, mode-differential 404 bodies, readiness as seen from a socket,
- * and teardown draining a live collab WebSocket.
- */
-
 let tmpRoot: string;
 let normal: BootedServer;
 
@@ -108,7 +98,6 @@ describe('route dispatch and precedence — normal mode (no React shell)', () =>
     expect(new URL(lock.url as string).port).toBe(String(normal.port));
     expect(lock.capabilities).toContain('http');
     expect(lock.capabilities).toContain('ws');
-    // No React shell in this process — the accuracy contract says no `ui`.
     expect(lock.capabilities).not.toContain('ui');
   });
 });
@@ -169,10 +158,6 @@ describe('readiness and shutdown over the composed listener', () => {
       writeFileSync(resolve(tmp, 'docs', 'seeded-note.md'), '# seeded\n', 'utf-8');
       const booted = await bootCompositionRig(tmp);
       try {
-        // Deliberately no `await booted.ready` — the request must park on
-        // readiness server-side rather than answer from a half-built index.
-        // Bounded abort so a genuine readiness hang reads as an abort, not
-        // an indistinguishable test-runner timeout.
         const res = await fetch(`http://127.0.0.1:${booted.port}/api/documents`, {
           signal: AbortSignal.timeout(75_000),
         });
@@ -184,8 +169,6 @@ describe('readiness and shutdown over the composed listener', () => {
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
-    // 90s: this test pays for a full boot; under whole-suite CPU saturation
-    // the boot alone has been observed to exceed 30s on a loaded runner.
   }, 90_000);
 
   test('destroy() drains a live collab WebSocket, closes the listener, and marks server.lock draining', async () => {
@@ -211,11 +194,6 @@ describe('readiness and shutdown over the composed listener', () => {
 
       await wsClosed;
       expect(booted.httpServer.listening).toBe(false);
-      // The lock is NOT unlinked by in-process destroy(): release marks it
-      // draining and defers the unlink to process exit, so discovery stops
-      // dialing immediately while crash-vs-clean-exit stays distinguishable
-      // on disk. Only process exit removes the file (pinned by the CLI e2e's
-      // SIGTERM case).
       expect(existsSync(lockPath)).toBe(true);
       const lock = JSON.parse(readFileSync(lockPath, 'utf-8')) as { draining?: boolean };
       expect(lock.draining).toBe(true);

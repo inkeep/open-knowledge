@@ -1,15 +1,3 @@
-/**
- * The new-item shortcut's two branches.
- *
- * With no template resolved for the target folder, the New file dialog has
- * nothing left to ask — the name is the only field, and it is a name the user
- * is about to retype in the editor anyway. So the shortcut skips the dialog
- * and drops straight into a fresh `untitled` doc. Resolve a template and the
- * dialog comes back, because now there is a real choice to make.
- *
- * Tier: Playwright e2e against the per-worker dev-server fixture.
- */
-
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
@@ -40,14 +28,6 @@ async function deleteDoc(baseURL: string, docName: string): Promise<void> {
   if (!res.ok && res.status !== 404) throw new Error(`delete-path failed: ${res.status}`);
 }
 
-/**
- * Open `hash` and wait until the folder cascade has actually landed.
- *
- * The shortcut only takes its branch once `/api/folder-config` resolves — a
- * synced provider says nothing about that request, so pressing on provider-sync
- * alone races the fetch and would silently exercise the loading branch (dialog
- * opens) instead of the branch under test.
- */
 async function gotoWithFolderConfig(page: Page, hash: string): Promise<void> {
   const folderConfigLanded = page.waitForResponse(
     (res) => res.url().includes('/api/folder-config') && res.ok(),
@@ -59,7 +39,6 @@ async function gotoWithFolderConfig(page: Page, hash: string): Promise<void> {
   await waitForActiveProviderSynced(page);
 }
 
-/** Press the browser-safe new-item shortcut with focus parked on body. */
 async function pressNewItemShortcut(page: Page): Promise<void> {
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.waitForFunction(
@@ -88,15 +67,12 @@ test.describe('new-item shortcut fast path', () => {
     await expect(page.getByRole('dialog', { name: NEW_FILE_DIALOG })).toBeHidden();
     await waitForActiveProviderSynced(page);
 
-    // The page list now carries `untitled`, so the next press has to step past it.
     await pressNewItemShortcut(page);
     await page.waitForFunction(() => window.location.hash === '#/untitled-2', null, {
       timeout: 10_000,
     });
     await expect(page.getByRole('dialog', { name: NEW_FILE_DIALOG })).toBeHidden();
 
-    // The surfaces that keep the dialog (here: the command palette) drop the
-    // picker too when nothing resolves — there is no "Start from" to offer.
     await page.locator('body').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press('ControlOrMeta+KeyK');
     await page
@@ -115,9 +91,6 @@ test.describe('new-item shortcut fast path', () => {
   test('a failed fast create surfaces the error and falls back to the dialog', async ({ page }) => {
     await gotoWithFolderConfig(page, '/#/test-doc');
 
-    // Force the instant create to lose (as a name race would): the keypress must
-    // not be swallowed — the reason toasts and the dialog opens as the recovery
-    // path, rather than a blank dialog with the first failure's reason lost.
     await page.route('**/api/create-page', async (route) => {
       await route.fulfill({
         status: 409,

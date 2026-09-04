@@ -54,15 +54,12 @@ describe('doc-panel-events', () => {
 
   test('latches request details for the panel that the request itself mounts', () => {
     const target = new EventTarget();
-    // Nobody is listening: the tab this names is not on screen, so the panel
-    // that owns the scope has not mounted and cannot have subscribed.
     requestDocPanelTab('problems', { scope: 'project', focus: 'panel' }, target);
 
     expect(consumePendingDocPanelRequest('problems')).toEqual({
       scope: 'project',
       focus: 'panel',
     });
-    // Once only — a second mount must not re-apply a request already delivered.
     expect(consumePendingDocPanelRequest('problems')).toBeNull();
     consumePendingDocPanelTabRequest();
   });
@@ -79,8 +76,6 @@ describe('doc-panel-events', () => {
   test('a tab-only request clears a scope an earlier request left latched', () => {
     const target = new EventTarget();
     requestDocPanelTab('problems', { scope: 'project' }, target);
-    // "Show this tab" says nothing about scope, so it must not deliver the
-    // previous request's scope to whatever mounts next.
     requestDocPanelTab('problems', {}, target);
 
     expect(consumePendingDocPanelRequest('problems')).toBeNull();

@@ -15,13 +15,13 @@ export function applyIncrementalDiff(ytext: Y.Text, currentText: string, newText
       const targetSlice = currentText.substring(offset, offset + next.value.length);
       if (targetSlice === next.value) {
         offset += next.value.length;
-        i++; // consume the paired ADDED
+        i++;
         continue;
       }
       ytext.delete(offset, change.value.length);
       ytext.insert(offset, next.value);
       offset += next.value.length;
-      i++; // consume the paired ADDED
+      i++;
     } else if (change.removed) {
       ytext.delete(offset, change.value.length);
     } else if (change.added) {

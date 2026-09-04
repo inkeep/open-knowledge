@@ -1,15 +1,3 @@
-/**
- * Tests for frontmatter telemetry helpers.
- *
- * Verifies:
- *   - `recordFrontmatterEditSurface` increments the bounded-label counter
- *
- * Uses the InMemoryMetricExporter / InMemorySpanExporter test pattern from
- * `telemetry.test.ts` — registers a test provider, resets the lazy-init
- * caches so the helpers rebind, runs the operation, asserts the recorded
- * data.
- */
-
 import { metrics, trace } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -39,7 +27,6 @@ interface TelemetryHarness {
 
 function setupTelemetryHarness(): TelemetryHarness {
   const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
-  // Long export interval — we drive flush manually via forceFlush().
   const metricReader = new PeriodicExportingMetricReader({
     exporter: metricExporter,
     exportIntervalMillis: 60_000,
@@ -53,7 +40,6 @@ function setupTelemetryHarness(): TelemetryHarness {
   });
   trace.setGlobalTracerProvider(tracerProvider);
 
-  // Force the lazy-init helpers to rebind against the new global meter.
   __resetFrontmatterTelemetryForTests();
 
   return {
@@ -122,7 +108,6 @@ describe('frontmatter-telemetry', () => {
     expect(bySource.get('mcp-write')).toBe(2);
     expect(bySource.get('file-watcher')).toBe(1);
     expect(bySource.get('source-mode')).toBe(1);
-    // Verify cardinality is bounded — only the `source` label, no others
     for (const p of points) {
       expect(Object.keys(p.attributes).sort()).toEqual(['source']);
     }

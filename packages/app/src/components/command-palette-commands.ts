@@ -55,30 +55,6 @@ import { openDocInNoteWindow } from '@/lib/open-note-window';
 import { SETTINGS_OPEN_HASH } from '@/lib/use-settings-route';
 import type { ViewMenuState } from '@/lib/view-menu-state-store';
 
-/**
- * The Cmd+K palette's FIXED command rows, joined here from the shared command
- * identity (`@inkeep/open-knowledge-core/commands`, `COMMAND_IDENTITIES`) with
- * the renderer presentation the identity cannot carry: `lucide` icons, Lingui
- * `msg` labels (resolved through the app's global i18n), and dispatch closures
- * over the palette context. The native menu joins the SAME identity with its
- * own plain-string labels + click deps (`packages/desktop/src/main/menu.ts`),
- * so command identity has one declaration point across both surfaces.
- *
- * The palette's query/state-driven populations stay bespoke in
- * `CommandPalette.tsx` and are NOT registry rows: search results, tag mode,
- * semantic ("by meaning"), recents, the recent-project and worktree-switch
- * lists, and the per-target Open-with-AI group (`send-to-ai` is one
- * install-gated row per agent target, which a single descriptor cannot carry —
- * it stays a menu-only identity in the core registry).
- */
-
-/**
- * Projection of the palette's 7-kind {@link ResolvedNavigationTarget} onto the
- * gating kinds the shared availability spec reads. The palette never produces
- * `project` (the menu's project-scope signal); a missing/absent target is
- * `none`, which is how reveal / copy-path hide with no target here yet stay
- * actionable in the menu's project scope — one spec, two contexts.
- */
 export type ContextualTargetKind = 'doc' | 'folder' | 'asset' | 'none';
 
 export function projectContextualTargetKind(
@@ -102,80 +78,43 @@ export function projectContextualTargetKind(
   }
 }
 
-/**
- * Everything a command needs to decide availability and to dispatch. The
- * palette component assembles this per render: state snapshots for
- * `available` / `label` / `checked`, and dispatch seams that reuse the existing
- * handlers (the local menu-action bus, toast-wrapped bridge calls, and the
- * palette's own dialog launchers).
- */
 export interface PaletteCommandContext {
   bridge: OkDesktopBridge | null;
-  /** No-project single-file session: project-scoped commands are hidden. */
   singleFile: boolean;
   activeDocName: string | null;
   contextualTargetKind: ContextualTargetKind;
   viewMenuState: ViewMenuState;
-  /** Close the palette and emit the id on the local menu-action bus. */
   emitMenuAction(action: OkMenuAction): void;
-  /** Close the palette and run `fn` with rejection surfaced as a toast. */
   runAction(fn: () => Promise<void> | void, fallback?: string): void;
-  /** Close the palette and open `url` via the bridge shell (or window.open on web). */
   openExternalUrl(url: string): void;
   closePalette(): void;
   openNewItemDialog(kind: 'file' | 'folder'): void;
   openSeedDialog(): void;
   openCreateProjectDialog(): void;
   openReportBugDialog(): void;
-  /** Close the palette and open the persisted report history / retry list. */
   openBugReportHistory(): void;
   openFeedbackDialog(): void;
-  /** Create a blank project-scope skill and open it in the editor. */
   createBlankSkill(): void;
-  /** Focus the Blob Run tab, opening one if it is not already around. */
   openBlobRun(): void;
 }
 
-/** Render-order buckets; the palette renders each group under its own heading. */
 export type PaletteCommandGroup = 'commands' | 'project' | 'file' | 'view' | 'terminal' | 'app';
 
 export interface PaletteCommand {
-  /** Stable row id; the DOM testid is `command-palette-${id}`. */
   id: string;
-  /**
-   * The `OkMenuAction` this row makes palette-reachable, feeding the derived
-   * `PALETTE_COMMAND_IDS` classification. For bus-dispatched rows this IS the id
-   * `dispatch` emits, and the DOM suite's `ID_BACKED` loop pins that emission.
-   * Absent for commands with no menu-action id (Settings, Open graph, …).
-   */
   menuActionId?: OkMenuAction;
-  /** Localized label, resolved at render so it tracks locale and reflects state. */
   label(ctx: PaletteCommandContext): string;
-  /** Extra `matchesCommandQuery` tokens beyond the label. Not localized. */
   keywords: readonly string[];
   icon: ComponentType<{ className?: string }>;
   group: PaletteCommandGroup;
-  /**
-   * `always` rows render on empty open (query-filtered once the user types);
-   * `search-only` rows render only under a matching non-empty query.
-   */
   visibility: 'always' | 'search-only';
-  /** Accelerator glyphs rendered via `formatShortcut(shortcutId)`. */
   shortcutId?: KeyboardShortcutId;
-  /** The binding fires only through a native-menu accelerator (desktop host only). */
   shortcutDesktopOnly?: boolean;
-  /** Trailing check indicator for checkbox-style View toggles. */
   checked?(ctx: PaletteCommandContext): boolean;
   available(ctx: PaletteCommandContext): boolean;
   dispatch(ctx: PaletteCommandContext): void;
 }
 
-/**
- * Palette label descriptors keyed by the registry `labelKey` (and Show/Hide
- * toggle keys). The label-parity test asserts this map covers every registry
- * labelKey and that each string is present in the compiled catalog, keeping the
- * palette in lockstep with the native menu's `MENU_LABELS` source.
- */
 const PALETTE_COMMAND_LABELS = {
   blobRun: msg`Blob Run`,
   back: msg`Back`,
@@ -231,16 +170,9 @@ const PALETTE_COMMAND_LABELS = {
   openOnGithub: msg`OpenKnowledge on GitHub`,
 } as const satisfies Record<string, MessageDescriptor>;
 
-/** Exported for the label-parity test (completeness + catalog presence). */
 export type PaletteLabelKey = keyof typeof PALETTE_COMMAND_LABELS;
 export { PALETTE_COMMAND_LABELS };
 
-/**
- * Per-platform palette label overrides — the renderer mirror of core's
- * `PLATFORM_MENU_LABELS` (Reveal in Finder / File Explorer / containing
- * folder; Trash / Recycle Bin). Same literal-macro constraint as the base
- * map; the label-parity test asserts these agree with the core overrides.
- */
 const PLATFORM_PALETTE_COMMAND_LABELS = {
   win32: {
     revealInFinder: msg`Reveal in File Explorer`,
@@ -268,9 +200,6 @@ function paletteLabelDescriptor(
   return PALETTE_COMMAND_LABELS[key];
 }
 
-/** Renderer icon per command id. Every palette command must have one:
- *  `toPaletteCommand` throws at module load if an id is missing, rather than
- *  silently substituting a wrong default. */
 const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'open-blob-run': Gamepad2,
   'navigate-back': ChevronLeft,
@@ -320,11 +249,6 @@ const COMMAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   'open-github': GithubIcon,
 };
 
-/**
- * Dispatch closures for commands that do NOT route through the menu-action bus
- * (dialog launchers, bridge invokes, direct renderer calls). Bus commands fall
- * through to {@link busDispatch}, which emits their `menuActionId`.
- */
 const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'open-blob-run': (ctx) => ctx.openBlobRun(),
   'new-file': (ctx) => {
@@ -341,8 +265,6 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   },
   'open-in-new-window': (ctx) => {
     ctx.closePalette();
-    // `requiresActiveDoc` already gated the row, so a null here would mean the
-    // availability evaluation and the dispatch disagreed.
     if (ctx.activeDocName) void openDocInNoteWindow(ctx.activeDocName, 'palette');
   },
   'initialize-starter-pack': (ctx) => {
@@ -369,9 +291,6 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   'open-file': (ctx) => {
     const bridge = ctx.bridge;
     if (!bridge) return;
-    // The picker + ephemeral open both live main-side (`openEphemeralFile` owns
-    // the temp server/dir lifecycle), so this is a single fire-and-forget hop —
-    // no picked path crosses back to the renderer.
     ctx.runAction(() => bridge.project.openFile());
   },
   'switch-project': (ctx) => {
@@ -381,8 +300,6 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   },
   'open-skills': (ctx) => {
     ctx.closePalette();
-    // Skills live in the sidebar dock now, not behind a route — reveal it
-    // rather than navigate to a page that no longer exists.
     requestSkillsDockExpanded();
   },
   settings: (ctx) => {
@@ -441,8 +358,6 @@ function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): 
   const platform = ctx.bridge?.platform;
   if (cmd.stateToggle) {
     const { overrideKey, overrideField } = cmd.stateToggle;
-    // Same precedence as the native menu: an override names an action the
-    // toggle is not performing, so it wins over the show/hide pair.
     if (
       overrideKey !== undefined &&
       overrideField !== undefined &&
@@ -450,8 +365,6 @@ function resolvePaletteLabel(cmd: CommandIdentity, ctx: PaletteCommandContext): 
     ) {
       return i18n._(PALETTE_COMMAND_LABELS[overrideKey as PaletteLabelKey]);
     }
-    // Palette form: `state ? Hide : Show` (undefined → Show), independent of the
-    // native menu's default-visible fallback.
     const visible = ctx.viewMenuState[cmd.stateToggle.stateField] === true;
     const key = visible ? cmd.stateToggle.hideKey : cmd.stateToggle.showKey;
     return i18n._(paletteLabelDescriptor(key as PaletteLabelKey, platform));

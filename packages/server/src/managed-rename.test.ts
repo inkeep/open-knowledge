@@ -31,10 +31,6 @@ import { setupServerObservers } from './server-observers.ts';
 
 const schema = getSchema(sharedExtensions);
 
-/**
- * Run the rename's paired-write sequence inline. Mirrors the new ytext-first
- * order in api-extension.ts:applyManagedRenameMapToLoadedDocument.
- */
 function applyRenameWritesInline(
   doc: Y.Doc,
   newMarkdown: string,
@@ -78,10 +74,6 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
   });
 
   test('Y.Text is mutated before XmlFragment under MANAGED_RENAME_ORIGIN', () => {
-    // Yjs's transaction.changed map is preserved in insertion order. The type
-    // that received its first mutation first fires its observer first. If a
-    // future refactor reverses the call sequence, this test catches it via
-    // observer-dispatch order.
     const events: string[] = [];
     const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
@@ -101,8 +93,6 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       applyRenameWritesInline(doc, '# New\n\n[[new-page]]\n', { throwAfterYText: true });
     }).toThrow(/synthetic/);
 
-    // ytext was written first, so it holds the new bytes despite the throw —
-    // Yjs transactions don't roll back on throw.
     expect(ytext.toString()).toBe('# New\n\n[[new-page]]\n');
   });
 
@@ -114,10 +104,6 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       applyRenameWritesInline(doc, '# New\n\n[[new-page]]\n', { throwAfterYText: true });
     }).toThrow(/synthetic/);
 
-    // After the partial-failure throw: ytext = new bytes; fragment = old bytes.
-    // Now attach observers and trigger a non-paired ytext settlement that
-    // forces Observer B Phase 1 (ytext → fragment) to re-derive fragment from
-    // current ytext bytes.
     const cleanup = setupServerObservers({
       doc,
       xmlFragment,
@@ -126,17 +112,11 @@ describe('MANAGED_RENAME_ORIGIN — paired-write order property', () => {
       schema,
     });
 
-    // A non-paired ytext mutation triggers Observer B's settlement dispatch.
     doc.transact(() => {
       const cur = ytext.toString();
       ytext.insert(cur.length, ' ');
     });
 
-    // Fragment now derives from current ytext bytes — the rename target body
-    // survived through the partial-failure recovery path. Observer B serializes
-    // the post-settlement xmlFragment back through the markdown pipeline; the
-    // round-trip through ytext (truth) → fragment (derived) → serialize must
-    // carry the rename target.
     const fragmentJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const fragmentBody = mdManager.serialize(fragmentJson);
     expect(fragmentBody).toContain('new-page');

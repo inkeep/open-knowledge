@@ -203,8 +203,6 @@ function createLegacyDerivedIndexPort(
     async getDeadLinks(admittedDocuments, sourceDocumentNames) {
       return backlinkIndex?.getDeadLinks(admittedDocuments, sourceDocumentNames) ?? [];
     },
-    // This legacy port wraps only the backlink + tag indexes; the local-target
-    // assessment index is not part of it, so there are no local-target findings.
     async getLocalTargetAssessmentsForSources() {
       return [];
     },
@@ -235,10 +233,6 @@ export function createApiExtension(
       derivedDocumentIndex ??
       createLegacyDerivedIndexPort(backlinkIndex, tagIndex, options.signalChannel),
   });
-  // Mirror the production composition (Hono native mount ABOVE the strangler
-  // catch-all): natively-routed groups dispatch first, everything else flows
-  // through the legacy onRequest hook. Tests that drive `ext.onRequest`
-  // directly keep reaching ported routes through the same shared pipeline.
   const legacyOnRequest = extension.onRequest?.bind(extension);
   return {
     ...extension,

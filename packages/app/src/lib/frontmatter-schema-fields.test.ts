@@ -43,7 +43,6 @@ function fieldsFor(schema: Record<string, unknown>, docName = 'docs/guide') {
   );
 }
 
-/** The fields `schemas` declare for `docs/guide`, all governing it in this order. */
 function fieldsForOrder(schemas: Record<string, unknown>[]) {
   return schemaFieldsForDoc(
     configWith(
@@ -106,8 +105,6 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('an array of non-scalars is not offered at all', () => {
-    // The list widget writes a flat array of scalars, so a row committed for
-    // this field is faulted by the same schema that suggested it.
     const fields = fieldsFor({
       type: 'object',
       properties: {
@@ -120,15 +117,12 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('an array that leaves its items open is still offered', () => {
-    // Nothing was stated about the items, so a scalar list violates nothing.
     expect(
       fieldsFor({ type: 'object', properties: { any: { type: 'array' } } }).get('any')?.type,
     ).toBe('list');
   });
 
   test('a property constrained only by a composition keyword is not offered', () => {
-    // No top-level type, so it would fall to the free-text widget, which cannot
-    // express either accepted shape.
     const fields = fieldsFor({
       type: 'object',
       properties: {
@@ -144,8 +138,6 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('an enum with no declared type is still offered', () => {
-    // The vocabulary layer offers its values and free text accepts them, so
-    // there is nothing here a committed row can violate.
     const fields = fieldsFor({
       type: 'object',
       properties: { state: { enum: ['draft', 'stable'] } },
@@ -154,8 +146,6 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('a required field with no authorable widget stays offered', () => {
-    // The missing-property diagnostic stages a row for it regardless, so
-    // withdrawing it from the picker would hide the name and change nothing.
     const fields = fieldsFor({
       type: 'object',
       required: ['entries'],
@@ -165,9 +155,6 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('a required field with no authorable widget keeps its description', () => {
-    // It is offered either way, and it is the field the user has least choice
-    // about, so the schema's own hint is the one thing that must survive the
-    // widget being withheld.
     const fields = fieldsFor({
       type: 'object',
       required: ['entries'],
@@ -222,8 +209,6 @@ describe('schemaFieldsForDoc', () => {
   });
 
   test('a conflict stays dropped when a third schema re-declares the first type', () => {
-    // Without the terminal drop set, the third schema would agree with the
-    // `text` fallback and the offered widget would depend on schema order.
     const fields = schemaFieldsForDoc(
       configWith([
         {
@@ -259,7 +244,6 @@ describe('schemaFieldsForDoc', () => {
       { schemas: [WEIGHT_UNTYPED, WEIGHT_DATE], type: 'date' },
       { schemas: [WEIGHT_UNTYPED, WEIGHT_UNTYPED], type: 'text' },
       { schemas: [WEIGHT_REQUIRED_ONLY, WEIGHT_UNTYPED, WEIGHT_NUMBER], type: 'number' },
-      // Two explicit, differing types still have no common widget.
       { schemas: [WEIGHT_UNTYPED, WEIGHT_NUMBER, WEIGHT_ARRAY], type: 'text' },
       { schemas: [WEIGHT_NUMBER, WEIGHT_ARRAY, WEIGHT_NUMBER], type: 'text' },
     ];

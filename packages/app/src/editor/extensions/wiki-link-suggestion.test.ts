@@ -85,18 +85,12 @@ describe('buildSuggestionItems', () => {
   });
 
   test('never emits a folder row, typed or empty query', () => {
-    // Belt against a folder-bearing corpus (fetchPages excludes folders by
-    // default, but composer-shared callers can hand them in): the non-asset
-    // mapping arm would dress a folder as a page and the inserted wiki link
-    // would open the folder path as a document.
     const withFolders: PageItem[] = [
       ...pages,
       { kind: 'folder', docName: '.claude', title: '.claude' },
       { kind: 'folder', docName: 'specs/foo', title: 'foo' },
     ];
     expect(buildSuggestionItems(withFolders, '')).toEqual(buildSuggestionItems(pages, ''));
-    // A query that matches ONLY folders falls through to the create-new row
-    // rather than surfacing the folder.
     const folderOnly = buildSuggestionItems(withFolders, 'specs/foo');
     expect(folderOnly.every((item) => item.kind === 'create')).toBe(true);
   });
@@ -247,7 +241,6 @@ describe('computeFallbackAttrs', () => {
   });
 
   test('leading hash is treated as page mode, not anchor mode', () => {
-    // parseQuery only treats `#` as anchor separator when it has a non-empty left side
     expect(computeFallbackAttrs('#bar')).toEqual({
       target: 'bar',
       alias: '#bar',
@@ -257,7 +250,6 @@ describe('computeFallbackAttrs', () => {
 });
 
 describe('wikiLinkMatcher', () => {
-  /** Stub that satisfies the subset of ResolvedPos used by wikiLinkMatcher. */
   function stubPosition(textBefore: string, blockStart: number) {
     const cursorPos = blockStart + textBefore.length;
     return {
@@ -324,7 +316,6 @@ describe('fetchPages', () => {
     return { docName, title, docExt: '.md', size: 1, modified: '2026-06-24T00:00:00.000Z' };
   }
 
-  /** Stub `/api/pages` + `/api/documents` with caller-supplied JSON bodies. */
   function stubFetch(pagesBody: unknown, documentsBody: unknown) {
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
@@ -342,9 +333,6 @@ describe('fetchPages', () => {
 
   afterEach(() => {
     globalThis.fetch = realFetch;
-    // fetchPages routes /api/documents through the module-global single-flight;
-    // clear the slot so a case that leaves a request in flight can't leak a
-    // stale coalesced promise into the next test.
     __resetDocumentListInflightForTests();
   });
 
@@ -402,9 +390,6 @@ describe('fetchPages', () => {
     );
 
     const result = await fetchPages({ includeFolders: true });
-    // Assert docName order, not kind: referenced assets and unreferenced files
-    // both project to `kind:'asset'`, so a kind-only check wouldn't catch a
-    // spread-order swap between them. Order is pages, assets, files, folders.
     expect(result.map((item) => item.docName)).toEqual([
       'notes',
       '/img/diagram.png',
@@ -436,9 +421,6 @@ describe('fetchPages', () => {
           { kind: 'file', path: '.okignore' },
           { kind: 'file', path: '.ok/skills/x.md' },
           { kind: 'file', path: '.vscode/mcp.json' },
-          // Non-dotted but hidden via HIDDEN_CONFIG_BASENAMES (seeded in every
-          // OK workspace) — must be dropped through the shared isHiddenDocName,
-          // not just a dot-segment check, to match what the sidebar hides.
           { kind: 'file', path: 'opencode.json' },
         ],
       },
@@ -460,9 +442,6 @@ describe('fetchPages', () => {
     );
 
     const result = await fetchPages();
-    // Referenced assets are curated by an explicit link, so they are not
-    // hidden-filtered; only the unreferenced file set mirrors the sidebar's
-    // hidden rules.
     expect(result).toEqual([
       { kind: 'asset', docName: '/.obsidian/linked.png', title: 'linked.png' },
     ]);
@@ -496,7 +475,7 @@ describe('isSkillFolderDoc', () => {
 
   test('does not match ordinary docs or look-alike folder names', () => {
     expect(isSkillFolderDoc('guides/getting-started')).toBe(false);
-    expect(isSkillFolderDoc('claude/notes')).toBe(false); // no leading dot
+    expect(isSkillFolderDoc('claude/notes')).toBe(false);
     expect(isSkillFolderDoc('agents-overview')).toBe(false);
   });
 });
@@ -545,10 +524,10 @@ describe('context-aware ranking', () => {
       connectedDocNames: new Set(['gamma']),
     };
     expect(filterPages(corpus, '', context).map((p) => p.docName)).toEqual([
-      'gamma', // linked neighbor (+100)
-      'beta', // current page (+50)
-      'alpha', // ordinary (0)
-      '.claude/skills/foo/SKILL', // skill (-200)
+      'gamma',
+      'beta',
+      'alpha',
+      '.claude/skills/foo/SKILL',
     ]);
   });
 
@@ -588,11 +567,6 @@ describe('context-aware ranking', () => {
   });
 
   test('typed query: a boosted neighbor ranked outside the natural top-8 still surfaces', () => {
-    // 9 equal-tier matches; without context the alphabetical tiebreak drops
-    // item-9 to 9th, outside the MAX_ITEMS=8 cap. This pins the widened
-    // candidate window (limit 100 → trim 8): reverting to limit MAX_ITEMS would
-    // stop returning item-9 as a candidate at all, so the boost could not pull
-    // it in and this test would fail.
     const corpus: PageItem[] = Array.from({ length: 9 }, (_, i) => ({
       docName: `item-${i + 1}`,
       title: `Item ${i + 1}`,
@@ -610,10 +584,6 @@ describe('context-aware ranking', () => {
 });
 
 describe('page/folder docName collision', () => {
-  // A folder and a page can legally share a docName (`wiki/` next to
-  // `wiki.md`). Kind-collapsed corpus ids used to make the second insert throw
-  // inside the typed-query path, which @tiptap/suggestion swallows — freezing
-  // the dropdown on the empty-query list for every keystroke.
   const collisionCorpus: PageItem[] = [
     { kind: 'page', docName: '_tbd/2026-07-03-alpha', title: 'Alpha note' },
     { kind: 'page', docName: '_tbd/2026-07-03-beta', title: 'Beta note' },
@@ -650,7 +620,6 @@ describe('page/folder docName collision', () => {
 describe('loadWikiLinkContext', () => {
   const realFetch = globalThis.fetch;
 
-  /** Stub `/api/forward-links` + `/api/backlinks` with per-route status/body. */
   function stubLinks(routes: {
     forward?: { status?: number; body: unknown };
     back?: { status?: number; body: unknown };

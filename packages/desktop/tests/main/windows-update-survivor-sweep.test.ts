@@ -232,8 +232,6 @@ describe('sweepWindowsUpdateSurvivors', () => {
       scanFailed: false,
       revalidationFailed: false,
     });
-    // The scan plus one batched revalidation, so the main process pays two cold
-    // PowerShell starts whether one host leaked or a dozen did.
     expect(oneSurvivor.queries).toBe(2);
     expect(manySurvivors.queries).toBe(oneSurvivor.queries);
   });

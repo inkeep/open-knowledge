@@ -78,8 +78,8 @@ export function applyPositionSliceToNode(
             value[valIdx] === raw[rawIdx + 1]
           ) {
             escaped.push({ offset: valIdx, char: raw[rawIdx + 1] });
-            rawIdx += 2; // skip backslash + char
-            valIdx += 1; // the char appears in value without backslash
+            rawIdx += 2;
+            valIdx += 1;
           } else {
             rawIdx++;
             valIdx++;
@@ -234,7 +234,7 @@ export function applyPositionSliceToNode(
         if (typeof childStart !== 'number' || typeof childCol !== 'number') continue;
         let childLineStart = childStart;
         while (childLineStart > 0 && source[childLineStart - 1] !== '\n') childLineStart--;
-        if (childLineStart === itemLineStart) continue; // same-line list — no pad applies
+        if (childLineStart === itemLineStart) continue;
         const indent = childCol - itemCol;
         if (
           indent !== contentCol &&
@@ -492,7 +492,7 @@ export function applyPositionSliceToNode(
               node.title !== null &&
               slice[slice.length - 1] === ')'
             ) {
-              let i = slice.length - 2; // skip the link's closing `)`
+              let i = slice.length - 2;
               while (
                 i > closeBracketIdx + 1 &&
                 (slice[i] === ' ' || slice[i] === '\t' || slice[i] === '\n')

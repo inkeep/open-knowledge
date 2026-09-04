@@ -6,7 +6,6 @@ function bytes(...values: number[]): Uint8Array {
   return new Uint8Array(values);
 }
 
-// Minimal valid magic-number headers for each accepted raster format.
 const PNG = bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03);
 const JPEG = bytes(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10);
 const GIF = bytes(0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00);
@@ -19,7 +18,6 @@ function okResult(body: Uint8Array, contentType = 'image/png'): GuardedFetchResu
   return { ok: true, body, contentType, finalUrl: 'https://site.example/favicon.ico' };
 }
 
-/** Injected fetch that returns a fixed result and records the URLs + options it saw. */
 function recordingFetch(result: GuardedFetchResult): {
   fetch: GuardedFetch;
   calls: string[];
@@ -61,13 +59,11 @@ describe('buildLinkPreviewMetadata favicon', () => {
   test.each(FORMATS)('sniffs %s from its magic bytes', async (mime, header) => {
     const { fetch } = recordingFetch(okResult(header, 'application/octet-stream'));
     const meta = await buildLinkPreviewMetadata({ html: '<html></html>', ...BASE, fetch });
-    // The data-URI type comes from the sniffed bytes, not the response header.
     const dataUriPrefix = `data:${mime};base64,`;
     expect(meta.faviconDataUri?.slice(0, dataUriPrefix.length)).toBe(dataUriPrefix);
   });
 
   test('rejects non-image bytes even when the response claims an image type', async () => {
-    // Hostile origin: Content-Type says image/png, body is HTML/script.
     const { fetch } = recordingFetch(okResult(HTML_BYTES, 'image/png'));
     const meta = await buildLinkPreviewMetadata({ html: '<html></html>', ...BASE, fetch });
     expect(meta.faviconDataUri).toBeUndefined();
@@ -107,8 +103,6 @@ describe('buildLinkPreviewMetadata favicon', () => {
   });
 
   test('caps the favicon fetch with a shorter timeout than the page budget', async () => {
-    // The favicon is non-essential, so its fetch is given a tighter 2.5s
-    // deadline than the page fetch's 5s default — bounding a hover's worst case.
     const { fetch, options } = recordingFetch(okResult(PNG));
     await buildLinkPreviewMetadata({ html: '<html></html>', ...BASE, fetch });
     expect(options[0]?.timeoutMs).toBe(2500);

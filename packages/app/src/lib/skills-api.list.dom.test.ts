@@ -16,11 +16,6 @@ describe('listSkills', () => {
     globalThis.fetch = originalFetch;
   });
 
-  // The shared `getJson` merges its own `ok: true` into the body. Validating
-  // that merged object against the `.strict()` schema rejected EVERY response,
-  // so the wrapper reported a schema failure on well-formed data and the two
-  // consumers (opening a project skill by name, and the slash-ref name set)
-  // silently saw nothing.
   test('accepts a well-formed body despite the envelope flag getJson adds', async () => {
     globalThis.fetch = respond({
       skills: [

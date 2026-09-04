@@ -1,17 +1,3 @@
-/**
- * DOM mount tests for ReportBugCrashInviteTrigger — the per-window host that
- * opens ReportBugDialog's crash-invite variant when desktop main pushes a
- * crash-detected event.
- *
- * The trigger reads the module-init `crash-invite-store`; these tests install
- * the store against a fake bridge and fire the captured subscription callback
- * directly — the same path main's `ok:bug-report:crash-detected` push drives
- * over IPC. The buffered-delivery test pins the load-order contract: a
- * boot-time invitation delivered before React mounts must still surface.
- *
- * Invocation: `bun run test:dom` from `packages/app/`.
- */
-
 import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
@@ -24,8 +10,6 @@ import { crashInviteStore } from '@/lib/crash-invite-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { ReportBugCrashInviteTrigger } from './ReportBugCrashInviteTrigger';
 
-// Radix UI primitives (shadcn Dialog) reach for DOM globals at mount — the
-// same NodeFilter/ResizeObserver hoist as the sibling trigger test.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -73,17 +57,11 @@ const CREATE_OK: OkBugReportCreateResult = {
 
 interface CrashBridgeStub {
   bridge: OkDesktopBridge;
-  /** Deliver a crash-detected event through the captured subscription. */
   fire(event: OkBugReportCrashDetectedEvent): void;
   readonly acked: string[];
   readonly sent: string[];
 }
 
-/**
- * Fake bridge exposing the surface the trigger, the store, and the dialog's own
- * report flow touch: `bugReport.onCrashDetected` (subscription),
- * `bugReport.crashAck`, `bugReport.create`/`send`, and `config.mode`.
- */
 function makeCrashBridge(): CrashBridgeStub {
   let captured: ((event: OkBugReportCrashDetectedEvent) => void) | null = null;
   const acked: string[] = [];
@@ -113,7 +91,6 @@ function makeCrashBridge(): CrashBridgeStub {
   return {
     bridge,
     fire: (event) => {
-      // act() flushes the store-driven useSyncExternalStore update.
       act(() => captured?.(event));
     },
     acked,
@@ -121,11 +98,6 @@ function makeCrashBridge(): CrashBridgeStub {
   };
 }
 
-/**
- * The dialog and the module-level send manager both reach for the bridge on
- * `window.okDesktop` rather than the prop the trigger threads, so a test that
- * drives the report flow has to publish it there too.
- */
 function installGlobalBridge(bridge: OkDesktopBridge) {
   for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
     Object.defineProperty(host, 'okDesktop', { configurable: true, writable: true, value: bridge });
@@ -143,8 +115,6 @@ function clearGlobalBridge() {
 }
 
 function installCrashBridge(stub: CrashBridgeStub): (() => void) | undefined {
-  // Test setup can install the module singleton before this file runs. Detach
-  // its bridge first so the first test gets the same isolation as later tests.
   crashInviteStore.install({ bridge: stub.bridge })?.();
   return crashInviteStore.install({ bridge: stub.bridge });
 }
@@ -154,8 +124,6 @@ describe('ReportBugCrashInviteTrigger', () => {
 
   afterEach(() => {
     cleanup();
-    // Detach the singleton store from the test bridge and drop any buffered
-    // invitation so state never leaks across tests.
     uninstall?.();
     uninstall = undefined;
     clearGlobalBridge();
@@ -194,10 +162,6 @@ describe('ReportBugCrashInviteTrigger', () => {
   });
 
   test('a superseding crash restarts the dialog instead of reusing the previous crash state', async () => {
-    // Main supersedes an invitation the user left unanswered, so a second
-    // event can land while this dialog is still on screen. Reconciling in
-    // place would carry the first crash's mount-time state onto the second and
-    // ship one crash's account stamped with the other's id.
     const stub = makeCrashBridge();
     uninstall = installCrashBridge(stub);
     render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
@@ -209,7 +173,6 @@ describe('ReportBugCrashInviteTrigger', () => {
       },
       { timeout: ASYNC_TIMEOUT_MS },
     );
-    // The first crash left no dump, so it offers no opt-in.
     expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
     const noteBox = screen.getByRole('textbox', { name: /what were you doing/i });
     await userEvent.type(noteBox, 'I was editing a spec when the window blinked');
@@ -221,9 +184,6 @@ describe('ReportBugCrashInviteTrigger', () => {
       minidumpAvailable: true,
     });
 
-    // Re-defaulted for the new crash: the note is gone rather than being
-    // re-attributed, and the dump opt-in reflects THIS event, checked per the
-    // invite contract rather than stuck on the dump-less predecessor.
     await waitFor(
       () => {
         expect(
@@ -261,10 +221,6 @@ describe('ReportBugCrashInviteTrigger', () => {
   });
 
   test('sending the report acks the crash event, so the invitation cannot re-prompt', async () => {
-    // Send closes the dialog by handing off to the background send manager. It
-    // has to close through the same onOpenChange callback every other exit
-    // uses, or the ack this trigger hangs off that callback silently stops
-    // firing and the same crash re-invites on every boot.
     const stub = makeCrashBridge();
     installGlobalBridge(stub.bridge);
     uninstall = installCrashBridge(stub);

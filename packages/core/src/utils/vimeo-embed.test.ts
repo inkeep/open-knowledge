@@ -44,7 +44,7 @@ describe('isVimeoUrl', () => {
     expect(isVimeoUrl('not a url')).toBe(false);
     // @ts-expect-error — runtime guard against non-string callers
     expect(isVimeoUrl(undefined)).toBe(false);
-    // @ts-expect-error
+    // @ts-expect-error - runtime guard against non-string callers
     expect(isVimeoUrl(null)).toBe(false);
   });
 });

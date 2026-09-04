@@ -1,14 +1,3 @@
-/**
- * `resolveIsHostedAgent` — the shared read of the two hosted-agent markers.
- *
- * Both markers are set on different paths (the desktop pty host; the ACP agent
- * spawn) but mean the same thing to `preview_url`, so the OR lives in one
- * place. These tests pin the exact-'1' comparison: a truthy-coercing read
- * would treat `OK_HOSTED_AGENT=0` — the shape an operator reaches for to turn
- * the marker off — as hosted, which silently suppresses the preview URL for
- * an agent that legitimately needs one.
- */
-
 import { describe, expect, test } from 'vitest';
 import { OK_DESKTOP_TERMINAL_ENV, OK_HOSTED_AGENT_ENV, resolveIsHostedAgent } from './mcp.ts';
 

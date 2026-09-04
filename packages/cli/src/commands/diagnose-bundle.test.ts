@@ -1,23 +1,9 @@
-/**
- * Tests for `ok diagnose bundle` runner.
- *
- * Verifies the CLI wrapper around collectBundle + writeBundle:
- * pid integration via runDiagnose, summary printing, y/N prompt, --out
- * path validation, --yes skip-prompt path. Runs the real collector + zip
- * writer end-to-end against a tmpdir; only network + process-diagnose
- * deps are injected.
- */
-
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { type RunDiagnoseBundleDeps, runDiagnoseBundle } from './diagnose.ts';
-
-// ---------------------------------------------------------------------------
-// Fixture helpers
-// ---------------------------------------------------------------------------
 
 const tmpDirs: string[] = [];
 
@@ -69,6 +55,7 @@ function makeRunnerDeps(over: Partial<RunDiagnoseBundleDeps> = {}): {
       return 'y';
     },
     collectDeps: deterministicCollectDeps(),
+    diagnosticReportsDir: makeTmpDir('ok-bundle-runner-reports-'),
     ...over,
   };
   return { captured, deps };
@@ -83,9 +70,76 @@ function readZipEntries(zipPath: string): string[] {
     .sort();
 }
 
-// ---------------------------------------------------------------------------
-// Tracer bullet — bundle works on a fresh content-dir, --yes
-// ---------------------------------------------------------------------------
+describe('runDiagnoseBundle — macOS crash reports', () => {
+  function writeReport(dir: string, fileName: string, name: string): void {
+    const header = JSON.stringify({
+      app_name: name,
+      name,
+      bug_type: '309',
+      timestamp: '2026-05-28 14:00:00.00 +0000',
+    });
+    const body = JSON.stringify({ procName: name, asi: { [name]: ['abort() called'] } });
+    writeAt(dir, fileName, `${header}\n${body}\n`.replaceAll('/', String.raw`\/`));
+  }
+
+  test('collects into the zip, and the summary says what it found', async () => {
+    const contentDir = makeTmpDir();
+    const reportsDir = makeTmpDir('ok-bundle-runner-reports-');
+    writeReport(reportsDir, 'OpenKnowledge-2026-05-28-140000.ips', 'OpenKnowledge');
+    writeReport(reportsDir, 'Slack-2026-05-28-140000.ips', 'Slack');
+    const { deps, captured } = makeRunnerDeps({ diagnosticReportsDir: reportsDir });
+
+    const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
+
+    const entries = readZipEntries(result.outputPath ?? '');
+    expect(entries).toContain('diagnostic-reports/OpenKnowledge-2026-05-28-140000.ips');
+    expect(entries).not.toContain('diagnostic-reports/Slack-2026-05-28-140000.ips');
+    expect(entries).toContain('state/diagnostic-reports-status.txt');
+    const summaryLine = captured.logs.find((l) => l.includes('macOS crash reports:'));
+    expect(summaryLine).toContain(
+      '1 collected (7d; 1 other-process report(s) ignored; 0 unparseable)',
+    );
+    expect(summaryLine).not.toContain('not-collected');
+  });
+
+  test('reports an empty sweep rather than staying silent', async () => {
+    const contentDir = makeTmpDir();
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true }, deps);
+
+    expect(captured.logs.find((l) => l.includes('macOS crash reports:'))).toContain(
+      'none found in window',
+    );
+  });
+
+  test('--no-redact names the crash-report rewrite as the exception', async () => {
+    const contentDir = makeTmpDir();
+    const reportsDir = makeTmpDir('ok-bundle-runner-reports-');
+    writeReport(reportsDir, 'OpenKnowledge-2026-05-28-140000.ips', 'OpenKnowledge');
+    const { deps, captured } = makeRunnerDeps({ diagnosticReportsDir: reportsDir });
+
+    await runDiagnoseBundle({ contentDir, yes: true, redact: false }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toContain(
+      'NOT scrubbed (--no-redact): tokens and keys ship verbatim, crash reports excepted',
+    );
+    expect(allLogs).toContain('Not byte-identical to the files macOS wrote');
+  });
+
+  test('--no-redact promises no exception when no report was staged', async () => {
+    const contentDir = makeTmpDir();
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true, redact: false }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toContain('NOT scrubbed (--no-redact): tokens and keys ship verbatim');
+    expect(allLogs).not.toContain('crash reports excepted');
+    expect(allLogs).not.toContain('Not byte-identical to the files macOS wrote');
+  });
+});
 
 describe('runDiagnoseBundle — tracer bullet', () => {
   test('writes a zip to the default path with no server running and --yes', async () => {
@@ -99,20 +153,14 @@ describe('runDiagnoseBundle — tracer bullet', () => {
     expect(result.outputPath?.endsWith('.zip')).toBe(true);
     expect(existsSync(result.outputPath ?? '')).toBe(true);
 
-    // --yes skips the prompt entirely.
     expect(captured.prompts.length).toBe(0);
 
-    // Zip contains manifest.json + state files at minimum.
     const entries = readZipEntries(result.outputPath ?? '');
     expect(entries).toContain('manifest.json');
     expect(entries).toContain('state/runtime.json');
     expect(entries).toContain('state/server-status.txt');
   });
 });
-
-// ---------------------------------------------------------------------------
-// works without a running server
-// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — no running server', () => {
   test('manifest.serverStatus is not-running; state/server-status.txt confirms', async () => {
@@ -122,7 +170,6 @@ describe('runDiagnoseBundle — no running server', () => {
     const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
     expect(result.outputPath).not.toBeNull();
 
-    // Pull manifest + status out of the zip.
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(
       `unzip -q ${JSON.stringify(result.outputPath ?? '')} -d ${JSON.stringify(extractDir)}`,
@@ -132,15 +179,10 @@ describe('runDiagnoseBundle — no running server', () => {
     const statusBody = readFileSync(join(extractDir, 'state', 'server-status.txt'), 'utf-8');
     expect(statusBody).toContain('not-running');
 
-    // CLI should have surfaced the 'server not running' warning to the user.
     const allLogs = captured.logs.join('\n');
     expect(allLogs).toContain('server not running');
   });
 });
-
-// ---------------------------------------------------------------------------
-// --pid integration
-// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — --pid integration', () => {
   test('--pid runs process-diagnose into a tmp dir and includes process/ in the zip', async () => {
@@ -150,8 +192,6 @@ describe('runDiagnoseBundle — --pid integration', () => {
     const { deps } = makeRunnerDeps({
       runProcessDiagnose: async (pid) => {
         pidSeen = pid;
-        // Simulate the existing runDiagnose flow by writing a small payload
-        // into a tmp dir — the runner copies the contents under `process/`.
         const dir = mkdtempSync(join(tmpdir(), 'ok-bundle-test-proc-'));
         tmpDirs.push(dir);
         writeFileSync(join(dir, 'metadata.json'), '{"pid":42,"command":"node"}');
@@ -173,10 +213,6 @@ describe('runDiagnoseBundle — --pid integration', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// content summary + y/N prompt
-// ---------------------------------------------------------------------------
-
 describe('runDiagnoseBundle — prompt + summary', () => {
   test('prints a content summary before the prompt', async () => {
     const contentDir = makeTmpDir();
@@ -196,7 +232,6 @@ describe('runDiagnoseBundle — prompt + summary', () => {
     expect(allLogs).toContain('Content-dir path:');
     expect(allLogs).toContain('Credentials:');
     expect(allLogs).toContain('Server status:');
-    // Includes the count from the seeded spans file.
     expect(allLogs).toMatch(/Document names:\s+included in cleartext \(1 doc\.name occurrence/);
   });
 
@@ -217,7 +252,6 @@ describe('runDiagnoseBundle — prompt + summary', () => {
     const result = await runDiagnoseBundle({ contentDir }, deps);
     expect(result.declined).toBe(true);
     expect(result.outputPath).toBeNull();
-    // No zip should have landed at the default location.
     const defaultDir = join(contentDir, '.ok', 'local', 'diagnostics');
     if (existsSync(defaultDir)) {
       const files = (await import('node:fs')).readdirSync(defaultDir);
@@ -242,16 +276,6 @@ describe('runDiagnoseBundle — prompt + summary', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// consent summary — the copy has to match what actually ships
-// ---------------------------------------------------------------------------
-
-/**
- * The summary is the only place a user is told what a bundle contains before
- * they hand it to someone. It has to name each thing that leaves separately:
- * doc names ship in cleartext even on the redacted path, so a single blanket
- * "Redacted: yes" reads as a promise the bundle does not keep.
- */
 describe('runDiagnoseBundle — consent summary', () => {
   const SECRET = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
 
@@ -300,8 +324,6 @@ describe('runDiagnoseBundle — consent summary', () => {
     expect(Number(scrubbed?.[1])).toBeGreaterThan(0);
     expect(Number(scrubbed?.[2])).toBeGreaterThan(0);
 
-    // The blanket claim is gone: nothing in the summary asserts the bundle as
-    // a whole is redacted while doc names ship raw.
     expect(allLogs).not.toContain('Redacted:');
   });
 
@@ -327,7 +349,6 @@ describe('runDiagnoseBundle — consent summary', () => {
     const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
     const allLogs = captured.logs.join('\n');
 
-    // Every claim above is only worth anything if the zip agrees with it.
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(
       `unzip -q ${JSON.stringify(result.outputPath ?? '')} -d ${JSON.stringify(extractDir)}`,
@@ -342,10 +363,6 @@ describe('runDiagnoseBundle — consent summary', () => {
     expect(spans).not.toContain(SECRET);
   });
 });
-
-// ---------------------------------------------------------------------------
-// --out flag
-// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — --out flag', () => {
   test('--out with existing parent directory writes the zip there', async () => {
@@ -369,10 +386,6 @@ describe('runDiagnoseBundle — --out flag', () => {
     expect(existsSync(targetPath)).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// --redact end-to-end
-// ---------------------------------------------------------------------------
 
 describe('runDiagnoseBundle — redaction', () => {
   test('redacts by default: masks contentDir and scrubs credentials while doc names ship raw', async () => {
@@ -408,13 +421,10 @@ describe('runDiagnoseBundle — redaction', () => {
     execSync(`unzip -q ${JSON.stringify(out)} -d ${JSON.stringify(extractDir)}`);
     const zippedSpans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
 
-    // Doc names ship raw under Detailed-diagnostics consent — no hashing.
     expect(zippedSpans).toContain('fixture-doc');
     expect(zippedSpans).not.toMatch(/doc:[a-f0-9]{8}/);
-    // The absolute content-dir prefix is masked.
     expect(zippedSpans).not.toContain(contentDir);
     expect(zippedSpans).toContain('<CONTENT_DIR>/foo.md');
-    // Credentials are scrubbed unconditionally.
     expect(zippedSpans).not.toContain(secret);
     expect(zippedSpans).toContain('[REDACTED-GH-PAT]');
 
@@ -424,10 +434,8 @@ describe('runDiagnoseBundle — redaction', () => {
     expect(manifest.redaction).not.toHaveProperty('docNameMap');
     expect(manifest.redaction.secretScrub.redactedLineCount).toBeGreaterThan(0);
     expect(manifest.contentDir.absolutePath).toBe('<CONTENT_DIR>');
-    // pathSha256 stays as the SHA-256 of the original path for correlation.
     expect(manifest.contentDir.pathSha256).toMatch(/^[0-9a-f]{64}$/);
 
-    // No inverse-map sidecar is written next to the zip anymore.
     expect(existsSync(join(dirname(out), 'redacted.docnames.json'))).toBe(false);
   });
 
@@ -458,8 +466,6 @@ describe('runDiagnoseBundle — redaction', () => {
     const { deps } = makeRunnerDeps();
     await runDiagnoseBundle({ contentDir, yes: true, redact: true }, deps);
 
-    // Originals on disk under contentDir/.ok/local/ must be byte-identical to
-    // what we seeded — redaction only touches the staged copies in the bundle.
     const spansOnDisk = readFileSync(
       join(contentDir, '.ok/local/telemetry/spans-current.jsonl'),
       'utf-8',
@@ -505,9 +511,6 @@ describe('runDiagnoseBundle — redaction', () => {
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(`unzip -q ${JSON.stringify(out)} -d ${JSON.stringify(extractDir)}`);
     const zippedSpans = readFileSync(join(extractDir, 'telemetry', 'spans-current.jsonl'), 'utf-8');
-    // Positive control: without redaction the planted secret + content-dir are
-    // present, proving the scrub-on path actually removes them (not a scan of
-    // an empty/wrong file).
     expect(zippedSpans).toContain('visible');
     expect(zippedSpans).toContain(secret);
     expect(zippedSpans).toContain(contentDir);

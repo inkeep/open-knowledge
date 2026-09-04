@@ -1,24 +1,3 @@
-/**
- * Config-sharing section — the per-project shared / local-only toggle for the
- * OK config artifact set.
- *
- * Two-state segmented control: `Shared` vs `Only me`. Toggling routes
- * through `bridge.sharing.setMode` which calls the same
- * `addOkPathsToGitExclude` / `removeOkPathsFromGitExclude` primitives the CLI
- * uses, so desktop and CLI cannot drift.
- *
- * Refusal: when the toggle to `local-only` hits a tracked-upstream OK
- * file, main returns `kind: 'refused-tracked'` with the full
- * remediation. We render it in an inline alert + a sticky toast so the
- * user has time to copy the `git rm --cached` commands.
- *
- * No git: when the project has no git repo, the toggle is disabled with
- * a tooltip explanation.
- *
- * Web / non-Electron: `bridge` is undefined; the section renders a
- * read-only "available in the desktop app" stub.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -73,11 +52,6 @@ function SharingSectionBody() {
       setStatus(await bridge.status());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t`Config sharing status read failed`);
-      // Don't strand the initial mount in the Skeleton if `bridge.status()`
-      // itself rejects (IPC teardown on window close, stale bridge): with no
-      // status yet, fall back to a safe `no-git` reading so the section
-      // renders (the toast already surfaced the real error). A later refresh
-      // failure keeps the last good status rather than clobbering it.
       setStatus(
         (prev) =>
           prev ?? {
@@ -90,9 +64,6 @@ function SharingSectionBody() {
     }
   }
 
-  // Initial fetch on mount. React Compiler optimizes the closure capture
-  // of `refresh`; manual useCallback is intentionally omitted per the
-  // codebase's compiler-first convention.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refresh is a stable closure under React Compiler — adding it to deps would force the manual-memoization pattern the codebase explicitly rejects.
   useEffect(() => {
     void refresh();
@@ -101,7 +72,7 @@ function SharingSectionBody() {
   async function onSelect(mode: 'shared' | 'local-only') {
     const bridge = window.okDesktop?.sharing;
     if (!bridge || status === null || busy) return;
-    if (status.mode === mode) return; // no-op selection — current state
+    if (status.mode === mode) return;
     setBusy(true);
     setRefusal(null);
     let result: Awaited<ReturnType<typeof bridge.setMode>> | null = null;
@@ -119,9 +90,6 @@ function SharingSectionBody() {
     if (result === null) return;
     if (result.kind === 'refused-tracked') {
       setRefusal({ tracked: result.tracked, remediation: result.remediation });
-      // The inline alert below renders the full remediation; keep the toast a
-      // brief, auto-dismissing pointer to it rather than a second copy (the
-      // settings panel is already showing the details inline).
       toast.error(t`Config sharing unchanged — see details below.`, { duration: 5000 });
     } else if (result.kind === 'no-exclude') {
       toast.warning(
@@ -148,9 +116,7 @@ function SharingSectionBody() {
           scope="project"
           level="block"
         />
-        {/* Announced the same way as the dialog's own content skeleton: without
-            it, a screen-reader user hears the Config sharing heading and then
-            silence, which is indistinguishable from an empty section. */}
+        {}
         <div role="status" aria-live="polite" aria-busy="true">
           <span className="sr-only">
             <Trans>Loading config sharing</Trans>
@@ -203,7 +169,7 @@ function SharingSectionBody() {
           aria-labelledby={TITLE_ID}
           data-testid="settings-sharing-radiogroup"
         >
-          {/* "Only me" leads, matching the create/open dialogs' card order. */}
+          {}
           <label htmlFor="settings-sharing-local-only" className="flex items-start gap-2 text-sm">
             <RadioGroupItem
               id="settings-sharing-local-only"

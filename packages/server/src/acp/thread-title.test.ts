@@ -18,7 +18,6 @@ describe('deriveThreadTitle', () => {
   });
 
   test('keeps the raw line when stripping leaves a stub', () => {
-    // "there" alone is not a title — greeting-ish prompts degrade gracefully.
     expect(deriveThreadTitle('hello there')).toBe('hello there');
     expect(deriveThreadTitle('hey can you')).toBe('hey can you');
   });
@@ -62,8 +61,6 @@ describe('deriveThreadTitle', () => {
   });
 
   test('strips a leading agent name mention when supplied', () => {
-    // Every tab already shows the agent icon; leaving "Claude, …" as the
-    // distinguishing lead wastes half the label's width.
     expect(deriveThreadTitle("Claude, what's 2+2?", 'Claude')).toBe("What's 2+2?");
     expect(deriveThreadTitle('@Claude please fix the parser', 'Claude')).toBe('Fix the parser');
     expect(deriveThreadTitle('Cursor — update the sidebar copy', 'Cursor')).toBe(
@@ -72,16 +69,12 @@ describe('deriveThreadTitle', () => {
   });
 
   test('leaves the name in the middle of a sentence alone', () => {
-    // Only a LEADING mention is dead weight; "Ask Claude to do X" is real content.
     expect(deriveThreadTitle('Ask Claude to summarize the PR', 'Claude')).toBe(
       'Ask Claude to summarize the PR',
     );
   });
 
   test('leaves a subject-position mention alone — "Codex is failing" ≠ "@Codex"', () => {
-    // Bare whitespace after the name is not addressing punctuation; the strip
-    // fires only for `@Codex …`, `Codex, …`, `Codex — …`. Otherwise a bug
-    // report titled after the agent would be mangled into a broken predicate.
     expect(deriveThreadTitle('Codex is failing to start', 'Codex')).toBe(
       'Codex is failing to start',
     );
@@ -94,19 +87,12 @@ describe('deriveThreadTitle', () => {
   });
 
   test('rescues a title that opens with punctuation (dash bullet, stray "??")', () => {
-    // FILLER_RE already trims its own trailing separator, so this pass only
-    // triggers when the input itself opens with punctuation — an em-dash
-    // bullet, a leftover `??`, a stray colon after a quote strip.
     expect(deriveThreadTitle('— refactor the parser')).toBe('Refactor the parser');
     expect(deriveThreadTitle('?? fix the parser')).toBe('Fix the parser');
     expect(deriveThreadTitle(': update the roadmap doc')).toBe('Update the roadmap doc');
   });
 
   test('leaves punctuation glued to the next token alone — .env / --verbose / .gitignore', () => {
-    // Coding-agent prompts open with these constantly. If the punctuation
-    // strip fired without requiring whitespace after, `.env is missing …`
-    // would mangle to `Env is missing …` — same defect class as the
-    // bare-space agent-name bug.
     expect(deriveThreadTitle('.env is missing the API key')).toBe('.env is missing the API key');
     expect(deriveThreadTitle('--verbose flag broken on Windows')).toBe(
       '--verbose flag broken on Windows',
@@ -117,48 +103,28 @@ describe('deriveThreadTitle', () => {
   });
 
   test('leaves an agent name glued to a dotfile alone — Codex.md ≠ Codex', () => {
-    // Address form requires a whitespace/EOS delimiter after the punctuation
-    // so `Codex.md needs a heading` doesn't strip to `Md needs a heading`.
     expect(deriveThreadTitle('Codex.md needs a heading', 'Codex')).toBe('Codex.md needs a heading');
     expect(deriveThreadTitle('cursor.json is malformed', 'Cursor')).toBe(
       'cursor.json is malformed',
     );
-    // A period followed by a space IS an address form ("Codex. Fix …").
     expect(deriveThreadTitle('Codex. Fix the parser.', 'Codex')).toBe('Fix the parser.');
   });
 
   test('leaves an `@`-mentioned dotfile alone — @Codex.md ≠ @Codex', () => {
-    // The @-mention arm needs the same whitespace-or-EOS delimiter as the
-    // bare-name arm; otherwise `@CLAUDE.md needs updating` (an @-mention
-    // of the file, not the agent) mangles to `Md needs updating`.
     expect(deriveThreadTitle('@Codex.md needs a heading', 'Codex')).toBe(
       '@Codex.md needs a heading',
     );
     expect(deriveThreadTitle('@CLAUDE.md needs updating', 'Claude')).toBe(
       '@CLAUDE.md needs updating',
     );
-    // A real @-mention address still strips.
     expect(deriveThreadTitle('@Claude, fix the parser', 'Claude')).toBe('Fix the parser');
     expect(deriveThreadTitle('@Claude fix the parser', 'Claude')).toBe('Fix the parser');
-    // An @-mention with a non-alpha delimiter (`?` / `•` / `|`) is still
-    // an address — the delimiter class matches LEADING_PUNCT_RE parity.
-    // Both arms share one interpolated `delim` constant (thread-title.ts),
-    // so pinning each char through EITHER arm now guards the shared class;
-    // exercising the @-arm alongside the bare-name block is belt-and-
-    // suspenders in case future changes give the arms independent classes
-    // again.
     expect(deriveThreadTitle('@Codex?? fix the parser', 'Codex')).toBe('Fix the parser');
     expect(deriveThreadTitle('@Codex| fix the parser', 'Codex')).toBe('Fix the parser');
     expect(deriveThreadTitle('@Codex• fix the parser', 'Codex')).toBe('Fix the parser');
   });
 
   test('bare-name arm accepts `?` / `|` / `•` delimiters — parity with LEADING_PUNCT_RE', () => {
-    // The bare-name (unprefixed) delimiter class matches LEADING_PUNCT_RE's,
-    // so every non-alpha punctuation char that would clean an opening title
-    // also counts as an addressing delimiter after the name. Each of these
-    // characters is a distinct code point — the test pins them individually
-    // so a copy-paste that lands a lookalike (or drops one from the class)
-    // reddens.
     expect(deriveThreadTitle('Codex? fix the parser', 'Codex')).toBe('Fix the parser');
     expect(deriveThreadTitle('Codex | fix the parser', 'Codex')).toBe('Fix the parser');
     expect(deriveThreadTitle('Codex • fix the parser', 'Codex')).toBe('Fix the parser');

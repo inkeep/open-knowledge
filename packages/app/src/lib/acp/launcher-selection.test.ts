@@ -47,16 +47,15 @@ describe('enabled-set helpers', () => {
   test('enabledTerminalClis: fail-open unless probed absent or toggled off', () => {
     const overrides: EnabledOverrides = { [terminalEnabledKey('codex')]: false };
     const clis = enabledTerminalClis(overrides, { cursor: false });
-    expect(clis).toContain('claude'); // unknown install → shown
-    expect(clis).not.toContain('codex'); // toggled off
-    expect(clis).not.toContain('cursor'); // probed absent
+    expect(clis).toContain('claude');
+    expect(clis).not.toContain('codex');
+    expect(clis).not.toContain('cursor');
   });
 
   test('unresolvedDesktopTargets: only targets with no answer and no override', () => {
     expect(unresolvedDesktopTargets({}, {})).toContain('cursor');
     expect(unresolvedDesktopTargets({}, { cursor: { installed: false } })).not.toContain('cursor');
     expect(unresolvedDesktopTargets({}, { cursor: { installed: true } })).not.toContain('cursor');
-    // An explicit toggle is an answer, so the pending window doesn't apply.
     expect(unresolvedDesktopTargets({ [desktopEnabledKey('cursor')]: false }, {})).not.toContain(
       'cursor',
     );
@@ -64,11 +63,8 @@ describe('enabled-set helpers', () => {
 
   test('enabledDesktopTargets: detected by default, overridable both ways', () => {
     expect(enabledDesktopTargets({}, {})).toEqual([]);
-    // Detection alone is enough — no override needed.
     expect(enabledDesktopTargets({}, { cursor: { installed: true } })).toEqual(['cursor']);
-    // A pending probe is not "installed".
     expect(enabledDesktopTargets({}, { cursor: { installed: null } })).toEqual([]);
-    // Overrides win in both directions.
     expect(enabledDesktopTargets({ [desktopEnabledKey('cursor')]: true }, {})).toEqual(['cursor']);
     expect(
       enabledDesktopTargets(
@@ -134,8 +130,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
   });
 
   test('BUG 2: a CLI sticky the user disabled is NOT kept — it degrades', () => {
-    // sticky = claude CLI, but claude is no longer enabled and no other CLI is
-    // either; an in-app agent is enabled → fall to it (never the disabled CLI).
     const result = resolveLauncherSelection(
       inputs({
         sticky: terminalCliId('claude'),
@@ -164,7 +158,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
         inputs({ sticky: 'cursor', desktopSelectable: true, enabledDesktopTargets: ['cursor'] }),
       ),
     ).toEqual({ kind: 'desktop', target: 'cursor' });
-    // Not enabled → degrades (here: to none).
     expect(
       resolveLauncherSelection(
         inputs({ sticky: 'cursor', desktopSelectable: true, enabledDesktopTargets: [] }),
@@ -173,8 +166,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
   });
 
   test('a remembered desktop pick holds while its probe is still in flight', () => {
-    // Cold start: nothing detected yet, so the pick would otherwise flash the
-    // in-app default for the probe's duration before snapping back.
     expect(
       resolveLauncherSelection(
         inputs({
@@ -186,7 +177,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
         }),
       ),
     ).toEqual({ kind: 'desktop', target: 'cursor' });
-    // A positive not-installed answer still degrades it.
     expect(
       resolveLauncherSelection(
         inputs({
@@ -198,7 +188,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
         }),
       ),
     ).toEqual({ kind: 'thread', agent: claude });
-    // And a pending target that was never picked is not promoted.
     expect(
       resolveLauncherSelection(
         inputs({
@@ -212,9 +201,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
   });
 
   test('enabled desktop app is the default when it is the only enabled family', () => {
-    // Turn on one Desktop agent with nothing picked and no in-app agent / CLI
-    // enabled: the composer must default to it, not dead-end on a disabled
-    // Create button with no picker to reach it.
     expect(
       resolveLauncherSelection(
         inputs({ desktopSelectable: true, enabledDesktopTargets: ['cursor'] }),
@@ -223,7 +209,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
   });
 
   test('desktop never outranks an enabled in-app agent or CLI as the default', () => {
-    // In-app agent wins.
     expect(
       resolveLauncherSelection(
         inputs({
@@ -233,7 +218,6 @@ describe('resolveLauncherSelection — remembered pick honored only when still e
         }),
       ),
     ).toEqual({ kind: 'thread', agent: claude });
-    // No in-app agent, but an enabled CLI still wins over desktop.
     expect(
       resolveLauncherSelection(
         inputs({

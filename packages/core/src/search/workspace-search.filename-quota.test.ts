@@ -7,7 +7,6 @@ import {
 } from './workspace-search.ts';
 
 describe('extension-tolerant filename matching', () => {
-  // A markdown page whose title differs from its filename.
   const page = createWorkspaceSearchDocument({
     kind: 'page',
     path: 'stories/cloud-collaboration/STORY',
@@ -43,9 +42,6 @@ describe('extension-tolerant filename matching', () => {
   });
 
   test('only .md/.mdx is stripped — a .csv suffix is not treated as the page name', () => {
-    // `.csv` is not a doc extension, so `STORY.csv` must NOT earn the page an
-    // exact-name (700) bracket (it may still surface via body/token matching at
-    // a lower tier — that is fine; the point is the strip is .md/.mdx-only).
     const results = searchWorkspaceDocuments(documents, 'STORY.csv', { intent: 'omnibar' });
     const hit = results.find((r) => r.document.path === 'stories/cloud-collaboration/STORY');
     expect(hit?.signals.lexical ?? 0).not.toBe(700);
@@ -60,13 +56,9 @@ describe('extension-tolerant filename matching', () => {
 });
 
 describe('per-kind result quota (content-first composition)', () => {
-  // Five same-named folders (`reports`) + pages whose body matches — mirrors the
-  // `evidence`/`meta` mode where one kind would otherwise fill the whole list.
   const folders = ['a', 'b', 'c', 'd', 'e'].map((p) =>
     createWorkspaceSearchDocument({ kind: 'folder', path: `${p}/reports`, modifiedTs: 0 }),
   );
-  // Pages match the query via their name/path (omnibar searches name/path, not
-  // body) so they are legitimate candidates that the quota lets through.
   const pages = [1, 2, 3, 4].map((n) =>
     createWorkspaceSearchDocument({
       kind: 'page',
@@ -83,11 +75,9 @@ describe('per-kind result quota (content-first composition)', () => {
     const folderCount = results.filter((r) => r.document.kind === 'folder').length;
     const pageCount = results.filter((r) => r.document.kind === 'page').length;
     expect(folderCount).toBe(DEFAULT_FOLDER_RESULT_CAP);
-    expect(pageCount).toBe(4); // every content page survives — only folders are capped
+    expect(pageCount).toBe(4);
   });
 
-  // Five same-named files (`data.csv`) — files appear in BOTH omnibar (capped)
-  // and full_text (uncapped), so they exercise the intent gating cleanly.
   const fileDocs = ['a', 'b', 'c', 'd', 'e'].map((p) =>
     createWorkspaceSearchDocument({ kind: 'file', path: `${p}/data.csv`, modifiedTs: 0 }),
   );
@@ -103,8 +93,6 @@ describe('per-kind result quota (content-first composition)', () => {
   });
 
   test('the cap keeps the highest-ranked folder of its kind', () => {
-    // One folder whose name is an exact match outranks partial-name folders;
-    // it must survive the cap (capping keeps top-N by rank, not arbitrary ones).
     const mixed = [
       createWorkspaceSearchDocument({ kind: 'folder', path: 'x/reports', modifiedTs: 0 }),
       createWorkspaceSearchDocument({ kind: 'folder', path: 'y/reports-archive', modifiedTs: 0 }),
@@ -116,6 +104,6 @@ describe('per-kind result quota (content-first composition)', () => {
       .filter((r) => r.document.kind === 'folder')
       .map((r) => r.document.path);
     expect(folderPaths.length).toBe(DEFAULT_FOLDER_RESULT_CAP);
-    expect(folderPaths).toContain('x/reports'); // the exact-name folder is retained
+    expect(folderPaths).toContain('x/reports');
   });
 });

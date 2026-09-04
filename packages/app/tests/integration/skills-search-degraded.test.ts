@@ -1,19 +1,9 @@
-/**
- * `GET /api/skills/search` when the upstreams refuse to answer.
- *
- * The distinction under test is "we could not answer" vs "there is no such
- * skill". skills.sh failing is recoverable — GitHub topic search takes over and
- * the client shows a degraded banner. GitHub failing too is NOT: it used to
- * report an empty 200, which the UI renders as "No skills found", telling the
- * user the skill does not exist when both backends were merely rate-limited.
- */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createTestServer, type TestServer } from './test-harness.ts';
 
 let server: TestServer;
 const realFetch = globalThis.fetch;
 
-/** Route upstream calls to `handler`; everything else hits the real server. */
 function stubUpstreams(handler: (url: string) => Response | null): void {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

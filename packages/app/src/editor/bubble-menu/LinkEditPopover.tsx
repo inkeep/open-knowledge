@@ -32,14 +32,6 @@ function initialLinkInputUrl(editor: Editor): string {
     : '';
 }
 
-/**
- * Best-effort clipboard pre-fill for a just-opened, still-empty URL input.
- * Denied/unavailable clipboard and non-URL content degrade the same way —
- * the input stays empty, no error surfaced. The functional guard applies
- * the pre-fill only while the input is still untouched, so a value the
- * user has begun typing always wins over a late clipboard resolve; the
- * select() makes the guess replaceable in one gesture when it does land.
- */
 async function prefillUrlFromClipboard(
   inputRef: RefObject<HTMLInputElement | null>,
   setUrl: Dispatch<SetStateAction<string>>,
@@ -48,11 +40,6 @@ async function prefillUrlFromClipboard(
   try {
     text = await navigator.clipboard.readText();
   } catch (error) {
-    // Expected denials (permission, insecure context, empty clipboard) arrive
-    // as DOMExceptions and degrade silently by design. Anything else — a
-    // polyfill or CSP failure that would make pre-fill always-empty — warns
-    // (debug is suppressed by default console filters) so it is
-    // field-diagnosable.
     if (!(error instanceof DOMException)) {
       console.warn('[link-popover] clipboard pre-fill read failed unexpectedly', error);
     }
@@ -69,10 +56,6 @@ async function prefillUrlFromClipboard(
   });
 }
 
-// Shared open path for the Link button and the programmatic-open seam. The
-// clipboard read fires only when the input opens empty (the add case): an
-// edit-open already carries the existing href, and reading a value we would
-// discard could still cost the user a browser permission prompt.
 function openLinkInput(
   editor: Editor,
   inputRef: RefObject<HTMLInputElement | null>,
@@ -103,10 +86,6 @@ export function LinkEditPopover({
   const isLinkActive = editor.state.selection.empty && editor.isActive('link');
   const currentUrl = editor.getAttributes('link').href ?? '';
 
-  // Programmatic-open seam — same open path as the Link button below (focus
-  // rides the showInput effect's rAF). Gated on `shortcutEnabled` because the
-  // event is window-scoped and every pooled editor mounts its own popover —
-  // only the active document's instance may react.
   useEffect(() => {
     return subscribeToOpenLinkEditPopover(() => {
       if (!shortcutEnabled) return;
@@ -114,23 +93,10 @@ export function LinkEditPopover({
     });
   }, [shortcutEnabled, editor]);
 
-  // ⌘K dual-role claim. Capture phase deterministically beats the command
-  // palette's window-bubble listener; the claim stands only while this doc's
-  // WYSIWYG owns focus AND a link affordance applies (non-empty text
-  // selection → popover; caret inside a link → chip edit surface). Any other
-  // ⌘K — source mode, no selection, palette/input focus — falls through and
-  // stays the palette. Mirrors the Edit-with-AI capture-listener pattern.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (!shortcutEnabled) return;
       if (!matchesKeyboardShortcut(event, 'add-link')) return;
-      // `editor.view` is a throwing proxy while `editor.editorView` is unset
-      // (PM construction, Activity recycle/remount) — and this window-capture
-      // listener is registered whenever the shortcut is enabled, so a ⌘K can
-      // land in exactly that window. Read the non-throwing field structurally
-      // (TipTap types it private; same duck-typed access as the
-      // InteractionLayer's getEditorDom): unset reads as "not focused" and
-      // falls through cleanly to the palette.
       const liveView = (editor as unknown as { editorView?: { hasFocus(): boolean } | null })
         .editorView;
       if (!liveView?.hasFocus()) return;
@@ -145,8 +111,6 @@ export function LinkEditPopover({
           emitOpenLinkEditPopover();
           return;
         case 'edit-link': {
-          // Chip edit spine shared with the slash-command Link insert: flag
-          // the mark id for auto-edit, then activate its prop panel next frame.
           const { markId } = action;
           setPendingLinkEdit(markId);
           requestAnimationFrame(() => {
@@ -163,7 +127,6 @@ export function LinkEditPopover({
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [shortcutEnabled, editor]);
 
-  // Reset link input when selection collapses (bubble menu hides)
   useEffect(() => {
     function onSelectionUpdate() {
       if (editor.state.selection.empty) {
@@ -178,13 +141,6 @@ export function LinkEditPopover({
 
   useEffect(() => {
     if (!showInput) return;
-    // The input lives inside the floating bubble menu, which stays
-    // visibility:hidden (unfocusable — focus() is a silent no-op) until
-    // floating-ui finishes positioning, an unbounded number of frames after
-    // mount. So a single rAF focus never lands. Retry each frame until focus
-    // actually LANDS once, then stop permanently — never re-grab afterwards,
-    // so the loop can't fight the user. Cleanup cancels on close/unmount; the
-    // attempt cap is a backstop only.
     let cancelled = false;
     let frameId = 0;
     const focusInput = (attempts: number): void => {

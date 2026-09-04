@@ -10,15 +10,6 @@ interface SkillImportResult {
   warnings?: string[];
 }
 
-/**
- * The single success-toast + warnings surface for every skill acquire flow —
- * Explore import (`import`) and the Import dialog's reference import + file
- * upload (`import`/`upload`). Owning it here is
- * why the surfaces can't drift: before this, Explore and the detected-skill
- * preview silently DROPPED the `collisionRenamedFrom` notice the dialog showed,
- * so a name-colliding import was renamed with no explanation. Call it right after
- * a successful import/upload; it toasts the outcome and flushes any warnings.
- */
 export function announceSkillImport(kind: SkillImportKind, result: SkillImportResult): void {
   if (result.alreadyImported) {
     toast.success(

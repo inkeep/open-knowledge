@@ -1,15 +1,3 @@
-/**
- * App-facing barrel for the IDE color themes.
- *
- * The built-in theme registry + its pure token logic live in
- * `@inkeep/open-knowledge-core` (`theme/theme-plugins.ts` + `theme/base16.ts`)
- * as a `ThemePlugin` registry — moved there so the `appearance.colorTheme`
- * config enum can be DERIVED from it (core can't import app). This module
- * re-exports those under the app's existing names and keeps the **custom
- * theme** resolution, which is app-only (built at runtime from the user's
- * imported or hand-edited scheme; not part of the built-in registry).
- */
-
 import {
   BASE16_SLOTS,
   type Base16Palette,
@@ -34,7 +22,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 
 export type { Base16Scheme, ColorThemeSelection, ColorThemeSelectionInput };
-// Re-export the core registry + pure token logic under the app's existing names.
 export {
   base16ToTokens,
   generateColorThemesCss,
@@ -46,7 +33,6 @@ export {
 };
 export type ColorTheme = ThemePlugin;
 
-/** Resolve an id against the palettes currently available to the app. */
 export function resolveColorTheme(
   id: string | undefined,
   themes: readonly ColorTheme[] = THEME_PLUGINS,
@@ -54,7 +40,6 @@ export function resolveColorTheme(
   return themes.find((theme) => theme.id === id) ?? resolveThemePlugin(id);
 }
 
-/** The light/dark mode a currently available palette forces. */
 export function colorThemeMode(
   id: string | undefined,
   themes: readonly ColorTheme[] = THEME_PLUGINS,
@@ -63,14 +48,6 @@ export function colorThemeMode(
   return kind === 'system' ? undefined : kind;
 }
 
-/**
- * The `appearance` patch that writes the light/dark palette pair.
- *
- * Both slots are always written, and the pre-pair `colorTheme` retired (`null`
- * deletes a key in a config patch), so the first pick in the Themes pane
- * normalizes a legacy config in one transaction instead of leaving a
- * half-format behind that later reads as a seed for whichever slot is missing.
- */
 export function colorThemeWritePatch(next: ColorThemeSelection): {
   colorThemeLight: string;
   colorThemeDark: string;
@@ -79,12 +56,6 @@ export function colorThemeWritePatch(next: ColorThemeSelection): {
   return { colorThemeLight: next.light, colorThemeDark: next.dark, colorTheme: null };
 }
 
-/**
- * The `appearance` patch that returns both modes to the base stylesheet.
- *
- * The mirror of `colorThemeWritePatch`: clearing one slot would leave the other
- * palette assigned while the control that offers it speaks for both.
- */
 export function colorThemeResetPatch(): {
   colorThemeLight: null;
   colorThemeDark: null;
@@ -93,21 +64,6 @@ export function colorThemeResetPatch(): {
   return { colorThemeLight: null, colorThemeDark: null, colorTheme: null };
 }
 
-// ---------------------------------------------------------------------------
-// Default theme — the base `:root` / `.dark` palette (`colorTheme: 'default'`).
-//
-// `default` carries no scheme: its palette is the app's own stylesheet. A
-// preview of it therefore can't read `var(--background)` & co., because a
-// selected palette overrides exactly those custom properties on `<html>` and the
-// preview inherits the override — the preview would mirror whatever theme is
-// active instead of showing what `default` looks like. So resolve the handful of
-// tokens a preview needs to literals, sourced from the chrome-background
-// constants (`CHROME_BG_*`) and the preview-token snapshot
-// (`PREVIEW_THEME_TOKENS`) — both generated from, and drift-checked against,
-// `globals.css`.
-// ---------------------------------------------------------------------------
-
-/** Literal light/dark values per `globals.css` preview token, keyed by token name. */
 const PREVIEW_TOKEN_BY_NAME = new Map(PREVIEW_THEME_TOKENS.map((token) => [token.name, token]));
 
 function baseToken(name: string, mode: 'light' | 'dark'): string {
@@ -116,14 +72,6 @@ function baseToken(name: string, mode: 'light' | 'dark'): string {
   return token[mode];
 }
 
-/**
- * The subset of `base16ToTokens`-shaped tokens describing the default theme in a
- * given light/dark mode, so a preview can paint it the same way it paints a
- * built-in palette. `--sidebar` comes from the chrome constants (the same token
- * the window chrome uses); the rest from the preview-token set. Syntax colors
- * map onto the chart palette — the base theme's own `--syntax-*` tokens resolve
- * through Tailwind color vars, which don't survive as literals here.
- */
 export function defaultThemeTokens(mode: 'light' | 'dark'): Record<string, string> {
   return {
     sidebar: mode === 'dark' ? CHROME_BG_DARK : CHROME_BG_LIGHT,
@@ -136,17 +84,6 @@ export function defaultThemeTokens(mode: 'light' | 'dark'): Record<string, strin
   };
 }
 
-// ---------------------------------------------------------------------------
-// Custom theme — the user's own scheme (`appearance.colorTheme: 'custom'`).
-//
-// Unlike the built-ins, a custom palette is unknown at build time, so its CSS
-// is generated at runtime and injected as a <style> tag (see
-// `useApplyConfigColorTheme`). It runs through the same `base16ToTokens` the
-// built-ins use — one token-mapping source for both, so an imported scheme and
-// a shipped one are indistinguishable downstream.
-// ---------------------------------------------------------------------------
-
-/** A tasteful slate/indigo dark scheme so a fresh custom theme is usable immediately. */
 export const DEFAULT_CUSTOM_SCHEME: Base16Scheme = {
   name: 'Custom',
   variant: 'dark',
@@ -170,11 +107,6 @@ export const DEFAULT_CUSTOM_SCHEME: Base16Scheme = {
   },
 };
 
-/**
- * The pre-base16 custom-theme shape: six seed colors the app expanded into a
- * full palette. Config written by an older build still carries it, so it is
- * upgraded on read rather than discarded.
- */
 interface LegacyCustomSeed {
   background: string;
   surface: string;
@@ -193,12 +125,6 @@ const LEGACY_SEED_KEYS: (keyof LegacyCustomSeed)[] = [
   'border',
 ];
 
-/**
- * Widen a legacy six-color seed into a scheme. The tonal ramp is interpolated
- * between the seed's background and foreground; the accent slots reproduce the
- * old expansion exactly — `primary` took the blue slot, `accent` drove
- * cyan/purple, and red/green/yellow/orange were fixed legible defaults.
- */
 function schemeFromLegacySeed(seed: LegacyCustomSeed): Base16Scheme {
   const { background: bg, foreground: fg } = seed;
   return {
@@ -231,7 +157,6 @@ export function isHexColor(value: unknown): value is string {
 
 type CustomThemeInput = Record<string, unknown> | undefined;
 
-/** The default scheme expressed in the legacy seed's vocabulary. */
 function defaultLegacySeed(): LegacyCustomSeed {
   const p = DEFAULT_CUSTOM_SCHEME.palette;
   return {
@@ -244,21 +169,11 @@ function defaultLegacySeed(): LegacyCustomSeed {
   };
 }
 
-/**
- * Collect whatever legacy seed fields a config carries, over the default.
- *
- * Partial is the common case, not an error: the old editor wrote only the
- * fields a user changed, and a hand-edited config may set one. Returns `null`
- * only when no legacy field is present at all, so the caller can tell "nothing
- * to upgrade" from "upgrade this".
- */
 function readLegacySeed(partial: Record<string, unknown>): LegacyCustomSeed | null {
   const seed = defaultLegacySeed();
   let found = false;
   for (const key of LEGACY_SEED_KEYS) {
     const v = partial[key];
-    // A malformed value is dropped rather than propagated, so one typo can't
-    // break the whole palette.
     if (isBase16Hex(v)) {
       seed[key] = v;
       found = true;
@@ -267,22 +182,10 @@ function readLegacySeed(partial: Record<string, unknown>): LegacyCustomSeed | nu
   return found ? seed : null;
 }
 
-/** True when a config still carries any of the pre-base16 seed colors. */
 export function hasLegacyCustomSeed(partial: CustomThemeInput): boolean {
   return partial ? LEGACY_SEED_KEYS.some((key) => isBase16Hex(partial[key])) : false;
 }
 
-/**
- * Resolve a (possibly partial / hand-edited / legacy) config value into a
- * scheme.
- *
- * Precedence is layered, lowest first: the default scheme, then a pre-base16
- * six-color seed upgraded into slots, then any explicit base16 slot. The
- * middle layer is what makes a half-migrated config safe — a user who had a
- * custom theme and then nudges ONE slot in the new editor keeps the other
- * fifteen instead of having them snap back to the default. Malformed values
- * are dropped at every layer, so one typo can't break the whole palette.
- */
 export function resolveCustomScheme(partial: CustomThemeInput): Base16Scheme {
   if (!partial) return DEFAULT_CUSTOM_SCHEME;
 
@@ -308,20 +211,9 @@ export function resolveCustomScheme(partial: CustomThemeInput): Base16Scheme {
   };
 }
 
-/**
- * The `appearance.customTheme` patch that writes `scheme` in full and retires
- * the pre-base16 seed keys.
- *
- * `null` deletes a key in a config patch, so a config that still carries the
- * old six colors is normalized to pure base16 the first time the user changes
- * anything — no stale half-format left behind, and no `ok config migrate` for
- * what is only a personal color preference.
- */
 export function customThemeWritePatch(scheme: Base16Scheme): Record<string, string | null> {
   const out: Record<string, string | null> = {
     name: scheme.name,
-    // A scheme without a credit line must clear a previous one, or the author
-    // of an imported scheme would outlive the scheme it credited.
     author: scheme.author ?? null,
     variant: scheme.variant,
   };
@@ -330,16 +222,10 @@ export function customThemeWritePatch(scheme: Base16Scheme): Record<string, stri
   return out;
 }
 
-/** A custom scheme's forced light/dark mode — drives the `.dark` class + `color-scheme`. */
 export function customThemeKind(scheme: Base16Scheme): 'light' | 'dark' {
   return scheme.variant;
 }
 
-/**
- * Build the runtime stylesheet for the active custom theme: one
- * `html[data-color-theme="custom"]` rule with the full expanded token set and a
- * `color-scheme` matching the scheme's variant.
- */
 export function buildCustomThemeCss(scheme: Base16Scheme): string {
   return renderThemeBlock(
     'html[data-color-theme="custom"]',

@@ -5,8 +5,6 @@ import { describe, expect, test } from 'vitest';
 import { resolveGhBinaryPath, runGhDeviceLoginSubprocess } from './gh-login.ts';
 import type { AuthEvent } from './types.ts';
 
-// A fake `gh` that emits the real device-flow stderr lines, then exits with
-// $FAKE_GH_EXIT (default 0). Trailing args are ignored.
 const dir = mkdtempSync(join(tmpdir(), 'gh-login-test-'));
 const fakeGh = join(dir, 'gh');
 writeFileSync(
@@ -57,8 +55,6 @@ describe('runGhDeviceLoginSubprocess', () => {
   });
 
   test('unrecognizable stderr trips the verification deadline with a single actionable error', async () => {
-    // A fake gh whose stderr never matches CODE_RE/URL_RE (format change or an
-    // early failure) and that would otherwise run far past the deadline.
     const stallGh = join(dir, 'gh-stall');
     writeFileSync(
       stallGh,

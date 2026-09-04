@@ -49,10 +49,6 @@ import { defineScenario } from '../lib/scenario.ts';
 const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
 const WARM_DOC = process.env.OK_PERF_SMALL_DOC ?? 'README';
 
-// A list of small doc names used to force Activity eviction. We want >= 3
-// distinct docs (ACTIVITY_MOUNT_LIMIT default) so visiting all of them
-// pushes PROJECT off the mount list even though it stays pool-resident.
-// Defaults to well-known small docs in this repo; override via env if needed.
 const EVICT_DOCS_DEFAULT = ['AGENTS', 'CLAUDE', 'README'];
 const EVICT_DOCS = (process.env.OK_PERF_EVICT_DOCS ?? EVICT_DOCS_DEFAULT.join(','))
   .split(',')
@@ -109,7 +105,6 @@ export default defineScenario({
 
     await installLongtaskObserver(page);
 
-    // ─── Step 1: cold-load WARM_DOC so app + ProviderPool exist. ───────────
     await page.goto(`${opts.target}/#/${encodeURIComponent(WARM_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -123,7 +118,6 @@ export default defineScenario({
     }
     ctx.note(`Step 1: loaded ${WARM_DOC}`);
 
-    // ─── Step 2: cold-load BIG_DOC — hydrates provider + Activity mount. ───
     await page.goto(`${opts.target}/#/${encodeURIComponent(BIG_DOC)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -137,14 +131,12 @@ export default defineScenario({
     }
     ctx.note(`Step 2: loaded ${BIG_DOC} (cold + Y.Doc sync)`);
 
-    // Capture sanity metrics on the loaded BIG_DOC
     const pmLenAfterCold = await page.evaluate(() => {
       const el = document.querySelector('.ProseMirror');
       return el ? (el.textContent ?? '').length : 0;
     });
     ctx.recordMetric('pmLenAfterCold', pmLenAfterCold);
 
-    // Extract ytext size from the pool provider so downstream analysis has it
     const ytextLenAfterCold = await page.evaluate((docName: string) => {
       const pool = (
         globalThis as unknown as {
@@ -164,7 +156,6 @@ export default defineScenario({
     }, BIG_DOC);
     ctx.recordMetric('ytextLenAfterCold', ytextLenAfterCold ?? -1);
 
-    // ─── Step 3: navigate to EVICT_DOCS so PROJECT falls out of Activity. ──
     for (const doc of EVICT_DOCS) {
       await page.goto(`${opts.target}/#/${encodeURIComponent(doc)}`, {
         waitUntil: 'domcontentloaded',
@@ -178,17 +169,11 @@ export default defineScenario({
     }
     ctx.note(`Step 3: evicted ${BIG_DOC} via navigation through ${EVICT_DOCS.join(',')}`);
 
-    // Let any background work settle before the cold-pool-warm measurement.
     await page.waitForTimeout(500);
 
-    // Reset counter / mark-store baselines so the `ok/cold/*` marks in the
-    // result correspond cleanly to the measured boundary. Marks from earlier
-    // steps are still in the collector but the scenario caller can filter by
-    // `startTime >= revisitStartPerf`.
     const revisitStartPerf = await page.evaluate(() => performance.now());
     ctx.recordMetric('revisitStartPerf', revisitStartPerf);
 
-    // ─── Step 4: navigate BACK to PROJECT. Measure remount cost. ───────────
     const clickAt = Date.now();
     await page.goto(`${opts.target}/#/${encodeURIComponent(BIG_DOC)}`, {
       waitUntil: 'domcontentloaded',
@@ -205,7 +190,6 @@ export default defineScenario({
     ctx.recordMetric('coldPoolWarmMs', coldPoolWarmMs);
     ctx.note(`Step 4: revisited ${BIG_DOC} in ${coldPoolWarmMs}ms`);
 
-    // ─── Post-measurement diagnostics ───────────────────────────────────────
     const longTasks = await readLongtasks(page);
     const longestTaskMs = longTasks.reduce((m, t) => Math.max(m, t.duration), 0);
     const tasksInRevisit = longTasks.filter((t) => t.startTime >= revisitStartPerf);
@@ -220,14 +204,12 @@ export default defineScenario({
       Math.round(tasksInRevisit.reduce((s, t) => s + t.duration, 0)),
     );
 
-    // Sanity: content should be visible
     const pmLenAfterRevisit = await page.evaluate(() => {
       const el = document.querySelector('.ProseMirror');
       return el ? (el.textContent ?? '').length : 0;
     });
     ctx.recordMetric('pmLenAfterRevisit', pmLenAfterRevisit);
 
-    // Confirm instrumentation installed
     const instrumented = await page.evaluate(
       () =>
         (globalThis as unknown as { __okColdMountInstrumented?: boolean })

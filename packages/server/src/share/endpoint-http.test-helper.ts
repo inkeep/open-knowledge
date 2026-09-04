@@ -1,15 +1,3 @@
-/**
- * Boot the real HTTP API extension (the Hocuspocus `onRequest` pipeline) rooted
- * at a caller-provided `projectDir`, on a loopback-bound ephemeral port.
- *
- * This is the reusable half of construct-url.test.ts's `bootRig`. The difference
- * that matters: `bootRig` manufactures a synthetic `projectDir` and seeds a fake
- * `.git` (enough for the branch-level URL gates, which never touch a real
- * remote). The share-receive endpoints — target-status and branch-info — run an
- * actual credentialed `git fetch` and remote-tracking-ref probes, so they need a
- * REAL git working tree. Callers pass one (a `createGitTriangle` receiver clone
- * or sender) and drive the endpoints over HTTP against it.
- */
 import { createServer, type Server } from 'node:http';
 
 export interface EndpointRig {
@@ -17,14 +5,6 @@ export interface EndpointRig {
   cleanup: () => Promise<void>;
 }
 
-/**
- * Boot the API extension against `projectDir`. `contentDir` defaults to
- * `projectDir` (the dominant `content.dir === '.'` layout, which is what the
- * git-triangle fixtures produce). Binds 127.0.0.1 explicitly so the OS picks a
- * port free on the family the client uses — a bare `listen(0)` binds dual-stack
- * `::` and can collide with a foreign v4 listener under parallel load (the same
- * reasoning `bootRig` documents).
- */
 export async function bootEndpointServer(opts: {
   projectDir: string;
   contentDir?: string;

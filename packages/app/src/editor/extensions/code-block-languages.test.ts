@@ -47,11 +47,6 @@ describe('normalizeCodeLanguage', () => {
   });
 
   test('`gherkin` resolves + every alias funnels back to gherkin', () => {
-    // BDD scenario files live in `.feature` files (Cucumber convention);
-    // authors also reach for `cucumber` or `bdd` as shorthand. All three
-    // must land on the canonical `gherkin` ID so lowlight picks the right
-    // grammar — otherwise the picker would show Gherkin but the paint
-    // would silently degrade to plaintext.
     expect(normalizeCodeLanguage('gherkin')).toBe('gherkin');
     expect(normalizeCodeLanguage('feature')).toBe('gherkin');
     expect(normalizeCodeLanguage('cucumber')).toBe('gherkin');
@@ -59,12 +54,6 @@ describe('normalizeCodeLanguage', () => {
   });
 
   test('`shell` resolves to canonical `shell` (NOT `bash`)', () => {
-    // Guard against the dead-alias regression — `'shell'` is its own
-    // highlight.js grammar (shell-session prompt + output) distinct from
-    // `bash`. Earlier revisions listed `'shell'` as a bash alias; the
-    // ALIAS_MAP silently overwrote it with the canonical, making the alias
-    // dead but masking the configuration error. This test pins the intended
-    // behavior so reverting the alias breaks the suite, not the UI.
     expect(normalizeCodeLanguage('shell')).toBe('shell');
     expect(normalizeCodeLanguage('console')).toBe('shell');
     expect(normalizeCodeLanguage('shellsession')).toBe('shell');
@@ -81,10 +70,7 @@ describe('CODE_BLOCK_LANGUAGES table invariants', () => {
     const canonicals = new Set(CODE_BLOCK_LANGUAGES.map((l) => l.value));
     for (const lang of CODE_BLOCK_LANGUAGES) {
       for (const alias of lang.aliases ?? []) {
-        // An alias of language X equal to canonical Y's value would be a
-        // silent override (last-write-wins in ALIAS_MAP). Catch both
-        // directions: alias===other-canonical and canonical===alias-of-other.
-        if (alias === lang.value) continue; // self-alias is a no-op, fine
+        if (alias === lang.value) continue;
         if (canonicals.has(alias)) {
           throw new Error(
             `Alias collision: "${alias}" listed as alias of "${lang.value}" but is canonical for another entry`,

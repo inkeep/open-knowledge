@@ -1,34 +1,17 @@
-/**
- * The Expand buttons on the chrome bar — a Mermaid fence's (which mounts
- * the host-owned lightbox) and an Excalidraw block's (which drives the
- * embed's own dialog through controlled props). Sister harness to
- * `JsxComponentView.ask-ai.dom.test.tsx`: mocked NodeViewProps around the
- * real view, asked through the DOM.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-// The Excalidraw embed's live subscription and exporter are jsdom-hostile
-// (real WebSocket provider, real SVG export); both are inputs here, not the
-// contract under test.
 vi.doMock('../components/live-doc-pool.ts', () => ({
   useLiveDocText: () => ({ kind: 'ready', text: '{"elements":[]}' }),
-  // The snapshot-url pool derives its cap from this at module load.
   LIVE_DOC_POOL_MAX: 30,
 }));
 vi.doMock('@excalidraw/excalidraw', () => ({
   exportToSvg: async () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
-  restore: (data: unknown) => ({
-    elements: (data as { elements?: unknown[] })?.elements ?? [],
-    appState: {},
-    files: {},
-  }),
+  restoreElements: (elements: unknown) => (elements as unknown[] | undefined) ?? [],
+  restoreAppState: () => ({}),
 }));
 
-// jsdom ships no object-URL implementation; the embed's blob-`<img>`
-// snapshot indirection needs one.
 let blobUrlCounter = 0;
 URL.createObjectURL = () => `blob:mock-${++blobUrlCounter}`;
 URL.revokeObjectURL = () => {};
@@ -117,7 +100,6 @@ describe('the chrome bar Expand button', () => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    // The chart coming back must not resurrect the dialog unbidden.
     rerender(<JsxComponentView {...makeProps({ chart: 'graph TD; A-->B;' })} />);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -131,9 +113,6 @@ describe('the chrome bar Expand button for Excalidraw blocks', () => {
     await mount(makeProps({ componentName: 'Excalidraw', chart: 'demo/board.excalidraw' }));
     const btn = boardExpandBtn();
     expect(btn).toBeTruthy();
-    // The affordance is chrome-only — the chrome button sits outside the
-    // embed card, and the card subtree offers no expand button of its own
-    // (its only button is the Open-board link-out).
     const card = document.querySelector('.excalidraw-embed');
     expect(card).not.toBeNull();
     expect(card?.contains(btn)).toBe(false);
@@ -141,8 +120,6 @@ describe('the chrome bar Expand button for Excalidraw blocks', () => {
       /expand/i.test(`${b.getAttribute('aria-label') ?? ''} ${b.textContent ?? ''}`),
     );
     expect(cardExpandButtons).toEqual([]);
-    // The snapshot lands as a blob-backed <img> (the exported SVG never
-    // enters the live DOM).
     await waitFor(() => {
       expect(
         document.querySelector('[data-testid="excalidraw-embed-snapshot"] img'),

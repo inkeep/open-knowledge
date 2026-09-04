@@ -7,9 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface SplashCliBlockProps {
   installCommand: string;
-  /** Omitted on the fallback screen, which has no resolved repo to clone. */
   cloneCommand?: string;
-  /** Render the "Open with CLI" header above the code surface. */
   showHeading?: boolean;
 }
 
@@ -20,15 +18,10 @@ type CopyStatus = 'idle' | 'copied' | 'failed';
 
 export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: SplashCliBlockProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
-  // Whether the failure fallback actually selected the command text. Drives the
-  // aria-live label so it never announces "text is selected" when selection was
-  // skipped (codeRef null) — the announcement is the AT user's only feedback.
   const [failureSelected, setFailureSelected] = useState(false);
   const codeRef = useRef<HTMLPreElement>(null);
   const resetTimerRef = useRef<number | null>(null);
 
-  // Clear the status auto-reset timer on unmount — the popover can close and
-  // unmount this block while a copy-status reset is still pending.
   useEffect(
     () => () => {
       if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
@@ -44,9 +37,6 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
     }, ms);
   }
 
-  // Both commands paste as one block — a single shell paste runs them in
-  // order. Composed from server-supplied props; never recomputed client-side.
-  // The clone line is absent on the fallback screen (no resolved repo).
   const payload = cloneCommand ? `${installCommand}\n${cloneCommand}` : installCommand;
 
   const handleCopy = async () => {
@@ -62,8 +52,6 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
       scheduleStatusReset(COPY_RESET_MS);
       return;
     }
-    // Select the command text so manual copy is one keystroke (Cmd/Ctrl+C).
-    // Never a silent no-op when the clipboard API rejects.
     let selected = false;
     if (codeRef.current) {
       const range = document.createRange();
@@ -89,22 +77,13 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
 
   return (
     <div>
-      {/* "Open with CLI" only when there is something to open — the clone step
-          is what opens the share. Without it these commands just install the
-          CLI, and the old fixed heading promised an outcome the block did not
-          deliver. */}
+      {}
       {showHeading ? (
         <p className="mb-2 inline-flex w-fit items-center gap-1.5 font-mono text-sm uppercase tracking-wide text-slide-muted">
           {cloneCommand ? 'Open with CLI' : 'Install the CLI'}
         </p>
       ) : null}
-      {/* Single rounded code surface with a top-right copy icon, mirroring the
-          docs code-block treatment rather than a nested inset + bottom text button.
-
-          The commands wrap rather than scroll: this panel is narrow, and a
-          horizontally-scrolled command reads as truncated — you cannot tell
-          what you are about to paste. `pr-12` keeps the first line clear of the
-          copy button, which used to sit on top of the text it copies. */}
+      {}
       <div className="not-prose relative" data-testid="splash-cli-body">
         <div className="rounded-lg border bg-slide-bg dark:bg-white/5">
           <pre
@@ -139,8 +118,7 @@ export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: Sp
           ) : (
             <Copy className="size-4" aria-hidden="true" />
           )}
-          {/* Status stays announced to assistive tech (the clipboard-failure
-              recovery) while the visible affordance is icon-only. */}
+          {}
           <span className="sr-only" aria-live="polite">
             {statusLabel}
           </span>

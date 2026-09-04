@@ -1,17 +1,8 @@
-/**
- * PAT runner — covers the stdin token hand-off, the complete/error JSON
- * parsing, and the generic fallback on an unexpected exit.
- *
- * Fixture subprocesses are spawned via `process.execPath -e <script>` so the
- * tests exercise the real spawn + stdin-write + NDJSON-parse path.
- */
 import { describe, expect, test } from 'vitest';
 import { runPatSubprocess } from './auth-pat.ts';
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];
 
-// Reads stdin to EOF; echoes it into the `login` on success so the test can
-// prove the token reached the child over stdin (not argv/env).
 const ECHO_STDIN_CLI = `
 let d='';
 process.stdin.on('data', c => { d += c; });

@@ -17,13 +17,9 @@ beforeEach(() => {
         { name: 'agents', source: './public/agents/plugins/agents' },
         { name: 'remote', source: 'github:foo/bar' },
         { name: 'missing', source: './nowhere' },
-        // Resolves on disk, so only the in-tree guard can exclude it.
         { name: 'absolute', source: join(repo, 'public/agents/plugins/agents') },
-        // Declared and on disk, but the repo does not enable it.
         { name: 'disabled', source: './public/agents/plugins/agents' },
-        // Enabled but the dir is gone (uninitialized submodule, mid-rename).
         { name: 'phantom', source: './phantom' },
-        // Relative, but climbs out of the tree.
         { name: 'escape', source: '../outside-plugin' },
       ],
     }),

@@ -1,25 +1,3 @@
-/**
- * Seam 6 integration: a terminal window launched from a project
- * attaches to that project's already-running server (`ownsServer:false`), and
- * its PTY SURVIVES when the owning editor window's server is torn down. The PTY
- * host is server-independent by construction — `terminalManager` forks a
- * per-`windowId` utilityProcess and never holds a reference to the collab/api
- * server, so server teardown cannot reap it.
- *
- * Composes the real pieces at the seam-7 gate-run rung (fake pty-host + fake
- * BrowserWindow/utility, real everything else):
- *   - real `WindowManager` attach path (the owner editor window, `ownsServer:false`)
- *   - real `terminalWindow` registry + `resolvePtyProjectRoot` (the terminal
- *     window's cwd/consent source)
- *   - real `terminalManager` (the per-window PTY host)
- * It exercises the genuine survival path: the owner window closes and its
- * server is torn down (no cross-window ref-counting), then a command typed into
- * the terminal window's shell still routes to its live host and host output
- * still reaches the terminal renderer. Full real-shell fidelity is the
- * `_electron` smoke (seam 4); this is the gate-run rung, matching
- * terminal-window-pty.test.ts.
- */
-
 import { afterEach, describe, expect, test } from 'vitest';
 import { createTerminalManager, type PtyUtilityLike } from '../../src/main/terminal-manager.ts';
 import {
@@ -40,8 +18,6 @@ import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 const HOME = '/Users/test-home';
 const PROJECT = '/tmp/attach-survival-project';
 
-/** Per-window fake pty-host. Captures every message the manager posts so a test
- *  can assert input routing, and lets a test drive host->renderer `data`. */
 class FakeHost {
   posted: Array<Record<string, unknown>> = [];
   private messageCb: ((m: unknown) => void) | null = null;
@@ -52,7 +28,6 @@ class FakeHost {
   on(event: 'message' | 'exit', cb: (m: unknown) => void): void {
     if (event === 'message') this.messageCb = cb;
   }
-  /** Simulate the utilityProcess emitting output for a session. */
   emit(m: Record<string, unknown>): void {
     this.messageCb?.(m);
   }
@@ -73,8 +48,6 @@ function makeWebContents(): SendableWebContents & { destroyed: boolean } {
   return wc;
 }
 
-/** Real terminalManager over fake hosts, with captured data/exit sinks so we can
- *  prove the terminal renderer still receives output after server teardown. */
 function makeTerminalManager() {
   const forked: FakeHost[] = [];
   const dataPushes: Array<{ ptyId: string; data: string }> = [];
@@ -89,8 +62,6 @@ function makeTerminalManager() {
     sendData: (_wc, payload) => dataPushes.push(payload),
     sendExit: () => {},
     newPtyId: () => `pty-${++idn}`,
-    // Fire the coalesce flush synchronously so a host->renderer `data` push is
-    // observable within the test without real timers.
     setTimer: (cb: () => void, ms: number) => {
       if (ms === 2000) shutdownTimers.push(cb);
       else cb();
@@ -104,8 +75,6 @@ function makeTerminalManager() {
   };
   return { mgr, forked, dataPushes, runShutdownTimers };
 }
-
-// --- WindowManager attach harness (owner editor window owns the server) ------
 
 function makeOwnerWindow() {
   const closedHandlers: Array<() => void> = [];
@@ -136,12 +105,6 @@ function makeOwnerWindow() {
   return window;
 }
 
-/**
- * A WindowManager wired for the attach path, with a server "torn down" hook the
- * test drives. The lock disappears once the owner is torn down so any later
- * attach attempt would correctly fall through — modeling the real "owner closed,
- * server gone" topology.
- */
 function makeOwnerWindowManager() {
   let serverAlive = true;
   const liveLock: ServerLockMetadataLike = {
@@ -156,8 +119,6 @@ function makeOwnerWindowManager() {
   const killed: number[] = [];
   const deps: WindowManagerDeps = {
     createWindow: () => makeOwnerWindow(),
-    // The attach path never forks a utility (it reuses the live lock); this is
-    // wired only to satisfy the deps contract.
     forkUtility: (): UtilityProcessLike => ({
       pid: 90_222,
       postMessage: () => {},
@@ -177,7 +138,6 @@ function makeOwnerWindowManager() {
       register: () => () => {},
       fireThemeApplied: () => {},
     },
-    // Attach-mode probe: a live same-host server holds the lock until teardown.
     readServerLock: () => (serverAlive ? liveLock : null),
     isProcessAlive: () => serverAlive,
     hostname: () => 'my-host',
@@ -203,15 +163,10 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
   test('attach-mode terminal window: PTY keeps routing after the owner editor window closes and its server is torn down', async () => {
     const owner = makeOwnerWindowManager();
 
-    // 1) The owning editor window attaches to the project's running server.
     const ownerCtx = await owner.wm.createProjectWindow({ projectPath: PROJECT });
-    expect(ownerCtx.ownsServer).toBe(false); // attached, not owned
+    expect(ownerCtx.ownsServer).toBe(false);
     expect(ownerCtx.port).toBe(59_900);
 
-    // 2) A terminal window is launched from that project (attach-mode: it
-    //    inherits the collab/api argv). It is registered in the terminalWindows
-    //    registry — deliberately absent from windowsByPath — so ok:pty:create
-    //    resolves its cwd from the registry.
     registerTerminalWindow(TERM_WIN_ID, {
       projectRoot: PROJECT,
       collabUrl: `ws://localhost:${ownerCtx.port}/collab`,
@@ -224,7 +179,6 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
     });
     expect(cwd).toBe(PROJECT);
 
-    // 3) The terminal window spawns a live PTY at the inherited cwd.
     const { mgr, forked, dataPushes, runShutdownTimers } = makeTerminalManager();
     const termWc = makeWebContents();
     const created = mgr.create({
@@ -246,20 +200,13 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
       rows: 24,
     });
 
-    // 4) THE TEARDOWN: the owning editor window closes and its server is torn
-    //    down (no cross-window ref-counting). This is the event the PTY must
-    //    survive.
     owner.tearDownServer();
     ownerCtx.window.close();
-    expect(owner.wm.getWindowFor(PROJECT)).toBeUndefined(); // owner gone
-    expect(owner.wm.windowCount()).toBe(0); // its server context is reaped
+    expect(owner.wm.getWindowFor(PROJECT)).toBeUndefined();
+    expect(owner.wm.windowCount()).toBe(0);
 
-    // 5) SURVIVAL PROOF — the terminal window's PTY host was NEVER touched by
-    //    the server teardown (it is a separate per-windowId utilityProcess).
     expect(host.killed).toBe(false);
 
-    //    a) Input still routes to the live host: typing a command after teardown
-    //       reaches the host's postMessage (the shell still accepts input).
     const beforeInput = host.posted.length;
     mgr.input({ windowId: TERM_WIN_ID, ptyId: created.ptyId, data: 'echo alive\r' });
     expect(host.posted.length).toBe(beforeInput + 1);
@@ -269,13 +216,9 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
       data: 'echo alive\r',
     });
 
-    //    b) Host output still flows to the terminal renderer after teardown
-    //       (the data path is intact — the window is not destroyed).
     host.emit({ type: 'data', ptyId: created.ptyId, data: 'alive\r\n' });
     expect(dataPushes).toContainEqual({ ptyId: created.ptyId, data: 'alive\r\n' });
 
-    // Sanity: reaping the TERMINAL window (its own close) is what kills its PTY
-    // — proving step 5 was not a no-op because nothing reaps anything.
     mgr.killForWindow(TERM_WIN_ID);
     expect(host.posted.at(-1)).toEqual({ type: 'shutdown' });
     expect(host.killed).toBe(false);

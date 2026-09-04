@@ -1,41 +1,3 @@
-/**
- * Shadow-repo layout helpers — shared between CLI (read path) and server
- * (write path).
- *
- * The shadow repo lives at `<gitdir>/ok/`, where `<gitdir>` is resolved via
- * `resolveGitDir(projectRoot)`:
- *   - Main worktree: `<projectRoot>/.git/ok/` (`.git` is a directory).
- *   - Linked worktree: `<repo>/.git/worktrees/<name>/ok/` (`.git` is a pointer
- *     file; the bare repo lives inside Git's per-worktree admin dir, so
- *     `git worktree remove` cleans it up automatically).
- *
- * Main-worktree path is bit-identical to pre-worktree-support behavior, so
- * existing main-worktree shadows do not migrate. Pre-rename integrated shadows
- * at `.git/openknowledge/` (legacy path) are silently rename-migrated in-place
- * once per repo via `initShadowRepo()`. Its on-disk layout is a documented
- * invariant:
- *
- *   refs/wip/<project-branch>/<writer-id>
- *
- * where `<writer-id>` is one of the five recognized forms in the writer-ID
- * taxonomy (dropping the legacy `human-` prefix and the opaque `server` writer):
- *   - `agent-<connectionId>`     — an MCP agent session wrote the commit
- *   - `principal-<UUID>`         — a browser-tab principal wrote the commit
- *   - `file-system`              — classified: disk reconcile (file-watcher)
- *   - `git-upstream`             — classified: HEAD-move commit import
- *   - `openknowledge-service`    — classified: service-level fallback (park, etc.)
- *
- * Legacy ref names (`server`, `human-<*>`, `upstream`) classify as `'unknown'`
- * so the allowlist sweep in `initShadowRepo()` can safely delete them on
- * first run without deleting legitimate new-taxonomy refs.
- *
- * Centralizing this layout knowledge prevents CLI/server drift: the CLI
- * consumes these utilities to parse writer IDs and resolve shadow-dir paths
- * without re-implementing the regex or path conventions.
- *
- * This file uses only `node:fs` (no other server/runtime deps) so it is safe
- * to include from any workspace package.
- */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
@@ -79,94 +41,32 @@ export type WriterClassification =
   | 'classified-ok-generator'
   | 'unknown';
 
-/** Prefix for per-author upstream-import writer ids: `git-author-<fnv1a(email)>`. */
 export const GIT_AUTHOR_WRITER_PREFIX = 'git-author-';
 
-/**
- * Writer id for artifacts OK authors itself (today: the generated root `index.md`).
- * Lives here so `parseWriterId`, the ref regex, and the server's `WriterIdentity`
- * constant all read one string — a drifted copy would land commits on a ref the
- * parser classifies as 'unknown'.
- */
 export const OK_GENERATOR_WRITER_ID = 'ok-generator';
 
-/**
- * Stable writer id for an upstream commit author, keyed by email so the same
- * person reuses one ref across pulls. Non-cryptographic digest — identity only.
- */
 export function gitAuthorWriterId(email: string): string {
   return `${GIT_AUTHOR_WRITER_PREFIX}${fnv1aDigest(email.trim().toLowerCase())}`;
 }
 
 export interface ParsedWriter {
-  /** The full writer id as stored in the ref (e.g., "agent-<uuid>"). */
   id: string;
   classification: WriterClassification;
-  /**
-   * Convenience derived from `classification`:
-   *   - `true`  when classification === 'agent'
-   *   - `false` when classification === 'principal'
-   *   - `null`  for system writers and unknown (indeterminate for
-   *     "who edited this?" attribution)
-   *
-   * Prefer `classification` when reasoning about attribution.
-   */
   isAgent: boolean | null;
 }
 
-/**
- * Canonical regex matching the writer-id portion at the end of a ref.
- * Single source of truth for the layout; any ref-parsing code in the repo
- * should flow through `parseWriterId`.
- *
- * Recognized ids — `agent-<uuid>`, `principal-<uuid>`, `git-author-<hash>`,
- * `file-system`, `git-upstream`, `openknowledge-service`, `ok-generator`.
- * Legacy ids (`human-*`, `upstream`, `server`) do NOT match → 'unknown',
- * so they are eligible for GC by the allowlist sweep.
- */
 const WRITER_ID_RE =
   /^(agent-[^/]+|principal-[^/]+|git-author-[^/]+|file-system|git-upstream|openknowledge-service|ok-generator)$/;
 
-/**
- * Compatibility view of shared repository discovery for shadow-repo callers.
- * `resolveGitDir` consumes it lossily, while `resolveShadowDir` preserves the
- * distinct recovery paths below.
- *
- * Three failure modes — distinct because their recoveries differ:
- *   - `'absent'`             — `.git` is not on disk (`ENOENT`). Recovery: run
- *                              `ensureProjectGit` upstream, or accept the
- *                              legacy fallthrough.
- *   - `'malformed-pointer'`  — `.git` is a file but its `gitdir:` body is
- *                              unreadable, parses to nothing, or references a
- *                              missing admin dir. Recovery: `git worktree prune`.
- *   - `'inaccessible'`       — `statSync` failed for a reason other than
- *                              `ENOENT` (typically `EACCES`/`EPERM`). We don't
- *                              know the shape of `.git`. Recovery: filesystem
- *                              permissions / mount.
- *
- * Both `'malformed-pointer'` and `'inaccessible'` carry `cause` so consumers
- * can branch on the underlying error code (`EACCES` vs parse failure) without
- * losing the diagnostic stack.
- */
 export type ResolvedGitDir =
   | {
       kind: 'directory';
       path: string;
-      /**
-       * Path from the work-tree root (the directory containing `.git`) to the
-       * caller's `projectRoot`. Empty when `projectRoot` IS the work-tree root
-       * — i.e. the common case where `<projectRoot>/.git` was found directly.
-       * Non-empty when the gitdir was discovered by walking up from a
-       * subfolder, which `resolveShadowDir` uses to namespace per-project
-       * shadows under the shared parent gitdir.
-       */
       projectSubPath: string;
     }
   | {
       kind: 'linked';
-      /** Resolved admin dir (the gitdir the pointer references). */
       path: string;
-      /** Path of the `.git` pointer file itself — needed for error attribution. */
       gitPath: string;
       projectSubPath: string;
     }
@@ -194,52 +94,12 @@ export function resolveGitDirDetailed(projectRoot: string): ResolvedGitDir {
   };
 }
 
-/**
- * Resolve the actual `.git` directory for the nearest enclosing repository,
- * including linked worktrees whose `.git` is a `gitdir:` pointer file.
- *
- * Returns the resolved absolute path on success, or `null` when `.git` is
- * absent OR when the pointer file is unreadable / malformed. Callers that
- * need to distinguish "no .git" from "stale pointer" should use
- * `resolveShadowDir`, which surfaces the typed `MalformedGitPointerError`
- * for the latter.
- */
 export function resolveGitDir(projectRoot: string): string | null {
   const result = resolveGitDirDetailed(projectRoot);
   if (result.kind === 'directory' || result.kind === 'linked') return result.path;
   return null;
 }
 
-/**
- * Resolve the shadow-repo bare git dir's target path for a project — WITHOUT
- * checking whether the shadow itself has been initialized yet. Used by init
- * (`packages/server/src/shadow-repo.ts`) to pick where to create the repo,
- * and internally by `getShadowRepoPath`.
- *
- * Worktree-aware: appends `'ok'` to the resolved gitdir, which is
- * `<projectRoot>/.git` for a main worktree (`.git`-as-directory) and
- * `<repo>/.git/worktrees/<name>` for a linked worktree (`.git`-as-pointer).
- * The main-worktree path is bit-identical to pre-worktree-support behavior
- * so existing main-worktree shadows do not migrate.
- *
- * Throws one of two typed errors when `.git` is on disk but unusable:
- *   - `MalformedGitPointerError` — `.git` is a file but its `gitdir:` pointer
- *     is unreadable, has no `gitdir:` line, or references a path that does
- *     not exist on disk. Common cause: stale pointer left by a partial
- *     `git worktree remove` race or `rm -rf` of the admin dir without
- *     `git worktree prune`. Recovery hint names `git worktree prune`.
- *   - `GitDirAccessError` — `statSync` on `.git` failed for a reason other
- *     than `ENOENT` (typically `EACCES`/`EPERM`). The shape of `.git` is
- *     unknown — could be a directory we can't read or a pointer file with no
- *     metadata access. Recovery hint names filesystem permissions.
- *
- * Each typed error carries the original `errno` exception as `cause` so log
- * consumers can branch on the specific failure mode without parsing strings.
- *
- * When `.git` is truly absent (`ENOENT`), falls through to the legacy
- * `<projectRoot>/.git/ok` path. Callers already handle the no-`.git` case
- * via `ensureProjectGit` upstream of this function.
- */
 export function resolveShadowDir(projectRoot: string): string {
   const result = resolveGitDirDetailed(projectRoot);
   switch (result.kind) {
@@ -247,7 +107,6 @@ export function resolveShadowDir(projectRoot: string): string {
       return resolve(result.path, shadowSubdirName(result.projectSubPath));
     case 'linked':
       if (!existsSync(result.path)) {
-        // Discovery verified the pointer target, but it can disappear before use.
         throw new MalformedGitPointerError(result.gitPath, result.path);
       }
       return resolve(result.path, shadowSubdirName(result.projectSubPath));
@@ -256,35 +115,16 @@ export function resolveShadowDir(projectRoot: string): string {
     case 'inaccessible':
       throw new GitDirAccessError(result.gitPath, { cause: result.cause });
     case 'absent':
-      // Legacy fallthrough — callers handle no-`.git` upstream via ensureProjectGit.
       return resolve(projectRoot, '.git/ok');
   }
 }
 
-/**
- * Pick the shadow subdir name within a discovered gitdir. The toplevel case
- * (`projectSubPath === ''`) keeps the unchanged `ok` name so existing on-disk
- * shadows are bit-identical to pre-walk-up behavior. Subfolder discovery
- * namespaces the shadow with a path-derived slug so two `.ok/` projects sharing
- * one parent gitdir can't collide on `refs/wip/<branch>/<writer>` or on the
- * shadow tree path layout (both would otherwise write to `foo.md` at the root
- * of the shared bare repo and silently overwrite each other's attribution).
- */
 function shadowSubdirName(projectSubPath: string): string {
   if (projectSubPath === '') return 'ok';
   return `ok-${slugifyShadowSubPath(projectSubPath)}`;
 }
 
-/**
- * Filesystem-safe slug for a path segment relative to the work-tree root.
- * Path separators become `-`; characters outside `[A-Za-z0-9._-]` become `_`.
- * Caps length to 64 chars (well below any platform's component limit) with
- * an 8-hex-digit suffix derived from the full input for collision resistance
- * when two long sub-paths happen to share a 64-char prefix. The result is a
- * single path component — no slashes, no leading dots, never empty.
- */
 function slugifyShadowSubPath(rel: string): string {
-  // Normalize path separators (handles Windows `\` if it ever surfaces here).
   const flat = rel.split(sep).join('-').replace(/\/+/g, '-');
   const sanitized = flat.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '_');
   const MAX = 64;
@@ -293,7 +133,6 @@ function slugifyShadowSubPath(rel: string): string {
   return `${sanitized.slice(0, MAX - 9)}-${hash}`;
 }
 
-/** Tiny string hash (djb2). Only used to disambiguate truncated slug suffixes. */
 function djb2(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) {
@@ -302,17 +141,6 @@ function djb2(s: string): number {
   return h;
 }
 
-/**
- * Thrown by `resolveShadowDir` when `<projectRoot>/.git` exists as a file but
- * its `gitdir:` pointer is unreadable, malformed, or references a missing
- * admin directory. Common cause: `git worktree remove` race or a manual
- * `rm -rf` of the admin directory without `git worktree prune`.
- *
- * `gitPointerPath` is the path of the `.git` file itself; `resolvedTarget`
- * is the path the pointer claims (or `''` when the pointer text was
- * unreadable / had no `gitdir:` line). Carry both so log consumers can
- * distinguish the two failure shapes without parsing the message.
- */
 export class MalformedGitPointerError extends Error {
   readonly gitPointerPath: string;
   readonly resolvedTarget: string;
@@ -330,22 +158,6 @@ export class MalformedGitPointerError extends Error {
   }
 }
 
-/**
- * Thrown by `resolveShadowDir` when `<projectRoot>/.git` exists on disk but
- * `statSync` failed for a reason other than `ENOENT` — typically `EACCES`
- * (path itself unreadable), `EPERM` (parent directory denies traversal), or
- * `EBUSY` on a stale mount. The shape of `.git` is undetermined: it could be
- * a directory or a pointer file we lack permission to inspect.
- *
- * Distinct from `MalformedGitPointerError` because the recovery is
- * different: pruning the worktree won't fix a permission failure on the
- * `.git` path itself. The recovery hint names filesystem permissions and
- * mount state.
- *
- * Carry the original `errno` exception as `cause` so log consumers can
- * branch on the specific code (`EACCES` vs `EPERM` vs `EBUSY`) without
- * parsing the message.
- */
 export class GitDirAccessError extends Error {
   readonly gitPath: string;
   constructor(gitPath: string, options?: { cause?: unknown }) {
@@ -366,21 +178,6 @@ export class GitDirAccessError extends Error {
   }
 }
 
-/**
- * Return the shadow-repo bare git dir's path, or `null` when the shadow repo
- * has not been initialized yet (HEAD file absent) or when the project's
- * `.git` pointer is stale/malformed/inaccessible.
- *
- * Acts as a "is shadow ready?" probe — collapses every unusable state
- * (no `.git`, stale worktree pointer, malformed pointer text, permission
- * failure, missing HEAD) to `null` so the read path (`readShadowLog` /
- * `enrichPath`) can fall back to "no history" without unwinding through
- * Promise rejections. The actionable `MalformedGitPointerError` and
- * `GitDirAccessError` still surface from the boot path, which calls
- * `resolveShadowDir` directly via `server-factory.ts` and `shadow-repo.ts`.
- * Consumers that need the path regardless of readiness should use
- * `resolveShadowDir` directly and handle the typed errors.
- */
 export function getShadowRepoPath(projectRoot: string): string | null {
   let path: string;
   try {
@@ -393,46 +190,21 @@ export function getShadowRepoPath(projectRoot: string): string | null {
   return existsSync(resolve(path, 'HEAD')) ? path : null;
 }
 
-/**
- * Return the `refs/wip/<branch>/` prefix used when enumerating per-writer
- * WIP refs for a given project branch. Callers typically concatenate this
- * with `*` (or omit the trailing slash) when passing to `git for-each-ref`.
- */
 export function getWipRefPattern(branch: string): string {
   return `refs/wip/${branch}/`;
 }
 
-/**
- * A single contributor entry extracted from a WIP commit message body.
- * Matches the shape written by contributor-tracker.ts's formatContributorsFrom().
- * v is optional for backward compatibility with pre-versioned commit messages.
- */
 export interface ShadowContributor {
   v?: number;
   id: string;
   name: string;
-  /** Color seed for deterministic color assignment — matches presence bar color. */
   colorSeed?: string;
   docs: string[];
-  /**
-   * Flat per-contributor array of agent-provided summaries, oldest first.
-   * Additive field — legacy commits lack it entirely and parse with
-   * `summaries: undefined`. Malformed values (non-array, or array with
-   * non-string elements) drop just this field and leave the rest of the
-   * contributor entry intact — a deliberate divergence from the
-   * whole-entry-skip convention used for other optional fields, because
-   * decorative loss (no bullets) is preferable to attribution loss.
-   */
   summaries?: string[];
 }
 
 const OK_CONTRIBUTORS_PREFIX = 'ok-contributors: ';
 
-/**
- * Parse `ok-contributors:` JSON lines from a commit message body (or full
- * raw message text via `%B`). Skips blank lines and malformed JSON silently.
- * Returns an empty array when the body is empty or contains no contributor lines.
- */
 export function parseContributors(body: string): ShadowContributor[] {
   if (!body) return [];
   const contributors: ShadowContributor[] = [];
@@ -456,10 +228,6 @@ export function parseContributors(body: string): ShadowContributor[] {
         (!('colorSeed' in parsed) ||
           typeof (parsed as Record<string, unknown>).colorSeed === 'string')
       ) {
-        // Malformed `summaries` drops just the field; the contributor
-        // entry still parses. Decorative loss (no bullets) beats attribution
-        // loss (missing contributor). Deliberate divergence from the
-        // whole-entry-skip convention applied to other optional fields.
         const raw = parsed as Record<string, unknown>;
         if ('summaries' in raw) {
           const s = raw.summaries;
@@ -469,9 +237,7 @@ export function parseContributors(body: string): ShadowContributor[] {
         }
         contributors.push(parsed as ShadowContributor);
       }
-    } catch {
-      // skip malformed lines
-    }
+    } catch {}
   }
   return contributors;
 }
@@ -484,14 +250,6 @@ export type {
   CheckpointVisibility,
   ParsedCheckpoint,
 } from './checkpoint-kinds.ts';
-// ─── Checkpoint metadata + kind registry (re-exported) ───────────────────────
-//
-// The checkpoint-body metadata types/parsers and the shared kind registry moved
-// to `./checkpoint-kinds.ts` — pure data with no `node:fs`, so the browser
-// barrel can re-export the registry and the editor UI can drive row visibility
-// off the same attributes the server GC/timeline/bundle paths use. Re-exported
-// here unchanged so every Node-only `@inkeep/open-knowledge-core/shadow-repo-layout`
-// consumer keeps its existing import site.
 export {
   CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
@@ -502,75 +260,24 @@ export {
   parseCheckpoint,
 } from './checkpoint-kinds.ts';
 
-// ─── ok-actor: body line ─────────────────────────────────────────────────────
-
-/**
- * Structured actor tuple written as `ok-actor:` JSON body line in every
- * shadow-repo commit. Makes the repo queryable without a session registry.
- * v:1 is the sole schema version; bump v to introduce breaking changes.
- */
 export interface OkActorEntry {
   v: 1;
-  /**
-   * The writer id — the ref-name this commit was authored under:
-   *   - `agent-<connectionId>`    — MCP agent session
-   *   - `principal-<UUID>`        — browser-tab principal
-   *   - `file-system` | `git-upstream` | `openknowledge-service` — classified
-   *
-   * Carries the identity that `ok-contributors.id` used to carry pre-consolidation,
-   * so a commit body is self-describing (`git show -s <sha>` → full attribution
-   * without needing to join against `git for-each-ref`). Also disambiguates
-   * classified writers, which otherwise share `{principal: null, agent_session: null}`.
-   */
   writer_id: string;
-  /** Long-lived principal id (stub — null until human-browser auth wired). */
   principal: string | null;
-  /** Per-session agent connection id, e.g. "conn-abc123". Null for classified writers. */
   agent_session: string | null;
-  /** Claude model family, e.g. "claude-3-5-sonnet". Null when not known. */
   agent_type: string | null;
-  /** MCP client name (e.g. "claude-code"). Null when not known. */
   client_name: string | null;
-  /** MCP client version. Null when not known. */
   client_version: string | null;
-  /** User-supplied label for this session. Null when absent. */
   label: string | null;
-  /** Human-readable display name shown in attribution UI. */
   display_name: string;
-  /** Color seed for deterministic color assignment — matches presence bar. */
   color_seed: string;
-  /** Documents touched in this drain cycle. */
   docs: string[];
-  /**
-   * Flat per-contributor array of agent-provided summaries, oldest first.
-   * Elided when empty so summary-less writes stay byte-identical to legacy.
-   * Malformed values (non-array, array-with-non-string) drop JUST this field
-   * at parse time — decorative loss (no bullets) beats attribution loss.
-   * Consolidated onto ok-actor: as the foundation's deferred read-path
-   * migration (formerly lived on ok-contributors:).
-   */
   summaries?: string[];
-  /**
-   * Per-rename mapping of `{from, to}` pairs collected during this drain cycle.
-   * Anchors the rename chain to a durable shadow-commit record so the rename
-   * log index can be rebuilt from `git log` body parsing alone if `renames.jsonl`
-   * is missing or corrupt. Elided when empty/absent so non-rename writes stay
-   * byte-identical to legacy ok-actor commits. Malformed entries (non-object,
-   * missing `from`/`to`, non-string fields) are dropped individually at parse
-   * time; the rest of the array is preserved and the parent OkActorEntry parses
-   * normally — same divergence shape as `summaries`.
-   */
   previous_paths?: Array<{ from: string; to: string }>;
 }
 
 const OK_ACTOR_PREFIX = 'ok-actor: ';
 
-/**
- * Format an `ok-actor:` JSON body line. Produces exactly one line (no trailing newline).
- * Pair with `parseOkActor` / `parseOkActors` at the read path. Elides `summaries`
- * and `previous_paths` when empty/absent so writes without those fields stay
- * byte-identical to pre-feature ok-actor commits.
- */
 export function formatOkActor(entry: OkActorEntry): string {
   const { summaries, previous_paths, ...rest } = entry;
   const payload: Record<string, unknown> = { ...rest };
@@ -579,20 +286,6 @@ export function formatOkActor(entry: OkActorEntry): string {
   return `${OK_ACTOR_PREFIX}${JSON.stringify(payload)}`;
 }
 
-/**
- * Parse a single JSON object into an `OkActorEntry`, or `null` on schema violation.
- * Extracted so `parseOkActor` (first-match) and `parseOkActors` (all-matches)
- * share one validation pass.
- *
- * Back-compat note: pre-consolidation `ok-actor:` lines (shipped before this
- * unification) lacked `writer_id`. When missing, derive it:
- *   - `agent_session` set → `agent-<agent_session>`
- *   - `principal` set → `<principal>`  (principal ids already include the
- *     `principal-` prefix)
- *   - otherwise → derive from `display_name` for the three classified writers;
- *     fall back to `'openknowledge-service'` as the safest non-attributed
- *     classified writer if display_name doesn't match.
- */
 function parseOkActorObject(obj: Record<string, unknown>): OkActorEntry | null {
   if (obj.v !== 1) return null;
   if (!('display_name' in obj) || typeof obj.display_name !== 'string') return null;
@@ -607,8 +300,6 @@ function parseOkActorObject(obj: Record<string, unknown>): OkActorEntry | null {
   } else if (principal) {
     writer_id = principal;
   } else {
-    // Classified writers — derive from display_name. The three recognized values
-    // are stable display strings in shadow-repo.ts (FILE_SYSTEM_WRITER etc.).
     switch (obj.display_name) {
       case 'File System':
         writer_id = 'file-system';
@@ -624,7 +315,7 @@ function parseOkActorObject(obj: Record<string, unknown>): OkActorEntry | null {
     'summaries' in obj && Array.isArray(obj.summaries)
       ? (obj.summaries as unknown[]).every((s) => typeof s === 'string')
         ? (obj.summaries as string[])
-        : undefined // Drop field on malformed, keep entry
+        : undefined
       : undefined;
   const previous_paths = parsePreviousPaths(obj);
   return {
@@ -644,13 +335,6 @@ function parseOkActorObject(obj: Record<string, unknown>): OkActorEntry | null {
   };
 }
 
-/**
- * Per-element validator for `previous_paths`. Drops malformed elements
- * individually (decorative loss — chain step missing) rather than rejecting
- * the parent OkActorEntry, mirroring the `summaries` divergence shape.
- * Returns `undefined` only when the field is absent or a non-array — both
- * cases collapse to "no previous_paths emitted on the typed literal."
- */
 function parsePreviousPaths(
   obj: Record<string, unknown>,
 ): Array<{ from: string; to: string }> | undefined {
@@ -666,15 +350,6 @@ function parsePreviousPaths(
   return out;
 }
 
-/**
- * Parse the first `ok-actor:` JSON body line from a commit message body.
- * Returns `null` when the line is absent, malformed, or fails schema validation
- * (v must be 1; display_name and docs must be present).
- *
- * Use `parseOkActors` (plural) when the body may contain multiple writers
- * (multi-contributor L2 drain); pre-unification commits used one ok-actor
- * per commit, but the consolidated write path emits one per writer.
- */
 export function parseOkActor(body: string): OkActorEntry | null {
   if (!body) return null;
   for (const line of body.split('\n')) {
@@ -692,14 +367,6 @@ export function parseOkActor(body: string): OkActorEntry | null {
   return null;
 }
 
-/**
- * Parse every `ok-actor:` JSON body line from a commit message body.
- * Returns an empty array when the body contains no valid ok-actor lines.
- * Malformed lines are skipped silently (mirrors `parseContributors` convention).
- *
- * The consolidated L2 drain emits one `ok-actor:` per writer per commit
- * (fan-out), so this is the right reader for post-consolidation commits.
- */
 export function parseOkActors(body: string): OkActorEntry[] {
   if (!body) return [];
   const out: OkActorEntry[] = [];
@@ -719,12 +386,6 @@ export function parseOkActors(body: string): OkActorEntry[] {
   return out;
 }
 
-/**
- * Project an `OkActorEntry` onto the legacy `ShadowContributor` DTO that
- * Timeline + CLI render paths consume. Kept deliberately thin — the renderers
- * haven't been migrated to consume `OkActorEntry` fields directly (rich actor
- * data like `agent_type`, `client_name` is available for them to adopt later).
- */
 export function okActorToShadowContributor(a: OkActorEntry): ShadowContributor {
   const shadow: ShadowContributor = {
     v: 1,
@@ -737,101 +398,46 @@ export function okActorToShadowContributor(a: OkActorEntry): ShadowContributor {
   return shadow;
 }
 
-/**
- * Read contributors from a commit message body, preferring the consolidated
- * `ok-actor:` body lines and falling back to legacy `ok-contributors:` lines
- * when no `ok-actor:` is present.
- *
- * This is the single entry point the Timeline API (`timeline-query.ts`) and
- * the CLI enrichment path (`shadow-log.ts`) should call. Callers that need
- * the full actor tuple (e.g., a future on-behalf-of render) should consume
- * `parseOkActors` directly.
- *
- * Back-compat contract: commits written before the ok-actor consolidation
- * (on disk from pre-unification sessions) have only `ok-contributors:` lines
- * and continue to render identically. Commits written post-consolidation
- * have only `ok-actor:` lines. Transitional commits with both are possible
- * during rollout and prefer `ok-actor:` — `ok-contributors:` is ignored when
- * at least one ok-actor is present to avoid double-counting.
- */
 export function readContributors(body: string): ShadowContributor[] {
   const actors = parseOkActors(body);
   if (actors.length > 0) return actors.map(okActorToShadowContributor);
   return parseContributors(body);
 }
 
-// ─── Subject-prefix scheme ───────────────────────────────────────────────────
-
-/** Format a `wip:` subject from docs touched in the drain cycle. */
 export function formatWipSubject(docs: string[]): string {
   if (docs.length === 0) return 'wip: auto-save';
   if (docs.length === 1) return `wip: ${docs[0]}`;
   return `wip: ${docs.length} docs`;
 }
 
-/** Format a `reconcile:` subject for file-watcher-triggered reconcile writes. */
 export function formatReconcileSubject(docName: string): string {
   return `reconcile: ${docName}`;
 }
 
-/** Format a `rollback:` subject for rollback-to-version writes. */
 export function formatRollbackSubject(docName: string, sha: string): string {
   return `rollback: ${docName} to ${sha.slice(0, 7)}`;
 }
 
-/** Format a `park:` subject for branch-switch park commits. */
 export function formatParkSubject(oldBranch: string, newBranch: string): string {
   return `park: ${oldBranch} -> ${newBranch}`;
 }
 
-/** Format a `rename:` subject for managed-rename writes. */
 export function formatRenameSubject(oldName: string, newName: string): string {
   return `rename: ${oldName} -> ${newName}`;
 }
 
-/** Format a `checkpoint:` subject for save-version and safety-checkpoint commits. */
 export function formatCheckpointSubject(message: string): string {
   return `checkpoint: ${message}`;
 }
 
-/** Format an `import:` subject for upstream-import commits. */
 export function formatImportSubject(oldHead: string | null, newHead: string): string {
   return oldHead
     ? `import: from ${oldHead.slice(0, 8)}..${newHead.slice(0, 8)}`
     : `import: initial at ${newHead.slice(0, 8)}`;
 }
 
-// ─── Change-note subject composition ─────────────────────────────────────────
-//
-// Landing per-writer summaries on the COMMIT SUBJECT line (not just the
-// `ok-contributors:` body) is what turns `git log --oneline refs/wip/main/agent-*`
-// from a wall of `wip: notes.md` duplicates into a scannable team-history feed.
-// The body still carries the full summary array for the TimelinePanel render —
-// this helper is the git-log-shaped projection.
-
-/**
- * Upper bound on the length of the rendered commit subject line.
- * Matches the CommonMark / git subject-line convention so `git log --oneline`
- * stays legible without wrapping.
- */
 export const COMMIT_SUBJECT_MAX_LEN = 72;
 
-/**
- * Defense-in-depth line-terminator stripper for the commit-subject pipeline.
- * `normalizeSummary` (`packages/server/src/agent-write-summary.ts`) already
- * strips these at the API boundary, but `composeCommitSubject` is exported
- * and reachable from callers that bypass the boundary helper. A subject line
- * containing an embedded LF (or any other line-break codepoint) gets parsed
- * as multiple body lines by `parseOkActors` / `parseContributors` /
- * `parseCheckpoint`, allowing commit-message injection — e.g. a summary of
- * `"x\nok-actor: {…}"` would produce a forged actor entry alongside the
- * legitimate one when the L2 drain concatenates the subject with the body.
- *
- * Constructed via `new RegExp` to mirror `LINE_TERMINATOR_RE` in the server
- * package — keeps the source ASCII-safe so file round-trips can't substitute
- * raw U+2028 / U+2029 codepoints into a regex literal where JS parsers
- * reject them.
- */
 // biome-ignore lint/complexity/useRegexLiterals: see docblock above for the constraint that forces `new RegExp`.
 const SUBJECT_LINE_BREAK_RE = new RegExp('[\\r\\n\\v\\f\\u0085\\u2028\\u2029]', 'g');
 
@@ -839,51 +445,21 @@ function stripLineBreaks(s: string): string {
   return s.replace(SUBJECT_LINE_BREAK_RE, ' ');
 }
 
-/**
- * Combine a base subject (from `formatWipSubject` / `formatReconcileSubject` / etc.
- * or a `ContributorEntry.subjectOverride`) with agent-supplied change-notes,
- * producing a single subject line capped at `COMMIT_SUBJECT_MAX_LEN`.
- *
- * Rules:
- *  - 0 summaries → base subject unchanged (pre-feature byte-identity).
- *  - 1 summary → `<base> — <summary>` truncated with a trailing U+2026
- *    ellipsis when over budget; the `<base>` portion is never truncated.
- *  - ≥2 summaries → `<base> (N edits)`. The bullets live in the body
- *    (`ok-contributors.summaries`) and in the TimelinePanel UI — the
- *    subject only carries the count so `git log --oneline` stays one line.
- *
- * Both `base` and each `summaries[i]` are stripped of line-break codepoints
- * (LF, CR, VT, FF, NEL, U+2028, U+2029) before composition — see
- * `SUBJECT_LINE_BREAK_RE` above. This is a structural invariant of the
- * function: the returned string is guaranteed to be a single line, even
- * when the API-boundary `normalizeSummary` is bypassed.
- *
- * Truncation preserves the base, separator, and suffix so the `grep`-friendly
- * target stays intact even for very short terminal widths. Matches the
- * `normalizeSummary` API-boundary truncation in `agent-write-summary.ts` by
- * using the same single-codepoint `…` rather than three ASCII dots.
- */
 export function composeCommitSubject(base: string, summaries: readonly string[]): string {
   const safeBase = stripLineBreaks(base);
   if (summaries.length === 0) return safeBase;
   if (summaries.length >= 2) return `${safeBase} (${summaries.length} edits)`;
   const [rawSummary] = summaries;
-  if (rawSummary === undefined) return safeBase; // defensive; length-1 branch guards against this
+  if (rawSummary === undefined) return safeBase;
   const summary = stripLineBreaks(rawSummary);
   const full = `${safeBase} — ${summary}`;
   if (full.length <= COMMIT_SUBJECT_MAX_LEN) return full;
   const prefix = `${safeBase} — `;
-  const budget = COMMIT_SUBJECT_MAX_LEN - prefix.length - 1; // reserve one char for the ellipsis
-  if (budget <= 0) return full.slice(0, COMMIT_SUBJECT_MAX_LEN); // base already over budget — defensive slice
+  const budget = COMMIT_SUBJECT_MAX_LEN - prefix.length - 1;
+  if (budget <= 0) return full.slice(0, COMMIT_SUBJECT_MAX_LEN);
   return `${prefix}${summary.slice(0, budget)}…`;
 }
 
-/**
- * Classify a writer id using the documented prefix convention. Unknown
- * prefixes (legacy commits, external git operations) classify as 'unknown'
- * and `isAgent` is `null` — agents reasoning about attribution should
- * treat that as indeterminate, not as "not an agent."
- */
 export function parseWriterId(id: string): ParsedWriter {
   if (!WRITER_ID_RE.test(id)) {
     return { id, classification: 'unknown', isAgent: null };
@@ -899,26 +475,9 @@ export function parseWriterId(id: string): ParsedWriter {
     return { id, classification: 'classified-openknowledge-service', isAgent: null };
   if (id === OK_GENERATOR_WRITER_ID)
     return { id, classification: 'classified-ok-generator', isAgent: null };
-  // Unreachable given the regex, but keeps the type narrowing honest.
   return { id, classification: 'unknown', isAgent: null };
 }
 
-/**
- * Resolve a project directory to a STABLE project identity for detected-skill
- * project-scoping. A linked git worktree has its own absolute root, which
- * matches ZERO of Claude's `installed_plugins.json` records (those key on the
- * parent checkout's path) — so scoping detected skills against the raw worktree
- * path drops the parent's project skills. Re-anchor a linked worktree onto its
- * main-worktree root (the admin dir's `commondir` file points back at the shared
- * `.git`; its parent is the main work tree) and re-apply `projectSubPath` for
- * the subtree-rooted case, yielding an identity bit-identical to the main
- * checkout's. Main worktrees, non-git dirs, and unusable `.git` states resolve
- * to the input path unchanged.
- *
- * Only ONE operand is resolvable here — the recorded `projectPath` may be a
- * foreign or vanished path — so the caller normalizes its OWN `projectDir` to
- * this identity before the exact `samePath` compare in `isDetectedSkillInProject`.
- */
 export function resolveProjectIdentity(projectDir: string): string {
   const detail = resolveGitDirDetailed(projectDir);
   if (detail.kind !== 'linked') return resolve(projectDir);
@@ -928,9 +487,6 @@ export function resolveProjectIdentity(projectDir: string): string {
     const mainRoot = dirname(resolve(detail.path, commondir));
     return resolve(mainRoot, detail.projectSubPath);
   } catch {
-    // Unreadable/absent commondir (corrupt worktree admin) — degrade to the raw
-    // path. Same net effect as pre-normalization: the parent's project skills
-    // stay dropped, but nothing else leaks in. No worse than a main checkout.
     return resolve(projectDir);
   }
 }

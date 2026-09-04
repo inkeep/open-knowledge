@@ -3,9 +3,6 @@ import { UNINSTALL_FEEDBACK_REASONS as BARREL_REASONS } from '../index.ts';
 import { isUninstallFeedbackReason, UNINSTALL_FEEDBACK_REASONS } from './uninstall-feedback.ts';
 
 describe('uninstall feedback reasons taxonomy', () => {
-  // Slugs travel to `/api/feedback` and are how churn tickets get grouped, so
-  // editing or reordering one silently re-buckets every reason already filed
-  // under it. Labels are display-only and free to reword.
   test('pins the slug set and order', () => {
     expect(UNINSTALL_FEEDBACK_REASONS.map((reason) => reason.value)).toEqual([
       'workflow-fit',

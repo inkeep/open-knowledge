@@ -13,12 +13,6 @@ function workflowExpression(expression) {
   return `\${{ ${expression} }}`;
 }
 
-/**
- * Slice one step's block (from its `- name:` line to the next step) so
- * fail-safe attributes are asserted on the step they protect, not merely
- * somewhere in the file — `continue-on-error` on the wrong step would keep a
- * whole-file `toContain` green while probe failures abort before evidence.
- */
 function stepBlock(source, stepName) {
   const block = source.split(/^\s*- name: /m).find((candidate) => candidate.startsWith(stepName));
   if (!block) throw new Error(`step not found: ${stepName}`);
@@ -150,9 +144,6 @@ describe('stable release reader attestation', () => {
     expect(restore).toContain('.github/composite-actions/share-contract-reader-gate/action.yml');
     expect(restore).toContain('.github/scripts/probe-share-contract.mjs');
     expect(restore).toContain('test-support/fixtures/share-url-v1-v2.json');
-    // Both resolved before comparing: a missing FIRST step yields -1, and
-    // -1 < anyPositiveIndex passes, so renaming it would satisfy this ordering
-    // ratchet instead of breaking it.
     const restoreAt = release.indexOf('- name: Restore reader gate from workflow revision');
     const attestAt = release.indexOf('- name: Attest production reader before release');
     expect(restoreAt, 'no "Restore reader gate" step').toBeGreaterThan(-1);

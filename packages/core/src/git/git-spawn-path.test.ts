@@ -73,9 +73,6 @@ describe('augmentGitSpawnPath', () => {
     expect(dirs).toContain(`${HOME}/.asdf/shims`);
   });
 
-  // The CLI is cross-platform and Linux-tested — a regression in the default
-  // (Linux) list would leave git helpers unresolvable on Linux hosts with no
-  // other signal.
   test('linux (default) dir list covers linuxbrew and shim dirs but not macOS prefixes', () => {
     const dirs = wellKnownToolDirs('linux', HOME);
     expect(dirs).toContain('/usr/local/bin');
@@ -93,14 +90,12 @@ describe('augmentAgentSpawnPath', () => {
       '/usr/bin:/bin',
       darwinOpts([`${HOME}/Library/pnpm`, '/opt/homebrew/bin']),
     );
-    // Well-known dirs come first, then the PM-global dirs — both append-only.
     expect(out).toBe(`/usr/bin:/bin:/opt/homebrew/bin:${HOME}/Library/pnpm`);
   });
 
   test('resolves an agent CLI dir (~/Library/pnpm) that the git variant omits', () => {
     const opts = darwinOpts([`${HOME}/Library/pnpm`]);
     expect(augmentAgentSpawnPath('/usr/bin', opts).split(':')).toContain(`${HOME}/Library/pnpm`);
-    // Pure superset: the git variant must NOT pick up the agent-only dir.
     expect(augmentGitSpawnPath('/usr/bin', opts).split(':')).not.toContain(`${HOME}/Library/pnpm`);
   });
 

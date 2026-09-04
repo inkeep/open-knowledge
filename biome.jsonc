@@ -444,6 +444,9 @@
       "!packages/native-config/target",
       "!**/.next",
       "!**/.source",
+      // Second generated content build, emitted by the docs app's real-source
+      // vitest config in the Vite flavour `.source` must never hold.
+      "!**/.source-vitest",
       "!**/.turbo",
       "!**/tmp",
       "!**/test-results",

@@ -1,8 +1,3 @@
-/**
- * Per-project consent-store — install, subscribe, confirm, cancel, dismiss
- * flows. Mirrors `mcp-consent-store.test.ts` shape — no @testing-library/react,
- * exercises the store via the module API directly.
- */
 import { describe, expect, test, vi } from 'vitest';
 import { createConsentStore } from './consent-store';
 import type {

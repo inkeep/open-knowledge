@@ -1,21 +1,3 @@
-/**
- * Permission policy for ACP tool calls.
- *
- * Three tiers, checked in order:
- *   1. Auto-allow: `read`-kind tool calls. Reads that matter route through
- *      OK's own client-fs handler, which independently confines paths to the
- *      content directory — the permission layer guards intent, the fs layer
- *      guards the boundary.
- *   2. Persisted `allow_always` grants, keyed (agentId, toolKind), stored in
- *      `.ok/local/acp-permissions.json` — machine-local and never committed,
- *      so a grant on this machine can never ride git onto a collaborator's.
- *   3. Ask: everything else surfaces a permission prompt in the thread UI.
- *
- * Tool `kind` is agent-reported; the permission UI guards against accidents,
- * not adversarial agents — an agent already runs unsandboxed as the user
- * (the same trust model every ACP client ships).
- */
-
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PermissionOption, ToolCallUpdate } from '@agentclientprotocol/sdk';
@@ -34,7 +16,6 @@ interface PermissionsFileShape {
 }
 
 export interface PolicyDecision {
-  /** Auto-resolved without asking; `optionId` is the option to answer with. */
   auto: { optionId: string } | null;
 }
 
@@ -63,10 +44,6 @@ export class AcpPermissionStore {
     this.log = log;
   }
 
-  /**
-   * Decide a `session/request_permission`. Returns an auto decision (with
-   * the optionId to answer) or `{ auto: null }` meaning "ask the user".
-   */
   decide(agentId: string, toolCall: ToolCallUpdate, options: PermissionOption[]): PolicyDecision {
     const kind = toolKindOf(toolCall);
     const allow = pickOption(options, ['allow_once', 'allow_always']);
@@ -80,12 +57,6 @@ export class AcpPermissionStore {
     return this.loadGrants().some((g) => g.agentId === agentId && g.toolKind === toolKind);
   }
 
-  /**
-   * Record the user's choice. Only `allow_always` selections persist;
-   * `allow_once` / rejections are session-scoped by definition (a persisted
-   * `reject_always` would silently dead-end an agent with no UI to undo it —
-   * deferred until the settings surface exists).
-   */
   async recordChoice(
     agentId: string,
     toolCall: ToolCallUpdate,

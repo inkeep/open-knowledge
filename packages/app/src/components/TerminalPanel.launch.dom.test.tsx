@@ -1,19 +1,3 @@
-/**
- * Behavioral tests for the "Open in terminal" launch path in TerminalSession.
- *
- * The launch is BAKED into the PTY spawn: the session resolves the fixed
- * `<bin> [<fixed-args>…] '<prompt>'` command (via a CLI preflight) and passes it
- * as `terminal.create({ launchCommand })`, where the host runs it on the shell's
- * `-c` so it never lands in the user's shell history. The command is therefore
- * NEVER written through `terminal.input` (the old line-editor injection); these
- * tests assert it rides the `create` call instead, carries no trailing `\r`, and
- * is gated on a confirmed-present CLI. Claude's `claudePreflight` doubles as the
- * launch-time MCP pre-approval check; codex/cursor/opencode probe `cliPreflight`.
- * The escaper is the real core helper (not mocked) so the assertion pins the
- * exact command string. xterm and the desktop bridge are mocked at the system
- * boundary, mirroring `TerminalPanel.dom.test.tsx`.
- */
-
 import {
   buildStartupInjectionBytes,
   type TerminalCli,
@@ -65,18 +49,11 @@ class MockTerminal {
     this.onDataCb = cb;
     return { dispose() {} };
   });
-  // The panel subscribes to OSC 0/2 title changes at mount; this stub only needs
-  // to return a disposable (the launch tests don't exercise title forwarding).
   onTitleChange = vi.fn((_cb: (title: string) => void) => ({ dispose() {} }));
   attachCustomKeyEventHandler = vi.fn((h: (e: KeyboardEvent) => boolean) => {
     this.keyHandler = h;
   });
-  // Production attaches a wheel handler at mount; these launch tests never fire
-  // wheel events, so the no-op presence is all that's needed to avoid throwing.
   attachCustomWheelEventHandler = vi.fn(() => {});
-  // The panel registers a file-path link provider at mount; these launch tests
-  // never hover a link, so a disposable-returning stub (plus an empty buffer for
-  // the provider's readLine) is all that's needed to avoid throwing on mount.
   registerLinkProvider = vi.fn(() => ({ dispose() {} }));
   get buffer() {
     return { active: { getLine: () => ({ translateToString: () => '' }) } };
@@ -100,20 +77,13 @@ vi.doMock('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon })
 vi.doMock('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
 vi.doMock('@xterm/xterm/css/xterm.css', () => ({}));
 
-/** Fully ready: claude on PATH, OK tools wired, AND the project's own
- *  `open-knowledge` entry verified as OK's canonical server (mcpPreApprovable),
- *  so the launch pre-approves it. */
 const WIRED: ClaudeReadiness = { claude: 'present', mcp: 'wired', mcpPreApprovable: true };
-/** Claude ready, but the project's `open-knowledge` entry is NOT OK's own (a
- *  foreign/tampered shared-project entry) — pre-approval must be withheld. */
 const WIRED_FOREIGN_PROJECT: ClaudeReadiness = {
   claude: 'present',
   mcp: 'wired',
   mcpPreApprovable: false,
 };
 const ON_PATH: CliReadiness = { onPath: 'present' };
-/** Codex on PATH AND OK's `open-knowledge` server already in the codex config —
- *  the gate that lets the launch add the `-c` tool-auto-approve override. */
 const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigured: true };
 
 function makeBridge(
@@ -176,8 +146,6 @@ function makeBridge(
 
 const { TerminalPanel, STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
-/** The `launchCommand` baked into the (single) `create` call, or undefined when
- *  none was passed (plain shell). The launch's only sanctioned transport. */
 function bakedLaunch(
   createMock: ReturnType<typeof vi.fn>,
 ): string | TerminalLaunchCommand | undefined {
@@ -186,39 +154,16 @@ function bakedLaunch(
   return last?.launchCommand;
 }
 
-/** Any `terminal.input` write that looks like a baked launch command — must stay
- *  empty: the launch rides `create`, never the line editor (the whole fix). */
 function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
   return inputMock.mock.calls
     .map((c) => c[1] as string)
     .filter((d) => typeof d === 'string' && /^(claude|codex|cursor-agent|opencode) /.test(d));
 }
 
-/**
- * Claude's inline `--settings` prefix (built from MCP_SERVER_NAME in core's
- * terminal-launch.ts): a WIRED launch carries it ahead of the prompt — but ONLY
- * when the preflight reports `mcpPreApprovable` (the project entry is verified as
- * OK's own). It bundles server trust (`enabledMcpjsonServers`) AND — since the
- * `agents.autoApproveOkTools` preference defaults on and most tests below render
- * without a ConfigProvider — the OK-tool auto-approve allow-list plus the
- * gated-tool ask-list. Both ride the same `mcpPreApprovable` gate, so a
- * foreign/unverified entry bakes neither (the "bare" tests below). Codex/Cursor
- * never carry it, so this prefix is claude-only.
- */
 const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
 
-/** What a WIRED Claude launch bakes once the user turns the auto-approve toggle
- *  OFF: server trust survives (it is a separate opt-in), the permissions block
- *  does not. The contrast against {@link CLAUDE_PRE} is what makes the default-on
- *  assertions above meaningful. */
 const CLAUDE_TRUST_ONLY = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
 
-/**
- * Render under a ConfigContext whose user scope has `agents.autoApproveOkTools`
- * explicitly false — the OFF path of the feature's primary safety control. The
- * panel reads the context nullably (`use(ConfigContext)`), so every other test in
- * this file exercises the `?? true` default-on fallback instead.
- */
 function renderWithAutoApproveOff(ui: ReactElement) {
   const value = {
     userConfig: { agents: { autoApproveOkTools: false } },
@@ -259,15 +204,10 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // The exact command string: the MCP pre-approval flag, then the
-    // single-quote-wrapped prompt. The embedded `'` in "Let's" is escaped via the
-    // POSIX close-escape-reopen idiom. Crucially: NO trailing carriage return
-    // (that's a typed-into-the-shell artifact; a baked `-c` arg has none).
     expect(bakedLaunch(terminal.create)).toBe(
       `claude ${CLAUDE_PRE} 'Let'\\''s work on \`foo.md\` using OpenKnowledge.'`,
     );
     expect(bakedLaunch(terminal.create)).not.toContain('\r');
-    // The launch is never typed into the live shell (the history-pollution fix).
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
@@ -331,7 +271,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       timeout: 6_000,
     });
     expect(terminal.input).not.toHaveBeenCalledWith('pty-1', submitted);
-    // Withholding Enter is invisible in the terminal, so the panel says so.
     const notice = await screen.findByTestId('terminal-manual-submit-notice-banner');
     expect(notice.textContent).toContain('not submitted automatically');
     expect(notice.textContent).toContain('press Enter');
@@ -477,10 +416,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // Promptless bake: bare `claude` (+ pre-approval), nothing auto-runs.
     expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE}`);
-    // The staged passage lands via `input` after the settle beat — soft trailing
-    // newlines intact, no `\r` anywhere (nothing submitted).
     await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', staged), {
       timeout: 2_000,
     });
@@ -493,30 +429,19 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'hermes', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // Hermes takes no argv prompt, so the bake is the bare interactive TUI — the
-    // prompt is NOT on the command line.
     expect(bakedLaunch(terminal.create)).toBe('hermes chat');
     expect(bakedLaunch(terminal.create)).not.toContain(prompt);
 
-    // Nothing is injected while the TUI is still booting — the paste waits for the
-    // input widget to signal ready, so a slow boot can't drop bytes into a
-    // not-yet-listening reader.
     await new Promise((r) => setTimeout(r, 80));
     expect(terminal.input).not.toHaveBeenCalled();
 
-    // Hermes emits ESC[?2004h (bracketed-paste enable) when its prompt mounts.
     pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
 
-    // Now the composed prompt lands via `input`, wrapped in bracketed paste
-    // (multi-line-safe) and followed by the submit byte. Derived from core so the
-    // escape framing can't rot into a hand-copied literal.
     const expectedBytes = buildStartupInjectionBytes('hermes', prompt, 'darwin');
     expect(expectedBytes).not.toBeNull();
     await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
       timeout: 2_000,
     });
-    // The multi-line prompt survives intact inside the paste frame (no early submit
-    // on the interior newline): exactly one submit `\r`, at the very end.
     expect(expectedBytes?.endsWith('\r')).toBe(true);
     expect(expectedBytes?.slice(0, -1).includes('\r')).toBe(false);
   }, 10_000);
@@ -527,9 +452,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'hermes', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // No marker is ever pushed. The prompt must still be delivered (the cap
-    // fallback), so a future Hermes that changed its ready signal never silently
-    // drops it.
     const expectedBytes = buildStartupInjectionBytes('hermes', prompt, 'darwin');
     await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
       timeout: 6_000,
@@ -546,11 +468,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     );
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // No bake — this PTY is a plain shell (the readiness banner explains why).
     expect(bakedLaunch(terminal.create)).toBeUndefined();
-    // Wait past the settle window (derived from the production constant so this
-    // can't rot into a vacuous pass if the window grows): nothing may be typed
-    // into the bare shell, where each staged `\n` would execute as a command.
     await new Promise((resolve) => setTimeout(resolve, STAGE_PASTE_SETTLE_MS + 200));
     expect(terminal.input).not.toHaveBeenCalled();
   });
@@ -560,13 +478,9 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // No baked command — the broken `claude` is never run; the readiness banner
-    // gives the actionable not-installed message instead.
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
     await screen.findByText(/Claude Code \(claude\) isn't installed/);
-    // Genuine absence is the verified state — the unverified presentation
-    // must not appear alongside (the two verdicts stay distinguishable).
     expect(screen.queryByTestId('terminal-cli-unverified-banner')).toBeNull();
   });
 
@@ -580,9 +494,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test("does NOT pre-approve when the project MCP entry is not OK's own (mcpPreApprovable false)", async () => {
-    // Supply-chain gate: a shared/cloned project whose `open-knowledge` entry is
-    // foreign yields mcpPreApprovable:false, so the bake is bare and Claude's own
-    // trust prompt still fires at launch.
     const { bridge, terminal } = makeBridge(WIRED_FOREIGN_PROJECT);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
@@ -592,25 +503,15 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('verifies pre-approval at LAUNCH time (the bake gates on the fresh preflight, not a stale snapshot)', async () => {
-    // The pre-approval probe runs immediately before the spawn, so the bake
-    // reflects the on-disk `.mcp.json` at launch time. Here it reports a foreign
-    // entry → bare bake, no pre-approval off any stale `true`.
     const { bridge, terminal } = makeBridge(WIRED_FOREIGN_PROJECT);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
-    // The preflight ran before create gated the bake.
     expect(terminal.claudePreflight).toHaveBeenCalled();
   });
 
   test('a claude launch-preflight REJECTION spawns a plain shell + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
-    // If the launch-time preflight IPC throws, presence is UNCONFIRMED — suppress
-    // the bake so the terminal can't show a raw `command not found`, and surface
-    // feedback. But an unverified verdict must not be presented as positive
-    // absence (the probe's contract in claude-readiness.ts: the caller must not
-    // render a "not installed" message off an UNKNOWN) — the unverified state
-    // gets its own distinguishable presentation.
     const { bridge, terminal } = makeBridge();
     terminal.claudePreflight = vi.fn(async () => {
       throw new Error('ipc boom');
@@ -626,12 +527,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('claude launch-time verdict UNKNOWN spawns a plain shell + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
-    // An `unknown` preflight verdict (probe timed out / failed while claude may
-    // well be installed) must suppress the bake AND surface feedback — but as an
-    // unverified state distinguishable from a genuine not-found. Collapsing it
-    // into the "isn't installed" banner presents a false positive-absence claim
-    // off a flaky probe (the exact conflation the probe's producer contract in
-    // claude-readiness.ts forbids).
     const { bridge, terminal } = makeBridge({
       claude: 'unknown',
       mcp: 'needs-rewire',
@@ -659,8 +554,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test("codex auto-approves OK tools (-c approve) when OK's server is configured in codex", async () => {
-    // No ConfigProvider in this harness → the user preference defaults on, so the
-    // launch bakes the per-server `-c` override once codex reports the OK entry.
     const { bridge, terminal } = makeBridge(WIRED, CODEX_OK_CONFIGURED);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
 
@@ -726,7 +619,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     await screen.findByText(/Codex \(codex\) isn't installed/);
-    // Verified absence renders the missing-CLI banner, not the unverified one.
     expect(screen.queryByTestId('terminal-cli-unverified-banner')).toBeNull();
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
@@ -736,13 +628,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'cursor', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // Probed twice (initial + one re-probe) before deciding to suppress.
     expect(terminal.cliPreflight).toHaveBeenCalledTimes(2);
     expect(bakedLaunch(terminal.create)).toBeUndefined();
-    // A still-unknown verdict is an UNVERIFIED state, not a verified absence:
-    // the binary may be present while the probe flaked. Feedback must appear,
-    // but the positive "isn't installed" claim is reserved for a genuine
-    // not-found (the probe's producer contract in claude-readiness.ts).
     expect(screen.queryByText(/isn't installed/)).toBeNull();
     const banner = await screen.findByTestId('terminal-cli-unverified-banner');
     expect(banner.getAttribute('role')).toBe('status');
@@ -763,8 +650,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('cliPreflight IPC rejection spawns plain + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
-    // An IPC failure means presence was never verified — same unverified state
-    // as a still-unknown probe, never the positive-absence banner.
     const { bridge, terminal } = makeBridge(WIRED);
     terminal.cliPreflight = vi.fn(async () => {
       throw new Error('ipc channel closed');
@@ -780,10 +665,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('an adopted (rehydrated) session does NOT re-bake its launch', async () => {
-    // A reloaded launch tab carries both its survivor ptyId and its (stale) launch
-    // intent. Adoption reconnects the live shell; it must NOT re-issue the launch
-    // (the agent is already running in the adopted shell). So no fresh create and
-    // no baked command.
     const { bridge, terminal } = makeBridge(WIRED);
     render(
       <TerminalPanel
@@ -802,11 +683,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('a FAILED adoption (survivor gone) falls through to a plain shell — does NOT re-bake the launch', async () => {
-    // adoptPtyId is set but the survivor exited before this mount, so adopt is
-    // refused and the mount falls through to create. The `adoptPtyId === null`
-    // guard means resolveLaunchCommand is NOT called — the original launch must
-    // not be silently re-issued on a reconnect attempt. So create spawns a plain
-    // shell (no launchCommand) and nothing is baked.
     const { bridge, terminal } = makeBridge(WIRED);
     terminal.adopt = vi.fn(
       async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
@@ -824,8 +700,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
-    // Fell through to a plain shell — no baked launch command, and nothing typed
-    // into the shell (a failed adopt must not silently replay the launch).
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });

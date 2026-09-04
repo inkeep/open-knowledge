@@ -6,19 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed metrics read group over a REAL socket
- * through the composed `bootServer` stack — the SECOND native group, so a 200
- * here also proves the multi-group `nativeApi` composition (concatenated
- * paths, chained per-group pipeline dispatches): the link/graph group's table
- * declines these URLs and the chain falls through to the metrics pipeline.
- * Mirrors `api-link-graph-composition.test.ts` for the group-1 pins.
- *
- * The three gated diagnostics (agent-presence, agent-effects, watcher-recent)
- * enforce loopback + Host INLINE, before method dispatch — the pins below
- * hold the gate-before-405 ordering (a bad Host must never learn the verb).
- */
-
 let tmpRoot: string;
 let server: BootedServer;
 let ephemeral: BootedServer;
@@ -61,8 +48,6 @@ describe('metrics group over the composed listener — served natively', () => {
   });
 
   test('both chained groups answer on one server (multi-group dispatch)', async () => {
-    // Group 1 (link/graph) resolves first in the chain; group 2 (metrics)
-    // only answers after group 1 declines. One server, both arms live.
     const linkGraph = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=alpha`);
     expect(linkGraph.status).toBe(200);
     const metrics = await fetch(`http://127.0.0.1:${server.port}/api/metrics/reconciliation`);
@@ -145,9 +130,6 @@ describe('metrics group over the composed listener — served natively', () => {
   });
 
   test('read posture parity: a read WITHOUT an inline gate is refused under a rebound Host', async () => {
-    // Flipped pin (read-posture hardening): the pipeline Host-gates every
-    // /api read in normal mode too, so routes without an inline gate are
-    // covered by the shared choke point.
     const res = await rawRequest(server.port, '/api/metrics/reconciliation', {
       headers: { Host: 'evil.example' },
     });

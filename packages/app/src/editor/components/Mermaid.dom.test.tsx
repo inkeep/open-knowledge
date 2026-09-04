@@ -1,11 +1,3 @@
-/**
- * RTL behavioral tests for Mermaid diagram controls.
- *
- * Mermaid and Panzoom are both lazy browser-side dependencies in the component.
- * These tests mock them at the module boundary so the contract under test is
- * the mounted toolbar behavior, filling preview layout, and Panzoom lifecycle.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -284,8 +276,6 @@ describe('MermaidView controls', () => {
     expect(panzoom.zoomWithWheel).not.toHaveBeenCalled();
     expect(trackpad.defaultPrevented).toBe(true);
 
-    // Scale-compensated: at 2x zoom, a 60px wheel delta pans 30 local units
-    // so the visible content tracks the gesture 1:1.
     panzoom.pan.mockClear();
     panzoom.getScale.mockReturnValueOnce(2);
     const scaled = new WheelEvent('wheel', {
@@ -347,9 +337,6 @@ describe('MermaidView controls', () => {
       cancelable: true,
     });
     scroller.dispatchEvent(wheel);
-    // The wheel binding must fire on the CURRENT panzoom exactly once,
-    // never on the destroyed prior instance, no matter how many renders
-    // have fired between mount and now.
     expect(current.pan.mock.calls.length).toBe(1);
     expect(first.pan.mock.calls.length).toBe(0);
   });
@@ -450,8 +437,6 @@ describe('MermaidLightbox', () => {
     expect(
       within(dialog).getByRole('toolbar', { name: 'Mermaid diagram controls' }),
     ).not.toBeNull();
-    // No onExpand reaches the inner view, so nesting is structurally
-    // impossible rather than boolean-gated.
     expect(within(dialog).queryByRole('button', { name: 'Expand diagram' })).toBeNull();
     expect(within(dialog).getByText('View only')).not.toBeNull();
   });
@@ -489,7 +474,6 @@ describe('MermaidLightbox', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
 
-    // The host answers by flipping `open`; the canvas must not leak.
     rerender(
       <TooltipProvider>
         <MermaidLightbox chart="graph TD; A-->B;" open={false} onOpenChange={onOpenChange} />
@@ -504,9 +488,6 @@ describe('MermaidLightbox', () => {
 
 describe('MermaidView editBinding (standalone .mmd path)', () => {
   test('renders an editable diagram with no JSX host when an editBinding is supplied', async () => {
-    // The standalone `.mmd` doc path passes an `editBinding` and mounts OUTSIDE
-    // any JsxComponentHost. The editable effect (canEdit=true) must run without a
-    // host and without throwing; the diagram still renders its toolbar.
     let committed: string | null = null;
     render(
       <TooltipProvider>
@@ -523,7 +504,6 @@ describe('MermaidView editBinding (standalone .mmd path)', () => {
     );
     await waitForPanzoomInstance();
     expect(screen.getByRole('toolbar')).toBeDefined();
-    // No label interaction happened, so the binding was not invoked.
     expect(committed).toBeNull();
   });
 });

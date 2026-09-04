@@ -1,32 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * "Connecting — waiting for collab server" banner.
- *
- * Three modes (see `computeBannerMode`):
- *   (1) **Hidden** — either `collabUrl` resolved, or we're still inside the
- *       grace window on a fresh mount. The grace window prevents a banner
- *       flash on healthy page loads: `/api/config` resolves in ~50ms under
- *       both `ok ui` and `bun run dev` — showing "Connecting…" for 50ms is
- *       pure noise.
- *   (2) **Retrying** — `useCollabUrl()` has not yet resolved after the grace
- *       period; the hook is polling `/api/config` with bounded exponential
- *       backoff. Amber banner.
- *   (3) **Terminal** — the hook gave up after ~30s of continuous failure.
- *       Red banner with (a) the underlying error classification and
- *       (b) a manual "Retry" button that resets the backoff window. Shown
- *       immediately regardless of grace — the user has already waited 30s.
- *
- * Terminal is browser-only: every window that mounts this banner is handed a
- * populated `collabUrl` on the desktop bridge, so `useCollabUrl` short-circuits
- * and never polls, let alone gives up. Server-restart recovery therefore has no
- * reachable home here — it lives on the surfaces the desktop actually renders
- * when a server dies (the document error boundary and the sidebar listing).
- *
- * A silent-forever banner is itself a form of ceremony — users hit-refresh
- * or kill the tab. The terminal state surfaces an actionable diagnostic
- * (pointer at `ok status` / `last-spawn-error.log`) so the user can fix
- * the misconfig rather than guess at it.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { t } from '@lingui/core/macro';
@@ -35,24 +7,10 @@ import { useEffect, useState } from 'react';
 import { OkBlob } from '@/components/OkBlob';
 import { useDocumentContext, useOpenBlobRunner } from '@/editor/DocumentContext';
 
-/**
- * Grace-period length before the amber retrying banner surfaces. 500 ms
- * covers the normal fetch-resolution window (same-origin localhost typically
- * resolves in <100 ms) and matches the common Suspense-fallback debounce
- * guidance — long enough to hide fast resolutions, short enough that a
- * genuinely slow boot is flagged before the user loses attention. Terminal
- * state ignores this; retry-after-terminal re-enters the grace window so a
- * fast successful retry stays silent.
- */
 const GRACE_PERIOD_MS = 500;
 
 type BannerMode = 'hidden' | 'retrying' | 'terminal';
 
-/**
- * Pure decision: what should the banner show right now? Exported for unit
- * tests so the branching logic is verifiable without a DOM — the React
- * wrapper below adds state + effect for the grace timer only.
- */
 export function computeBannerMode(
   collabUrl: string | null,
   collabTerminal: boolean,
@@ -63,24 +21,11 @@ export function computeBannerMode(
   return graceElapsed ? 'retrying' : 'hidden';
 }
 
-/**
- * Collab-resolution error shape carried on the document context. `null-collab`
- * means `ok ui` answered `/api/config` but `server.lock` had no port — i.e. a
- * UI with no collab server, which (once terminal) is the worktree-no-brain case.
- */
 type CollabError =
   | { kind: 'error'; code: number | 'network' | 'invalid-body' }
   | { kind: 'null-collab' }
   | null;
 
-/**
- * Is the terminal failure specifically "this folder has a UI but no collab
- * server" (the worktree case)? `null-collab` is exactly that signal — the
- * config endpoint responded, the lock has no port. A transient boot-race `null-collab` clears
- * well inside the ~30s grace+retry window, so reaching terminal with it means
- * the folder genuinely has no collab server. Pure + exported so the message
- * branch is unit-testable without a DOM (matches `computeBannerMode`).
- */
 export function isNoCollabServerError(err: CollabError): boolean {
   return err?.kind === 'null-collab';
 }
@@ -95,17 +40,11 @@ export function describeError(err: CollabError): string {
 }
 
 export function ConnectingBanner() {
-  // Thirty seconds of a server that is not coming back is the one moment in
-  // this app where waiting IS the whole remedy. Opening the game needs no
-  // server: the tab is client-side workspace state.
   const openBlobRunner = useOpenBlobRunner();
   const { collabUrl, collabTerminal, collabLastError, retryCollab } = useDocumentContext();
   const [graceElapsed, setGraceElapsed] = useState(false);
 
   useEffect(() => {
-    // Resolved or terminal → no grace timer needed. Reset the flag so a
-    // future retry-after-terminal re-enters the grace window and hides the
-    // banner again if the retry resolves quickly.
     if (collabUrl !== null || collabTerminal) {
       setGraceElapsed(false);
       return;
@@ -119,15 +58,6 @@ export function ConnectingBanner() {
   if (mode === 'hidden') return null;
 
   if (mode === 'terminal') {
-    // Distinguish "no collab server for this folder" (the worktree case —
-    // `ok ui` is up and answering `/api/config`, but `server.lock` never
-    // appeared, so `collabUrl` stays null) from a genuine transport failure.
-    // `null-collab` is precisely that signal: the UI responded, the lock has
-    // no port. A transient boot-race `null-collab` resolves well inside the
-    // ~30s grace+retry window, so reaching terminal with it means the folder
-    // genuinely has no collab server — point the user at the explicit fix
-    // (`ok start` here, or reopen the project) instead of leaving them on an
-    // indefinite "Connecting".
     const isNoCollabServer = isNoCollabServerError(collabLastError);
     const errorDetail = describeError(collabLastError);
     return (
@@ -158,10 +88,7 @@ export function ConnectingBanner() {
         >
           <Trans>Retry</Trans>
         </button>
-        {/* Deliberate exception to the hidden-game gate: waking the mascot
-            elsewhere costs a rage-click streak, but this banner only appears
-            while the user is stuck waiting on the server, which is the wait
-            the game was built for. One click here is the point. */}
+        {}
         {openBlobRunner ? (
           <button
             type="button"

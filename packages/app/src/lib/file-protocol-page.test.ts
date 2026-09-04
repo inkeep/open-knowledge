@@ -15,8 +15,6 @@ describe('isFileProtocolPage', () => {
   });
 
   test('false when no window/location exists (unit tier has no DOM)', () => {
-    // Default parameter path: the unit-tier substrate runs without a DOM
-    // `window`, so the default resolves to undefined.
     expect(isFileProtocolPage()).toBe(false);
   });
 });

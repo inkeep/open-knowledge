@@ -1,15 +1,3 @@
-/**
- * Drift, coverage, and WCAG-contrast guards for the preview-iframe theme
- * tokens.
- *
- * `preview-theme-tokens.ts` is GENERATED from `packages/app/src/globals.css`
- * by `scripts/generate-preview-theme-tokens.ts`. These tests re-resolve from
- * the CSS at test time so the committed constant cannot silently drift, assert
- * the constant covers exactly the injected token subset, and gate the
- * categorical `--chart-*` palette against WCAG-AA non-text contrast in both
- * themes.
- */
-
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -24,13 +12,8 @@ import { PREVIEW_THEME_TOKENS } from './preview-theme-tokens.ts';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GLOBALS_CSS = resolve(HERE, '../../../app/src/globals.css');
 
-/**
- * WCAG 2.x 1.4.11 non-text contrast (3:1) — the relevant bar for chart series
- * colors, which are graphical objects rather than text.
- */
 const MIN_NONTEXT_CONTRAST = 3;
 
-/** Minimum pairwise hue separation for the five chart series to read apart. */
 const MIN_HUE_SEPARATION_DEG = 25;
 
 function tokenByName(name: string): { name: string; light: string; dark: string } {
@@ -39,14 +22,12 @@ function tokenByName(name: string): { name: string; light: string; dark: string 
   return t;
 }
 
-/** Hue channel of an `oklch(L C H)` literal. */
 function oklchHue(value: string): number {
   const m = value.match(/^oklch\(\s*[\d.]+\s+[\d.]+\s+([\d.]+)/);
   if (!m) throw new Error(`preview-theme-tokens.test: not an oklch literal: ${value}`);
   return Number(m[1]);
 }
 
-/** Smallest circular distance between two hue angles (0–180°). */
 function hueDistance(a: number, b: number): number {
   const d = Math.abs(a - b) % 360;
   return d > 180 ? 360 - d : d;
@@ -60,10 +41,6 @@ describe('preview-theme-tokens — drift check', () => {
   const resolved = resolvePreviewThemeTokensFromCss(GLOBALS_CSS);
 
   test('PREVIEW_THEME_TOKENS values match the resolved globals.css tokens', () => {
-    // Value-level drift guard (mirrors chrome.test.ts). A byte-exact compare
-    // of the committed file is deliberately avoided — it is fragile under the
-    // public-mirror transform, which can re-touch file bytes without changing
-    // the resolved token data.
     expect(PREVIEW_THEME_TOKENS).toEqual(resolved);
   });
 
@@ -112,8 +89,6 @@ describe('chart palette — WCAG-AA non-text contrast', () => {
 });
 
 describe('chart palette — perceptually distinct hues', () => {
-  // Light and dark `--chart-*` are independent declarations in globals.css —
-  // assert pairwise distinctness for both themes, not just light.
   function expectPairwiseDistinct(hues: number[]): void {
     for (let i = 0; i < hues.length; i++) {
       for (let j = i + 1; j < hues.length; j++) {

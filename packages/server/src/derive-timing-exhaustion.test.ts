@@ -1,22 +1,3 @@
-/**
- * Derive-timing defer exhaustion — the loud force-resolve at the drain-count
- * bound, on the REAL `setupServerObservers` drain via the shared bridge-race rig.
- *
- * The defer guard keeps an un-propagated WYSIWYG keystroke alive by deferring
- * the re-derive that would stomp it. Under sustained typing the freshness window
- * never quiets, so Observer A never gets a drain to propagate the keystroke and
- * the defer would repeat forever. This suite pins the bound: after
- * `MAX_DERIVE_TIMING_DEFERS` deferrals the guard stops deferring and
- * force-resolves LOUDLY — it checkpoints the pre-resolve fragment (which still
- * holds the keystroke) and emits a distinguishable ring event carrying that
- * checkpoint's sha, then lets the re-derive proceed. Never a silent clamp: the
- * content leaves the live fragment but stays restorable through the timeline.
- *
- * The re-derive cadence interleaves defers with witness-settling early-exits, so
- * a fixed drain count would be brittle; the suites drive drains until the guard
- * force-resolves, under a ceiling comfortably above the ~15 drains a fresh doc
- * needs — a real regression (force-resolve unreachable) fails fast at the cap.
- */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,17 +16,8 @@ const PENDING_LINE = 'Step one body.';
 const STALE_LINE = 'Step one bod';
 const CONTENT_ROOT = 'content/docs';
 
-// Ceiling on drains driven while waiting for the force-resolve. The measured
-// worst case on a fresh doc is ~15 drains; this leaves headroom for the
-// defer/early-exit cadence to vary while still failing fast if force-resolve
-// ever becomes unreachable.
 const MAX_DRAINS = 30;
 
-/**
- * Leave the fragment holding the pending `PENDING_LINE` while Y.Text still holds
- * `STALE_LINE`, with the settlement witnesses stale — the un-propagated-keystroke
- * shape whose re-derive the guard defers. Mirrors the H2 stomp suite's staging.
- */
 function stageUnpropagatedKeystroke(rig: BridgeRaceRig): void {
   rig.editFragment(GEN1);
   rig.settle(1);
@@ -55,7 +27,6 @@ function stageUnpropagatedKeystroke(rig: BridgeRaceRig): void {
   });
 }
 
-/** A source-editor / non-paired Y.Text write, freshness held hot (sustained typing). */
 function sourceWrite(rig: BridgeRaceRig, text: string): void {
   rig.externalYtextEdit('source-write', (yt) => yt.insert(yt.length, `\n${text}\n`), {
     advanceFreshness: false,
@@ -89,21 +60,15 @@ describe('derive-timing defer exhaustion (H2 exhaustion arm)', () => {
 
       let forced = false;
       for (let i = 0; i < MAX_DRAINS && !forced; i++) {
-        // The keystroke survives every drain up to (and including) the one that
-        // force-resolves — it is only ever dropped by the loud path, never by a
-        // silent defer that lost it.
         expect(rig.serializeFragment()).toContain(PENDING_LINE);
         sourceWrite(rig, `trailing-${i}`);
         forced = getMetrics().deriveTimingDeferForceResolved > before;
       }
 
       expect(forced).toBe(true);
-      // Force-resolve rebuilt the fragment from Y.Text, so the pending content
-      // left the live fragment (the checkpoint below keeps it restorable).
       expect(rig.serializeFragment()).not.toContain(PENDING_LINE);
       expect(getMetrics().deriveTimingDeferForceResolved).toBe(before + 1);
 
-      // Loud, not a quiet clamp: a distinguishable, content-free ring event fired.
       const evt = recorded.find(
         (e) => e.event === 'checkpoint-write' && e.site === 'derive-timing-exhaustion',
       );
@@ -121,8 +86,6 @@ describe('derive-timing defer exhaustion (H2 exhaustion arm)', () => {
     const before = getMetrics().deriveTimingDeferForceResolved;
     try {
       stageUnpropagatedKeystroke(rig);
-      // One source write starts the deferring state; after that, no further
-      // content — only ambient settlement drains, with the clock never advanced.
       sourceWrite(rig, 'kick');
       expect(rig.serializeFragment()).toContain(PENDING_LINE);
 
@@ -132,8 +95,6 @@ describe('derive-timing defer exhaustion (H2 exhaustion arm)', () => {
         forced = getMetrics().deriveTimingDeferForceResolved > before;
       }
 
-      // The bound was reached by drain count alone — the clock stayed frozen, so
-      // a wall-clock bound could never have tripped.
       expect(forced).toBe(true);
       expect(rig.serializeFragment()).not.toContain(PENDING_LINE);
       expect(getMetrics().deriveTimingDeferForceResolved).toBe(before + 1);
@@ -150,8 +111,6 @@ describe('derive-timing defer exhaustion (H2 exhaustion arm)', () => {
     const before = getMetrics().deriveTimingDeferForceResolved;
     try {
       stageUnpropagatedKeystroke(rig);
-      // With no defer, the first drain stomps the keystroke outright — there is
-      // nothing to accumulate toward the bound.
       for (let i = 0; i < MAX_DRAINS; i++) sourceWrite(rig, `x-${i}`);
       expect(rig.serializeFragment()).not.toContain(PENDING_LINE);
       expect(getMetrics().deriveTimingDeferForceResolved).toBe(before);
@@ -212,9 +171,6 @@ describe('derive-timing defer exhaustion — checkpoint floor', () => {
         if (getMetrics().deriveTimingDeferForceResolved > before) break;
       }
 
-      // The checkpoint is written fire-and-forget (queueMicrotask + real git);
-      // the ring event fires from inside its `then`, so waiting for the sha-
-      // bearing event is waiting for the checkpoint to have landed.
       await vi.waitFor(() =>
         expect(
           recorded.some(
@@ -229,14 +185,11 @@ describe('derive-timing defer exhaustion — checkpoint floor', () => {
       const sha = evt?.checkpointSha;
       expect(sha).toMatch(/^[0-9a-f]{40}$/);
 
-      // The sha resolves against the checkpoint store as a defer-exhaustion-loss row.
       const hist = await getDocumentHistory(shadow, { docName: 'exhaustion' }, CONTENT_ROOT);
       const row = hist.entries.find((e) => e.sha === sha);
       expect(row?.type).toBe('checkpoint');
       expect(row?.checkpoint?.kind).toBe('defer-exhaustion-loss');
 
-      // The checkpoint holds the pre-resolve FRAGMENT serialization — the payload
-      // that still carries the un-propagated keystroke a Y.Text payload would miss.
       const content = (
         await shadowGit(shadow).raw('show', `${sha}:${CONTENT_ROOT}/exhaustion`)
       ).toString();

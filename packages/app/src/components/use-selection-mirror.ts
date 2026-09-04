@@ -33,18 +33,6 @@ export function useSelectionMirror(
   activeTreePath: string | null,
   activeAncestorTreePathsSignature: string,
   suppressSelectionRef: RefObject<boolean>,
-  // Signature of the tree's path set. Threaded in as a re-run trigger so the
-  // mirror re-asserts the selection AFTER `model.resetPaths()` repopulates the
-  // tree. On a direct-URL / hash-nav first paint the active row's docName is
-  // known from the hash before `/api/documents` lands; the first mirror run
-  // then finds an empty tree (`model.getItem` returns null) and selects
-  // nothing. When the docs arrive, `resetPaths` rebuilds the tree but neither
-  // `activeTreePath` nor `activeAncestorTreePathsSignature` changes, so without
-  // this trigger the mirror never re-runs and the row stays unselected (the
-  // reveal-active-row effect already lists `treePathsSignature` for the same
-  // reason). The reset effect is declared before this hook's call site, so on a
-  // commit where the signature changes `resetPaths` runs first and the row is
-  // present when the mirror re-selects it.
   treePathsSignature: string,
 ): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: `treePathsSignature` is a re-run trigger, not a value read in the closure — it forces the mirror to re-assert selection after `model.resetPaths` rebuilds the tree. Sibling pattern: the reset + reveal-active-row effects in FileTree.tsx.
@@ -71,24 +59,10 @@ export function useSelectionMirror(
     }
     const item = model.getItem(activeTreePath);
     if (!item) {
-      // The active doc has no visible row (filtered out, or not fetched yet).
-      // Keep the tree quiet: clear any stale selection left on the previously
-      // active row instead of letting its highlight linger next to an editor
-      // showing a different doc. Focus cannot be cleared the same way — Pierre
-      // has no unfocus API — so the stale focused path is neutralized by the
-      // active-row guard in `revealActiveRow` rather than here.
       deselectAllTreeItems(model);
       releaseSelectionSuppression();
       return;
     }
-    // The mirror enforces "the active row must be selected," NOT "the active
-    // row must be the SOLE selected row." Cmd+A and other multi-select gestures
-    // populate Pierre's selection directly; a delayed React commit of
-    // `activeTreePath` (from the click that preceded the multi-select) can
-    // re-fire this effect after the multi-select burst, and collapsing back
-    // to singleton would stomp the user's deliberate multi-selection. Only
-    // re-assert singleton when the active row is absent from the current
-    // selection (true navigation transition).
     if (model.getSelectedPaths().length > 1 && item.isSelected()) {
       item.focus();
       releaseSelectionSuppression();
@@ -97,9 +71,6 @@ export function useSelectionMirror(
     selectOnlyTreeItem(model, item);
     item.focus();
     releaseSelectionSuppression();
-    // `treePathsSignature` is a re-run trigger only — the effect body reads the
-    // live `model`, not the signature value — so re-selecting after a tree
-    // reset does not require reading it inside the closure.
   }, [
     activeAncestorTreePathsSignature,
     activeTreePath,

@@ -1,37 +1,3 @@
-/**
- * `preview_url` MCP tool — resolve the browser-reachable preview URL.
- *
- * Filename keeps the `get-` prefix even though the tool dropped it: the natural
- * target `preview-url.ts` is already taken by the shared URL-building utility
- * this module imports from. The file/tool-name mismatch is deliberate.
- *
- * Per-response payloads carry a route-only `previewUrl` (`/#/{doc}`) — no
- * scheme, host, or port. This tool is the one place an agent reaches
- * deliberately to get the browser base + a full, openable URL.
- *
- * Use it for hosts that open the URL themselves: an agent with an in-app
- * browser navigates that browser to the returned `url`; a stdio host with no
- * browser tool can `open <url>` as a last resort. Claude Code Desktop opens
- * its in-app Browser pane with `preview_start({url})`, then `navigate({url})`
- * to move; the Claude Code CLI uses `ok open <doc>` to open in the OK Desktop
- * app.
- *
- * Opening a preview counts as demand for a backend: when the registration
- * threads `serverUrl` (the global stdio MCP does), the handler runs the same
- * backend-ensure the server-backed tools use — a live `server.lock` resolves
- * immediately; otherwise the resolver auto-spawns `ok start` (which serves
- * the UI itself) under the `OK_MCP_AUTOSTART` gate and spawn timeout.
- * Registrations without server authority (no `serverUrl` in deps) answer
- * from disk alone, as before.
- *
- * Read-only EXCEPT for the demand-spawn above (`readOnlyHint: false`).
- * Idempotent: repeated calls converge on the same running backend.
- *
- * Input: `{ document?, folder?, cwd? }` — `document` XOR `folder`
- *        selects the deep-link route (else the UI root).
- * Output: `structuredContent: { url, baseUrl, running, autoOpen }` + a text body.
- */
-
 import { isAbsolute } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES, SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
@@ -86,55 +52,14 @@ const DESCRIPTION = [
 interface GetPreviewUrlDeps {
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
-  /**
-   * True when the calling agent is hosted by an OpenKnowledge surface — the
-   * desktop app's built-in terminal (`OK_DESKTOP_TERMINAL=1`) or its in-app
-   * agent panel (`OK_HOSTED_AGENT=1`). When set, the doc/folder/skill
-   * responses lead with a steer to run `ok open <target>` (which focuses the
-   * target up for the user) rather than navigating the
-   * returned URL — an agent living inside the app has no business handing its
-   * user a localhost link to the app they are looking at. False for external
-   * clients (the shared collab server, an external Cursor/Codex with its own
-   * browser pane, plain CLI) — but false is not proof of external: a hosted
-   * agent whose harness spawns OK's server from its own editor config arrives
-   * unmarked when that harness strips the spawn env, and is deliberately
-   * treated as external here (a plain URL is useless advice inside the app;
-   * an `ok open` steer is wrong advice outside it).
-   */
   isHostedAgent?: boolean;
-  /**
-   * Hocuspocus URL (or per-call resolver). When present, a preview request
-   * is treated as demand for a backend: the resolver's auto-spawn path
-   * brings up `ok start` before the UI advertisement is read. Absent in
-   * registration contexts without server authority — the tool then answers
-   * from disk alone.
-   */
   serverUrl?: ServerUrlOrResolver;
-  /** Cold-spawn UI-bind wait overrides — tests only. */
   uiBindWait?: { timeoutMs?: number; pollIntervalMs?: number };
-  /**
-   * Off-cwd resolver deps for the `file` branch (find the running session that
-   * serves an out-of-project file). Injected in tests; defaults to the
-   * production `createOffCwdResolverDeps()` surface.
-   */
   offCwdResolverDeps?: OffCwdResolverDeps;
-  /**
-   * Boot-on-demand for the `file` branch: when no session yet serves the file,
-   * start one (a detached headless `ok <file>`) and resolve true once it
-   * registers. Provided only by registrations with spawn authority (the CLI
-   * MCP); absent → the file branch returns the `ok open` hint instead of
-   * booting.
-   */
   ensureSingleFileSession?: (absFile: string) => Promise<boolean>;
-  /** Resolve the user-scoped autoOpen preference for the `file` branch (tests inject). */
   resolveUserAutoOpen?: () => boolean;
 }
 
-/**
- * How long to wait for a freshly spawned backend's UI advertisement to bind
- * before reporting no-UI — the window between `server.lock` appearing and the
- * listener binding its real port.
- */
 const UI_BIND_WAIT_TIMEOUT_MS = 3000;
 const UI_BIND_WAIT_POLL_MS = 100;
 
@@ -205,36 +130,13 @@ const OutputSchema = outputSchemaWithText({
     ),
 });
 
-/**
- * Recovery hints for the three distinguishable no-UI states.
- *
- * `NO_UI_SERVER_RUNNING_MESSAGE` is the TRANSIENT case: a live server whose
- * UI advertisement hasn't landed yet (lock still binding, or a legacy
- * sibling-topology holder from an older binary). "Retry" is the right first
- * move; a second bare `ok start` would just reuse the running server without
- * adding anything, so the terminal remedy is OK Electron.
- *
- * `NO_SERVER_MESSAGE` advises `ok start`, which brings up the server serving
- * the UI on one port.
- */
 const NO_UI_SERVER_RUNNING_MESSAGE =
   'The OK server is running but no UI has bound for this project yet. Retry in a few seconds, or open the project in OK Electron.';
-// Permanent-state sibling of the message above: the live server advertises NO
-// `ui` capability (started `--only server`, or a degraded API-only boot), so a
-// UI will never bind on its own — "retry" would loop forever. The remedy is
-// restarting with plain `ok start` (serves the editor) or OK Electron; bare
-// `ok start` against the live holder would just reuse it, hence "restart".
 const NO_UI_NONE_MOUNTED_MESSAGE =
   'The OK server is running but no preview UI is mounted (e.g. it was started with `--only server`). Restart it with plain `ok start` to serve the editor, or open the project in OK Electron.';
 const NO_SERVER_MESSAGE =
   'No OpenKnowledge server is running for this project. Start it with `ok start` (also starts the preview UI), or open the project in OK Electron.';
 const AUTOSTART_DISABLED_NOTE = ' Auto-start is disabled (OK_MCP_AUTOSTART=0).';
-/**
- * Resolve `appearance.preview.autoOpen` for the out-of-project `file` branch.
- * A loose file has no project config, so read the USER-scoped config
- * (`~/.ok/config.yml`); `readConfigSafely` applies schema defaults (autoOpen
- * defaults to `true`) and never throws, so a missing file yields `true`.
- */
 function readUserAutoOpen(): boolean {
   try {
     const cfg = readConfigSafely({
@@ -244,9 +146,6 @@ function readUserAutoOpen(): boolean {
     });
     return cfg.value.appearance?.preview?.autoOpen ?? true;
   } catch (err) {
-    // readConfigSafely is documented not to throw; an exception here is
-    // unexpected. Log it (like isServerLive) rather than silently defaulting,
-    // so a genuinely broken user config is observable. Default stays `true`.
     process.stderr.write(
       `[preview-url] readUserAutoOpen failed: ${err instanceof Error ? err.message : String(err)}\n`,
     );
@@ -254,21 +153,10 @@ function readUserAutoOpen(): boolean {
   }
 }
 
-/** No running session serves the requested out-of-project `file`. */
 function noSingleFileSessionMessage(file: string): string {
   return `No Open Knowledge session is serving ${file} yet. On a host with a terminal, \`ok open ${file}\` starts one; otherwise open ${file} in the OK Desktop app. Then retry.`;
 }
 
-/**
- * True only when a live lock EXPLICITLY advertises capabilities that omit
- * `ui` — the `--only server` (and degraded API-only) state, where no UI will
- * ever bind on its own. A ui-capable lock whose listener is still binding, and
- * a pre-v2 lock with no `capabilities` field at all, both return false (via the
- * shared `lockAdvertisesUi` predicate) so they keep the transient "retry" hint
- * (an extra poll is harmless; wrongly telling a user no UI will mount seconds
- * before it binds is not). Mirrors `isServerLive`'s fail-observable error
- * handling.
- */
 function serverExplicitlyLacksUi(lockDir: string): boolean {
   try {
     const lock = readServerLock(lockDir);
@@ -282,15 +170,11 @@ function serverExplicitlyLacksUi(lockDir: string): boolean {
   }
 }
 
-/** Live server check — same lock+liveness criteria the MCP shim uses. */
 function isServerLive(lockDir: string): boolean {
   try {
     const lock = readServerLock(lockDir);
     return lock !== null && lock.port > 0 && isProcessAlive(lock.pid);
   } catch (err) {
-    // A permission/fs error here masquerades as "server not running" and
-    // selects the wrong recovery hint — log it the way resolveUiInfo logs
-    // its lock-read failures so the misdirection is observable.
     process.stderr.write(
       `[preview-url] readServerLock failed at ${lockDir} while checking server liveness: ${err instanceof Error ? err.message : String(err)}\n`,
     );
@@ -298,13 +182,6 @@ function isServerLive(lockDir: string): boolean {
   }
 }
 
-/**
- * Shell-quote a path argument for the `okOpenCommand` steer so an agent can run
- * it verbatim. Clean slug-ish paths (the common `specs/foo/SPEC` case) pass
- * through unquoted; a path with a space or other shell-significant character is
- * single-quoted with embedded single-quotes escaped. Skill names are already
- * constrained to `[a-z0-9-]` (SKILL_NAME_REGEX), so they never route here.
- */
 function shellQuoteArg(arg: string): string {
   if (/^[A-Za-z0-9._/@%+-]+$/.test(arg)) return arg;
   return `'${arg.replace(/'/g, "'\\''")}'`;
@@ -318,7 +195,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       inputSchema: InputSchema,
       outputSchema: OutputSchema,
       annotations: {
-        // NOT read-only: the demand-ensure path can spawn `ok start`.
         readOnlyHint: false,
         idempotentHint: true,
       },
@@ -330,9 +206,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       file?: string;
       cwd?: string;
     }) => {
-      // `document` / `folder` / `skill` / `file` are documented mutually
-      // exclusive — enforce it rather than silently dropping one, so a "land on
-      // this target" intent never resolves to the wrong route without a signal.
       if ([args.document, args.folder, args.skill, args.file].filter((t) => t != null).length > 1) {
         return {
           isError: true,
@@ -345,16 +218,7 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
         };
       }
 
-      // `file` is the out-of-project branch. It opens a loose markdown file that
-      // may live outside any project, so it BYPASSES the project-config gate
-      // below (which requires a project at cwd). Resolve the absolute path to a
-      // running single-file / worktree session via off-cwd discovery; `cwd` is
-      // ignored here. autoOpen has no project config to read for a loose file,
-      // so it defaults to true (the user-scoped source is a later refinement).
       if (args.file) {
-        // `file` must be absolute. A relative path has no project to anchor it
-        // and would silently resolve against the MCP process cwd — reject it
-        // with a clear message rather than opening the wrong file.
         if (!isAbsolute(args.file)) {
           return {
             isError: true,
@@ -369,13 +233,8 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
         const fileAutoOpen = (deps.resolveUserAutoOpen ?? readUserAutoOpen)();
         const resolverDeps = deps.offCwdResolverDeps ?? createOffCwdResolverDeps();
         let hit = await resolveOffCwdTarget(args.file, resolverDeps);
-        // Boot-on-demand: no session serves this file yet → start one (when this
-        // registration has spawn authority) and re-resolve once it registers.
         if (hit === null && deps.ensureSingleFileSession) {
           const booted = await deps.ensureSingleFileSession(args.file).catch((err) => {
-            // ensureSingleFileSession is built to resolve false (not throw) on a
-            // failed wait; an actual rejection is unexpected, so log it rather
-            // than letting it read as an ordinary "no session" outcome.
             process.stderr.write(
               `[preview-url] ensureSingleFileSession failed for ${args.file}: ${err instanceof Error ? err.message : String(err)}\n`,
             );
@@ -407,13 +266,10 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
           content: [{ type: 'text' as const, text: `Error: ${context.error}` }],
         };
       }
-      // Lock anchor is the project root (cwd), not contentDir — see server-factory.ts.
       const lockDir = resolveLockDir(context.cwd);
       const ctx: PreviewUrlContext = { lockDir };
       const autoOpen = context.config.appearance.preview.autoOpen;
 
-      // Route fragment for the requested target (at most one of doc/folder/skill
-      // is set — the mutual-exclusion guard above rejects passing more than one).
       const routeFragment = args.document
         ? `#/${encodeDocName(args.document)}`
         : args.folder
@@ -422,13 +278,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
             ? `#/${encodeSkillRoute(args.skill.scope ?? 'project', args.skill.name)}`
             : null;
 
-      // Hosted-agent steer: this MCP process inherited a marker from an
-      // OpenKnowledge surface (the desktop terminal's pty, or the agent spawn
-      // for the in-app panel), so the agent is sitting in the app — it should
-      // focus the page with `ok open`, NOT navigate this URL or open a
-      // browser. Lead the response with the exact command. Only for an
-      // in-project doc/folder/skill target (the `file` branch returns earlier;
-      // the root has nothing to `ok open`).
       const okOpenCommand = args.document
         ? `ok open ${shellQuoteArg(args.document)}`
         : args.folder
@@ -441,14 +290,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
           ? `You're running inside OpenKnowledge — run \`${okOpenCommand}\` to bring this up for the user. Don't navigate the URL below, open a browser, or paste the URL into your reply; it's for reference only.\n\n`
           : '';
 
-      // Demand-ensure: when this registration has server authority, run the
-      // same backend-ensure the server-backed tools use. A live `server.lock`
-      // resolves immediately (lock read, no HTTP); otherwise the resolver
-      // auto-spawns `ok start` — which serves the UI itself — under the
-      // `OK_MCP_AUTOSTART` gate and spawn timeout. Runs unconditionally (not
-      // just when the UI advertisement is missing) so an orphaned legacy UI
-      // process whose server idle-shut-down gets its backend back; the orphan
-      // re-attaches via its own `server.lock` polling.
       const serverWasLive = isServerLive(lockDir);
       let autoStartDisabled = false;
       if (deps.serverUrl !== undefined) {
@@ -456,13 +297,8 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
           await resolveServerUrl(deps.serverUrl, context.cwd);
         } catch (err) {
           if (err instanceof AutoStartDisabledError) {
-            // Operator opt-out is a chosen configuration, not a failure —
-            // fall through to the normal not-running payload and name the knob.
             autoStartDisabled = true;
           } else {
-            // Spawn failure/timeout is actionable (the spawn-error log rides
-            // the message) — surface it as a tool error, matching how the
-            // server-backed tools report the same resolver failure.
             return {
               isError: true,
               content: [
@@ -478,10 +314,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
 
       let { baseUrl } = resolveUiInfo(ctx);
       if (baseUrl === null && !serverWasLive && isServerLive(lockDir)) {
-        // The backend came up during this call, so its UI advertisement is
-        // still binding — the ui-capable origin lags `server.lock`'s
-        // appearance by up to a few seconds. Wait it out instead of
-        // reporting a no-UI state that is about to stop being true.
         baseUrl = await awaitUiBaseUrl(ctx, {
           timeoutMs: deps.uiBindWait?.timeoutMs ?? UI_BIND_WAIT_TIMEOUT_MS,
           pollIntervalMs: deps.uiBindWait?.pollIntervalMs ?? UI_BIND_WAIT_POLL_MS,
@@ -489,9 +321,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
       }
 
       if (baseUrl === null) {
-        // Three-way: no server at all → NO_SERVER; a live server that will
-        // never mount a UI (`--only server`) → the permanent message; a live
-        // ui-capable server whose UI hasn't bound yet → the transient "retry".
         const hint = !isServerLive(lockDir)
           ? `${NO_SERVER_MESSAGE}${autoStartDisabled ? AUTOSTART_DISABLED_NOTE : ''}`
           : serverExplicitlyLacksUi(lockDir)
@@ -506,7 +335,6 @@ export function register(server: ServerInstance, deps: GetPreviewUrlDeps): void 
         });
       }
 
-      // baseUrl is non-null here (the lock is bound) — compose base + route.
       const url = routeFragment ? `${baseUrl}/${routeFragment}` : baseUrl;
 
       return textPlusStructured(`${hostedAgentSteer}Preview URL: ${url}`, {

@@ -97,11 +97,11 @@ describe('removeOwnLaunchEntry', () => {
   test('not-present when there is no file, no configurations, or no OK entry', () => {
     const dir = project();
     try {
-      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present'); // no file
+      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present');
       writeLaunch(dir, { configurations: [{ name: 'Only Mine', type: 'node' }] });
-      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present'); // no OK entry
+      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present');
       writeLaunch(dir, { version: '0.2.0' });
-      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present'); // no configurations array
+      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -129,7 +129,7 @@ describe('removeOwnLaunchEntry', () => {
       writeFileSync(p, `\uFEFF${body}`);
       expect(removeOwnLaunchEntry(dir).kind).toBe('removed');
       const after = readFileSync(p, 'utf-8');
-      expect(after.charCodeAt(0)).toBe(0xfeff); // BOM preserved
+      expect(after.charCodeAt(0)).toBe(0xfeff);
       const parsed = JSON.parse(after.slice(1));
       expect(parsed.configurations).toHaveLength(1);
       expect(parsed.configurations[0].name).toBe('My App');

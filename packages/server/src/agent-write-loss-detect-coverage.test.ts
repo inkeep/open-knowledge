@@ -1,24 +1,9 @@
-/**
- * Fail-closed coverage: every agent-write spine handler threads the paired-intake
- * loss detector.
- *
- * `applyAgentMarkdownWrite` is the shared spine for the agent content-write HTTP
- * handlers (write / write-md / write-batch / patch / lint-fix). Each call must
- * pass `agentWriteLossDetect(session)` so a `replace`/`patch` that rebuilds the
- * fragment over un-propagated WYSIWYG content is checkpointed + observed rather
- * than silently discarded. A new spine handler that forgets the detector is a
- * silent loss surface — this gate fails the build so it can't ship.
- */
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Node, Project, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// Every source file that hosts an `applyAgentMarkdownWrite` spine call: the HTTP
-// handlers live in `api-extension.ts`, the ACP fs-write handler in
-// `acp/thread-manager.ts`. Both must be scanned — a spine site in an unscanned
-// file is a silent loss surface the gate can't see.
 const SPINE_FILES = [join(here, 'api-extension.ts'), join(here, 'acp', 'thread-manager.ts')];
 
 function newProject(): Project {
@@ -30,7 +15,6 @@ function newProject(): Project {
   });
 }
 
-/** Callee's trailing name: `x.foo` → `foo`, `foo` → `foo`, else null. */
 function calleeName(call: Node): string | null {
   if (!Node.isCallExpression(call)) return null;
   const expr = call.getExpression();
@@ -39,7 +23,6 @@ function calleeName(call: Node): string | null {
   return null;
 }
 
-/** Whether any positional argument of the call is `agentWriteLossDetect(...)`. */
 function threadsLossDetect(call: Node): boolean {
   if (!Node.isCallExpression(call)) return false;
   return call
@@ -56,9 +39,6 @@ describe('agent-write loss-detect coverage', () => {
         .getDescendantsOfKind(SyntaxKind.CallExpression)
         .filter((c) => calleeName(c) === 'applyAgentMarkdownWrite'),
     );
-    // Guard-the-guard: five HTTP spine sites (write / write-md / write-batch /
-    // patch / lint-fix) plus the ACP fs-write site. A refactor that drops below
-    // this is suspect.
     expect(spineCalls.length).toBeGreaterThanOrEqual(6);
     const missing = spineCalls
       .filter((c) => !threadsLossDetect(c))

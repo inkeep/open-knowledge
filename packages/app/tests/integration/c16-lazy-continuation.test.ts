@@ -51,7 +51,6 @@ const LAZY_SOURCE =
   '- Also read at session start: operating rules,\ncontinues without indent on the next line.\n\nBody text stays.\n';
 const PRESERVED_SLICE = 'operating rules,\ncontinues without indent';
 
-/** Append a paragraph with the given text to a client's XmlFragment. */
 function appendParagraph(client: TestClient, text: string): void {
   const paragraph = new Y.XmlElement('paragraph');
   const ytext = new Y.XmlText();
@@ -60,9 +59,6 @@ function appendParagraph(client: TestClient, text: string): void {
   client.fragment.push([paragraph]);
 }
 
-/** Capture structured console.warn events for one docName while `fn` runs
- *  and the post-window settles. Filtering by docName keeps the capture safe
- *  under parallel test files sharing the process console. */
 async function captureDocEvents(
   docName: string,
   eventName: string,
@@ -95,16 +91,12 @@ describe('C16: lazy-continuation docs across clients', () => {
   test('WYSIWYG edit on a resting lazy-continuation doc converges on both peers without rederive churn', async () => {
     const clients = await createTestClients(server.port, { count: 2 });
     try {
-      // Client A authors the lazy continuation through the source surface
-      // (W2) — the organic path that leaves Y.Text beyond byte tolerance
-      // while the server derives the fragment from parse(ytext).
       clients[0].doc.transact(() => {
         clients[0].ytext.insert(0, LAZY_SOURCE);
       });
       await pollUntil(() => clients[1].ytext.toString().includes('Body text stays.'), 5000);
       await wait(500);
 
-      // Client B edits WYSIWYG-side while the doc rests beyond tolerance.
       const events = await captureDocEvents(
         clients[0].docName,
         'bridge-split-brain-rederive',
@@ -118,8 +110,6 @@ describe('C16: lazy-continuation docs across clients', () => {
       );
       expect(events).toHaveLength(0);
 
-      // Authored source form survives verbatim on every peer alongside the
-      // new content; peers agree byte-for-byte.
       const ytexts = clients.map((c) => c.ytext.toString());
       for (const t of ytexts) {
         expect(t).toContain(PRESERVED_SLICE);
@@ -149,10 +139,6 @@ describe('C16: lazy-continuation docs across clients', () => {
       );
       await wait(500);
 
-      // A paired-marked origin promises "both CRDTs mutated atomically";
-      // moving ONLY Y.Text under it is a genuine fragment↔Y.Text divergence
-      // (content the fragment lacks), which no parse-equivalence fallback
-      // may bridge — the watcher must keep throwing on the drain.
       const onesidedPairedOrigin = { context: { paired: true } };
       expect(() => {
         clients[0].doc.transact(() => {

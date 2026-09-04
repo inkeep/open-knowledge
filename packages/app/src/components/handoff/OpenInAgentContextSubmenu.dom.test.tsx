@@ -14,8 +14,6 @@ import type { HandoffDispatchInput } from './useHandoffDispatch';
 vi.doMock('@lingui/core/macro', () => ({
   ...actualLinguiMacro,
   t: renderLinguiTemplate,
-  // A transitively-imported module uses the `msg` macro; the whole-module mock
-  // must expose it too or the file fails to link.
   msg: renderLinguiTemplate,
 }));
 
@@ -52,8 +50,6 @@ const threadLaunchCalls: HandoffDispatchInput[] = [];
 const threadLaunchOpts: Array<
   { agent?: { source: string; id: string }; chooseAgent?: boolean } | undefined
 > = [];
-/** Ordered trace of menu-dismiss vs launch, in call order. See the
- *  "dismisses the host menu before launching" test for why order matters. */
 const callOrder: string[] = [];
 vi.doMock('./useHandoffDispatch', () => ({
   startAgentThreadForInput: (
@@ -153,9 +149,6 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     threadLaunchCalls.length = 0;
     threadLaunchOpts.length = 0;
     callOrder.length = 0;
-    // jsdom preload exposes no global localStorage — the store falls back to
-    // in-memory state there, so the reload alone resets it; clear the real
-    // storage when an environment provides one.
     if (typeof localStorage !== 'undefined') localStorage.clear();
     reloadRegisteredAgentsFromStorage();
     reloadEnabledAgentsFromStorage();
@@ -209,8 +202,6 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
         cursor: { installed: false, lastChecked: 1 },
       }),
     });
-    // Nothing detected and nothing registered → empty
-    // sections are hidden; the Configure agents footer is still reachable.
     expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
     expect(screen.queryByText('No installed agents found')).toBeNull();
     expect(screen.getByTestId('file-tree-open-in-settings')).toBeTruthy();
@@ -231,10 +222,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     registerAgent({ source: 'registry', id: 'codex-acp', name: 'Codex' });
     await renderSubmenu();
 
-    // The generic picker row is replaced by per-agent rows (+ the Settings row).
     expect(screen.queryByTestId('file-tree-open-in-thread')).toBeNull();
-    // Rows name the agent; the verb lives on the row's accessible name and on
-    // the composer primaries, not in the visible row text.
     const codexRow = screen.getByTestId('file-tree-open-in-thread-codex-acp');
     expect(codexRow.textContent).toContain('Codex');
     expect(codexRow.getAttribute('aria-label')).toBe('Ask Codex');
@@ -252,8 +240,6 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
       '[data-slot="dropdown-menu-group"][aria-label="In app"]',
     );
     expect(group).toBeTruthy();
-    // The visible heading and the accessible name say the same thing (the
-    // group used to announce "In app (beta)" over a "Beta" badge).
     expect(group?.textContent).toContain('In app');
     expect(group?.textContent).not.toContain('Beta');
     expect(document.querySelector('[aria-label="In app (beta)"]')).toBeNull();
@@ -266,16 +252,9 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     window.location.hash = '';
     await userEvent.click(screen.getByTestId('file-tree-open-in-settings'));
     expect(window.location.hash).toBe('#settings/configure-agents');
-    // No thread launch — the Settings row only navigates.
     expect(threadLaunchCalls).toEqual([]);
   });
 
-  // Regression: FileTree's menu is pinned `open` and is torn down only by
-  // Pierre's `context.close()`. Launching first leaves that layer alive while
-  // the modal catalog mounts, and the resulting focus-restore/dismiss cascade
-  // recurses until the renderer hangs (a hard freeze, reproduced in-app). Every
-  // launch row must dismiss first, so ORDER is the contract under test — not
-  // merely that the callback fired.
   test('dismisses the host menu before launching a registered-agent row', async () => {
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     await renderSubmenu({ onBeforeLaunch: () => callOrder.push('dismiss') });
@@ -289,20 +268,16 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // Separator divides the two populated sections.
     expect(document.querySelector('[data-slot="dropdown-menu-separator"]')).toBeTruthy();
 
     const terminalRow = screen.getByTestId('file-tree-open-in-terminal-claude');
-    // Visible text is the brand "Claude"; accessible name is "Claude CLI".
     expect(terminalRow.textContent).toContain('Claude');
     expect(terminalRow.textContent).not.toContain('CLI');
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI');
-    // Codex + Cursor rows sit alongside, each with its own "<Brand> CLI" name.
     expect(screen.getByTestId('file-tree-open-in-terminal-codex').getAttribute('aria-label')).toBe(
       'Codex CLI',
     );
@@ -324,8 +299,6 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     await renderSubmenu({ input: null, withTerminal: true });
 
     const terminalRow = screen.getByTestId('file-tree-open-in-terminal-claude');
-    // WCAG 2.5.3: the accessible name must contain the visible label "Claude";
-    // when input is missing the hint is appended in this exact order.
     expect(terminalRow.getAttribute('aria-label')).toBe('Claude CLI, No workspace');
     expect(terminalRow.getAttribute('data-disabled')).toBe('');
 
@@ -354,10 +327,8 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     expect(screen.getByText('Terminal')).toBeTruthy();
     expect(screen.queryByText('External apps')).toBeNull();
-    // No enabled in-app agents → the In app section is hidden.
     expect(screen.queryByText('In app')).toBeNull();
     expect(screen.getByTestId('file-tree-open-in-terminal-claude')).toBeTruthy();
-    // A single separator sits before the Configure agents footer.
     expect(document.querySelectorAll('[data-slot="dropdown-menu-separator"]').length).toBe(1);
   });
 });

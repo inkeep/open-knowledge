@@ -90,11 +90,6 @@ interface PasteDispatcherDeps {
   mdManager: MarkdownManager;
 }
 
-/**
- * Surface that triggered the dispatcher. `paste` reads `clipboardData` and
- * `pasteShiftHeld()`; `drop` reads `dataTransfer` and the DragEvent's own
- * `shiftKey`. Both run the same branch tree.
- */
 type DispatchSurface = 'paste' | 'drop';
 
 export function createHandlePaste(deps: PasteDispatcherDeps) {
@@ -102,24 +97,8 @@ export function createHandlePaste(deps: PasteDispatcherDeps) {
     handleDropOrPaste(view, event, 'paste', deps);
 }
 
-/**
- * Drop-side mirror of {@link createHandlePaste}. Same branch tree, same
- * telemetry, same shift-key behavior, with two surface-specific
- * differences:
- *
- *   1. Data lives on `event.dataTransfer`, not `event.clipboardData`.
- *   2. Shift state comes from the DragEvent itself (drag has explicit
- *      modifier flags via MouseEvent, unlike paste's keydown latch).
- *
- * Drag-from-Finder of files routes through FileHandler's `onDrop`
- * (`extensions/shared.ts`) — when `dataTransfer.files` is populated, the
- * dispatcher returns false so the file-upload path runs.
- */
 export function createHandleDrop(deps: PasteDispatcherDeps) {
   return (view: EditorView, event: DragEvent): boolean => {
-    // Drag-from-Finder / file-system drag: defer to FileHandler. PM calls
-    // multiple handleDrop hooks in registration order; returning false
-    // lets the next handler claim the event.
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       return false;
     }
@@ -144,9 +123,6 @@ function handleDropOrPaste(
   const plain = dt.getData('text/plain');
   const html = dt.getData('text/html');
 
-  // Cmd+Shift+V (paste) or shift-held drop → verbatim plain-text insert.
-  // Replaces the dispatcher's auto-markdown routing so users can opt out
-  // of source-form parsing on demand.
   if (isShiftHeldForSurface(event, surface)) {
     if (plain) insertPlainText(view, plain);
     logSourceDetected({ view: 'wysiwyg', branch: 'shift', source });
@@ -154,7 +130,6 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Inside a codeBlock — plain-text verbatim.
   if (isCursorInCodeBlock(view)) {
     if (plain) insertPlainText(view, plain);
     logSourceDetected({ view: 'wysiwyg', branch: 'codeblock', source });
@@ -162,7 +137,6 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Lone-URL step (see file header). Non-matching payloads fall through.
   if (plain) {
     if (!view.state.selection.empty) {
       const href = detectLoneTrustedUrl(plain);
@@ -181,13 +155,6 @@ function handleDropOrPaste(
     }
   }
 
-  // Private OK flavor: an OK-origin copy whose slice contained
-  // clipboard-omitted content (comment annotations) carries the full
-  // slice markdown here, because every public flavor ships scrubbed (see
-  // comment-scrub.ts). Prefer it over the public flavors so OK→OK paste
-  // restores the annotation regardless of which branch shape the public
-  // payload would have taken. Runs after the shift/codeblock/lone-URL
-  // gates so those explicit gestures keep their meaning.
   const internal = dt.getData(OK_INTERNAL_CLIPBOARD_MIME);
   if (internal && tryBranchMarkdown(view, internal, deps, 'internal', source)) {
     logSourceDetected({ view: 'wysiwyg', branch: 'internal', source });
@@ -195,7 +162,6 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Branch A: VS Code with language metadata.
   const vscodeData = dt.getData('vscode-editor-data');
   if (vscodeData && plain && tryBranchA(view, vscodeData, plain, source)) {
     logSourceDetected({ view: 'wysiwyg', branch: 'A', source });
@@ -203,7 +169,6 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Branch B: explicit text/x-gfm MIME.
   const gfm = dt.getData('text/x-gfm');
   if (gfm && tryBranchMarkdown(view, gfm, deps, 'B', source)) {
     logSourceDetected({ view: 'wysiwyg', branch: 'B', source });
@@ -211,18 +176,12 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Markdown-first tiebreak: both text/plain (markdown-shaped) AND
-  // text/html present. Runs ahead of Branch C so OK→OK and cross-PM-editor
-  // paste preserves the canonical text/plain markdown bytes.
   if (plain && html && isMarkdown(plain) && tryBranchMarkdown(view, plain, deps, 'B', source)) {
     logSourceDetected({ view: 'wysiwyg', branch: 'B', source });
     logIfSlow(start, { op: surface, view: 'wysiwyg', branch: 'B', source });
     return true;
   }
 
-  // Branch C: PM-origin slice → let PM handle natively. Reached only when
-  // the markdown-first tiebreak above did not fire (text/plain absent or
-  // not markdown-shaped).
   if (html && /data-pm-slice/i.test(html)) {
     logSourceDetected({
       view: 'wysiwyg',
@@ -233,7 +192,6 @@ function handleDropOrPaste(
     return false;
   }
 
-  // Branch D: generic HTML → shared htmlToMdast pipeline.
   if (html && tryBranchHtml(view, html, deps, source)) {
     logSourceDetected({
       view: 'wysiwyg',
@@ -250,8 +208,6 @@ function handleDropOrPaste(
     return true;
   }
 
-  // Branch E: text/plain only — markdown-first if threshold hit, else
-  // plain-text insert.
   if (plain) {
     if (isMarkdown(plain) && tryBranchMarkdown(view, plain, deps, 'E', 'markdown-text')) {
       logSourceDetected({ view: 'wysiwyg', branch: 'E', source: 'markdown-text' });
@@ -272,9 +228,6 @@ function isShiftHeldForSurface(
   surface: DispatchSurface,
 ): boolean {
   if (surface === 'paste') return pasteShiftHeld(event as ClipboardEvent);
-  // DragEvent extends MouseEvent so `shiftKey` is a real DOM property here
-  // — no keydown-latch dance needed (in contrast to ClipboardEvent which
-  // doesn't surface modifier flags at all in real browsers).
   return (event as DragEvent).shiftKey === true;
 }
 
@@ -286,16 +239,6 @@ function isCursorInCodeBlock(view: EditorView): boolean {
   return false;
 }
 
-/**
- * Add a link mark across the current selection, keeping the selected text
- * (default `linkStyle` — serializes as `[selected text](url)`). Returns
- * false — fall through to the normal branch tree, i.e. plain replace — when
- * the selection isn't a single-textblock text selection, any of it carries
- * an inline code mark, or the schema has no link mark. A selection that
- * already carries a link keeps its text and gets the new href: pasting a
- * URL onto linked text means "re-point this link" everywhere else, and the
- * fall-through alternative would destroy the text outright.
- */
 function linkifySelection(view: EditorView, href: string, source: ClipboardSource): boolean {
   try {
     const { state } = view;
@@ -321,10 +264,6 @@ function linkifySelection(view: EditorView, href: string, source: ClipboardSourc
       reason: `${(err as Error)?.message ?? 'unknown'} (href=${href})`,
       errorClass: classifyError(err),
     });
-    // Same degradation contract as Branch D: tell the user, then fall through
-    // (return false) so the normal branch tree delivers the clipboard content
-    // as a standard paste. Claiming the paste here would drop the content
-    // entirely — the one outcome the file header forbids.
     notifyPasteDegraded('wysiwyg', 'Pasted without linking — the link could not be applied.');
     return false;
   }
@@ -341,9 +280,6 @@ function insertPlainText(view: EditorView, text: string): void {
   );
 }
 
-// Narrow allowlist for fenced-code language idents so an attacker-controlled
-// `vscode-editor-data.mode` cannot break out of the fence. Matches every
-// language ident in our `codeLanguages` allowlist and then some.
 const LANG_IDENT = /^[A-Za-z0-9_+-]+$/;
 
 function tryBranchA(
@@ -414,12 +350,6 @@ function tryBranchHtml(
   deps: PasteDispatcherDeps,
   source: ClipboardSource,
 ): boolean {
-  // Each stage has its own try block so the structured telemetry pinpoints
-  // the failing pipeline component. A failure at any stage falls through
-  // to the dispatcher's later branches (PM default text/plain parse via
-  // clipboardTextParser) — user content is preserved but the rich-HTML
-  // fidelity is lost. We emit a throttled user-visible toast so the
-  // degradation is not silent.
   let mdast: ReturnType<typeof htmlToMdast>;
   try {
     mdast = htmlToMdast(html);
@@ -471,12 +401,6 @@ function tryBranchHtml(
   return applyJsonSlice(view, json, source, 'D', html.length);
 }
 
-/**
- * A list item is "blank" when it holds only empty paragraphs — no text, no
- * nested list, no other block. Splitting a target item at a caret sitting at
- * its very start or end yields one such blank half; the splice drops those so
- * no empty item is minted.
- */
 function isBlankListItem(item: ProseMirrorNode): boolean {
   if (item.textContent.length > 0) return false;
   let onlyEmptyParagraphs = true;
@@ -486,27 +410,6 @@ function isBlankListItem(item: ProseMirrorNode): boolean {
   return onlyEmptyParagraphs;
 }
 
-/**
- * List-aware placement for OK→OK paste (#609 cause 1).
- *
- * `applyJsonSlice` normally inserts the re-parsed markdown as a CLOSED slice.
- * When the caret sits inside a list item and the pasted content is entirely
- * lists, that closed slice makes ProseMirror's fitter nest the pasted list as
- * a child of the target item (caret at item end) or mint a degenerate
- * empty-leading-paragraph + nested-list shape (caret at item start) — the
- * mis-placement users see as orphaned todo rows.
- *
- * Instead, split the target item at the caret and splice the pasted items in
- * between as SIBLINGS at the target item's own list level:
- * `[before-caret item if non-empty] + pasted items + [after-caret item if
- * non-empty]`. Whole list items are moved verbatim, so a pasted item's own
- * nested list rides along as its child and any container it holds (component,
- * table) is never opened.
- *
- * Returns a built transaction, or null to fall back to the closed-slice path:
- * a ranged (non-collapsed) selection, a caret not inside a list-item textblock,
- * or pasted content that is not purely lists all keep current behavior.
- */
 function buildListSiblingSpliceTr(
   state: EditorState,
   docNode: ProseMirrorNode,
@@ -514,8 +417,6 @@ function buildListSiblingSpliceTr(
   const { selection } = state;
   if (!selection.empty) return null;
 
-  // Payload gate first (reads only the pasted doc): every top-level node must
-  // be a list, else this is not the list-splice case.
   const pastedItems: ProseMirrorNode[] = [];
   let allLists = docNode.content.childCount > 0;
   docNode.content.forEach((child) => {
@@ -538,8 +439,6 @@ function buildListSiblingSpliceTr(
     }
   }
   if (itemDepth < 0) return null;
-  // A gap cursor (also "empty") can sit between blocks where the parent is the
-  // list itself; the split math below assumes a caret inside the item's text.
   if (!$from.parent.isTextblock) return null;
 
   const targetItem = $from.node(itemDepth);
@@ -570,12 +469,6 @@ function listItemsOf(list: ProseMirrorNode): ProseMirrorNode[] {
   return items;
 }
 
-/**
- * Drop blank items minted at the trailing cut edge, recursing into a
- * trailing nested list so a caret at the start of a nested item doesn't
- * leave an empty nested bullet behind. Returns null when the node empties
- * out entirely.
- */
 function pruneTrailingCutBlanks(node: ProseMirrorNode): ProseMirrorNode | null {
   if (node.type.name === 'list') {
     const items = listItemsOf(node);
@@ -605,12 +498,6 @@ function pruneTrailingCutBlanks(node: ProseMirrorNode): ProseMirrorNode | null {
   return node;
 }
 
-/**
- * A leading cut edge can mint a wrapper item whose own text sits entirely
- * before the caret: empty paragraphs followed by a single nested list. Lift
- * that nested list's items up a level (no empty parent bullet) and drop
- * items the cut left fully blank.
- */
 function normalizeLeadingCutItems(items: ProseMirrorNode[]): ProseMirrorNode[] {
   let normalized = items;
   while (normalized.length > 0) {
@@ -640,31 +527,6 @@ function liftBlankWrapperItem(item: ProseMirrorNode): ProseMirrorNode[] | null {
   return listItemsOf(last);
 }
 
-/**
- * List-aware placement for MIXED payloads — the issue #609 sibling-splice
- * intent extended beyond all-list payloads.
- *
- * A pasted doc holding at least one non-list top-level block, at a caret
- * inside a list item, must not be nested into that item (schema-legal for
- * the closed-slice fallback because `listItem` is `paragraph block*`, but a
- * structural demotion users read as the paste being swallowed). Instead the
- * OUTERMOST ancestor list splits at the caret and the payload lands where
- * typing it at top level would:
- *
- *   [before-half + leading payload list run] non-list blocks (and interior
- *   lists) verbatim [trailing payload list run + after-half]
- *
- * Leading/trailing payload list runs continue the list (item siblings,
- * keeping the original list node) exactly like the all-list splice; payload
- * lists with no original items to merge with are kept verbatim. Blank cut
- * halves are dropped per the all-list path's blank-item rule, and a nested
- * caret's remainder lifts to the top list level rather than minting an
- * empty parent bullet.
- *
- * Returns a built transaction, or null to fall back: ranged selection,
- * all-list payload (the item-level splice owns it), caret not inside a
- * plain list/listItem chain (tables etc. keep the closed-slice behavior).
- */
 function buildMixedSiblingSpliceTr(
   state: EditorState,
   docNode: ProseMirrorNode,
@@ -682,8 +544,6 @@ function buildMixedSiblingSpliceTr(
   const { $from } = selection;
   if (!$from.parent.isTextblock) return null;
 
-  // Outermost ancestor list: mixed payloads split the whole nesting stack so
-  // non-list blocks escape to the list's own sibling level.
   let listDepth = -1;
   for (let depth = 1; depth <= $from.depth; depth++) {
     if ($from.node(depth).type.name === 'list') {
@@ -692,8 +552,6 @@ function buildMixedSiblingSpliceTr(
     }
   }
   if (listDepth < 0) return null;
-  // Only split through plain list/listItem nesting; a caret inside another
-  // container (table cell, blockquote) within an item keeps current behavior.
   for (let depth = listDepth; depth < $from.depth; depth++) {
     const name = $from.node(depth).type.name;
     if (name !== 'list' && name !== 'listItem') return null;
@@ -739,9 +597,6 @@ function buildMixedSiblingSpliceTr(
 
   const tr = state.tr.replaceWith(listStart, listEnd, Fragment.fromArray(out));
 
-  // Caret lands at the end of the pasted content, mirroring the all-list
-  // splice: after the last pasted item inside a merged trailing list, else
-  // at the end of the last payload-derived node.
   let caretPos = listStart;
   if (trailingLists.length > 0 && afterItems.length > 0) {
     for (let i = 0; i < out.length - 1; i++) caretPos += out[i].nodeSize;
@@ -766,10 +621,6 @@ function applyJsonSlice(
 ): boolean {
   try {
     const node = view.state.schema.nodeFromJSON(json);
-    // Scope the splice attempt so a throw in its position math degrades to the
-    // proven closed-slice path below, not to the outer catch — which would
-    // toast a degradation and hand the paste to PM's native fallthrough even
-    // though the closed slice could have delivered it.
     let spliceTr: Transaction | null = null;
     try {
       spliceTr =

@@ -1,23 +1,3 @@
-/**
- * boot-time lifecycle restoration from `.ok/local/conflicts.json`.
- *
- * Pin the structural recovery: when the server boots with conflict entries
- * already persisted by `ConflictStore`, the matching docs' `lifecycle.status`
- * must be set to `'conflict'` BEFORE the HTTP server accepts requests.
- * Otherwise the gate the rest of the conflict-aware-write-surfaces spec
- * relies on is open during the post-restart race window — silent data loss
- * by the same failure mode.
- *
- * This runs in CI. The old blanket `process.env.CI` skip mirrored
- * boot.test.ts and cited oven-sh/bun#11892 (Bun failing to reap spawned git
- * children on GitHub runners) — irrelevant now that the suite runs under
- * vitest, not `bun test`. The restart-recovery guarantee is exactly the
- * highest-risk path this file exists to pin, and its full-server-boot +
- * git-child pattern already runs in CI via the sync-wired harness and
- * sync-engine.test.ts; leaving it CI-skipped meant it never ran there. If it
- * ever flakes or hangs in CI, narrow to a targeted skip, not a blanket gate.
- */
-
 import { execFile } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -56,11 +36,6 @@ function seedConflictsJson(
   writeFileSync(resolve(localDir, 'conflicts.json'), JSON.stringify(data, null, 2), 'utf-8');
 }
 
-/**
- * Seed a pull-only working-tree conflict entry (no MERGE_HEAD): the branch is at
- * origin tip and the overlay rides uncommitted. Boot restore must keep it even
- * though no merge is in progress.
- */
 function seedWorkingTreeConflictsJson(projectDir: string, file: string): void {
   const localDir = resolve(projectDir, OK_DIR, 'local');
   mkdirSync(localDir, { recursive: true });
@@ -80,14 +55,6 @@ function seedWorkingTreeConflictsJson(projectDir: string, file: string): void {
   writeFileSync(resolve(localDir, 'conflicts.json'), JSON.stringify(data, null, 2), 'utf-8');
 }
 
-/**
- * Create a real in-progress merge with a conflict on `filePath` so the
- * boot-scan's reconcile (`git diff --name-only --diff-filter=U` against a
- * present `MERGE_HEAD`) sees the file as still-unmerged. Without this, the
- * boot scan would correctly prune the conflicts.json entry as stale (the
- * scenario covers: external CLI resolve leaves conflicts.json
- * lying).
- */
 async function seedRealMergeConflict(projectDir: string, filePath: string): Promise<void> {
   const opts = { cwd: projectDir };
   await execFileAsync('git', ['config', 'user.email', 'test@example.com'], opts);
@@ -101,10 +68,7 @@ async function seedRealMergeConflict(projectDir: string, filePath: string): Prom
   await execFileAsync('git', ['checkout', 'main'], opts);
   writeFileSync(resolve(projectDir, filePath), 'ours\n', 'utf-8');
   await execFileAsync('git', ['commit', '-am', 'ours'], opts);
-  // Merge attempt fails with conflict — that's the desired end state.
-  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {
-    /* expected: non-zero exit on conflict */
-  });
+  await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {});
 }
 
 let tmpDir: string;
@@ -122,9 +86,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     const contentDir = tmpDir;
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
-    // Stage a real in-progress merge with a conflict on foo.md so the
-    // boot-scan reconcile (git diff-filter=U against MERGE_HEAD) sees it
-    // as still-unmerged and DOES restore the lifecycle.
     await seedRealMergeConflict(contentDir, 'foo.md');
     seedConflictsJson(contentDir, [{ file: 'foo.md' }]);
 
@@ -138,10 +99,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     });
 
     try {
-      // The doc may be unloaded after the restore disconnect; reopen via the
-      // same DirectConnection path the restore used so we observe the
-      // persisted lifecycle state. (Hocuspocus persists Y.Doc state across
-      // unload/reload via the persistence layer's onLoadDocument hook.)
       const dc = await booted.serverInstance.hocuspocus.openDirectConnection('foo');
       try {
         const lifecycleMap = dc.document?.getMap('lifecycle');
@@ -159,8 +116,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     const contentDir = tmpDir;
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
-    // Commit the doc; NO merge in progress (no MERGE_HEAD). A merge-native entry
-    // would be cleared as stale here — a working-tree overlay must survive.
     await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: contentDir });
     await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: contentDir });
     writeFileSync(resolve(contentDir, 'wt.md'), 'origin\n', 'utf-8');
@@ -180,7 +135,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     try {
       const dc = await booted.serverInstance.hocuspocus.openDirectConnection('wt');
       try {
-        // Survived the no-MERGE_HEAD reconcile and the lifecycle was restored.
         expect(dc.document?.getMap('lifecycle').get('status')).toBe('conflict');
       } finally {
         await dc.disconnect();
@@ -198,14 +152,11 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     await seedRealMergeConflict(contentDir, 'docs/bar.md');
     seedConflictsJson(contentDir, [{ file: 'docs/bar.md' }]);
 
-    // Capture console.warn — the helper emits structured-JSON via
-    // console.warn (matches the assertable-event convention).
     const calls: string[] = [];
     const original = console.warn;
     console.warn = (msg: unknown, ...rest: unknown[]) => {
       const line = typeof msg === 'string' ? msg : String(msg);
       calls.push(line);
-      // Preserve passthrough so other diagnostics still surface in test logs.
       original.call(console, msg, ...rest);
     };
 
@@ -243,7 +194,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     const contentDir = tmpDir;
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
-    // No conflicts.json — ConflictStore.list() returns empty; helper short-circuits.
 
     const booted = await bootServer({
       config: TEST_CONFIG,
@@ -255,7 +205,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     });
 
     try {
-      // Boot succeeded — no throw, port bound.
       expect(typeof booted.port).toBe('number');
       expect(booted.port).toBeGreaterThan(0);
     } finally {
@@ -267,8 +216,6 @@ describe('bootServer — FR14 lifecycle restoration from conflicts.json', () => 
     const contentDir = tmpDir;
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
-    // Write malformed JSON directly — ConflictStore.load swallows parse
-    // errors and starts empty; we just exercise the boot path stays alive.
     const localDir = resolve(contentDir, OK_DIR, 'local');
     mkdirSync(localDir, { recursive: true });
     writeFileSync(resolve(localDir, 'conflicts.json'), '{ this is not json', 'utf-8');

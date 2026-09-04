@@ -19,13 +19,8 @@ function ghUnavailable(): () => GhDetectResult {
   return () => ({ available: false });
 }
 
-// Deterministic self-argv so gitConfig assertions read cleanly. Production
-// passes `[process.execPath, cliEntry]`.
 const SELF: readonly string[] = ['/node', '/cli.mjs'];
 const SELF_HELPER = "credential.helper=!'/node' '/cli.mjs' auth git-credential";
-// The empty reset that must precede OK's helper — neutralizes a stale ambient
-// `!gh auth git-credential` a past `gh auth setup-git` left in the user's git
-// config on a machine where `gh` is no longer installed.
 const RESET = 'credential.helper=';
 
 describe('buildCliCredentialHelper', () => {
@@ -49,10 +44,6 @@ describe('resolveAuth', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // ---------------------------------------------------------------------------
-  // Tier A — gh CLI available: relay the gh token, use OK's own helper (no `!gh`)
-  // ---------------------------------------------------------------------------
-
   test('Tier A: gh available → reset + self-helper + relayToken (no `!gh` helper)', async () => {
     const store = makeStore(tmpDir);
     const result = await resolveAuth(
@@ -64,7 +55,6 @@ describe('resolveAuth', () => {
     expect(result.tier).toBe('A');
     expect(result.gitConfig).toEqual([RESET, SELF_HELPER]);
     expect(result.relayToken).toEqual({ token: 'ghs_A', host: 'github.com' });
-    // The bare `!gh auth git-credential` form is gone — that's the whole point.
     expect(result.gitConfig.join(' ')).not.toContain('!gh ');
   });
 
@@ -74,11 +64,6 @@ describe('resolveAuth', () => {
     const result = await resolveAuth('github.com', store, { selfCliArgs: SELF }, ghAvailable());
     expect(result.tier).toBe('A');
   });
-
-  // ---------------------------------------------------------------------------
-  // Declared account: the login rides into gh's lookup and the relay names
-  // the account that actually produced the token
-  // ---------------------------------------------------------------------------
 
   test('forwards the declared login to detectGh alongside the host', async () => {
     const store = makeStore(tmpDir);
@@ -108,11 +93,6 @@ describe('resolveAuth', () => {
     expect(result.relayToken).toEqual({ token: 'ghs_alice', host: 'github.com', login: 'alice' });
   });
 
-  // The fallback floor through the REAL detectGh: a declared account gh
-  // cannot serve must degrade to the active account's token — never to tier
-  // 'none', which would turn a wrong-identity clone into an anonymous one.
-  // The relay then carries no login, so nothing downstream can claim the
-  // missed account.
   test('a declared login gh cannot serve falls back to the active token, never to tier none', async () => {
     const store = makeStore(tmpDir);
     const calls: string[] = [];
@@ -137,10 +117,6 @@ describe('resolveAuth', () => {
     ]);
   });
 
-  // ---------------------------------------------------------------------------
-  // Tier B — stored token (https): helper reads the store; no relay token
-  // ---------------------------------------------------------------------------
-
   test('Tier B: stored token (https protocol) → reset + self-helper, no relayToken', async () => {
     const store = makeStore(tmpDir);
     await store.set('github.com', 'alice', 'gho_abc', { gitProtocol: 'https' });
@@ -157,10 +133,6 @@ describe('resolveAuth', () => {
     expect(result.tier).toBe('B');
   });
 
-  // ---------------------------------------------------------------------------
-  // Tier C — stored token (ssh)
-  // ---------------------------------------------------------------------------
-
   test('Tier C: stored token with ssh protocol', async () => {
     const store = makeStore(tmpDir);
     await store.set('github.com', 'alice', 'gho_abc', { gitProtocol: 'ssh' });
@@ -169,11 +141,6 @@ describe('resolveAuth', () => {
     expect(result.gitConfig).toEqual([RESET, SELF_HELPER]);
     expect(result.relayToken).toBeUndefined();
   });
-
-  // ---------------------------------------------------------------------------
-  // The empty reset is load-bearing: it must come FIRST so a stale ambient
-  // `!gh auth git-credential` is cleared before OK's helper runs.
-  // ---------------------------------------------------------------------------
 
   test('authenticated tiers prepend an empty credential.helper reset', async () => {
     const store = makeStore(tmpDir);
@@ -191,10 +158,6 @@ describe('resolveAuth', () => {
       "credential.helper=!'open-knowledge' auth git-credential",
     ]);
   });
-
-  // ---------------------------------------------------------------------------
-  // none — no auth available: leave ambient config untouched
-  // ---------------------------------------------------------------------------
 
   test('none: no gh, no stored token → empty gitConfig, no relayToken', async () => {
     const store = makeStore(tmpDir);
@@ -216,14 +179,9 @@ describe('resolveAuth', () => {
     expect(result.gitConfig).toEqual([]);
   });
 
-  // ---------------------------------------------------------------------------
-  // Host isolation
-  // ---------------------------------------------------------------------------
-
   test('Tier A detection is scoped to the requested host', async () => {
     const store = makeStore(tmpDir);
     const seenHosts: (string | undefined)[] = [];
-    // gh is authenticated for github.com but not the GHES host.
     const ghGithubComOnly = (host?: string): GhDetectResult => {
       seenHosts.push(host);
       return host === 'ghes.acme.test' ? { available: false } : { available: true, token: 'x' };

@@ -2,14 +2,6 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-/**
- * What an install-menu ROW does and says.
- *
- * A row is a plain checkbox: click installs, click again removes, and nothing
- * else on the row changes underneath the click. Its hint is the only place that
- * contract is written down, and a native `title` does not render at all while
- * the window is unfocused, so the hints come from Radix.
- */
 vi.mock('@/hooks/use-skills', () => ({ useSkills: () => ({ status: 'idle' }) }));
 
 const { SkillInstallMenuItems } = await import('./SkillInstallMenu');
@@ -57,7 +49,6 @@ describe('install menu rows', () => {
 
   test('a row is a checkbox: it toggles install, and never moves the source', async () => {
     renderMenu();
-    // Checked = installed, unchecked = not. No third state to cycle through.
     expect(screen.getByTestId('skill-install-editor-codex')).toHaveProperty('ariaChecked', 'true');
     expect(screen.getByTestId('skill-install-editor-cursor')).toHaveProperty(
       'ariaChecked',
@@ -66,8 +57,6 @@ describe('install menu rows', () => {
 
     await userEvent.click(screen.getByTestId('skill-install-editor-cursor'));
     expect(toggles.toggleEditor).toHaveBeenCalledWith('cursor', true);
-    // Clicking the row used to be able to land on the mode tag, which moved the
-    // skill's real folder — the flash of `copy` settling on `source`.
     expect(toggles.setSource).not.toHaveBeenCalled();
     expect(toggles.convertLocation).not.toHaveBeenCalled();
 
@@ -83,16 +72,13 @@ describe('install menu rows', () => {
 
   test('a row whose form matches the skill carries no mode tag to mis-click', () => {
     renderMenu();
-    // codex is a symlink and so is the rest of the skill: nothing to say.
     expect(screen.queryByTestId('skill-convert-codex')).toBeNull();
-    // Set-source is still reachable, but as its own labelled control.
     expect(screen.getByTestId('skill-set-source-codex').textContent).toBe('make source');
   });
 
   test('an installed row says clicking it removes the skill, via a tooltip', async () => {
     renderMenu();
     const row = screen.getByTestId('skill-install-editor-codex');
-    // A native title would be the regression this replaced.
     expect(row.getAttribute('title')).toBeNull();
 
     await userEvent.hover(row);
@@ -108,7 +94,6 @@ describe('install menu rows', () => {
 
     await userEvent.hover(row);
     const hint = await screen.findByRole('tooltip');
-    // linkMode with no divergent location means the next install symlinks.
     expect(hint.textContent).toContain('Symlinks the skill to .cursor/skills/demo');
   });
 });

@@ -1,23 +1,3 @@
-/**
- * Playwright E2E for the appliesTo folder picker — the running-app fidelities
- * the DOM tests structurally cannot reach. The DOM tier mocks BOTH system
- * boundaries (the config binding and the page list), so it proves what the UI
- * sends, not that the system accepts it: the real chain
- *   pick a folder -> CRDT config patch -> persistence -> config.yml on disk
- *   -> server lint compose -> validation scoped to the picked folder
- * is unknown until driven against a live server. This file drives it, plus the
- * one class jsdom is blind to by construction: wheel scrolling the picker's
- * list inside the Settings dialog, where react-remove-scroll's document-level
- * listeners preventDefault native scroll on portaled descendants
- * (radix-ui/primitives#1159) unless the popover's stopPropagation workaround
- * holds. That regression shipped once — jsdom stayed green through it.
- *
- * Isolation: the schema files + config mappings are per-worker (shared across
- * this file's tests), so every test asserts only against its OWN uuid-prefixed
- * folders and patterns — totals like "of N docs" are matched by regex, never
- * pinned, because sibling tests and fixture files contribute to N.
- */
-
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,7 +6,6 @@ import { parse } from 'yaml';
 import { expect, filterCriticalErrors, type LogEntry, test } from './_helpers';
 
 const SCHEMA_MAIN = '.ok/schemas/glob-picker.schema.json';
-/** Dedicated row for the zero-match test — its count must not see other globs. */
 const SCHEMA_ZERO = '.ok/schemas/glob-picker-zero.schema.json';
 
 const REQUIRED_SCHEMA = JSON.stringify({ type: 'object', required: ['status', 'owner'] });
@@ -47,10 +26,6 @@ const pillInput = (page: Page, file: string) =>
 
 async function openFrontmatterSettings(page: Page) {
   await page.goto('/#settings/plugin:frontmatter');
-  // The panel mounts reactively once the project config doc syncs and reports
-  // the plugin enabled — the deep-linked section id is held in state, so this
-  // is pure config-sync latency. Generous: under parallel worker start-up the
-  // sync can trail first paint by tens of seconds.
   await expect(page.getByTestId('settings-plugin-frontmatter')).toBeVisible({ timeout: 30_000 });
 }
 
@@ -66,9 +41,6 @@ test.beforeEach(async ({ page, workerServer }) => {
       '    enabled: true',
       '    schemas:',
       `      - file: ${SCHEMA_MAIN}`,
-      // Scoped to a folder that never exists: an UNSCOPED mapping applies to
-      // every doc, which would badge the scoping test's "outside" doc from
-      // this row and make SCHEMA_MAIN's absence unobservable.
       `      - file: ${SCHEMA_ZERO}`,
       '        appliesTo:',
       '          - zzz-never/**',
@@ -91,8 +63,6 @@ test.afterEach(() => {
 });
 
 test.afterAll(({ workerServer }) => {
-  // Restore the default so any e2e sharing this worker isn't left with the
-  // frontmatter plugin silently enabled.
   writeFileSync(join(workerServer.contentDir, '.ok', 'config.yml'), '', 'utf-8');
 });
 
@@ -107,18 +77,12 @@ test.describe('folder picker writes real config', () => {
 
     await openFrontmatterSettings(page);
     await pickerTrigger(page, SCHEMA_MAIN).click();
-    // The row is fed by the real /api/documents folder feed; the watcher may
-    // still be indexing the folder created above, and the open list re-renders
-    // live as the page list refreshes.
     await expect(folderItem(page, SCHEMA_MAIN, folder)).toBeVisible({ timeout: 15_000 });
     await folderItem(page, SCHEMA_MAIN, folder).click();
 
-    // Multi-select: the popover stays open, the trigger now summarizes.
     await expect(folderList(page, SCHEMA_MAIN)).toBeVisible();
     await expect(pickerTrigger(page, SCHEMA_MAIN)).toContainText('1 folder picked');
-    // The generated pattern is visible in the escape-hatch pill input's row.
     await expect(schemaRow(page, SCHEMA_MAIN)).toContainText(`${folder}/**`);
-    // And the write is REAL: CRDT patch -> persistence -> config.yml bytes.
     await expect
       .poll(() => readFileSync(join(workerServer.contentDir, '.ok', 'config.yml'), 'utf-8'), {
         timeout: 15_000,
@@ -146,9 +110,6 @@ test.describe('folder picker writes real config', () => {
     await folderItem(page, SCHEMA_MAIN, folder).click();
     await expect(schemaRow(page, SCHEMA_MAIN)).toContainText(`${folder}/**`);
 
-    // The in-scope doc proves the schema is live before the out-of-scope
-    // absence means anything: both docs are missing the same two required
-    // properties, so the badge difference can only be the picked glob.
     await page.goto(`/#/${insideDoc}`);
     await expect(page.getByTestId('add-properties-problem-badge')).toBeVisible({
       timeout: 20_000,
@@ -168,9 +129,6 @@ test.describe('folder picker writes real config', () => {
     const folder = `unpick-${randomUUID().slice(0, 8)}`;
     mkdirSync(join(workerServer.contentDir, folder), { recursive: true });
     writeFileSync(join(workerServer.contentDir, folder, 'doc-u.md'), '# u\n', 'utf-8');
-    // The remove path must start from a PERSISTED glob, not one this test just
-    // picked: re-seed the worker config with the mapping already scoped, so
-    // the unpick drives a fresh CRDT patch through persistence to disk.
     writeFileSync(
       join(workerServer.contentDir, '.ok', 'config.yml'),
       [
@@ -190,7 +148,6 @@ test.describe('folder picker writes real config', () => {
     );
 
     await openFrontmatterSettings(page);
-    // The seeded glob is live in the row before the picker opens.
     await expect(schemaRow(page, SCHEMA_MAIN)).toContainText(`${folder}/**`, { timeout: 15_000 });
     await pickerTrigger(page, SCHEMA_MAIN).click();
     const item = folderItem(page, SCHEMA_MAIN, folder);
@@ -200,14 +157,11 @@ test.describe('folder picker writes real config', () => {
     await item.click();
     await expect(pickerTrigger(page, SCHEMA_MAIN)).toContainText('Pick folders');
     await expect(schemaRow(page, SCHEMA_MAIN)).not.toContainText(`${folder}/**`);
-    // The removal is REAL: CRDT patch -> persistence -> config.yml bytes.
     await expect
       .poll(() => readFileSync(join(workerServer.contentDir, '.ok', 'config.yml'), 'utf-8'), {
         timeout: 15_000,
       })
       .not.toContain(`${folder}/**`);
-    // Emptying the list drops the `appliesTo` key rather than writing
-    // `appliesTo: []`: the mapping reverts to its unscoped authored shape.
     const config = parse(
       readFileSync(join(workerServer.contentDir, '.ok', 'config.yml'), 'utf-8'),
     ) as {
@@ -229,8 +183,6 @@ test.describe('live match count against the real page list', () => {
     writeFileSync(join(workerServer.contentDir, folder, 'doc-z.md'), '# z\n', 'utf-8');
 
     await openFrontmatterSettings(page);
-    // The original bug-bash failure, typed into the raw input: a bare folder
-    // name is an exact-doc pattern and matches nothing.
     await pillInput(page, SCHEMA_ZERO).fill(folder);
     await pillInput(page, SCHEMA_ZERO).press('Enter');
     await expect(matchCount(page, SCHEMA_ZERO)).toContainText(/Matches 0 of \d+ docs right now/, {
@@ -238,7 +190,6 @@ test.describe('live match count against the real page list', () => {
     });
     await expect(matchCount(page, SCHEMA_ZERO)).toContainText('a bare folder name needs /**');
 
-    // Picking the folder authors the pattern that was meant.
     await pickerTrigger(page, SCHEMA_ZERO).click();
     await expect(folderItem(page, SCHEMA_ZERO, folder)).toBeVisible({ timeout: 15_000 });
     await folderItem(page, SCHEMA_ZERO, folder).click();
@@ -251,8 +202,6 @@ test.describe('picker list scrolls inside the Settings dialog', () => {
     page,
     workerServer,
   }) => {
-    // Enough folders to overflow the CommandList's 300px max height. Created
-    // before navigation so the initial page-list fetch already carries them.
     const stem = `scroll-${randomUUID().slice(0, 6)}`;
     for (let i = 0; i < 20; i++) {
       const dir = join(workerServer.contentDir, `${stem}-${String(i).padStart(2, '0')}`);
@@ -276,9 +225,6 @@ test.describe('picker list scrolls inside the Settings dialog', () => {
     if (!box) throw new Error('folder list has no bounding box');
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(0, 240);
-    // Native wheel must actually move the list. With the popover's
-    // stopPropagation workaround removed, react-remove-scroll preventDefaults
-    // the event and scrollTop stays 0 — this assertion is the regression pin.
     await expect.poll(async () => (await overflows()).scrollTop).toBeGreaterThan(0);
   });
 });

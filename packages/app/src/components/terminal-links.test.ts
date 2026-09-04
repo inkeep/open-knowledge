@@ -51,8 +51,6 @@ describe('detectPathCandidates', () => {
   });
 
   test('strips a :line[:col] suffix even when trailing punctuation follows', () => {
-    // A common compiler / ripgrep shape: `error at src/a.ts:12,` — punctuation is
-    // trimmed BEFORE the suffix match so the path still resolves.
     expect(detectPathCandidates('error at src/a.ts:12,')[0]?.path).toBe('src/a.ts');
     expect(detectPathCandidates('see src/a.ts:12:5.')[0]?.path).toBe('src/a.ts');
   });
@@ -61,7 +59,6 @@ describe('detectPathCandidates', () => {
     const [c] = detectPathCandidates('cd packages/app/');
     expect(c?.path).toBe('packages/app');
     expect(c?.trailingSlash).toBe(true);
-    // 'cd ' = 3; the underlined range is exactly 'packages/app' (no trailing `/`).
     expect(c?.startIndex).toBe(3);
     expect(c?.endIndex).toBe(3 + 'packages/app'.length);
   });
@@ -228,21 +225,21 @@ describe('isKnownInSnapshot', () => {
 describe('createRecentOpenGuard', () => {
   test('suppresses the same URL fired twice within the window (the OSC 8 + WebLinks double)', () => {
     const guard = createRecentOpenGuard(300);
-    expect(guard('https://x.com', 1000)).toBe(false); // first open proceeds
-    expect(guard('https://x.com', 1000)).toBe(true); // same click, same ms → suppressed
-    expect(guard('https://x.com', 1200)).toBe(true); // still within 300ms window
+    expect(guard('https://x.com', 1000)).toBe(false);
+    expect(guard('https://x.com', 1000)).toBe(true);
+    expect(guard('https://x.com', 1200)).toBe(true);
   });
 
   test('allows the same URL again after the window elapses', () => {
     const guard = createRecentOpenGuard(300);
     expect(guard('https://x.com', 1000)).toBe(false);
-    expect(guard('https://x.com', 1400)).toBe(false); // 400ms later → a fresh open
+    expect(guard('https://x.com', 1400)).toBe(false);
   });
 
   test('never suppresses a different URL', () => {
     const guard = createRecentOpenGuard(300);
     expect(guard('https://a.com', 1000)).toBe(false);
-    expect(guard('https://b.com', 1000)).toBe(false); // different target, same instant
+    expect(guard('https://b.com', 1000)).toBe(false);
   });
 });
 
@@ -258,7 +255,6 @@ describe('hasPathExtension', () => {
 
 describe('terminalBufferRange', () => {
   test('a span within one row maps to a single-row 1-based range', () => {
-    // "see " (4 chars) then a 10-char path → [4,14); cols wide enough not to wrap.
     expect(terminalBufferRange(4, 14, 3, 80)).toEqual({
       start: { x: 5, y: 3 },
       end: { x: 14, y: 3 },
@@ -266,7 +262,6 @@ describe('terminalBufferRange', () => {
   });
 
   test('a span crossing the wrap boundary spans rows (start.y != end.y)', () => {
-    // cols=20, path at [4,27): last char is index 26 → row +1, col 7.
     expect(terminalBufferRange(4, 27, 1, 20)).toEqual({
       start: { x: 5, y: 1 },
       end: { x: 7, y: 2 },
@@ -274,7 +269,6 @@ describe('terminalBufferRange', () => {
   });
 
   test('a span landing exactly on a wrap boundary starts the next row', () => {
-    // index 20 with cols=20 → col 1 of the next row.
     expect(terminalBufferRange(20, 24, 5, 20)).toEqual({
       start: { x: 1, y: 6 },
       end: { x: 4, y: 6 },

@@ -1,14 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { findLocalSkillPreviewTabId, skillPreviewTabId } from './editor-tabs';
 
-/**
- * A local-path preview's `source` is part of its tab identity but moves under
- * us — a plugin-cache path carries the plugin VERSION, and a detected skill
- * relocates when its installed copy is deleted and it is re-detected at its
- * original location. Without source-independent reuse the same skill opens a
- * SECOND, identically labelled tab, which is the duplicate-tab report.
- *
- */
 describe('findLocalSkillPreviewTabId', () => {
   const pluginTab = (version: string) =>
     skillPreviewTabId({
@@ -21,7 +13,6 @@ describe('findLocalSkillPreviewTabId', () => {
 
   test('reuses the open tab for a detected skill whose plugin version bumped', () => {
     const open = [pluginTab('1.2.679')];
-    // The same skill after a plugin update: different path, same skill.
     expect(findLocalSkillPreviewTabId(open, 'detected', '1on1', 'claude', 'project')).toBe(open[0]);
     expect(pluginTab('1.2.680')).not.toBe(open[0]);
   });
@@ -70,7 +61,6 @@ describe('findLocalSkillPreviewTabId', () => {
         level: 'project',
       }),
     ];
-    // `explore` is not a local flavor, so it never matches the reuse probe.
     expect(
       findLocalSkillPreviewTabId(open, 'detected', 'find-skills', 'vercel-labs/skills', 'project'),
     ).toBeNull();

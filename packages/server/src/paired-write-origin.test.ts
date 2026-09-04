@@ -21,13 +21,6 @@ import type { MANAGED_RENAME_ORIGIN, ROLLBACK_ORIGIN } from './api-extension.ts'
 import type { FILE_WATCHER_ORIGIN } from './external-change.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 
-// ─── Positive: the four shipped paired origins satisfy the brand ───────────
-//
-// `Assignable<X, Y>` resolves to `never` at the type level unless `X` is
-// assignable to `Y`. Assigning `never` to a `true` position forces a
-// compile error, so a failed narrowing surfaces as a tsc error at this
-// call site.
-
 type Assignable<X, Y> = X extends Y ? true : never;
 
 const _agentWriteIsPaired: Assignable<typeof AGENT_WRITE_ORIGIN, PairedWriteOrigin> = true;
@@ -39,12 +32,6 @@ void _agentWriteIsPaired;
 void _fileWatcherIsPaired;
 void _rollbackIsPaired;
 void _managedRenameIsPaired;
-
-// ─── Negative: omitting `paired: true` is a compile error ──────────────────
-//
-// These blocks use `@ts-expect-error` — the compiler FAILS the build if the
-// error does NOT occur, which is exactly what we want: a future paired
-// origin that forgets the marker trips this assertion at authoring time.
 
 const _missingPairedFlag = {
   source: 'local' as const,
@@ -62,11 +49,6 @@ const _pairedFalseRejected = {
 } as const satisfies PairedWriteOrigin;
 void _pairedFalseRejected;
 
-// ─── Smoke test placeholder so Bun registers the file ──────────────────────
 describe('PairedWriteOrigin (compile-time assertions)', () => {
-  test('all four paired origins carry the type-level brand', () => {
-    // Body is empty — the real assertions are the module-scope const
-    // declarations above. Failure shows up as a tsc error in
-    // `turbo run typecheck`, not as a runtime `expect` mismatch.
-  });
+  test('all four paired origins carry the type-level brand', () => {});
 });

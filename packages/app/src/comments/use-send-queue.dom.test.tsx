@@ -1,15 +1,3 @@
-/**
- * Which half of the send runs, and — the part that broke — that the batch
- * survives the trip either way.
- *
- * Both halves send; only the destination differs. With no chat open the hook
- * dispatches a fresh turn itself; with one open it hands off to that thread.
- * The hand-off is where a scoped batch was lost: the closure took `threadIds`
- * and then called the request with no arguments, so a This-doc send arrived at
- * the thread as "no batch specified" and dispatched the whole project queue —
- * from a button whose count had just promised otherwise.
- */
-
 import { render } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
@@ -49,8 +37,6 @@ async function send(threadIds?: readonly string[]) {
   const { useSendQueue } = await import('./use-send-queue');
   function Probe() {
     const sendQueue = useSendQueue();
-    // Called during render rather than from an effect: the hook returns a plain
-    // closure, and this test is about what that closure forwards.
     sendQueue(threadIds);
     return null;
   }
@@ -72,8 +58,6 @@ describe('with a chat open', () => {
     openSession = { kind: 'thread' };
     await send(['t1', 't2']);
 
-    // The ids are the whole point of the hand-off: the thread has no other way
-    // to know this was a scoped send.
     expect(captured.requested).toEqual([['t1', 't2']]);
     expect(captured.dispatched).toEqual([]);
   });
@@ -82,8 +66,6 @@ describe('with a chat open', () => {
     openSession = { kind: 'thread' };
     await send(undefined);
 
-    // `undefined`, not `[]` — the thread reads that as "the whole checked
-    // queue", which is what an unscoped send means.
     expect(captured.requested).toEqual([undefined]);
   });
 
@@ -91,8 +73,6 @@ describe('with a chat open', () => {
     openSession = { kind: 'terminal' };
     await send(['t1']);
 
-    // Comments never reach a terminal, so a CLI session falls through to the
-    // fresh-turn path, which starts an in-app thread.
     expect(captured.dispatched[0]?.threadIds).toEqual(['t1']);
     expect(captured.requested).toEqual([]);
   });

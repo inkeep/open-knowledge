@@ -9,11 +9,7 @@ interface DocGraphNode {
   cluster?: string | null;
   category?: string | null;
   tags?: string[] | null;
-  /** Server-set: this node belongs to one of OpenKnowledge's own skill bundles.
-   *  The reserved names live in the server package, so the classification arrives
-   *  on the payload rather than being re-derived here. */
   managed?: boolean;
-  /** Wall-clock ms this node first entered the rendered graph (birth animation). */
   bornAt?: number;
 }
 
@@ -22,7 +18,6 @@ interface ExternalGraphNode {
   id: string;
   label: string;
   url: string;
-  /** Wall-clock ms this node first entered the rendered graph (birth animation). */
   bornAt?: number;
 }
 
@@ -31,7 +26,6 @@ export type GraphNode = DocGraphNode | ExternalGraphNode;
 export interface GraphLink {
   source: string;
   target: string;
-  /** Wall-clock ms this link first entered the rendered graph (fade-in). */
   bornAt?: number;
 }
 
@@ -40,9 +34,6 @@ export interface GraphData {
   links: GraphLink[];
 }
 
-// Intentionally a separate type from `TargetDisplayState` in target-navigation-intent.ts,
-// which is not exported. The two types are identical in shape but belong to different
-// layers — keep them decoupled so graph-view-utils has no dependency on the navigation layer.
 export type GraphDocDisplayState = 'doc' | 'folder' | 'missing';
 
 type GraphNodePhysicsKey =
@@ -132,34 +123,13 @@ export function buildGraphLinkSignature(links: GraphLink[]): string {
     .join(',');
 }
 
-/**
- * Staged-entrance pacing for `reconcileGraphData`. Agents deliver a whole
- * page batch in one CC1 push, so every new node would otherwise stamp the
- * same `bornAt` and bloom simultaneously. With entrance options, the i-th
- * new node of an apply is born `i * nodeStepMs` later (a sequential pop-in
- * replay of the build), and each new link waits for BOTH endpoints plus
- * `linkExtraMs`, so edges draw between nodes that are already visible.
- */
 export interface ReconcileEntranceOptions {
   nodeStepMs: number;
   linkExtraMs: number;
-  /**
-   * Pre-build content (the showcase's build-start baseline): these nodes and
-   * links materialize INSTANTLY (`bornAt: 0`, no birth animation) even on a
-   * fresh mount — the staged replay is for what the agent ADDED, not for
-   * re-birthing everything that already existed.
-   */
   instantNodeIds?: ReadonlySet<string>;
   instantLinkKeys?: ReadonlySet<string>;
 }
 
-/**
- * Merge a fresh API graph into the rendered one, preserving force-layout
- * physics for surviving nodes and stamping `bornAt` on first appearance so the
- * canvas can fade/scale new nodes and links in. `now` is injectable for tests.
- * `entrance` (showcase mode) staggers same-apply arrivals — see
- * {@link ReconcileEntranceOptions}.
- */
 export function reconcileGraphData(
   previous: GraphData,
   next: GraphData,
@@ -177,7 +147,6 @@ export function reconcileGraphData(
       copyGraphNodePhysics(mergedNode, previousNode);
       mergedNode.bornAt = previousNode.bornAt ?? now;
     } else if (entrance?.instantNodeIds?.has(node.id)) {
-      // Pre-build content on a fresh mount — present, not born.
       mergedNode.bornAt = 0;
     } else {
       mergedNode.bornAt = now;
@@ -185,8 +154,6 @@ export function reconcileGraphData(
     }
     return mergedNode as GraphNode;
   });
-  // A lone arrival needs no pacing; a clump gets the sequential entrance.
-  // API order approximates creation order (the write batch is ordered).
   if (entrance !== undefined && newNodes.length > 1) {
     newNodes.forEach((node, index) => {
       node.bornAt = now + index * entrance.nodeStepMs;
@@ -205,16 +172,12 @@ export function reconcileGraphData(
     const sourceId = getGraphLinkEndpointId(link.source);
     const targetId = getGraphLinkEndpointId(link.target);
     const previousLink = previousLinksByKey.get(`${sourceId}>${targetId}`);
-    // __indexColor is force-graph's internal canvas hit-test identifier.
-    // The map is keyed by source>target, so this only copies the color when
-    // the exact same endpoint pair reappears — never leaks across different links.
     if (previousLink?.__indexColor) {
       mergedLink.__indexColor = previousLink.__indexColor;
     }
     if (previousLink?.bornAt !== undefined) {
       mergedLink.bornAt = previousLink.bornAt;
     } else if (entrance?.instantLinkKeys?.has(`${sourceId}>${targetId}`)) {
-      // Pre-build link on a fresh mount — present, not born.
       mergedLink.bornAt = 0;
     } else if (entrance !== undefined) {
       mergedLink.bornAt =

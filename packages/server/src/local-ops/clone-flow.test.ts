@@ -1,17 +1,8 @@
-/**
- * Clone-flow runner — covers the JSON-shape parser, terminal-event tracking,
- * timeout/error reporting, stderr inclusion in error messages, and the
- * `validateCloneInputs` URL/path allowlists.
- */
-
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { type RawCloneEvent, runCloneSubprocess, validateCloneInputs } from './clone-flow.ts';
 
-// `validateCloneInputs` confines the target to the user's home directory.
-// All clone fixtures use a path under home so the runner-level tests don't
-// trip on the path allowlist.
 const HOME_PATH = join(homedir(), 'open-knowledge-test-clone');
 
 const fixtureCli = (script: string): readonly string[] => [process.execPath, '-e', script];
@@ -56,9 +47,6 @@ describe('runCloneSubprocess', () => {
     }
   });
 
-  // This event is forwarded verbatim to the renderer (clone toast +
-  // share-receive error panel). With prompts disabled git echoes the URL's
-  // username half, which is where a bare PAT lives.
   test('redacts a credential out of the stderr detail before it reaches the event', async () => {
     const events: RawCloneEvent[] = [];
     const token = `ghp_${'a'.repeat(36)}`;
@@ -73,22 +61,15 @@ describe('runCloneSubprocess', () => {
     });
     await ctrl.done;
     expect(events).toHaveLength(1);
-    // Asserted OUTSIDE the narrowing guard: `toHaveLength` does not constrain
-    // the type, so without this a terminal-event change would skip every
-    // assertion below and report green.
     expect(events[0].type).toBe('error');
     if (events[0].type === 'error') {
       expect(events[0].message).not.toContain(token);
       expect(events[0].message).not.toContain('ghp_');
-      // Redacted, not merely absent — the diagnostic still names the host.
       expect(events[0].message).toContain('***@github.com');
       expect(events[0].message).toContain('exited with code 128');
     }
   });
 
-  // A git crash dump or multi-page submodule error would otherwise be
-  // interpolated whole into a toast and a persistent error panel, pushing the
-  // load-bearing first line out of view.
   test('caps a very long stderr detail so the toast stays readable', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
@@ -109,8 +90,6 @@ describe('runCloneSubprocess', () => {
     }
   });
 
-  // Whitespace-only stderr must not leave a dangling separator with nothing
-  // after it — emptiness is decided on the redacted value.
   test('whitespace-only stderr produces no dangling detail separator', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
@@ -150,7 +129,6 @@ describe('runCloneSubprocess', () => {
   test('CLI-emitted error event is forwarded as terminal — no second event synthesized', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
-      // CLI emits 'error' but exits with code 0 (e.g. graceful failure).
       cliArgs: fixtureCli(`
         console.log(JSON.stringify({type:'error', message:'permission denied'}));
         process.exit(0);
@@ -176,7 +154,6 @@ describe('runCloneSubprocess', () => {
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
-    // First line dropped (missing pct); second forwarded.
     expect(events.map((e) => e.type)).toEqual(['complete']);
   });
 
@@ -224,8 +201,6 @@ describe('runCloneSubprocess', () => {
     });
     setTimeout(() => ctrl.cancel(), 50);
     await ctrl.done;
-    // Cancel via SIGTERM yields code:null → runner reports as error event
-    // ("Clone process exited with code -1"). Asserts current behavior.
     const errEvent = events.find((e) => e.type === 'error');
     expect(errEvent).toBeDefined();
   });
@@ -273,7 +248,6 @@ describe('validateCloneInputs', () => {
   });
 
   test('rejects path that is not safe for the local filesystem', () => {
-    // Empty string is rejected by isSafeLocalPath.
     const result = validateCloneInputs('https://github.com/x/y.git', '');
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('invalid-dir');

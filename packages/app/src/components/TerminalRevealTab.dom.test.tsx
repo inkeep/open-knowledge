@@ -4,14 +4,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { TerminalRevealTab } from './TerminalRevealTab';
 
-/** The two panels' labels, so a rename in the component fails one place here. */
 const LABEL = { bottom: 'Open terminal', right: 'Open agents panel' } as const;
 
 function renderTab(edge: 'bottom' | 'right') {
   const onReveal = vi.fn(() => {});
   render(
-    // The app mounts a root TooltipProvider (main.tsx); supply one here so the
-    // reveal tab's tooltip has its context in isolation.
     <TooltipProvider>
       <TerminalRevealTab edge={edge} onReveal={onReveal} />
     </TooltipProvider>,

@@ -183,8 +183,6 @@ describe('applyClaGate', () => {
       forceDraft: true,
     });
     expect(gh.recorded.draft).toBe(true);
-    // The gate itself is not gated (CLA is signed); the draft is purely the
-    // conflict hold, so cla/verified still reports success.
     expect(gate.gated).toBe(false);
     expect(gh.recorded.status).toBe('success');
   });

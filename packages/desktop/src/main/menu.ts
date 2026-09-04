@@ -1,37 +1,3 @@
-/**
- * Application menu — baseline.
- *
- * Covers the File / Edit / View / Window scope:
- *   - File: Switch project (open Navigator), Open folder (native picker),
- *     Recent project submenu, Close Window
- *   - Edit: macOS defaults (Undo/Redo/Cut/Copy/Paste/Select All)
- *   - View: Reload / Force Reload / zoom / fullscreen always; Toggle DevTools
- *     gated on `showDevToolsMenu` (dev + beta only) — Electron built-in roles;
- *     Back / Forward navigation history
- *   - Window: macOS defaults (Minimize / Zoom / Bring to Front)
- *
- * Deferred to later work:
- *   - Project menu (Save Version, Version History, Reveal .ok/, Trust Project)
- *   - File → Clone from GitHub…
- *   - View → Graph / Timeline / Backlinks / Outline toggles
- *   - Help → Documentation
- *
- * The menu is rebuilt on recent-projects changes so the Recent project submenu
- * stays current without us reaching into Electron's menu-item mutation API
- * (Electron recommends full rebuild on state change).
- *
- * Electron import discipline: `electron` named exports (Menu, app, dialog,
- * shell) are only resolvable at runtime inside an Electron process. Vitest's
- * Node runtime loads the `electron` npm package, which is just a string
- * path to the binary — it has NO named exports. So this module uses
- * type-only imports for interface types (MenuItemConstructorOptions) and
- * pulls the one runtime value we need (`app.name`) + side-effecting APIs
- * (Menu.setApplicationMenu, Menu.buildFromTemplate, dialog.showOpenDialog)
- * via a dynamic `await import('electron')` inside `installApplicationMenu`.
- * That keeps `buildMenuTemplate` — the pure function tests exercise —
- * free of runtime electron bindings.
- */
-
 import {
   COMMAND_IDENTITIES,
   type CommandContext,
@@ -56,352 +22,74 @@ import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 export interface MenuDeps {
   onNavigateBack?(): void;
   onNavigateForward?(): void;
-  /** `app.name` — the running app's name, used for the macOS App menu label. */
   appName: string;
-  /**
-   * Gates the View → Toggle Developer Tools item. When false, only that item is
-   * omitted — Reload / Force Reload render unconditionally (all channels).
-   * Caller decides; this module just renders.
-   */
   showDevToolsMenu: boolean;
-  /** Main-owned host capability, including the Windows ConPTY build floor. */
   terminalCapable: boolean;
-  /** `electron.dialog` — injected so the File → Open folder click handler
-   *  can call `promptForExistingFolder(dialog)` without importing `dialog`
-   *  at module scope (breaks Vitest module load). */
   dialog: Dialog;
-  /** Open the Project Navigator window (File → Switch project…). */
   openNavigator(): void;
-  /**
-   * Open a specific project folder (File → Open folder… or File → Recent project ▸ <row>).
-   * `entryPoint` tags the originating menu surface so the consent-dialog gate
-   * can branch on user intent.
-   */
   openProject(projectPath: string, entryPoint: EntryPoint): Promise<void>;
-  /**
-   * File → Open file… click handler target — open a loose markdown file in a
-   * temporary single-file session (`openEphemeralFile`, the desktop side of
-   * `ok <file>`). The menu binding shows the native md/mdx picker via
-   * `promptForExistingMarkdownFile(d.dialog)` first, so this receives an
-   * absolute path. Optional because the menu is also built in deps-unwired unit
-   * tests; production `index.ts` always wires it.
-   */
   openEphemeralFile?(filePath: string): Promise<void>;
-  /** Current recent-projects list (top-of-LRU first). Used to build Recent project submenu. */
   getRecentProjects(): ReadonlyArray<{ path: string; name: string }>;
-  /** Clear the recent-projects list (File → Recent project → Clear menu). */
   clearRecentProjects(): void;
-  /**
-   * Current recent loose-files list (top-of-LRU first). Optional — when wired
-   * (alongside `openEphemeralFile`), File → Recent files ▸ <row> reopens each
-   * loose file. Absent (unit tests) → no Recent files submenu renders.
-   */
   getRecentFiles?(): ReadonlyArray<{ path: string; name: string }>;
-  /** Clear the recent loose-files list (File → Recent files → Clear menu). */
   clearRecentFiles?(): void;
-  /** Open an external URL (Help menu). Injected so the `shell` runtime value doesn't cross the module boundary. */
   openExternalUrl(url: string): void;
-  /**
-   * Re-trigger the first-launch consent dialog from the File menu. Invoked
-   * by "Set up OpenKnowledge integrations…" — a user who Skip'd
-   * first-launch (or declined the shell-PATH toggle, or added a new editor
-   * afterwards) can re-open the dialog without hand-deleting
-   * `~/.ok/mcp-status.json`. The dialog covers both MCP wiring and the
-   * PATH install. It opens immediately in the focused window (editor or
-   * Navigator — the wiring is user-global, no project required); with zero
-   * loaded windows it appears in the next window that opens. Gated on
-   * darwin + `app.isPackaged`; `index.ts` short-circuits in dev +
-   * non-darwin so the menu item is hidden there.
-   */
   reconfigureMcpWiring?(): Promise<void> | void;
-  /**
-   * Help → Install in Claude Desktop… click handler. Navigates the focused
-   * window's URL hash to `#install-claude-desktop` so App.tsx's
-   * `InstallInClaudeDesktopTrigger` opens the dialog. Optional because the
-   * menu renders even in contexts that don't wire it (unit tests).
-   */
   openInstallSkillDialog?(): void;
-  /**
-   * Cmd-, "Settings…" click handler. Navigates the focused window's URL
-   * hash to `#settings` so the renderer's `useSettingsRoute` hook (mounted
-   * by `EditorArea`) renders the Settings pane in the main editor area.
-   * Optional for the same reason as `openInstallSkillDialog` — unit tests
-   * build the menu without wiring this.
-   *
-   * In Navigator window mode (the renderer is `NavigatorApp`, not `App`),
-   * the hash change is a silent no-op since `useSettingsRoute` is not
-   * mounted there — same precedent as `openInstallSkillDialog`.
-   */
   openSettings?(): void;
-  /**
-   * Help → Report a bug… click handler — fires the `report-bug` menu action
-   * to the focused renderer, which opens the in-app report dialog (editor
-   * windows and the Navigator both subscribe). Optional for the same reason
-   * as `openInstallSkillDialog` — unit tests build the menu without wiring
-   * it; the item itself always renders.
-   */
   onReportBug?(): void;
-  /**
-   * Help → Send feedback… click handler — fires the `send-feedback` menu
-   * action to the focused renderer, which opens the same in-app feedback form
-   * the Resources menu and Cmd+K open (editor windows and the Navigator both
-   * subscribe). Optional for the same reason as `onReportBug`.
-   */
   onSendFeedback?(): void;
-  /**
-   * "Check for updates…" click handler — fires an out-of-cadence
-   * `autoUpdater.checkForUpdates()` via the `ok:update:check-now` IPC.
-   * The user-facing result is delivered through the existing electron-
-   * updater event toasts (update-available / update-not-available), so
-   * the click handler returns void.
-   *
-   * Optional: `index.ts` only wires this when the updater handle has
-   * booted successfully. When undefined, both the macOS App-menu entry
-   * and the cross-platform Help-menu entry are omitted entirely (rather
-   * than rendering disabled) — a disabled "Check for updates…" with no
-   * tooltip explaining why is more confusing than absence in dev mode.
-   */
   onCheckForUpdates?(): void;
-  /**
-   * macOS App menu → Uninstall OpenKnowledge… click handler. Optional so the
-   * row is hidden in dev, non-packaged, non-macOS, or unsupported install
-   * locations; the handler owns the destructive confirmation dialog.
-   */
   onUninstall?(): void;
-  /**
-   * Active editor target snapshot — drives the macOS File menu's
-   * state-aware item-management section. Renderer pushes this via
-   * `ok:editor:active-target-changed` after each navigation; main calls
-   * `installApplicationMenu` again on receipt so the menu's `enabled` /
-   * `click` payload tracks the current target.
-   *
-   * `null` kind = project scope (no doc, folder, or asset selected); `doc`
-   * / `folder` / `asset` carry the identifier the click handlers route
-   * through the bridge.shell.* / HTTP path. Optional so unit tests can build
-   * the menu without wiring a fake snapshot.
-   */
   activeTarget?: EditorActiveTargetSnapshot;
-  /**
-   * Window → Open in New Window click handler — pops the focused window's
-   * active document into its own note window. Main-originated: it resolves the
-   * document from the per-window active-target registry and creates the window
-   * directly, so this entry point adds no IPC channel. Disabled when
-   * `activeTarget.kind` is not `'doc'` (nothing to pop).
-   */
   onOpenInNewWindow?(): void;
-  /**
-   * File → New file click handler. Routes through the renderer-side
-   * inline-rename flow at FileTree's startCreating helper — same path the
-   * sidebar empty-space context menu uses. Optional because the menu is
-   * also built in contexts that don't wire it (Vitest unit tests).
-   */
   onNewFile?(): void;
-  /** File → New folder click handler. Sibling of `onNewFile`. */
   onNewFolder?(): void;
-  /** File → New from Template… click handler — opens NewItemDialog. */
   onNewFromTemplate?(): void;
-  /**
-   * File → New project… click handler — opens the create-new-project
-   * dialog in the focused window. Distinct from `openNavigator` (Switch
-   * Project…, which lists/opens existing projects): this scaffolds a brand-new
-   * project. Always enabled when wired (no `activeTarget` gate — creating a
-   * project is project-scope-independent). Optional because the menu is also
-   * built in contexts that don't wire it (Vitest unit tests).
-   */
   onNewProject?(): void;
-  /**
-   * File → New worktree… click handler (worktree = window). Delegates to
-   * the focused renderer's ProjectSwitcher surface, which opens the create-
-   * worktree dialog. Optional because the menu is also built in deps-unwired
-   * unit-test contexts.
-   */
   onNewWorktree?(): void;
-  /**
-   * File → Switch worktree… click handler. Opens the sidebar worktree switcher
-   * in the focused renderer. Sibling of `onNewWorktree`.
-   */
   onSwitchWorktree?(): void;
-  /**
-   * File → Rename click handler — invokes the renderer-side inline rename
-   * for the current `activeTarget`. Enabled only when `activeTarget.kind`
-   * is `'doc'`, `'folder'`, or `'asset'` (project scope has no target to rename).
-   */
   onRename?(): void;
-  /**
-   * File → Duplicate click handler — invokes the renderer-side duplicate
-   * flow for the current `activeTarget`. Enabled only when
-   * `activeTarget.kind` is `'doc'` or `'folder'`.
-   */
   onDuplicate?(): void;
-  /**
-   * File → Move to Trash click handler — invokes the 2-step
-   * Trash flow on the current `activeTarget`. Enabled only when
-   * `activeTarget.kind` is `'doc'`, `'folder'`, or `'asset'`. Cmd+Delete
-   * accelerator matches Finder / VSCode convention.
-   */
   onMoveToTrash?(): void;
-  /**
-   * File → Close tab click handler. The renderer consumes Cmd+W by closing
-   * the active tab when one exists; when all tabs are already closed, it
-   * falls back to closing the focused BrowserWindow. Every OK BrowserWindow
-   * type must subscribe to `close-active-tab-or-window`; the main-process
-   * menu cannot know whether the focused renderer has tabs.
-   */
   onCloseActiveTabOrWindow?(): void;
-  /**
-   * File → Reveal in Finder click handler — invokes
-   * `bridge.shell.showItemInFolder` against the current target (file/folder
-   * absolute path; project scope reveals contentDir).
-   */
   onRevealInFinder?(): void;
-  /**
-   * File → Open with AI > <agent> click handler — dispatches the existing
-   * handoff flow against the current scope (file/folder/project) per the
-   * sparkle icon's 3-way selector. Submenu construction happens in the
-   * renderer; main fires this as a "open the submenu surface" trigger.
-   */
   onSendToAi?(): void;
-  /**
-   * File → Copy path > Full path / Relative path click handlers — write
-   * the absolute or project-relative path for the current target to the
-   * system clipboard.
-   */
   onCopyFullPath?(): void;
   onCopyRelativePath?(): void;
-  /**
-   * View menu visibility-toggle state. When undefined, each View-menu
-   * Show … check item renders at its config-schema default. These mirror
-   * the sidebar checkbox state — main reads the latest snapshot pushed
-   * from the renderer (via the active-target push or a sibling
-   * notification) so all surfaces (tree-options popover, sidebar context
-   * menu, View menu) stay in sync.
-   */
   showHiddenFilesChecked?: boolean;
-  /** View → Show hidden files click handler — flips the projectLocalBinding flag. */
   onToggleShowHiddenFiles?(): void;
   showOkFoldersChecked?: boolean;
-  /** View → Show .ok folders click handler — flips the projectLocalBinding flag. */
   onToggleShowOkFolders?(): void;
   showOnlyMarkdownFilesChecked?: boolean;
-  /** View → Show only markdown files click handler — flips the projectLocalBinding flag. */
   onToggleShowOnlyMarkdownFiles?(): void;
   showSkillsSectionChecked?: boolean;
-  /** View → Show skills section click handler — flips the projectLocalBinding flag. */
   onToggleShowSkillsSection?(): void;
-  /**
-   * Sidebar visibility — drives the View → Show/Hide sidebar item's label
-   * (Apple HIG convention: single row whose label toggles based on current
-   * state, matching Finder). `undefined` reads as "visible" so the item
-   * renders "Hide sidebar" before the first renderer push lands. Sibling
-   * of `showHiddenFilesChecked` — both flow from the same renderer-pushed
-   * view-menu-state snapshot.
-   */
   sidebarVisible?: boolean;
-  /**
-   * View → Show/Hide sidebar click handler — fires `ok:menu-action` with
-   * action `'toggle-sidebar'` to the focused renderer, which calls
-   * `useSidebar().toggleSidebar()`. The ⌥⌘S accelerator (Apple HIG sidebar
-   * convention; ⌘B is Bold in the editor) is OS-captured: Electron routes
-   * the keypress to this menu item before it reaches the renderer.
-   */
   onToggleSidebar?(): void;
-  /** The focused window is a reduced single-document pop-out. */
   noteWindow?: boolean;
   docPanelVisible?: boolean;
   onToggleDocPanel?(): void;
-  /**
-   * Terminal visibility drives the View → Show/Hide Terminal label. Unlike the
-   * sidebar/doc-panel (visible by default), Terminal starts hidden, so
-   * `undefined`/`false` reads as "Show Terminal".
-   */
   terminalVisible?: boolean;
   onToggleTerminal?(): void;
   terminalPlacement?: TerminalPlacement;
   onMoveTerminal?(): void;
-  /**
-   * Right agents-panel visibility — drives the View → Show/Hide Agents label.
-   * Starts hidden like the terminal, so `undefined`/`false` reads as "Show
-   * Agents". Independent of `terminalVisible`: the two panels own different
-   * edges and open/close on their own. Unlike the terminal handlers, this one
-   * stays wired off-mac — agent threads are server-hosted, not pty-backed.
-   */
   agentPanelVisible?: boolean;
-  /**
-   * Live editor selection. `onToggleAgentPanel` stages that selection in the
-   * agents panel rather than toggling it, so the item renames itself to say so —
-   * see the `overrideKey` on this command's `stateToggle`.
-   */
   hasEditorSelection?: boolean;
   onToggleAgentPanel?(): void;
-  /**
-   * Top-level Terminal menu actions. `onNewTerminal` opens a new terminal tab
-   * (revealing the dock if hidden; it never hides an already-open terminal,
-   * unlike the View toggle). `onKillTerminal` closes the active tab — killing
-   * that session's PTY and collapsing the dock only when it was the last tab.
-   * Both optional because the menu is also built in deps-unwired unit-test contexts.
-   */
   onNewTerminal?(): void;
   onKillTerminal?(): void;
-  /**
-   * Opens a new dedicated terminal WINDOW (distinct from `onNewTerminal`, which
-   * opens a tab in the docked panel). Main resolves the focused window's project
-   * and opens the window directly — no renderer round-trip. Optional for the
-   * deps-unwired unit-test contexts.
-   */
   onNewTerminalWindow?(): void;
-  /**
-   * Whether a terminal session is live (mounted). Gates "Kill Terminal" — a
-   * collapsed-but-alive terminal still counts as live, so this tracks the dock
-   * latch, not visibility. `undefined`/`false` keeps Kill Terminal disabled.
-   */
   terminalLive?: boolean;
-  /**
-   * Smart-hide signals for the View → Expand all / Collapse all items.
-   * When `canExpandAll === false`, every folder tree-wide is already
-   * expanded — hide Expand all. When `canCollapseAll === false`, every
-   * folder is already collapsed — hide Collapse all. undefined treats as
-   * "can perform" so the items render in deps-unwired unit-test contexts.
-   */
   canExpandAll?: boolean;
   canCollapseAll?: boolean;
-  /** View → Expand all click handler — tree-scoped (sibling of sidebar Expand all). */
   onExpandAll?(): void;
-  /** View → Collapse all click handler — tree-scoped. */
   onCollapseAll?(): void;
-  /**
-   * App-wide spell-check flag — drives the Edit menu's "Check spelling while
-   * typing" checkbox (why one app-level flag: see `AppState.spellCheckEnabled`
-   * in state-store.ts). Defaults to checked when unwired, matching the
-   * on-by-default persistence default, so the menu reads correctly before the
-   * flag is plumbed.
-   */
   spellCheckEnabled?: boolean;
-  /**
-   * Edit → "Check spelling while typing" click handler. Flips the app-wide flag
-   * (live session toggle + persist) then rebuilds the menu so the checkmark
-   * tracks the new state. Shares the persisted flag with the in-editor context
-   * menu's Disable/Enable rows. Optional because the menu is also built in
-   * contexts that don't wire it (unit tests).
-   */
   onToggleSpellCheck?(): void;
-  /**
-   * Renders every label in the resolved interface language. Absent — which is
-   * how the unit tests and any caller that has not resolved a locale yet build
-   * the template — leaves every label in English.
-   */
   translate?: MenuTranslator;
 }
 
-/**
- * Electron's English `role:` label, per role, so we can hand each role item an
- * explicit translated `label`. Electron hardcodes these in its own bundle with
- * no OS lookup and no locale variation, so an implicit role renders English
- * inside an otherwise translated menu bar — and none of them appears in any
- * string audit, because we never wrote them.
- *
- * Three roles vary by platform in Electron's own table; the branches here
- * reproduce that exactly so an English build reads unchanged.
- */
 function roleLabelSource(role: string, isMac: boolean): string | undefined {
   switch (role) {
     case 'about':
@@ -460,31 +148,12 @@ function roleLabelSource(role: string, isMac: boolean): string | undefined {
   }
 }
 
-/**
- * Install the template as the application menu. Dynamically imports
- * `Menu` so the module-top scope stays Vitest-loadable; callers must
- * be in an async context (typically `app.whenReady().then(async () => ...)`).
- */
 export async function installApplicationMenu(deps: MenuDeps): Promise<void> {
   const { Menu } = await import('electron');
   const template = buildMenuTemplate(deps);
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/**
- * Desktop-side binding for each command identity: how the native menu derives a
- * leaf's click / enabled / presence / checkbox state from the injected
- * `MenuDeps`. This is the "click handlers stay wired by id" layer — a leaf's
- * label, accelerator, placement, and availability all come from the shared
- * registry (`@inkeep/open-knowledge-core`), and only this desktop glue lives
- * here.
- *
- * `enabled` is the dep-presence gate ANDed with the registry availability (an
- * unwired dep disables the leaf — the unit-test-safe behavior the menu has
- * always had; in production every dep is wired, so availability drives it).
- * `present` omits the leaf entirely — capability/flag-gated items that render as
- * absence, not disabled. Both default to "always".
- */
 interface MenuCommandBinding {
   click?(deps: MenuDeps): MenuItemConstructorOptions['click'];
   enabled?(deps: MenuDeps): boolean;
@@ -518,14 +187,9 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onNewProject?.(),
     enabled: (d) => d.onNewProject !== undefined,
   },
-  // Switch project / Open folder are always enabled — their deps are required.
-  // Open file (below) is the exception: it gates on `openEphemeralFile`, which is
-  // optional so deps-unwired unit tests can build the menu (always wired in production).
   'switch-project': { click: (d) => () => d.openNavigator() },
   'open-folder': {
     click: (d) => async () => {
-      // Shared with the `ok:dialog:open-folder` IPC handler so both call sites
-      // agree on dialog options forever — see dialog-helpers.
       const picked = await promptForExistingFolder(d.dialog);
       if (picked) {
         await d.openProject(picked, 'pick-existing');
@@ -534,9 +198,6 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   },
   'open-file': {
     click: (d) => async () => {
-      // Shared picker options with the `ok:project:open-file-picker` IPC handler
-      // (see dialog-helpers). `openEphemeralFile` re-derives project-vs-ephemeral,
-      // so a file inside a project opens that project rather than a temp session.
       const picked = await promptForExistingMarkdownFile(d.dialog);
       if (picked) {
         await d.openEphemeralFile?.(picked);
@@ -574,8 +235,6 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onCopyRelativePath?.(),
     enabled: (d) => d.onCopyRelativePath !== undefined,
   },
-  // Re-trigger first-launch MCP consent. Presence-gated: non-macOS / non-packaged
-  // contexts (where MCP wiring no-ops anyway) plumb `undefined` and hide the row.
   'set-up-integrations': {
     click: (d) => () => {
       void d.reconfigureMcpWiring?.();
@@ -587,8 +246,6 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     click: (d) => () => d.onCloseActiveTabOrWindow?.(),
     enabled: (d) => d.onCloseActiveTabOrWindow !== undefined,
   },
-  // Presence-gated on the booted updater handle; a bare click reference matches
-  // the runtime shape Electron invokes for a shortcut-less item.
   'check-for-updates': {
     click: (d) => d.onCheckForUpdates,
     present: (d) => d.onCheckForUpdates !== undefined,
@@ -656,7 +313,6 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   'toggle-show-skills-section': {
     click: (d) => () => d.onToggleShowSkillsSection?.(),
     enabled: (d) => d.onToggleShowSkillsSection !== undefined,
-    // Skills section is default-on, so the unwired checkbox reads checked.
     checked: (d) => d.showSkillsSectionChecked ?? true,
   },
   'expand-all-tree': {
@@ -668,7 +324,6 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
     enabled: (d) => d.onCollapseAll !== undefined,
   },
   'open-github': { click: (d) => () => d.openExternalUrl(OPEN_KNOWLEDGE_GITHUB_URL) },
-  // Report a bug always renders + is enabled; the click no-ops when unwired.
   'report-bug': { click: (d) => () => d.onReportBug?.() },
   'send-feedback': { click: (d) => () => d.onSendFeedback?.() },
   'install-claude-desktop': {
@@ -677,19 +332,8 @@ const MENU_BINDINGS: Record<string, MenuCommandBinding> = {
   },
 };
 
-/**
- * The command ids that carry a desktop binding. Exported so the parity ratchet
- * can assert every menu-placed registry command has one: a command with a `menu`
- * placement but no binding would render a leaf with no click handler, enabled by
- * default — a silent no-op the optional-chained lookup in `buildCommandLeaves`
- * would not catch.
- */
 export const MENU_BINDING_IDS: ReadonlySet<string> = new Set(Object.keys(MENU_BINDINGS));
 
-/** Project the pushed active-target snapshot onto the shared gating kind. The
- *  menu maps project scope (and the pre-first-push `undefined`) to `project`:
- *  contentDir is still an actionable target, so reveal / copy-path stay enabled
- *  there, while rename / duplicate / trash (which require a real file) do not. */
 function menuTargetKind(target: EditorActiveTargetSnapshot | undefined): ContextualTargetKind {
   if (target === undefined || target.kind === null) return 'project';
   return target.kind;
@@ -699,23 +343,16 @@ function menuCommandContext(deps: MenuDeps): CommandContext {
   return {
     host: 'desktop',
     activeTargetKind: menuTargetKind(deps.activeTarget),
-    // The native menu has no single-file concept; those commands never gate here.
     singleFile: false,
     terminalCapable: deps.terminalCapable,
     terminalLive: deps.terminalLive === true,
     canExpandAll: deps.canExpandAll ?? true,
     canCollapseAll: deps.canCollapseAll ?? true,
-    // Window → Open in New Window is the one menu leaf that gates on this, so
-    // it derives from the pushed target rather than being hard-false. Open
-    // graph, the other `requiresActiveDoc` command, stays palette-only.
     hasActiveDoc: deps.activeTarget?.kind === 'doc',
     showInstallSkill: SHOW_INSTALL_SKILL,
   };
 }
 
-/** Resolve a menu leaf's plain-string label: an explicit literal, the Show/Hide
- *  toggle variant driven by the pushed view-menu-state, a per-placement key
- *  override (Copy path's children), or the command's own `labelKey`. */
 function menuLeafLabel(
   cmd: CommandIdentity,
   placement: CommandMenuPlacement,
@@ -726,8 +363,6 @@ function menuLeafLabel(
   if (cmd.stateToggle) {
     const { stateField, defaultVisible, showKey, hideKey, overrideKey, overrideField } =
       cmd.stateToggle;
-    // The override wins over the show/hide pair: it names an action the toggle
-    // is not performing, so deferring to the pair would leave the item lying.
     if (overrideKey !== undefined && overrideField !== undefined && deps[overrideField] === true) {
       return MENU_LABELS[overrideKey];
     }
@@ -745,16 +380,9 @@ function menuLeafLabel(
   if (key === undefined) {
     throw new Error(`command ${cmd.id} menu leaf has no resolvable label`);
   }
-  // Platform resolves before translation: the platform-adaptive strings
-  // (Reveal in Finder / File Explorer, Trash / Recycle Bin) pick the right
-  // English source so the hidden Alt-menu on Windows/Linux never shows macOS
-  // surface names, and `translate` then hashes that source to the catalog.
   return translate(menuLabelForPlatform(key, process.platform));
 }
 
-/** Generate the actionable command leaves for the current platform, grouped by
- *  their declared menu section. `buildMenuTemplate` slots each group into the
- *  declarative scaffolding (roles / separators / submenu parents / recents). */
 function buildCommandLeaves(
   deps: MenuDeps,
   isMac: boolean,
@@ -784,8 +412,6 @@ function buildCommandLeaves(
         item.checked = binding?.checked ? binding.checked(deps) : false;
       }
       if (placement.smartHide === true) {
-        // Smart-hide (Expand/Collapse all): availability maps to `visible`, so a
-        // fully-expanded tree hides the no-op affordance rather than disabling it.
         item.visible = available;
         item.enabled = depWired;
       } else {
@@ -807,23 +433,14 @@ function buildCommandLeaves(
   return result;
 }
 
-/** Append a trailing separator iff the section rendered any leaves (so a
- *  presence-gated section contributes neither leaf nor stray separator). */
 function withTrailingSep(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return items.length > 0 ? [...items, { type: 'separator' as const }] : [];
 }
 
-/** Prepend a leading separator iff the section rendered any leaves. */
 function withLeadingSep(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return items.length > 0 ? [{ type: 'separator' as const }, ...items] : [];
 }
 
-/**
- * Exported for unit testing — pure function over deps. The actionable command
- * leaves are generated from the shared registry (`buildCommandLeaves`); the
- * roles, separators, submenu parents (Recent project, Copy path), the dynamic
- * recents rows, and the `isMac` platform branches stay declarative here.
- */
 export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] {
   const isMac = process.platform === 'darwin';
   const translate = deps.translate ?? translateEnglish;
@@ -831,9 +448,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
   const leaves = buildCommandLeaves(deps, isMac, translate);
   const leafOf = (section: MenuSection): MenuItemConstructorOptions[] => leaves.get(section) ?? [];
 
-  /** A role item carrying the explicit translated label Electron would
-   *  otherwise supply in English. Roles with no entry in Electron's own label
-   *  table (there are none in this template) keep their implicit label. */
   const roleItem = <T extends MenuItemConstructorOptions['role'] & string>(
     role: T,
   ): MenuItemConstructorOptions => {
@@ -846,8 +460,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     recents.length === 0
       ? [{ label: translate(NATIVE_MENU_LABELS.noRecentProjects), enabled: false }]
       : [
-          // Row labels are project folder names — user-authored text, so they
-          // pass through verbatim.
           ...recents.slice(0, 10).map((row) => ({
             label: row.name,
             sublabel: row.path,
@@ -862,9 +474,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
           },
         ];
 
-  // Recent loose files (File → Open File). Only rendered when `getRecentFiles`
-  // is wired; each row reopens via `openEphemeralFile` (which re-derives
-  // project-vs-ephemeral). Mirrors the Recent project submenu.
   const recentFiles = deps.getRecentFiles?.() ?? [];
   const recentFilesSubmenu: MenuItemConstructorOptions[] =
     recentFiles.length === 0
@@ -885,7 +494,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         ];
 
   const template: MenuItemConstructorOptions[] = [
-    // macOS application menu (auto-populated with the app name).
     ...(isMac
       ? [
           {
@@ -893,12 +501,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
             submenu: [
               roleItem('about'),
               { type: 'separator' as const },
-              // Apple HIG: "Check for updates…" under About, then "Settings…".
-              // Both are platform-conditional placements in the shared registry
-              // (the App-menu placement is `mac`-only; each has a mirror `other`
-              // placement in the File / Help menu), so the leaf renders exactly
-              // once per platform — the previously hand-branched dedupe, now
-              // expressed as data.
               ...withTrailingSep(leafOf('app-updates')),
               ...leafOf('app-settings'),
               { type: 'separator' as const },
@@ -918,12 +520,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: translate(NATIVE_MENU_LABELS.menuFile),
       submenu: [
-        // Creation items head the File menu; then the project section (mirrors
-        // the in-app ProjectSwitcher order: Recent → New project → Switch →
-        // Open folder); then worktrees; then the activeTarget-gated
-        // item-management actions; then reveal / AI / copy-path. Every command
-        // leaf comes from the registry — the separators, the Recent-project
-        // submenu, and the Copy-path submenu parent stay declarative here.
         ...leafOf('file-create'),
         { type: 'separator' },
         {
@@ -952,8 +548,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
         },
         { type: 'separator' },
         ...withTrailingSep(leafOf('file-integrations')),
-        // On Windows/Linux Settings… belongs in the File menu (macOS renders it
-        // in the App menu above); its registry placement is `other`-only.
         ...withTrailingSep(leafOf('file-settings')),
         ...(isMac ? leafOf('file-close') : [roleItem('quit')]),
       ],
@@ -979,8 +573,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
       submenu: [
         ...leafOf('view-history'),
         { type: 'separator' as const },
-        // Reload / Force Reload ship on every channel; Toggle Developer Tools is
-        // gated on `showDevToolsMenu` (dev + beta) — Electron built-in roles.
         roleItem('reload'),
         roleItem('forceReload'),
         ...(deps.showDevToolsMenu
@@ -1002,7 +594,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     },
 
     {
-      // Top-level Terminal menu (VS Code placement, between View and Window).
       label: translate(NATIVE_MENU_LABELS.menuTerminal),
       submenu: leafOf('terminal'),
     },
@@ -1010,8 +601,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: translate(NATIVE_MENU_LABELS.menuWindow),
       submenu: [
-        // Pop-out heads the menu, above the OS window roles — it acts on the
-        // document, where the roles act on the window itself.
         ...withTrailingSep(leafOf('window')),
         roleItem('minimize'),
         ...(isMac
@@ -1029,8 +618,6 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
       submenu: [
         ...withTrailingSep(leafOf('help-install')),
         ...leafOf('help-links'),
-        // macOS gets the Apple-HIG App-menu placement above; Windows/Linux have
-        // no application menu, so Help is the convention there (leading sep).
         ...withLeadingSep(leafOf('help-updates')),
       ],
     },

@@ -1,20 +1,3 @@
-/**
- * DEV-ONLY (opt-in via OK_DESKTOP_E2E_SMOKE=1). Captures the Navigator in its
- * empty / first-launch state (zero recents) at the proposed 840x600 default.
- *
- * Cold launch: fresh userDataDir, no lastOpenedProject, no recents → the app
- * opens the Navigator directly as the first window (no editor). Per
- * NavigatorApp.tsx, recents.length === 0 vertically-centers the 3 cards and
- * the "Recent" section does not render at all — a materially different layout
- * from the populated state.
- *
- * Output: packages/desktop/tmp/nav-shot-empty-840x600.png
- *
- * Gated on a supported host platform, not on darwin: the capture is of the
- * renderer's own layout, which is the same React tree everywhere, so the shot
- * is worth having per-OS (window chrome differs and that is the point).
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -44,7 +27,6 @@ function seedEmptyHome(prefix: string): string {
   const tmpHome = mkdtempSync(join(tmpdir(), `ok-navempty-${prefix}-`));
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
-  // True empty state: no recents, no last project → Navigator opens cold.
   writeFileSync(
     join(userDataDir, 'state.json'),
     JSON.stringify({
@@ -95,9 +77,7 @@ async function findNavigator(app: ElectronApplication, timeoutMs = 20_000): Prom
 function rmSafe(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true });
-  } catch {
-    // ENOTEMPTY race during Electron shutdown — harmless.
-  }
+  } catch {}
 }
 
 test.describe('Navigator empty-state screenshot (dev-only)', () => {

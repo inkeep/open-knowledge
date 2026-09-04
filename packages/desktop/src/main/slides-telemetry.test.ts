@@ -1,17 +1,3 @@
-/**
- * Main-side slides deck-open telemetry — assert `recordDeckOpen` maps an open
- * result to one bounded `ok.slides.deckOpen` span, that a failure additionally
- * increments the reason-labeled counter (so a spawn fault is separable from a
- * readiness timeout), and that the counter instrument is created lazily on first
- * failure — never at module load — and then reused.
- *
- * The desktop package has no `@opentelemetry/*` SDK dep and cannot mount an
- * `InMemorySpanExporter`, so we intercept at the `@inkeep/open-knowledge-server`
- * boundary with `vi.doMock` — the precedent set by
- * `git-preflight-handler-otel.test.ts`. `vi.resetModules()` per test gives each
- * a pristine module so the lazy counter cache never leaks across cases.
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkSlidesOpenResult } from '../shared/ipc-channels.ts';
 
@@ -56,7 +42,6 @@ vi.doMock('@inkeep/open-knowledge-server', () => ({
 }));
 
 async function loadFresh() {
-  // Fresh module instance so the module-level lazy counter cache starts null.
   return import('./slides-telemetry.ts');
 }
 
@@ -117,6 +102,8 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
     const failures: OkSlidesOpenResult[] = [
       { kind: 'open', ok: false, reason: 'timeout' },
       { kind: 'open', ok: false, reason: 'exited-early' },
+      { kind: 'open', ok: false, reason: 'load-failed' },
+      { kind: 'open', ok: false, reason: 'renderer-failed' },
       { kind: 'open', ok: false, reason: 'unsupported-server' },
       { kind: 'open', ok: false, reason: 'spawn-error' },
     ];
@@ -125,6 +112,8 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
     expect(counterAdds).toEqual([
       { value: 1, attributes: { 'ok.slides.reason': 'timeout' } },
       { value: 1, attributes: { 'ok.slides.reason': 'exited-early' } },
+      { value: 1, attributes: { 'ok.slides.reason': 'load-failed' } },
+      { value: 1, attributes: { 'ok.slides.reason': 'renderer-failed' } },
       { value: 1, attributes: { 'ok.slides.reason': 'unsupported-server' } },
       { value: 1, attributes: { 'ok.slides.reason': 'spawn-error' } },
     ]);

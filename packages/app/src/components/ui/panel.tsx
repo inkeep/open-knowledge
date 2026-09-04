@@ -15,10 +15,6 @@ function PanelHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="panel-header"
-      // Floored at the height of a header carrying a count pill, so a panel
-      // whose count is conditional (Problems renders none at zero) is exactly
-      // as tall as one that always shows it. Without the floor, switching tabs
-      // in the right rail nudged the scope switch and the list under it.
       className={cn('shrink-0 flex min-h-12 items-center justify-between px-4 py-3', className)}
       {...props}
     />
@@ -64,11 +60,6 @@ function PanelBody({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-/**
- * Actions pinned below the scroll area. A sibling of `PanelBody` rather than
- * content inside it, so a panel's primary action stays reachable no matter how
- * long the list grows — twenty items must not push "send" off the bottom.
- */
 function PanelFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div

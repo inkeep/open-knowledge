@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type AnchorViewport, scrollDeltaForAnchor } from './scroll-to-anchor';
 
-/** A scrollport 800px tall with the usual toolbar strip across its top. */
 const view = (anchorTop: number, anchorBottom: number): AnchorViewport => ({
   anchorTop,
   anchorBottom,
@@ -10,7 +9,6 @@ const view = (anchorTop: number, anchorBottom: number): AnchorViewport => ({
   insetTop: 56,
 });
 
-/** Where the passage's top lands after applying the delta. */
 function landsAt(v: AnchorViewport): number {
   return v.anchorTop - scrollDeltaForAnchor(v);
 }
@@ -21,8 +19,6 @@ describe('scrollDeltaForAnchor', () => {
   });
 
   it('pulls up a passage sitting too low for its card to fit beneath', () => {
-    // Visible, but only 20px from the bottom — the thread card would open
-    // off-screen, which is the whole complaint.
     const v = view(880, 900);
     expect(scrollDeltaForAnchor(v)).toBeGreaterThan(0);
     expect(landsAt(v)).toBe(180);
@@ -40,8 +36,6 @@ describe('scrollDeltaForAnchor', () => {
   });
 
   it('nudges a passage whose tail runs past the resting band', () => {
-    // A quote spanning most of the scrollport: its start is fine, its end is
-    // not, so it moves just enough to open room underneath.
     expect(scrollDeltaForAnchor(view(200, 700))).toBe(20);
   });
 
@@ -53,8 +47,6 @@ describe('scrollDeltaForAnchor', () => {
   });
 
   it('still places the passage near the top when the scrollport is tiny', () => {
-    // Shorter than the room a card needs: nothing can be comfortable, so the
-    // passage goes as high as it can rather than staying put.
     const v: AnchorViewport = {
       anchorTop: 50,
       anchorBottom: 60,

@@ -1,13 +1,3 @@
-/**
- * Integration coverage for the unified validation audit surface
- * (`GET /api/audit`) against a real server + tmp contentDir: one engine
- * fanning out to the markdownlint walk and the backlink-index dead-link
- * read, merged into a single source-tagged diagnostic plane.
- *
- * Contract-level assertions only (status codes, wire-schema shape, scope
- * parity) — the engine internals are free to evolve underneath.
- */
-
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -23,8 +13,6 @@ import { awaitBacklinkIndexed, createTestServer, type TestServer } from './test-
 let server: TestServer;
 
 beforeAll(async () => {
-  // markdownlint is opt-in (off by default); the unified plane must carry
-  // lint findings alongside link findings, so enable it for the whole server.
   server = await createTestServer({ markdownlintEnabled: true });
 }, HARNESS_BOOT_TIMEOUT_MS);
 
@@ -32,11 +20,8 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-// A hard tab in the body trips MD010, enabled in OK's tuned defaults.
 const TABBED_BODY = '# Doc\n\n\tindented with a hard tab\n';
 
-// Outer budget exceeds awaitBacklinkIndexed's 30s inner timeout so the
-// helper's targeted error surfaces before the runner's generic timeout.
 const BACKLINK_SEED_TIMEOUT_MS = 45_000;
 
 function api(pathAndQuery: string): string {
@@ -45,9 +30,6 @@ function api(pathAndQuery: string): string {
 
 describe('GET /api/audit', () => {
   test('okf enabled reaches ran through the real config lift', async () => {
-    // Seeded through `.ok/config.yml`, not a hand-built LinterConfig: the lift
-    // from persisted config to the runtime slices is where a new plugin key
-    // silently vanishes, and a fixture that skips it cannot catch that.
     const okfServer = await createTestServer({
       seedProjectConfigYml: 'contentRules:\n  okf:\n    enabled: true\nvalidation:\n  links: off\n',
     });
@@ -55,8 +37,6 @@ describe('GET /api/audit', () => {
       const res = await fetch(`http://127.0.0.1:${okfServer.port}/api/audit`);
       expect(res.status).toBe(200);
       const body = ValidationAuditResponseSchema.parse(await res.json());
-      // Once, not twice: the okf lint plugin and the okf project validator both
-      // select this family and it folds to one public id.
       expect(body.ran).toEqual(['okf']);
     } finally {
       await okfServer.cleanup();
@@ -105,16 +85,11 @@ describe('GET /api/audit', () => {
         const dead = linker?.diagnostics.find((d) => d.code === 'dead-link');
         expect(dead).toBeDefined();
         expect(dead?.source).toBe('links');
-        // Default posture: broken links are warnings (validation.links).
         expect(dead?.severity).toBe('warning');
         expect(dead?.message).toContain('audit-http-ghost-target');
-        // The unresolved target rides the wire verbatim (create-page affordance).
         expect(dead?.linkTarget).toBe('audit-http-ghost-target');
-        // Line is exact by contract (column approximate): the link sits on
-        // the third line of the doc (0-based line 2).
         expect(dead?.range.start.line).toBe(2);
 
-        // The wire counts must roll up from the merged plane itself.
         const flat = body.files.flatMap((f) => f.diagnostics);
         expect(body.errorCount).toBe(flat.filter((d) => d.severity === 'error').length);
         expect(body.warningCount).toBe(flat.filter((d) => d.severity !== 'error').length);
@@ -147,16 +122,12 @@ describe('GET /api/audit', () => {
         const projectBody = ValidationAuditResponseSchema.parse(await project.json());
         const docBody = ValidationAuditResponseSchema.parse(await docScoped.json());
 
-        // One predicate, scoped: the doc-scope plane for this file is exactly
-        // the project-scope plane restricted to it — same diagnostics, same
-        // positions, in both directions.
         const projectEntry = projectBody.files.find((f) => f.file === 'audit-parity/linker.md');
         const docEntry = docBody.files.find((f) => f.file === 'audit-parity/linker.md');
         expect(docEntry).toBeDefined();
         expect(docEntry?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
         expect(docEntry).toEqual(projectEntry);
 
-        // The scope filter admits nothing outside the requested doc.
         expect(docBody.files.map((f) => f.file)).toEqual(['audit-parity/linker.md']);
       } finally {
         rmSync(folder, { recursive: true, force: true });
@@ -185,8 +156,6 @@ describe('GET /api/audit', () => {
         const pathBody = ValidationAuditResponseSchema.parse(await byPath.json());
         const docBody = ValidationAuditResponseSchema.parse(await byDoc.json());
 
-        // `doc` is pure extension resolution over the same scope machinery —
-        // the two spellings must produce the identical plane.
         expect(docBody).toEqual(pathBody);
         expect(docBody.files.some((f) => f.file === 'audit-docparam/linker.md')).toBe(true);
       } finally {
@@ -237,8 +206,6 @@ describe('GET /api/audit', () => {
           rawCounts,
         ) satisfies ValidationAuditCountsResponse;
 
-        // Same files, same rollups — the counts plane is a derivation, not a
-        // second determination.
         expect(counts.files.map((f) => f.file)).toEqual(enumerated.files.map((f) => f.file));
         expect(counts.errorCount).toBe(enumerated.errorCount);
         expect(counts.warningCount).toBe(enumerated.warningCount);
@@ -247,8 +214,6 @@ describe('GET /api/audit', () => {
         const tabbed = counts.files.find((f) => f.file.endsWith('tabbed.md'));
         expect(tabbed).toBeDefined();
         expect(tabbed?.lint.warningCount).toBeGreaterThan(0);
-        // The tallies carry no diagnostic bodies — that is the whole point of
-        // the mode, and the wire schema is strict about the file shape.
         expect(Object.keys(tabbed ?? {}).sort()).toEqual(['file', 'links', 'lint']);
       } finally {
         rmSync(folder, { recursive: true, force: true });
@@ -264,8 +229,6 @@ describe('GET /api/audit', () => {
       mkdirSync(folder, { recursive: true });
       writeFileSync(join(folder, 'tabbed.md'), TABBED_BODY, 'utf-8');
       try {
-        // Several windows firing the same freshness pass at once, plus a panel
-        // refresh: all in flight together, all must resolve to one truth.
         const responses = await Promise.all([
           fetch(api('/api/audit?path=audit-coalesce&counts=1')),
           fetch(api('/api/audit?path=audit-coalesce&counts=1')),
@@ -281,8 +244,6 @@ describe('GET /api/audit', () => {
         expect(countsBodies[1]).toEqual(countsBodies[0]);
         expect(countsBodies[2]).toEqual(countsBodies[0]);
 
-        // The enumerated joiner shares the same underlying walk, so its rollups
-        // must match the tallied ones rather than reflecting a separate pass.
         const enumerated = ValidationAuditResponseSchema.parse(bodies[3]);
         expect(enumerated.errorCount).toBe(countsBodies[0]?.errorCount);
         expect(enumerated.warningCount).toBe(countsBodies[0]?.warningCount);

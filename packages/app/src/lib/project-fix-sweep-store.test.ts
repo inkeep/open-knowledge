@@ -17,7 +17,6 @@ import {
 const toasts = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }));
 vi.mock('sonner', () => ({ toast: toasts }));
 
-/** Records the delays the sweep asks for and resolves immediately — no clock. */
 function recordingSleep(): { sleep: (ms: number) => Promise<void>; waited: number[] } {
   const waited: number[] = [];
   return {
@@ -62,8 +61,6 @@ describe('startProjectFixSweep — progress', () => {
   });
 
   test('advances the published count in chunks as the sweep runs', async () => {
-    // Big enough that the chunk interval exceeds one file, so a per-file
-    // publish would be visibly different from the chunked one.
     const total = 30;
     const interval = sweepProgressInterval(total);
     expect(interval).toBeGreaterThan(1);
@@ -76,8 +73,6 @@ describe('startProjectFixSweep — progress', () => {
         return { ok: true };
       },
     });
-    // Read at the top of each file, so file k sees the last chunk boundary at
-    // or below k-1: starts at 0, never goes backwards, and steps by the chunk.
     expect(seen[0]).toBe(0);
     expect([...seen].sort((a, b) => a - b)).toEqual(seen);
     expect(new Set(seen).size).toBeLessThan(total);
@@ -104,9 +99,6 @@ describe('startProjectFixSweep — progress', () => {
   });
 
   test('an empty file list starts nothing', async () => {
-    // The early return skips BOTH the progress publish and the settled
-    // dispatch. Pinned because moving that return below either one would fire
-    // settled on an empty sweep and provoke a needless re-audit.
     const settled = vi.fn();
     subscribeToProjectFixSweepSettled(settled);
     const fixItem = vi.fn(async (): Promise<SweepFixOutcome> => ({ ok: true }));
@@ -125,8 +117,6 @@ describe('startProjectFixSweep — one sweep at a time', () => {
     const firstFixLanded = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    // Only the opening file parks, so the run resumes to completion once
-    // released rather than blocking again on the next one.
     let held: (() => void) | undefined;
     const parked = new Promise<void>((resolve) => {
       held = resolve;
@@ -148,7 +138,6 @@ describe('startProjectFixSweep — one sweep at a time', () => {
     const second = vi.fn(async (): Promise<SweepFixOutcome> => ({ ok: true }));
     await startProjectFixSweep({ items: files(5), fixItem: second, sleep: async () => {} });
     expect(second).not.toHaveBeenCalled();
-    // The refused start must not disturb the running sweep's own progress.
     expect(getProjectFixSweepProgress()?.total).toBe(2);
 
     held?.();
@@ -215,7 +204,6 @@ describe('startProjectFixSweep — how a sweep ends', () => {
     expect(attempts).toEqual(['doc-0.md']);
     expect(toasts.info).toHaveBeenCalledTimes(1);
     expect(String(toasts.info.mock.calls[0]?.[0])).toContain('already fixed stay fixed');
-    // A stop is not a success, and it is not a failure either.
     expect(toasts.success).not.toHaveBeenCalled();
     expect(toasts.error).not.toHaveBeenCalled();
   });
@@ -232,12 +220,9 @@ describe('startProjectFixSweep — how a sweep ends', () => {
     expect(toasts.error).toHaveBeenCalledTimes(1);
     expect(String(toasts.error.mock.calls[0]?.[0])).toContain('1 of 3');
     expect(toasts.error.mock.calls[0]?.[1]).toEqual({ description: 'doc-0.md — conflict' });
-    // The toast names one file; the log carries every casualty, so a bulk
-    // failure leaves a trail wider than the toast.
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('1 of 3 files failed'), [
       { file: 'doc-0.md', detail: 'conflict' },
     ]);
-    // Terminal failures don't end the sweep, so no success toast either.
     expect(toasts.success).not.toHaveBeenCalled();
   });
 
@@ -283,10 +268,6 @@ describe('startProjectFixSweep — how a sweep ends', () => {
   });
 
   test('a fixItem that rejects clears the counter instead of wedging it', async () => {
-    // Against contract, but the counter is module state with no unmount to
-    // clear it, so a wedged sweep would disable Fix all until a page reload.
-    // The settled signal must still fire on this path so a mounted panel
-    // re-audits the plane the aborted sweep left partly fixed.
     const settled = vi.fn();
     subscribeToProjectFixSweepSettled(settled);
     await startProjectFixSweep({
@@ -302,9 +283,6 @@ describe('startProjectFixSweep — how a sweep ends', () => {
   });
 
   test('settled listeners fire even when reporting the outcome throws', async () => {
-    // Reporting runs third-party toast calls and locale lookups. If one throws
-    // and takes the settled dispatch with it, every mounted panel keeps a plane
-    // describing problems the sweep just fixed, for the rest of the session.
     const settled = vi.fn();
     subscribeToProjectFixSweepSettled(settled);
     toasts.success.mockImplementationOnce(() => {
@@ -318,7 +296,6 @@ describe('startProjectFixSweep — how a sweep ends', () => {
       }),
     ).rejects.toThrow('toast blew up');
     expect(settled).toHaveBeenCalledTimes(1);
-    // The throw is surfaced, not swallowed — but it does not wedge the counter.
     expect(getProjectFixSweepProgress()).toBeNull();
   });
 });

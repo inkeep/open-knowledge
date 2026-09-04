@@ -1,54 +1,13 @@
-/**
- * Chokidar watcher for the managed-artifact skills tree
- * (`<root>/.ok/skills/<name>/SKILL.md`).
- *
- * Why a dedicated watcher and not the file index: `.ok/` is excluded from the
- * content file-watcher by default, so a hand/CLI/cross-instance edit to a
- * `SKILL.md` would otherwise never reconcile into a live `__skill__/...` doc.
- * This is the explicit watch that closes that blind spot.
- *
- * Unlike `startConfigFileWatcher` (single known file) and
- * `startMultiPathConfigFileWatcher` (a fixed set of files), the skill set is
- * OPEN — one `<name>/SKILL.md` per skill, created/removed at runtime — so this
- * watches the skills ROOT dir(s) at `depth: 1` and filters child events to the
- * `SKILL.md` leaf. The caller maps the leaf path back to a doc name via
- * `managedArtifactDocNameForPath`.
- *
- * `usePolling` is the only mode that behaves uniformly across macOS FSEvents,
- * Linux inotify, and sandboxed CI — same rationale as the config watchers. The
- * skills tree is shallow and low-churn, so the poll cost is negligible.
- *
- * Self-write feedback loop is broken downstream by
- * `applyExternalManagedArtifactChange`'s LKG-equality short-circuit (persistence
- * sets `lkgCache[doc]` to the bytes it just wrote); the per-path `lastContent`
- * dedup here is a cheaper first line of defense.
- */
-
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { tracedMkdirSync } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 
-/** Cleanup function returned by `startManagedArtifactWatcher`. Idempotent. */
 export type ManagedArtifactWatcherUnsubscribe = () => Promise<void>;
 
-/** True for a managed-artifact leaf we reconcile: the `SKILL.md` file. */
 const isSkillLeaf = (absPath: string): boolean => basename(absPath) === 'SKILL.md';
 
-/**
- * Watch one or more managed-artifact root directories for leaf-file changes.
- * Resolves once chokidar's initial scan completes (`ready`), so callers/tests
- * can write immediately without racing the first event.
- *
- * On `add` / `change` of a leaf (per `isSkillLeaf`): reads the file and
- * fires `onChange(absPath, content)`. `unlink` does NOT fire `onChange` (the
- * live doc retains its current state — deletion of live content is a separate,
- * explicit surface) but DOES fire the optional `onUnlink(absPath)`, so callers
- * can refresh DERIVED views (e.g. the skills list) without touching open docs.
- * Read errors and handler throws are logged + dropped so one bad event can't
- * tear down the watcher.
- */
 export async function startManagedArtifactWatcher(
   roots: ReadonlyArray<string>,
   onChange: (absPath: string, content: string) => void,
@@ -59,9 +18,6 @@ export async function startManagedArtifactWatcher(
 
   const watchRoots = Array.from(new Set(roots));
   for (const dir of watchRoots) {
-    // mkdir -p the root so chokidar has something to watch before the first
-    // artifact is created (the dir is lazy — only `store` materializes the leaf
-    // file). Cheap + idempotent.
     try {
       tracedMkdirSync(dir, { recursive: true });
     } catch (err) {
@@ -72,11 +28,8 @@ export async function startManagedArtifactWatcher(
     }
   }
 
-  // Leaf filtering happens in the handler (atomic-write `.tmp.<uuid>` siblings
-  // are dropped by `isSkillLeaf`).
   const watcher = watch(watchRoots, {
     ignoreInitial: true,
-    // Skills nest one level under the root: `<name>/SKILL.md`.
     depth: 1,
     usePolling: true,
     interval: 200,

@@ -1,22 +1,3 @@
-/**
- * InternalDocPreviewCard — the W2 doc-preview card shown inside a link hover
- * panel for a resolved internal target. Purely presentational: it renders
- * whatever fields the {@link InternalDocPreview} reader has resolved and omits
- * the rest, so the card enhances in place as the local reads land and never
- * blocks on a slow or failed field.
- *
- * The card is additive — the hover panel's URL/target pill renders above it and
- * is never removed, so a card that can't render (unresolved target, absent
- * preview) simply leaves today's pill untouched.
- *
- * Field states worth knowing:
- *  - `excerpt === undefined`  → the body read hasn't resolved (or failed): omit
- *    the excerpt line entirely (progressive).
- *  - `excerpt === ''`         → the body read succeeded but the doc is empty:
- *    show the "No excerpt" affordance.
- *  - `tags` / `backlinkCount` undefined → omit that row/field.
- */
-
 import { t } from '@lingui/core/macro';
 import { Plural, Trans } from '@lingui/react/macro';
 import { Clock3, FolderOpen, Link2 } from 'lucide-react';
@@ -30,11 +11,6 @@ const WEEK_MS = 7 * DAY_MS;
 const MONTH_MS = 30 * DAY_MS;
 const YEAR_MS = 365 * DAY_MS;
 
-/**
- * Compact, Lingui-routed "time ago" for the edited timestamp. Compact units
- * (`3d`, `2w`, `5mo`) sidestep pluralization and keep the hover footer terse.
- * Returns null for an unparseable timestamp so the caller omits the field.
- */
 function formatEditedAgo(iso: string, now: number): string | null {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return null;
@@ -49,9 +25,6 @@ function formatEditedAgo(iso: string, now: number): string | null {
 }
 
 export function InternalDocPreviewCard({ preview }: { preview: InternalDocPreview }) {
-  // `Date.now()` is impure — calling it directly in render violates React
-  // Compiler's purity contract. Snapshot it once at mount; a hover card is
-  // short-lived, so the relative time needs no re-tick.
   const [now] = useState(() => Date.now());
   const editedAgo = preview.lastEditedAt ? formatEditedAgo(preview.lastEditedAt, now) : null;
   const hasTags = preview.tags !== undefined && preview.tags.length > 0;

@@ -6,21 +6,6 @@ import {
   type RenderProcessGoneDetails,
 } from './renderer-recovery.ts';
 
-/**
- * Renderer crash-recovery unit tests.
- *
- * Pure DI'd module — no Electron, no real timers, no real clock. The contract:
- * a window whose renderer dies must not be left as an unexplained blank
- * surface. One silent auto-reload restores the common transient case; a repeat
- * crash inside the loop window, or exhausting the lifetime budget, stops
- * reloading and hands the user an explicit choice, so a renderer that dies on
- * every load can never thrash.
- *
- * `defer` is injected as a captured queue rather than run inline, so the tests
- * can prove the reload never happens on the caller's stack — that deferral is
- * load-bearing (see the reload comment in the module).
- */
-
 interface MockContents extends RecoverableWebContents {
   reload: ReturnType<typeof vi.fn>;
   markDestroyed: () => void;
@@ -56,9 +41,7 @@ interface Rig {
   prompts: CapturedPrompt[];
   logs: LogLine[];
   advance: (ms: number) => void;
-  /** Run everything queued via the injected `defer`. */
   drainDeferred: () => void;
-  /** Resolve every prompt currently awaiting an answer. */
   settlePrompts: () => Promise<void>;
 }
 
@@ -101,7 +84,6 @@ function makeRig(opts?: {
     },
     settlePrompts: async () => {
       for (const resolve of pendingPrompts.splice(0)) resolve();
-      // Let the module's `.then` bookkeeping run before the caller asserts.
       await Promise.resolve();
       await Promise.resolve();
     },
@@ -128,8 +110,6 @@ describe('renderer crash recovery', () => {
 
     rig.recovery.handleRenderProcessGone(contents, crashed);
 
-    // Electron emits `render-process-gone` from inside Chromium's process-death
-    // observer loop; reloading there CHECK-crashes the browser process.
     expect(contents.reload).not.toHaveBeenCalled();
 
     rig.drainDeferred();
@@ -145,8 +125,6 @@ describe('renderer crash recovery', () => {
     rig.drainDeferred();
 
     expect(contents.reload).not.toHaveBeenCalled();
-    // The `reloading` line already claimed the reload as fact, so silence here
-    // would leave a bundle unable to tell it from a reload that happened.
     expect(rig.logs.some((l) => l.obj.event === 'renderer-recovery.reload-abandoned')).toBe(true);
   });
 
@@ -168,8 +146,6 @@ describe('renderer crash recovery', () => {
     ['clean-exit' as const],
     ['killed' as const],
     ['abnormal-exit' as const],
-    // Chromium reclaiming a backgrounded renderer on purpose. Reloading would
-    // re-spawn what it just freed and race the window's own lifecycle.
     ['memory-eviction' as const],
   ])('ignores non-crash exit reason %s, but logs it', (reason) => {
     const rig = makeRig();
@@ -180,11 +156,8 @@ describe('renderer crash recovery', () => {
 
     expect(contents.reload).not.toHaveBeenCalled();
     expect(rig.prompts).toHaveLength(0);
-    // Silence here would make the exclusion unfalsifiable from a bundle.
     const ignored = rig.logs.find((l) => l.obj.event === 'renderer-recovery.ignored');
     expect(ignored?.obj).toMatchObject({ reason, contentsId: contents.id });
-    // Ordinary teardown is noise; a reason that strands the user on a blank
-    // window should stand out in triage.
     const routine = reason === 'clean-exit' || reason === 'killed';
     expect(ignored?.level).toBe(routine ? 'info' : 'warn');
   });
@@ -217,7 +190,6 @@ describe('renderer crash recovery', () => {
 
     expect(logs.some((l) => l.obj.event === 'renderer-recovery.prompt-failed')).toBe(true);
 
-    // The flag was cleared, so a later crash still reaches the prompt.
     clockMs += 1_000;
     recovery.handleRenderProcessGone(contents, crashed);
     expect(calls).toBe(2);
@@ -269,8 +241,6 @@ describe('renderer crash recovery', () => {
     const rig = makeRig({ loopWindowMs: 60_000, maxLifetimeAutoReloads: 3 });
     const contents = makeContents();
 
-    // Each crash lands in a brand-new loop window, so the per-window budget
-    // refreshes every time. Only the lifetime cap can stop this.
     for (let i = 0; i < 3; i++) {
       rig.recovery.handleRenderProcessGone(contents, crashed);
       rig.advance(60_001);
@@ -298,11 +268,9 @@ describe('renderer crash recovery', () => {
     rig.recovery.handleRenderProcessGone(contents, crashed);
     rig.drainDeferred();
 
-    // The third crash must not stack a second dialog on the same window.
     expect(rig.prompts).toHaveLength(1);
     expect(rig.logs.some((l) => l.obj.event === 'renderer-recovery.prompt-suppressed')).toBe(true);
 
-    // Once the user answers, a later crash may prompt again.
     await rig.settlePrompts();
     rig.advance(1_000);
     rig.recovery.handleRenderProcessGone(contents, crashed);
@@ -321,8 +289,6 @@ describe('renderer crash recovery', () => {
     expect(rig.prompts).toHaveLength(1);
     expect(contents.reload).toHaveBeenCalledTimes(1);
 
-    // The user is still reading the dialog when the loop window rolls over.
-    // The refreshed per-window budget must NOT reload behind the open prompt.
     rig.advance(60_001);
     rig.recovery.handleRenderProcessGone(contents, crashed);
     rig.drainDeferred();
@@ -330,8 +296,6 @@ describe('renderer crash recovery', () => {
     expect(contents.reload).toHaveBeenCalledTimes(1);
     expect(rig.prompts).toHaveLength(1);
 
-    // Answering must clear the flag on the state that is now live, not the one
-    // the rollover orphaned, or the affordance is lost forever.
     await rig.settlePrompts();
     rig.advance(1_000);
     rig.recovery.handleRenderProcessGone(contents, crashed);
@@ -424,7 +388,6 @@ describe('renderer crash recovery', () => {
     expect(() => recovery.handleRenderProcessGone(contents, crashed)).not.toThrow();
     expect(logs.some((l) => l.obj.event === 'renderer-recovery.prompt-failed')).toBe(true);
 
-    // The flag was cleared, so a later crash still reaches the prompt.
     clockMs += 1_000;
     recovery.handleRenderProcessGone(contents, crashed);
     expect(calls).toBe(2);
@@ -440,8 +403,6 @@ describe('renderer crash recovery', () => {
     rig.recovery.handleRenderProcessGone(second, crashed);
     rig.drainDeferred();
 
-    // `second` is on its first crash — it must still get its own auto-reload
-    // even though `first` has already saturated.
     expect(first.reload).toHaveBeenCalledTimes(1);
     expect(second.reload).toHaveBeenCalledTimes(1);
     expect(rig.prompts.map((p) => p.contents)).toEqual([first]);
@@ -460,7 +421,6 @@ describe('renderer crash recovery', () => {
     rig.recovery.handleRenderProcessGone(contents, crashed);
     rig.drainDeferred();
 
-    // A fresh registration starts over, so the auto-reload is available again.
     expect(contents.reload).toHaveBeenCalledTimes(2);
     expect(rig.prompts).toHaveLength(1);
   });

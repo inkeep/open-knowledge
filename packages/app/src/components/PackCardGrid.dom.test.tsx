@@ -105,9 +105,6 @@ describe('PackCardGrid runtime behavior', () => {
     await renderPackCardGrid({ packs: [makePack('knowledge-base', 1)] });
 
     const card = screen.getByRole('button');
-    // The click opens a preview step, not an install — the card has to say so.
-    // The label is revealed on hover/focus rather than sitting in the layout,
-    // so it stays in the card's accessible name at all times.
     expect(card.textContent).toContain("See what's added");
 
     await userEvent.hover(card);
@@ -134,7 +131,6 @@ describe('PackCardGrid runtime behavior', () => {
     await renderPackCardGrid({ packs: allPacks, onCreateBlankFile });
 
     const buttons = screen.getAllByRole('button');
-    // One footer button after every pack card (no Show more without collapsedPackIds).
     expect(buttons).toHaveLength(allPacks.length + 1);
     const footerButton = buttons.at(-1);
     expect(footerButton?.textContent).toContain('create a new file');
@@ -144,18 +140,14 @@ describe('PackCardGrid runtime behavior', () => {
   });
 
   test('parks collapsedPackIds behind a Show more toggle and appends them when expanded', async () => {
-    // Hide plain-notes (Pack 3) and gbrain (Pack 6); the other four stay visible.
     await renderPackCardGrid({ packs: allPacks, collapsedPackIds: ['plain-notes', 'gbrain'] });
 
-    // Collapsed: the two hidden packs are absent; a Show more toggle is present.
     expect(screen.queryByText('Pack 3')).toBeNull();
     expect(screen.queryByText('Pack 6')).toBeNull();
     const toggle = screen.getByRole('button', { name: /Show 2 more/ });
 
     await userEvent.click(toggle);
 
-    // Expanded: hidden packs render appended after the visible set (registry
-    // order preserved within each group), and the toggle flips to Show less.
     expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual([
       'Pack 1',
       'Pack 2',

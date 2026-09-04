@@ -19,15 +19,6 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-/**
- * Preview clone of the app's `Callout` render for the docs. Same 15-type
- * enum, same title/icon/color/collapsible surface. Visual shape mirrors
- * `packages/app/src/editor/components/Callout.tsx` — the app's live version
- * is styled through `packages/app/src/globals.css` (`.callout-*` classes
- * + `--callout-type-color` accent variables); this preview inlines the
- * same accent + layout using Tailwind so the docs render standalone and
- * don't have to ship the editor CSS bundle.
- */
 type CalloutType =
   | 'note'
   | 'tip'
@@ -63,8 +54,6 @@ const TYPE_ICON: Record<CalloutType, LucideIcon> = {
   quote: Quote,
 };
 
-// Accent hex per type — kept in sync with the `--callout-*-color` custom
-// props defined in `packages/app/src/globals.css`. Sync manually on refresh.
 const TYPE_COLOR: Record<CalloutType, string> = {
   note: '#3b82f6',
   tip: '#22c55e',
@@ -104,7 +93,6 @@ export function CalloutPreview({
   const accent = color ?? TYPE_COLOR[type];
 
   const rootStyle = { borderLeftColor: accent };
-  // Callout container — thick left accent border matches the app render.
   const rootClass =
     'flex gap-3 rounded-md border border-fd-border border-l-4 bg-fd-card/50 px-4 py-3 text-sm text-fd-foreground';
   const iconStyle = { color: accent };

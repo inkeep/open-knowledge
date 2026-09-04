@@ -8,7 +8,6 @@ function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), 'ok-copy-dir-'));
 }
 
-/** A pack-skill-shaped source: a root bundle with a nested member skill. */
 function seedSource(): string {
   const src = join(tmpDir(), 'pack');
   mkdirSync(join(src, 'references'), { recursive: true });
@@ -43,8 +42,6 @@ describe('copyDirSync', () => {
     });
 
     expect(readdirSync(dest).sort()).toEqual(['SKILL.md', 'references']);
-    // The listing alone would pass even if descent into an included directory
-    // were skipped — `mkdir` creates it on entry regardless.
     expect(readFileSync(join(dest, 'references', 'deep.md'), 'utf-8')).toBe('deep\n');
   });
 
@@ -57,7 +54,6 @@ describe('copyDirSync', () => {
     copyDirSync(src, dest);
 
     expect(readFileSync(join(dest, 'references', 'deep.md'), 'utf-8')).toBe('deep\n');
-    // Callers own freshness — the copy itself never removes what it did not write.
     expect(readFileSync(join(dest, 'references', 'stale.md'), 'utf-8')).toBe('stale\n');
   });
 });

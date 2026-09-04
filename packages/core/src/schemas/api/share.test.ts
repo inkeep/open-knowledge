@@ -44,13 +44,6 @@ describe('classifyGitAuthError', () => {
     ).toEqual({ kind: 'auth', subclass: 'no-credential' });
   });
 
-  // The cohort whose remote carries a userinfo (`https://alice@github.com/…`)
-  // and whose working credential lived only in an ambient helper (GCM, os
-  // keychain): recognizing those URLs as GitHub origins routes them through
-  // OK's credential reset, so their first post-upgrade sync fails with git's
-  // promptless no-credential wording. That failure MUST stay login-fixable —
-  // signing in to OpenKnowledge is exactly the remedy — and must not drift
-  // into the withdrawn-affordance not-found bucket.
   test('a promptless credential miss on a userinfo remote stays login-fixable', () => {
     const classified = classifyGitAuthError(
       new Error(
@@ -104,8 +97,6 @@ describe('classifyGitAuthError', () => {
   });
 
   test('classifies reversed "expired token" as unknown-auth, not 401', () => {
-    // Reversed wording is auth but not 401 — mirrors the server 401 discriminator
-    // (forward-only) so the delegated classifyGitError output stays unchanged.
     expect(classifyGitAuthError(new Error('expired token'))).toEqual({
       kind: 'auth',
       subclass: 'unknown-auth',
@@ -168,8 +159,6 @@ describe('classifyGitAuthError', () => {
   });
 
   test('auth wording co-occurring with "repository not found" still reads as the 404 masquerade', () => {
-    // GitHub's auth-shaped 404s can carry both lines; the not-found signal is
-    // the more specific one, so it wins over generic auth wording.
     expect(
       classifyGitAuthError(
         new Error(
@@ -250,8 +239,6 @@ describe('isLoginFixableGitAuthError', () => {
 });
 
 describe('isValidBranchName', () => {
-  // The single source of truth for share/clone branch validity — 7 security
-  // rules with named threats in its JSDoc. Pure predicate; no mocking needed.
   test('accepts a plain branch', () => expect(isValidBranchName('main')).toBe(true));
   test('accepts a slashed namespaced branch', () =>
     expect(isValidBranchName('feat/foo')).toBe(true));
@@ -307,9 +294,6 @@ describe('isBranchNotFoundGitError', () => {
 
 describe('ShareFreshnessSchema (closed v1 enum)', () => {
   test('accepts every freshness state the contract declares', () => {
-    // `empty` is the verdict for a folder git holds no object for: unlike
-    // `absent`, no push resolves it, so it cannot be folded into `absent`
-    // without the enum promising a remedy that does not exist.
     for (const value of ['current', 'stale', 'absent', 'empty'] as const) {
       expect(ShareFreshnessSchema.safeParse(value).success).toBe(true);
       expect(ShareFreshnessSchema.parse(value)).toBe(value);
@@ -338,9 +322,6 @@ describe('ShareConstructUrlResponseSchema freshness field', () => {
   });
 
   test('each valid freshness value round-trips on the success variant', () => {
-    // The field is `.catch(undefined)`, so a value the enum does not carry is
-    // stripped silently rather than rejected — a verdict missing from the enum
-    // reaches no consumer at all.
     for (const value of ['current', 'stale', 'absent', 'empty'] as const) {
       const parsed = ShareConstructUrlResponseSchema.parse({ ...successBase, freshness: value });
       expect(parsed.ok).toBe(true);
@@ -349,9 +330,6 @@ describe('ShareConstructUrlResponseSchema freshness field', () => {
   });
 
   test('an unknown freshness value is treated as omitted, not a parse failure', () => {
-    // Value-level forward-compat: a newer server may emit a freshness state
-    // this client's enum predates; the share must still parse, minus the
-    // warning it can't interpret.
     const result = ShareConstructUrlResponseSchema.safeParse({
       ...successBase,
       freshness: 'catching-up',
@@ -385,8 +363,6 @@ describe('ShareConstructUrlResponseSchema freshness field', () => {
         error: 'unsupported-share-url',
       }).success,
     ).toBe(true);
-    // A freshness value is not an error code — adding `freshness` never
-    // widened the error enum.
     expect(ShareConstructUrlResponseSchema.safeParse({ ok: false, error: 'stale' }).success).toBe(
       false,
     );

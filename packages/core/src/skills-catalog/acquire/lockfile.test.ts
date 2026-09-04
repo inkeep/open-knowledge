@@ -20,10 +20,6 @@ describe('retrofitPackLockEntry', () => {
     );
   });
 
-  // Post-rename a fresh pack install is short-named. Gating the retrofit on the
-  // old prefix alone left those installs with no way back if their lock entry
-  // went missing — Update answered "no recorded import source" and nothing in
-  // the product could repair it.
   test('retrofits a post-rename pack skill name when the bundle proves it is ours', () => {
     const entry = retrofitPackLockEntry('note-taking', 'a'.repeat(64), '2026-08-04T00:00:00.000Z', {
       selfIdentifiesAsPack: true,
@@ -32,9 +28,6 @@ describe('retrofitPackLockEntry', () => {
     expect(entry?.skill).toBe('note-taking');
   });
 
-  // The published short names are generic enough that a user may own one.
-  // Without a witness we would stamp our provenance onto their skill, and the
-  // next Update would offer to overwrite it with ours.
   test('refuses a post-rename name with no pack witness', () => {
     for (const name of ['note-taking', 'write-a-spec', 'knowledge-base']) {
       expect(retrofitPackLockEntry(name, 'a'.repeat(64), '2026-08-04T00:00:00.000Z')).toBeNull();
@@ -46,9 +39,6 @@ describe('retrofitPackLockEntry', () => {
     }
   });
 
-  // The witness alone must not grant retrofit: the name still has to be one we
-  // actually publish. A user's own skill that happens to carry a `metadata.pack`
-  // line — a doc about packs, a copied bundle — is not ours to claim.
   test('a name we do not publish is refused even with a witness', () => {
     for (const name of ['my-own-skill', 'code-review', 'open-knowledge']) {
       expect(
@@ -59,8 +49,6 @@ describe('retrofitPackLockEntry', () => {
     }
   });
 
-  // The old prefixed names are namespaced — nobody else can hold them — so
-  // presence alone stays sufficient there.
   test('an old prefixed name needs no witness', () => {
     const entry = retrofitPackLockEntry(
       `${PACK_SKILL_PREFIX}plain-notes`,
@@ -85,8 +73,6 @@ describe('packMarkerOf', () => {
   });
 
   test('is undefined for a bundle that claims nothing', () => {
-    // The witness has to be absent for a user's own `write-a-spec`, or the
-    // retrofit would hand them our provenance and offer to overwrite their work.
     expect(packMarkerOf({ name: 'write-a-spec', description: 'mine' })).toBeUndefined();
     expect(packMarkerOf({ metadata: {} })).toBeUndefined();
     expect(packMarkerOf({ metadata: { pack: '   ' } })).toBeUndefined();

@@ -4,11 +4,6 @@ import {
   type LocalTargetOccurrence,
 } from './local-target-occurrences.ts';
 
-/**
- * Assert every occurrence's range reproduces authored bytes verbatim: the slice
- * opens with the form's own delimiter and contains its authored href (reference
- * uses take the href from the definition, so their bytes are exempt).
- */
 function assertByteExact(source: string, occurrences: LocalTargetOccurrence[]): void {
   for (const occ of occurrences) {
     const slice = source.slice(occ.range.start, occ.range.end);
@@ -125,7 +120,6 @@ describe('reference-style forms map every use to one definition', () => {
     ].join('\n');
     const occ = extractLocalTargetOccurrences(md);
     expect(occ.map((o) => o.reference?.kind)).toEqual(['full', 'collapsed', 'shortcut']);
-    // Every use carries the same resolved href and the SAME definition object.
     expect(occ.every((o) => o.href === './manual.pdf')).toBe(true);
     const defs = new Set(occ.map((o) => o.reference?.definition));
     expect(defs.size).toBe(1);
@@ -173,7 +167,6 @@ describe('reference-style forms map every use to one definition', () => {
   });
 
   test('the definition line itself yields no occurrence', () => {
-    // `[doc]` on the definition line must not be read as a shortcut use of itself.
     expect(extractLocalTargetOccurrences('[doc]: ./only-a-definition.pdf')).toEqual([]);
   });
 
@@ -286,9 +279,6 @@ describe('href classification excludes non-local targets', () => {
   });
 
   test('a traversal-escaping path is still captured for downstream assessment, not silently dropped', () => {
-    // Recognition makes no existence claim; it captures the authored path with an
-    // exact range so the assessment layer can report it, rather than treating it
-    // as a valid local file.
     const md = '[x](../../../../etc/passwd)';
     const [occ] = extractLocalTargetOccurrences(md);
     expect(occ?.href).toBe('../../../../etc/passwd');
@@ -338,7 +328,6 @@ describe('mixed corpus byte-preservation invariant', () => {
       '```',
     ].join('\n');
     const occurrences = extractLocalTargetOccurrences(md);
-    // a.md, b.png, c.png, d.png, Some Doc, e.png, ref x3
     expect(occurrences).toHaveLength(9);
     assertByteExact(md, occurrences);
     for (const occ of occurrences) {
@@ -347,7 +336,6 @@ describe('mixed corpus byte-preservation invariant', () => {
         expect(md.slice(start, end)).toBe('./f.pdf');
       }
     }
-    // Fenced content never leaks in.
     expect(occurrences.some((o) => o.href.includes('g.md'))).toBe(false);
   });
 });

@@ -1,20 +1,10 @@
-/**
- * A disk-store failure captured out-of-band so an agent write handler can
- * report disk truth after Hocuspocus swallows a rejected store hook.
- */
 export interface StoreFailure {
   code?: string;
   message: string;
 }
 
 export class DocumentDurabilityState {
-  /** Last known-good markdown for each document, retained independently by branch. */
   private readonly reconciledBaseByBranch = new Map<string, Map<string, string>>();
-  /**
-   * Normalized snapshots for disk flushes that have started but not settled.
-   * These let reconciliation distinguish this server's own just-written bytes
-   * from a foreign edit during the rename-to-base-advance window.
-   */
   private readonly inFlightFlushByDoc = new Map<string, string>();
   private readonly agentWriteStores = new Set<string>();
   private readonly storeFailures = new Map<string, StoreFailure>();

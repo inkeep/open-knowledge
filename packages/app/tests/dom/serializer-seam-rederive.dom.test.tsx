@@ -1,23 +1,3 @@
-/**
- * Two typed states that used to lose content on the next re-derivation.
- *
- * The bytes on disk were always perfect; it was the VIEW that did not survive
- * the round trip. Each family here is driven through a real mounted editor
- * with the real keymap and command chain, then put through the production
- * re-derivation — `parseWithFallback(stripFrontmatter(serialize(D)).body)`,
- * which is Observer A's serialize composed with Observer B's parse — and the
- * result is compared against what was typed.
- *
- * The `stripFrontmatter` leg is load-bearing, not decoration: Observer B parses
- * the body the intake keeps, never the raw bytes.
- *
- * The unit-level contracts live next to their producers
- * (`strip-trailing-edge` and `empty-task-item` in core). What this file adds is
- * the reachability half — that a user typing ordinary keystrokes actually
- * reaches each state.
- *
- */
-
 import { MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';
@@ -25,7 +5,6 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { pressEditorKey } from '../../src/editor/editor-rig.test-helper';
 import { sharedExtensions } from '../../src/editor/extensions/shared';
 
-/** Configured as the server's shared manager is. */
 const mdManager = new MarkdownManager({
   extensions: sharedExtensions,
   deriveStructuralFreshness: true,
@@ -46,7 +25,6 @@ function mountEditor(): Editor {
   return editor;
 }
 
-/** Type text the way the view feeds it, so input rules get their chance. */
 function type(editor: Editor, characters: string): void {
   for (const character of characters) {
     const { from, to } = editor.state.selection;
@@ -63,7 +41,6 @@ function type(editor: Editor, characters: string): void {
   }
 }
 
-/** Observer A's serialize composed with Observer B's parse. */
 function rederive(typed: JSONContent): JSONContent {
   return mdManager.parseWithFallback(stripFrontmatter(mdManager.serialize(typed)).body);
 }
@@ -77,7 +54,6 @@ function countNodes(node: JSONContent, type: string): number {
   return (node.content ?? []).reduce((sum, child) => sum + countNodes(child, type), self);
 }
 
-/** The `checked` attr of every item in the document's first list. */
 function checkedAttrs(d: JSONContent): Array<boolean | null> {
   const items = (d.content ?? []).find((n) => n.type === 'list')?.content ?? [];
   return items.map((i) => (i.attrs?.checked ?? null) as boolean | null);
@@ -132,9 +108,6 @@ describe('an empty task item', () => {
   });
 
   test('keeps its checkbox in the MIDDLE of a list', () => {
-    // Enter on an already-empty item lifts out of the list, so the empty item
-    // is reached the way a user actually reaches it: build the filled items
-    // first, then press Enter from the end of the first one.
     const editor = mountEditor();
     expect(editor.commands.toggleTaskList()).toBe(true);
     type(editor, 'a');
@@ -156,8 +129,6 @@ describe('an empty task item', () => {
     type(editor, 'buy milk');
 
     const typed = editor.getJSON();
-    // The mounted editor appends a trailing paragraph, so this is a `contain`
-    // rather than a byte equality; the unit tier pins the exact emission.
     expect(bytes(typed)).toContain('- [ ] buy milk\n');
     expect(bytes(typed)).not.toContain('&#x20;');
     expect(checkedAttrs(rederive(typed))).toEqual([false]);

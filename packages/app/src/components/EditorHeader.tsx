@@ -32,15 +32,12 @@ import { SettingsButton } from './SettingsButton';
 import { ShareButton } from './ShareButton';
 import { SyncStatusBadge } from './SyncStatusBadge';
 
-// Lazy: win/linux-only chrome — the chunk (component + radix Menubar
-// primitive) must not ship in the eager bundle web + macOS load.
 const AppMenubar = lazy(() =>
   import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
 );
 
 interface EditorHeaderProps {
   children?: ReactNode;
-  /** Editor-mode switch promoted into the titlebar in a popped-out note. */
   noteModeToggle?: ReactNode;
   onSignIn?: () => void;
   onSetIdentity?: () => void;
@@ -56,23 +53,9 @@ export function EditorHeader({
 }: EditorHeaderProps) {
   const { t } = useLingui();
   const { activeDocName, activeTarget } = useDocumentContext();
-  // A GLOBAL skill (or an external skill) is a managed-artifact tab whose
-  // synthetic doc name has no real on-disk path to share, so the ShareButton
-  // trigger gates on this. Templates and project skills are content docs with
-  // real paths and share like any doc (`parseManagedArtifactName` returns null
-  // for them). The agent-handoff for a skill lives in the Skills sidebar
-  // (SkillsSidebarSection / skill-actions), not the header.
   const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
   const { state: sidebarState } = useSidebar();
-  // No-project single-file session (`ok <file>`): drop the project chrome
-  // (sidebar toggle, tab strip, Settings) while leaving the editor + the
-  // doc-scoped actions (Share / sync / agent handoff) intact.
   const singleFile = useSingleFileMode();
-  // A popped-out note window reduces the header the same way a single-file
-  // session does, and for the same reason: neither has a file sidebar, a
-  // project switcher, or anywhere for project chrome to act. Gating only on
-  // `singleFile` left a pop-out showing a Files toggle for a sidebar that is
-  // not there — caught by the two-window smoke, invisible to the dom tier.
   const noteWindow = isNoteWindow();
   const reducedChrome = singleFile || noteWindow;
   const sidebarShortcut = formatShortcut('toggle-files-sidebar');
@@ -80,21 +63,15 @@ export function EditorHeader({
   const searchShortcut = formatShortcut('command-palette');
   const searchShortcutLabel = formatShortcutLabel('command-palette');
   const [publishOpen, setPublishOpen] = useState(false);
-  // Keep tabs hidden until their action-zone offsets are ready; otherwise
-  // the zero-width CSS fallback is visible for one frame during startup.
   const [chromeMeasured, setChromeMeasured] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const leadingActionsRef = useRef<HTMLDivElement>(null);
   const tabsHostRef = useRef<HTMLDivElement>(null);
   const trailingActionsRef = useRef<HTMLDivElement>(null);
-  // Share input for the header button: folder → folder-scope, doc → doc-scope,
-  // empty editor → project root; non-shareable surfaces yield null (disabled).
   const shareInput: ShareTargetInput | null = (() => {
     if (activeTarget?.kind === 'folder') {
       return buildFolderShareInput(activeTarget.folderPath);
     }
-    // A managed-artifact tab (global/external skill) has no shareable on-disk
-    // path; a content doc (ordinary doc, template, or project skill) does.
     if (activeDocName && !managedArtifact) {
       return buildDocShareInput(activeDocName);
     }
@@ -104,22 +81,7 @@ export function EditorHeader({
     return null;
   })();
 
-  // Electron host gates the macOS chrome-row treatment: a traffic-light
-  // reserve at the inset position, plus a draggable header surface with
-  // explicit no-drag opt-outs on every interactive child. Web hosts (CLI
-  // distribution at `ok ui` localhost) keep the existing layout — no padding
-  // shift, no drag region, no traffic-light reserve. Detection mirrors the
-  // canonical idiom used in OpenInAgentMenu and FileTree.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
-  // Sidebar collapse drives the traffic-light reserve. When the sidebar is
-  // expanded, the macOS traffic lights overlap the SIDEBAR (not the
-  // EditorHeader), so the reserve is unnecessary and would push every
-  // editor-header child uselessly to the right. When the sidebar collapses
-  // offcanvas, the EditorHeader's left edge becomes the window's left edge
-  // and the reserve is required to keep the SidebarTrigger clear of the
-  // traffic lights. The reserve uses the shared `--ok-titlebar-reserve-left`
-  // token (defined under `html.electron-mode`) so the magic 78px lives in one
-  // place; the `,1rem` fallback is the precedent-#49 safe form.
   const isCollapsed = sidebarState === 'collapsed';
   const reserveTrafficLights = isElectronHost && (isCollapsed || noteWindow);
   const appMenubar = shouldShowAppMenubar() ? (
@@ -137,9 +99,6 @@ export function EditorHeader({
 
     const updateChromeWidths = () => {
       header.style.setProperty('--editor-header-leading-width', `${leadingActions.offsetWidth}px`);
-      // The trailing rail carries the window-controls-overlay reserve as a
-      // margin. offsetWidth excludes that margin, so omitting it lets the tab
-      // strip place controls underneath the rail's draggable region.
       const trailingMargin = Number.parseFloat(getComputedStyle(trailingActions).marginRight) || 0;
       const rightRailWidth = Math.max(0, header.offsetWidth - tabsHost.offsetWidth);
       header.style.setProperty(
@@ -149,10 +108,6 @@ export function EditorHeader({
     };
     updateChromeWidths();
 
-    // Let both the header chrome and the restored tab workspace settle before
-    // making the tabs visible. Revealing after the first measurement exposes
-    // the zero-width fallback briefly, then moves the tabs when layout catches
-    // up on the next frame.
     let revealFrame = requestAnimationFrame(() => {
       updateChromeWidths();
       revealFrame = requestAnimationFrame(() => {
@@ -175,10 +130,7 @@ export function EditorHeader({
 
   const headerActions = (
     <>
-      {/* Share is a project surface: single-file `ok <file>` runs agents/MCP
-          off and on a throwaway server, so a share link would point at a
-          session that's gone on close. Hidden here (mirrors the
-          sidebar/Settings gates) rather than rendered disabled. */}
+      {}
       {!reducedChrome && (
         <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
       )}
@@ -187,7 +139,7 @@ export function EditorHeader({
       <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
       <InstanceBadge />
       <BetaBadge />
-      {/* Settings is unavailable in single-file mode (config editing is inert). */}
+      {}
       {!reducedChrome && <SettingsButton />}
       {!noteWindow && <HelpPopover />}
     </>
@@ -208,10 +160,7 @@ export function EditorHeader({
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >
-      {/* Paint the full-width tab canvas before the foreground controls.
-          Chromium folds app regions in DOM order, so the later button
-          opt-outs carve precise holes without erasing the draggable header
-          background around them. */}
+      {}
       <div
         ref={tabsHostRef}
         data-electron-drag={isElectronHost ? '' : undefined}
@@ -225,8 +174,7 @@ export function EditorHeader({
         {children}
       </div>
 
-      {/* The left zone (files toggle and search) is project chrome —
-          empty in single-file mode. */}
+      {}
       <div
         ref={leadingActionsRef}
         data-electron-drag={isElectronHost ? '' : undefined}
@@ -238,11 +186,7 @@ export function EditorHeader({
           noteWindow && 'max-w-[calc(50%-4rem)] overflow-hidden',
         )}
       >
-        {/* The menubar renders in single-file windows too: the project-chrome
-            group below is absent there, so without this slot Window / Help /
-            Exit would have no reachable surface at all. A focused note window
-            deliberately omits app-wide menu chrome, matching auxiliary editor
-            windows on Windows/Linux. */}
+        {}
         {singleFile && appMenubar}
         {noteWindow && <EditorBreadcrumb docName={activeDocName} includeCurrentPage />}
         {!reducedChrome && (
@@ -290,8 +234,7 @@ export function EditorHeader({
               )}
               {isElectronHost && isCollapsed && <NavigationHistoryControls />}
             </ButtonGroup>
-            {/* Windows/Linux custom menubar follows the Files control in the
-                chrome row; null on darwin + web. */}
+            {}
             {appMenubar}
             <Separator
               orientation="vertical"
@@ -316,16 +259,8 @@ export function EditorHeader({
         data-editor-header-actions=""
         className={cn(
           'absolute inset-y-0 right-0 z-20 flex items-center justify-end gap-2 px-3',
-          // Keep the whole rail draggable and subtract only real controls.
-          // Descendant selectors cover Radix asChild triggers and interactive
-          // presence avatars without turning their surrounding flex space
-          // into a dead strip.
           isElectronHost &&
             '[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag] [&_a]:[-webkit-app-region:no-drag]',
-          // Windows/Linux: the OS window controls float over the top-right
-          // of this row (titleBarOverlay). --ok-titlebar-reserve-right is
-          // non-zero only under electron-platform-win32/linux (see
-          // globals.css); the 0px fallback keeps darwin + web unchanged.
           isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >

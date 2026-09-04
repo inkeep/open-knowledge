@@ -12,7 +12,6 @@ export function savedThemePairState(selection: ColorThemeSelection): SavedThemeP
   return selection.light === selection.dark ? 'same' : 'different';
 }
 
-/** Record the bounded relationship only; theme ids and names never leave the renderer. */
 export function recordSavedThemeAssignment(selection: ColorThemeSelection): void {
   try {
     trace

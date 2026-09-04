@@ -1,12 +1,3 @@
-/**
- * The three outcomes of a bundle-file delete differ in their SIDE EFFECTS, not
- * just their toast: only a real delete may evict the file's tabs. Swapping the
- * `existed: false` branch with the success branch would either strand tabs on a
- * deleted file or close tabs on a delete that never happened — neither shows up
- * in the helper unit tests, which cover tab SELECTION rather than whether
- * eviction is called at all.
- */
-
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -26,9 +17,6 @@ vi.doMock('sonner', () => ({ toast: { error: toastError, success: toastSuccess }
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     closeTabs,
-    // The script tab for the file under test, plus an unrelated tab that must
-    // survive every branch. Built through the real id helper — the literal form
-    // carries a NUL byte, which turns a source file binary to git and grep.
     openTabs: [scriptTabId, 'notes/standup'],
   }),
 }));

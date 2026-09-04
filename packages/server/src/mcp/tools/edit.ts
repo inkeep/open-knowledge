@@ -1,15 +1,3 @@
-/**
- * `edit` MCP tool — modify one thing in place, polymorphic over
- * `document` / `folder` / `template` (NOT asset — a binary has no text body).
- * Within each target: a body edit (`find` + `replace`, optional `occurrence`)
- * XOR a frontmatter merge-patch.
- *
- * Backends by target:
- *   - document body → `POST /api/agent-patch` [Requires: Hocuspocus]
- *   - document frontmatter → `POST /api/frontmatter-patch` [Requires: Hocuspocus]
- *   - folder frontmatter → `PUT /api/folder-config` (server, attributed) [Requires: Hocuspocus]
- *   - template → read fs-direct; write `PUT /api/template` (server, attributed) [Requires: Hocuspocus]
- */
 import { existsSync, readFileSync } from 'node:fs';
 import {
   type FrontmatterPatch,
@@ -84,10 +72,6 @@ const BASE_DESCRIPTION = [
   'Responses may include `structuredContent.document.warnings` — advisory entries discriminated by `kind`: `content-divergence` / `disk-edit-reconciled` (write-integrity — re-read the doc with `exec("cat <path>")`) and `mermaid-parse-error` (the edit landed but that fence will not render — fix it and re-edit).',
 ].join('\n');
 
-// Discovery list only. An agent that never sees the component ids never asks
-// `palette` for their schemas, so the inventory stays. The authoring reference
-// (fence syntax, sizing + theme tokens) rides `write` alone — it is always-on
-// context whose on-demand home is `palette`.
 const DESCRIPTION = `${BASE_DESCRIPTION}\n${renderInventoryList()}`;
 
 interface EditDeps {
@@ -103,7 +87,6 @@ interface BodyEdit {
   occurrence?: number;
 }
 
-/** Validate a body-or-frontmatter target. Returns a teaching error or null. */
 function bodyOrFrontmatterError(
   t: BodyEdit & { frontmatter?: FrontmatterPatch },
   label: string,
@@ -125,7 +108,6 @@ function bodyOrFrontmatterError(
   return null;
 }
 
-/** Read the full on-disk text (frontmatter + body) for a doc, or null. */
 function readDocFullText(contentDir: string, docName: string): string | null {
   for (const ext of SUPPORTED_DOC_EXTENSIONS) {
     const contained = resolveWithinRoot(contentDir, `${docName}${ext}`);
@@ -133,10 +115,6 @@ function readDocFullText(contentDir: string, docName: string): string | null {
       try {
         return readFileSync(contained.abs, 'utf-8');
       } catch (err) {
-        // `existsSync` passed a moment ago: ENOENT means it vanished mid-read
-        // (a race) — genuinely "not on disk", so null. Any other errno
-        // (EACCES/EIO/EMFILE) is a real fs fault the agent must see, not one to
-        // mask as a missing file — rethrow so the caller surfaces it accurately.
         if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
         throw err;
       }
@@ -145,7 +123,6 @@ function readDocFullText(contentDir: string, docName: string): string | null {
   return null;
 }
 
-/** Character offset of the Nth (1-based) occurrence of `find`, or -1. */
 function nthOccurrenceOffset(text: string, find: string, occurrence: number): number {
   let from = 0;
   for (let i = 0; i < occurrence; i++) {
@@ -156,8 +133,6 @@ function nthOccurrenceOffset(text: string, find: string, occurrence: number): nu
   }
   return -1;
 }
-
-// ─────────────────────────── document target ───────────────────────────
 
 async function handleDocBody(
   doc: { path: string; find?: string; replace?: string; occurrence?: number },
@@ -172,11 +147,6 @@ async function handleDocBody(
   if (!normalized.ok) return textResult(okReservedPathRedirect(doc.path) ?? normalized.error, true);
   const identity = deps.identityRef?.current;
 
-  // Translate `occurrence` (nth match, 1-based) → a character `offset` for
-  // `/api/agent-patch`. Occurrence 1 (default) sends no offset — the server
-  // matches the first occurrence itself. For N > 1 we compute the offset
-  // against the on-disk text; a divergent live Y.Text yields the server's
-  // stale-target error, which the agent re-fetches.
   let offset: number | undefined;
   const occurrence = doc.occurrence ?? 1;
   if (occurrence > 1) {
@@ -283,10 +253,6 @@ async function handleDocFrontmatter(
   );
 }
 
-/**
- * Shared CRDT-write response composer (preview-attach hint + summary hint +
- * content-divergence relay), mirroring the former edit_document / edit_frontmatter.
- */
 function composeWritePreviewResult(
   result: Awaited<ReturnType<typeof httpPost>>,
   docName: string,
@@ -306,7 +272,6 @@ function composeWritePreviewResult(
       : undefined;
   const summaryHint = typeof summaryResult?.hint === 'string' ? summaryResult.hint : undefined;
   const advisoryWarnings = parseAdvisoryWarnings(result.warnings);
-  // Always an array — `[]` is the positive "all links resolve" confirmation .
   const brokenLinks = parseBrokenLinks(result.brokenLinks);
 
   const lines: string[] = [leadLine];
@@ -317,10 +282,6 @@ function composeWritePreviewResult(
   }
   lines.push(...formatBrokenLinkLines(brokenLinks));
   const text = lines.join('\n');
-  // Uniform preview envelope top-level; document-specific signals nest under
-  // `document` (mirrors the input key). Shared with `write` via `nestDocResult`.
-  // `brokenLinks` is always present (even `[]`), so the doc result is always
-  // assembled — no bare-text early-return.
   const document: Record<string, unknown> = {
     brokenLinks,
   };
@@ -329,8 +290,6 @@ function composeWritePreviewResult(
   const warning = noPreviewAnywhere ? buildPreviewAttachWarning(preview, autoOpen) : undefined;
   return textPlusStructured(text, nestDocResult(preview, warning, document));
 }
-
-// ─────────────────────────── template target ───────────────────────────
 
 function templateFilePath(
   cwd: string,
@@ -345,10 +304,6 @@ function templateFilePath(
 }
 
 function parseTemplateFrontmatter(raw: string): TemplateFrontmatter {
-  // `stripFrontmatter` returns the frontmatter WITH its `---` fences; unwrap
-  // via the core helper before parsing or YAML reads the block as multiple
-  // documents. Core owns the fence shape (incl. trailing-whitespace
-  // tolerance) — local strip replaces would silently disagree with it.
   const inner = unwrapFrontmatterFences(raw).trim();
   if (inner === '') return { title: '' };
   const parsed: unknown = parseYaml(inner);
@@ -382,8 +337,6 @@ async function handleTemplate(
   const { folder, name } = resolved;
 
   if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
-  // Read is fs-direct (reads need no attribution); the WRITE routes through
-  // PUT /api/template so the edit is attributed in the folder timeline.
   const filePath = templateFilePath(cwd, folder, name);
   if (!filePath.ok || !existsSync(filePath.abs)) {
     return textResult(
@@ -423,7 +376,6 @@ async function handleTemplate(
     );
   }
 
-  // Body edit — apply nth-match replace to the template body.
   const occurrence = template.occurrence ?? 1;
   const idx = nthOccurrenceOffset(body, template.find as string, occurrence);
   if (idx === -1) {
@@ -451,15 +403,6 @@ async function handleTemplate(
   });
 }
 
-// ─────────────────────────── skill target ───────────────────────────
-
-/**
- * Surgical find/replace on ONE skill bundle file (`references/**`+`scripts/**`),
- * mirroring `edit({document})`. Reads fs-direct via `GET /api/skill-file`
- * (no attribution), applies the nth-match replace, then re-routes the write
- * through `writeSkillFile` (`PUT /api/skill-file`) so the edit is attributed +
- * (for a project `.md` ref) lands on the CRDT content doc.
- */
 async function handleSkillFileEdit(
   skill: {
     name: string;
@@ -538,16 +481,10 @@ async function handleSkill(
   const resolved = resolveSkillName(skill.name);
   if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
 
-  // A bundle-file edit (`file` present) is a surgical find/replace on ONE
-  // references/**+scripts/** file — mirrors `edit({document})`. It excludes a
-  // `description` change (that targets SKILL.md, not a bundle file).
   if (skill.file !== undefined) {
     return handleSkillFileEdit(skill, url, summary, deps.identityRef?.current);
   }
 
-  // A skill edit is a body find/replace XOR a `description` change — mirrors the
-  // body-or-frontmatter rule for docs/templates (`description` is the skill's
-  // only frontmatter leaf).
   const hasBody = skill.find !== undefined || skill.replace !== undefined;
   const hasDesc = skill.description !== undefined;
   if (skill.find !== undefined && skill.replace === undefined) {
@@ -577,8 +514,6 @@ async function handleSkill(
   if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
   const scope = skill.scope ?? 'project';
-  // Read fs-direct via GET (no attribution); the WRITE re-routes through
-  // PUT /api/skill (writeSkill) so the edit is attributed + shadow-committed.
   const existing = await fetchSkill(url, scope, skill.name);
   if (!existing.ok) {
     return textResult(
@@ -616,16 +551,12 @@ async function handleSkill(
   });
 }
 
-// ─────────────────────────── folder target ───────────────────────────
-
 async function handleFolder(
   folder: { path: string; frontmatter: FrontmatterPatch },
   summary: string | undefined,
   url: string | undefined,
   deps: EditDeps,
 ) {
-  // Route through PUT /api/folder-config (the handler runs the same merge-patch
-  // helper) so the change is attributed in the folder timeline.
   if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
   const result = await httpPut(url, '/api/folder-config', {
     path: folder.path,
@@ -642,8 +573,6 @@ async function handleFolder(
     folder: { ok: true, path: entry.path ?? `${folder.path}/.ok/frontmatter.yml`, action },
   });
 }
-
-// ─────────────────────────── registration ───────────────────────────
 
 export function register(server: ServerInstance, deps: EditDeps): void {
   const bodyFields = {
@@ -717,9 +646,6 @@ export function register(server: ServerInstance, deps: EditDeps): void {
         summary: summaryArgSchema,
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
-      // Output mirrors the Pattern-B input: the result nests under the target
-      // key you edited (`document` / `folder` / `template`). The uniform preview
-      // envelope (`previewUrl` / `previewUrlSource` / `warning`) stays top-level.
       outputSchema: outputSchemaWithText({
         document: z
           .object(documentResultBaseShape)

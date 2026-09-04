@@ -1,17 +1,3 @@
-/**
- * Renderer language telemetry — assert the emitter starts a span under the
- * canonical name carrying the unresolved `from`/`to` preferences, and that an
- * OTel SDK fault (a `getTracer` / `startSpan` throw from the third-party
- * boundary) is contained: it must never escape the picker's change handler and
- * take the language switch down with it.
- *
- * The OTel boundary is faked with `spyOn(trace, 'getTracer')` rather than
- * `vi.doMock('@opentelemetry/api')`: a module mock persists in the shared
- * unit-test module registry and would clobber the real provider that
- * `lib/perf/otel-spans.test.ts` registers. The spy is installed per-test and
- * restored in `afterEach`, so nothing bleeds into another file's tracer.
- */
-
 import { type Attributes, type Tracer, trace } from '@opentelemetry/api';
 import { afterEach, beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
 import { recordLanguagePreferenceChanged } from './language-telemetry';
@@ -50,8 +36,6 @@ describe('renderer language telemetry', () => {
     ]);
   });
 
-  // The whole point of the event: promotion decisions need to know which
-  // language was chosen, so a name-only span would answer nothing.
   test('carries the chosen locale, not just the fact of a change', () => {
     recordLanguagePreferenceChanged({ from: 'en', to: 'zh-Hans' });
     expect(spans[0]?.attributes).toEqual({
@@ -60,9 +44,6 @@ describe('renderer language telemetry', () => {
     });
   });
 
-  // `'system'` must survive as `'system'`. Resolving it before emitting would
-  // make a user who deliberately picked English indistinguishable from one
-  // following an English OS — opposite signals for promotion.
   test('reports a switch back to system unresolved', () => {
     recordLanguagePreferenceChanged({ from: 'fr', to: 'system' });
     expect(spans[0]?.attributes).toEqual({

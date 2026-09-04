@@ -6,21 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed document/pages read group over a REAL
- * socket through the composed `bootServer` stack — the THIRD native group in
- * the chained `nativeApi` dispatch. A 200 here proves native serving (these
- * paths left the legacy registry) and that the first two groups' tables
- * decline these URLs cleanly. Mirrors `api-link-graph-composition.test.ts` /
- * `api-metrics-composition.test.ts` for the earlier groups' pins.
- *
- * `document-list` is the group's heavyweight (ready-gate park, showAll walks,
- * referenced-assets cache) — the pins here cover its plain path, the showAll
- * buffered path, and the streaming NDJSON negotiation; the walk internals
- * keep their dedicated suites (`showall-*.test.ts`, single-flight
- * integration).
- */
-
 let tmpRoot: string;
 let server: BootedServer;
 let ephemeral: BootedServer;
@@ -34,10 +19,6 @@ beforeAll(async () => {
     'utf-8',
   );
   writeFileSync(resolve(contentDir, 'beta.md'), '# Beta\n\nBody.\n', 'utf-8');
-  // A doc inside a BUILTIN_SKIP_DIRS member: the watcher never indexes it, but
-  // the showAll walk's `bypassFilters: true` traversal surfaces it — the
-  // differential row that proves the buffered showAll branch actually ran
-  // (status + content-type alone can't discriminate it from the index path).
   mkdirSync(resolve(contentDir, 'dist'), { recursive: true });
   writeFileSync(resolve(contentDir, 'dist', 'generated.md'), '# Generated\n', 'utf-8');
   server = await bootCompositionRig(contentDir);
@@ -113,8 +94,6 @@ describe('document/pages group over the composed listener — served natively', 
   });
 
   test('showAll buffered walk and streaming NDJSON negotiation both serve natively', async () => {
-    // The dist/ doc discriminates the branch: absent from the watcher-indexed
-    // plain listing, present only when the bypassFilters showAll walk ran.
     const plain = (await (await fetch(`http://127.0.0.1:${server.port}/api/documents`)).json()) as {
       documents: Array<{ docName?: string; path?: string }>;
     };
@@ -137,9 +116,6 @@ describe('document/pages group over the composed listener — served natively', 
     expect(streamed.headers.get('content-type')).toBe('application/x-ndjson');
     const text = await streamed.text();
     const lines = text.trim().split('\n');
-    // Same dist/ discriminator as the buffered branch: the row only exists
-    // when the bypassFilters walk ran, so both showAll paths carry
-    // symmetric proof.
     const streamedNames = lines
       .slice(0, -1)
       .map((line) => JSON.parse(line) as { docName?: string; path?: string })
@@ -192,9 +168,6 @@ describe('document/pages group over the composed listener — served natively', 
   });
 
   test('read posture parity: a ported route under a rebound Host is refused in normal mode', async () => {
-    // Flipped pin (read-posture hardening): reads share the mutating gate's
-    // Host predicate in every mode, so a rebound Host is refused on ported
-    // reads too.
     const res = await rawRequest(server.port, '/api/pages', {
       headers: { Host: 'evil.example' },
     });

@@ -1,18 +1,3 @@
-/**
- * Persistence staleness watchdog — end-to-end coverage of the days-stale
- * durability wedge: a store cycle that fails after a session's last edit has
- * no natural retry (Hocuspocus re-arms the store debounce only on a new
- * Y.Doc update, and user docs stay resident for the server lifetime), so the
- * live doc stays newer than disk indefinitely. The watchdog must re-flush
- * such a doc through the normal store spine once its grace window passes —
- * and must never overwrite disk state the persistence layer has not
- * accounted for (external native edits stay authoritative).
- *
- * Uses `OK_TEST_STORE_FAULT=<docName>` (a synthetic ENOSPC on the atomic
- * write, matched by exact docName) to wedge a store deterministically, then
- * clears it so the watchdog's forced retry can land.
- */
-
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,8 +45,6 @@ describe('persistence staleness watchdog (integration)', () => {
     expect(res.status).toBe(507);
     delete process.env.OK_TEST_STORE_FAULT;
 
-    // The wedge shape: content lives only in server memory, nothing on disk,
-    // and no store is scheduled (the handler's force-flush consumed it).
     expect(existsSync(filePath)).toBe(false);
 
     const rescued = await pollUntil(
@@ -85,10 +68,6 @@ describe('persistence staleness watchdog (integration)', () => {
     expect(res.status).toBe(507);
     delete process.env.OK_TEST_STORE_FAULT;
 
-    // With the default 5-minute grace, nothing rescues the doc in-test —
-    // proving the rescue above is the watchdog, not some other retry path.
-    // The unchanged counters pin that the watchdog itself never fired, so
-    // the absent file isn't just "nothing else happened to write it".
     await wait(1_500);
     expect(existsSync(filePath)).toBe(false);
     expect(getMetrics().persistenceStalenessDetected).toBe(detectedBefore);
@@ -109,8 +88,6 @@ describe('persistence staleness watchdog (integration)', () => {
     );
     expect(flushed).toBe(true);
 
-    // Wedge a second version in memory (store fails), then land an external
-    // native edit on disk before the grace window elapses.
     const stoodDownBefore = getMetrics().persistenceStalenessStoodDown;
     process.env.OK_TEST_STORE_FAULT = docName;
     const second = await writeMd(server.port, docName, '# version two\n');
@@ -118,12 +95,6 @@ describe('persistence staleness watchdog (integration)', () => {
     delete process.env.OK_TEST_STORE_FAULT;
     writeFileSync(filePath, '# external native edit\n', 'utf-8');
 
-    // Positive proof the WATCHDOG ran and chose to stand down (not merely
-    // that the file-watcher reconciled first): the stood-down counter must
-    // advance. The production watcher can legitimately win this race in two
-    // ways: ingest the external bytes, or classify the dirty-memory/external-
-    // disk divergence as a conflict. Both preserve the disk authority that
-    // this test protects.
     const watchdogStoodDown = await pollUntil(
       () => getMetrics().persistenceStalenessStoodDown > stoodDownBefore,
       2_000,
@@ -141,8 +112,6 @@ describe('persistence staleness watchdog (integration)', () => {
       expect(watcherReconciled || watcherSurfacedConflict).toBe(true);
     }
 
-    // Either way, the external bytes must win on disk and no forced store
-    // may ever have overwritten them.
     await wait(500);
     expect(readFileSync(filePath, 'utf-8')).toBe('# external native edit\n');
     expect(getMetrics().persistenceStalenessForcedStores).toBe(forcedBefore);

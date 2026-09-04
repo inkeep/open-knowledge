@@ -1,9 +1,3 @@
-/**
- * Smoke test for the shadcn Form primitive — verifies the named exports
- * exist and are functions. Behavioral coverage for the harness lives in
- * `settings/use-config-form.test.ts` and `settings/SettingsDialog.test.ts`.
- */
-
 import { describe, expect, test } from 'vitest';
 
 describe('ui/form module', () => {

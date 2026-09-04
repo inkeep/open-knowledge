@@ -76,10 +76,6 @@ export function recordSavedThemeUsableCount(count: number): void {
   savedThemeUsableCountHistogram().record(count);
 }
 
-/**
- * Drop cached lazy-init instruments so tests can bind them to a fresh global
- * MeterProvider. Production installs its provider once and never calls this.
- */
 export function __resetSavedThemesTelemetryForTests(): void {
   saveCounter = null;
   deleteCounter = null;

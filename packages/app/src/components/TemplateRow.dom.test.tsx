@@ -1,12 +1,3 @@
-/**
- * Regression: deleting a template left the whole app unclickable until reload.
- * The row's actions menu opened a modal confirmation Dialog; a
- * modal DropdownMenu stacked a second `document.body { pointer-events: none }`
- * lock, and the post-delete refresh unmounted the still-open dialog before
- * Radix could unwind it, stranding the lock. The menu is now `modal={false}`
- * (matching FileTree / ProjectSwitcher), so opening it must not lock the body.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,8 +30,6 @@ describe('TemplateRow actions menu', () => {
     expect(document.body.style.pointerEvents).not.toBe('none');
 
     await userEvent.click(screen.getByRole('button', { name: /Actions for/ }));
-    // Menu is open (Delete item rendered) — a modal menu would have set the body
-    // lock by now; a non-modal one leaves the page clickable.
     expect(await screen.findByText('Delete')).toBeDefined();
     expect(document.body.style.pointerEvents).not.toBe('none');
   });

@@ -197,14 +197,7 @@ describe('rewriteMarkdownLinksForDocumentRename', () => {
 });
 
 describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
-  // Image refs only rewrite when the SOURCE doc itself moves (sourceDocName
-  // === oldDocName). When a remote doc renames and we're updating links in
-  // OUR doc, our image refs are unrelated and stay verbatim.
-
   test('cross-dir source-doc move recomputes bare-name image-ref to a `../` path', () => {
-    // 'docs/meeting-notes.md' moves to 'archive/2026/meeting-notes.md'.
-    // The image at 'docs/first-draft.png' stays put; the ref must point
-    // up two levels and back down into docs/.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![first draft](first-draft.png)\n',
       'docs/meeting-notes',
@@ -218,8 +211,6 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
   });
 
   test('depth-decreasing source-doc move recomputes path with fewer `../`', () => {
-    // 'archive/2026/meeting.md' → 'meeting.md' (root).
-    // Asset at 'archive/2026/photo.png' stays put.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![alt](photo.png)\n',
       'archive/2026/meeting',
@@ -233,8 +224,6 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
   });
 
   test('source-doc move into the asset directory shortens to bare name', () => {
-    // 'top-level.md' contains './assets/photo.png'; doc moves into assets/
-    // → ref shortens to bare-name.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![alt](./assets/photo.png)\n',
       'top-level',
@@ -247,8 +236,6 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
   });
 
   test('absolute-path image refs are LEFT UNCHANGED — pre-F8 legacy guard', () => {
-    // An absolute path was emitted
-    // by shortestImageRef; rewriting it would silently break.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![alt](/docs/photo.png)\n',
       'docs/meeting-notes',
@@ -288,8 +275,6 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
   });
 
   test('wiki-embed refs (`![[file]]`) NOT rewritten — D-K refs-only', () => {
-    // The basename index resolves wiki-embeds dynamically, so the ref body
-    // must be byte-identical after the rename.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![[first-draft.png]] and ![[diagram.svg|alt]]\n',
       'docs/meeting-notes',
@@ -311,30 +296,24 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
       'docs/meeting',
       'archive/2026/meeting',
     );
-    expect(result.rewrites).toBe(1); // only md-image rewrites; doc-link target ('other') doesn't match oldDocName
-    expect(result.markdown).toContain('![[wiki-embed.png]]'); // wiki-embed unchanged
-    expect(result.markdown).toContain('../../docs/md-image.png'); // md-image recomputed
-    expect(result.markdown).toContain('](./other.md)'); // doc-link untouched (target wasn't oldDocName)
+    expect(result.rewrites).toBe(1);
+    expect(result.markdown).toContain('![[wiki-embed.png]]');
+    expect(result.markdown).toContain('../../docs/md-image.png');
+    expect(result.markdown).toContain('](./other.md)');
   });
 
   test('image refs in a doc whose target rename is unrelated stay untouched', () => {
-    // sourceDocName !== oldDocName → no image-ref rewrite. Only doc-to-doc
-    // rewriting happens, and our image-ref is preserved verbatim.
-    // resolveInternalHref on './other.md' with sourceDocName 'docs/meeting'
-    // yields 'docs/other', so oldDocName needs the 'docs/' prefix.
     const result = rewriteMarkdownLinksForDocumentRename(
       'Image: ![alt](photo.png) and link [other](./other.md)\n',
       'docs/meeting',
       'docs/other',
       'docs/other-renamed',
     );
-    expect(result.markdown).toContain('![alt](photo.png)'); // image unchanged
-    expect(result.markdown).toContain('[other](./other-renamed.md)'); // link rewrote
+    expect(result.markdown).toContain('![alt](photo.png)');
+    expect(result.markdown).toContain('[other](./other-renamed.md)');
   });
 
   test('same-dir source-doc rename (sibling rename) leaves bare-name image-refs alone', () => {
-    // Renaming docs/meeting.md → docs/meeting-v2.md doesn't change dirname,
-    // so a bare-name image ref is still correct.
     const result = rewriteMarkdownLinksForDocumentRename(
       '![alt](photo.png)\n',
       'docs/meeting',
@@ -449,9 +428,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('skips Mirror tags inside inline code spans (e.g. docs explaining Mirror syntax)', () => {
-    // Documentation about the Mirror feature itself naturally embeds the
-    // tag inside inline code — rewriting there would corrupt example text.
-    // Mirrors `rewriteWikiLinksInLine`'s `readInlineCode` skip behavior.
     const input =
       'To embed the deprecation block, write `<Mirror src="api-spec" anchor="dep" />`.\n';
     expect(rewriteJsxSrcRefsForDocumentRename(input, 'index', 'api-spec', 'api-reference')).toEqual(
@@ -463,9 +439,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('ignores Mirror tags inside tilde fences', () => {
-    // The backtick-fence skip is exercised separately; tilde fences
-    // use the same `matchFence` / `isFenceClose` machinery and must skip
-    // identically. Symmetry guard.
     const markdown = ['~~~md', '<Mirror src="old" anchor="x" />', '~~~', ''].join('\n');
     expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'old', 'new')).toEqual({
       markdown,
@@ -474,8 +447,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('rewrites Mirror outside inline code on the same line', () => {
-    // The inline-code skip is scoped to the backtick span only — Mirrors
-    // outside it on the same line still rewrite.
     const input =
       'See `<Mirror src="api-spec" anchor="x" />` in docs. Live: <Mirror src="api-spec" anchor="y" />\n';
     const out =
@@ -591,8 +562,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('rewrites Mirror and Excalidraw refs in one pass when both name the renamed doc', () => {
-    // Degenerate on purpose: one docName referenced through both registry
-    // tags proves the single pass covers every entry, not just the first.
     expect(
       rewriteJsxSrcRefsForDocumentRename(
         '<Mirror src="old" anchor="x" /> and <Excalidraw src="/old" />\n',
@@ -607,9 +576,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('matches a doc-relative Excalidraw src the way the renderer resolves it', () => {
-    // `board.excalidraw` inside `notes/index` addresses docName
-    // `notes/board.excalidraw` (normalizeDocRelativeAssetUrl) — the rename
-    // must match on the resolved name, and write back doc-relative.
     expect(
       rewriteJsxSrcRefsForDocumentRename(
         '<Excalidraw src="board.excalidraw" />\n',
@@ -652,9 +618,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('a doc-relative-looking src that resolves elsewhere does not match the rename', () => {
-    // From `notes/index`, `diagrams/board.excalidraw` resolves to
-    // `notes/diagrams/board.excalidraw` — NOT the renamed board. Rewriting it
-    // would repoint a (broken or sibling) reference at a doc it never named.
     const markdown = '<Excalidraw src="diagrams/board.excalidraw" />\n';
     expect(
       rewriteJsxSrcRefsForDocumentRename(
@@ -681,9 +644,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('containing-doc move recomputes a doc-relative src for the new location', () => {
-    // `notes/index` moves to `archive/index`; the board stays put. The
-    // doc-relative src must be recomputed or the embed silently addresses
-    // `archive/board.excalidraw` — a different board.
     expect(
       rewriteJsxSrcRefsForDocumentRename(
         '<Excalidraw src="board.excalidraw" />\n',
@@ -705,8 +665,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('containing-doc move leaves root-relative and bare-doc-name srcs untouched', () => {
-    // Both spellings are location-independent — only doc-relative values need
-    // recomputing when the containing doc moves.
     const markdown =
       '<Excalidraw src="/notes/board.excalidraw" /> and <Mirror src="api-spec" anchor="x" />\n';
     expect(
@@ -715,11 +673,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('refuses a quote-bearing newDocName on the bare-doc-name branch', () => {
-    // The next value is spliced between the original quote pair unescaped, so
-    // a quote in it would terminate the attribute early and inject markup
-    // into the containing document. The rewriter must refuse and leave the
-    // line byte-identical; the stale src surfaces via the broken-links
-    // advisory instead.
     const markdown = '<Mirror src="api-spec" anchor="x" />\n';
     expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'api-spec', 'api"spec')).toEqual({
       markdown,
@@ -728,9 +681,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('refuses a >-bearing newDocName on the bare-doc-name branch', () => {
-    // `notes > archive` is a name a person might actually type. Written back,
-    // the `[^>]*` tag matcher could never re-match the tag — one-way
-    // corruption no later rename could repair — so the rewrite must refuse.
     const markdown = '<Mirror src="api-spec" anchor="x" />\n';
     expect(
       rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'api-spec', 'notes > archive'),
@@ -762,9 +712,6 @@ describe('rewriteJsxSrcRefsForDocumentRename', () => {
   });
 
   test('data-src is not read as src (whitespace-anchored attribute matcher)', () => {
-    // `\b` would match the `-`→`s` transition inside `data-src=`; the matcher
-    // anchors on preceding whitespace like HTML_ASSET_ATTR_RE, so a
-    // coincidentally-suffixed attribute is never rewritten.
     const markdown = '<Mirror data-src="old" anchor="x" src="other" />\n';
     expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'old', 'new')).toEqual({
       markdown,
@@ -822,9 +769,6 @@ describe('rewriteAssetReferencesForRename', () => {
       'docs/final/asset with spaces (2).png',
     );
 
-    // Parens are escaped, not passed through: the canonical segment encoder
-    // neutralizes `!'()*` so an unbalanced paren can never terminate a bare
-    // CommonMark destination. Both spellings resolve back to the same asset.
     expect(result).toEqual({
       markdown: '![Spaced](./final/asset%20with%20spaces%20%282%29.png?dl=1#hero)\n',
       rewrites: 1,
@@ -832,9 +776,6 @@ describe('rewriteAssetReferencesForRename', () => {
   });
 
   test('matches a %2520 href to a literal %20-bearing asset filename without double decoding', () => {
-    // RFC 3986 §2.4: an escaped octet is decoded exactly once — `%2520`
-    // denotes the literal bytes `%20` in the target filename. A second
-    // decode would turn it into a space and silently miss the asset.
     const result = rewriteAssetReferencesForRename(
       '![Literal](./media/name%2520with%2520percents.png)\n',
       'docs/guide',
@@ -863,10 +804,6 @@ describe('rewriteAssetReferencesForRename', () => {
   });
 
   test('a wiki asset target matches on its literal percent sequences', () => {
-    // `![[100%20done.png]]` names a file whose name really contains those three
-    // characters. Reading the target as a URI resolves it to `100 done.png`,
-    // which is not the asset being renamed, so the embed is left behind
-    // pointing at a path that no longer exists.
     const result = rewriteAssetReferencesForRename(
       '![[media/100%20done.png|Progress]]\n',
       'docs/guide',
@@ -881,9 +818,6 @@ describe('rewriteAssetReferencesForRename', () => {
   });
 
   test('a wiki asset target does not match the decoded neighbour asset', () => {
-    // Companion to the assertion above. Renaming `docs/media/100 done.png` —
-    // the file the decoded reading names — must leave the literal-named embed
-    // untouched, or the rewrite repoints a working link at someone else's move.
     const result = rewriteAssetReferencesForRename(
       '![[media/100%20done.png|Progress]]\n',
       'docs/guide',
@@ -898,8 +832,6 @@ describe('rewriteAssetReferencesForRename', () => {
   });
 
   test('a markdown asset href still matches the decoded asset path', () => {
-    // The other half of the plane split: identical authored bytes, markdown
-    // syntax, must resolve to the space-named file and rewrite.
     const result = rewriteAssetReferencesForRename(
       '![Progress](./media/100%20done.png)\n',
       'docs/guide',
@@ -958,10 +890,6 @@ describe('rewriteAssetReferencesForRename', () => {
   });
 });
 
-// Resolvers decode, so a rewriter that rebuilds an href from a decoded docName
-// must re-encode it. Without that the rewrite emits a literal space, `#`, or
-// `?` into the destination and the link stops parsing — corrupting the user's
-// markdown on disk on an ordinary rename.
 describe('rewritten hrefs round-trip back through the canonical resolvers', () => {
   const awkward = [
     'Agent Memory',

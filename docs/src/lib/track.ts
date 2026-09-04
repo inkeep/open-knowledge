@@ -1,24 +1,11 @@
 import { after } from 'next/server';
 
-/**
- * Server-side PostHog capture for the download/update redirect routes.
- *
- * Reuses the existing `NEXT_PUBLIC_POSTHOG_KEY` (the same project the
- * client-side `instrumentation-client.ts` writes to) — no new env, no
- * `posthog-node` dependency. Capturing from the server, not the browser,
- * means PostHog never sees the visitor's IP (it sees Vercel's egress IP);
- * the payload additionally suppresses geo so nothing location-shaped is
- * stored. Events are queued via `after()` so a slow or failing capture can
- * never delay or break the redirect the user is waiting on.
- */
-
 const POSTHOG_CAPTURE_URL = 'https://us.i.posthog.com/capture/';
 const CAPTURE_TIMEOUT_MS = 3_000;
 
 export interface TrackOptions {
   event: string;
   distinctId: string;
-  /** Omitted (undefined) values are stripped so they never serialize as "undefined". */
   properties?: Record<string, string | undefined>;
 }
 
@@ -30,11 +17,6 @@ export interface CapturePayload {
   properties: Record<string, unknown>;
 }
 
-/**
- * Pure payload builder (the unit-testable seam). Strips undefined props and
- * forces the two privacy guards: `$ip: null` discards the (Vercel egress) IP
- * server-side, and `$geoip_disable` stops PostHog deriving geo from it.
- */
 export function buildCapturePayload(opts: TrackOptions, key: string): CapturePayload {
   const properties: Record<string, unknown> = {};
   if (opts.properties) {
@@ -53,12 +35,6 @@ export function buildCapturePayload(opts: TrackOptions, key: string): CapturePay
   };
 }
 
-/**
- * Fire-and-forget event capture. No-ops when the key is unset (mirrors
- * `instrumentation-client.ts`, so local/preview without the key stay silent).
- * Never throws and never blocks the response: the POST runs in `after()` and
- * any failure is swallowed.
- */
 export function captureServerEvent(opts: TrackOptions): void {
   try {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
@@ -72,8 +48,6 @@ export function captureServerEvent(opts: TrackOptions): void {
           body: JSON.stringify(payload),
           signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
         });
-        // fetch only rejects on network failure; a 4xx/5xx (bad key, rate limit)
-        // resolves normally, so surface it rather than silently dropping events.
         if (!res.ok) {
           console.warn(`[track] capture HTTP ${res.status} for ${opts.event}`);
         }
@@ -84,20 +58,12 @@ export function captureServerEvent(opts: TrackOptions): void {
       }
     });
   } catch (err) {
-    // Telemetry must never break a redirect — guard the synchronous path too
-    // (e.g. after() called outside a request scope, or any scheduling error).
     console.warn(
       `[track] capture skipped for ${opts.event}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
 
-/**
- * Reuse the web visitor's PostHog id when present so a site click and its
- * download are one person, then fall back to a fresh random id for hits with
- * no browser session (README/HN links, the auto-updater). `posthog-js` stores
- * its persistence under `ph_<projectKey>_posthog` as JSON `{ distinct_id }`.
- */
 export function resolveDistinctId(request: Request): string {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (key) {
@@ -129,20 +95,8 @@ function readPosthogDistinctId(request: Request, key: string): string | null {
   return null;
 }
 
-/**
- * The standard UTM campaign parameters, captured under their canonical names
- * so PostHog's built-in UTM property definitions apply. Internal CTAs set only
- * `utm_content` (the standard field for differentiating links/CTAs);
- * `utm_source`/`utm_medium`/`utm_campaign` describe the acquisition channel
- * and are reserved for genuinely external campaign links (newsletter, social)
- * — fabricating them for internal clicks would corrupt campaign reporting.
- */
 const UTM_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
 
-/**
- * External campaign tools mint arbitrary UTM values, so no slug allowlist —
- * just drop control characters and bound the length.
- */
 function sanitizeUtmValue(raw: string | null): string | undefined {
   if (!raw) return undefined;
   const cleaned = [...raw]
@@ -162,10 +116,6 @@ function isSecFetchSite(value: string): value is SecFetchSite {
 
 export type UaClass = 'browser' | 'bot' | 'cli' | 'electron' | 'none' | 'other';
 
-/**
- * Path detail is captured for our own referring pages only — external
- * referrers stay hostname-only.
- */
 function isOwnSiteHostname(hostname: string): boolean {
   return hostname === 'openknowledge.ai' || hostname.endsWith('.openknowledge.ai');
 }
@@ -183,21 +133,6 @@ export interface AttributionProperties {
   ua_class?: UaClass;
 }
 
-/**
- * Attribution properties for a download event:
- *
- * - `utm_*` — standard campaign parameters, passed through under their
- *   canonical names. Our own CTAs tag links with `?utm_content=<cta-slug>`
- *   (immune to referrer stripping); external campaign links can use the full
- *   set and attribute with no custom vocabulary.
- * - `referrer` / `referrer_path` — where the click came from. External sites
- *   report hostname only; the path is added for our own pages so an untagged
- *   link (e.g. pasted in docs prose) still attributes to the exact page.
- * - `sec_fetch_site` — browser-supplied fetch classification (`none` = address
- *   bar / non-web entry, `same-origin`/`same-site` = our site, `cross-site` =
- *   external link, absent = non-browser client such as curl or a bot). This is
- *   what separates "pasted the URL from the README" from "clicked a link".
- */
 export function attribution(request: Request): AttributionProperties {
   const out: AttributionProperties = {};
 
@@ -207,25 +142,17 @@ export function attribution(request: Request): AttributionProperties {
       const value = sanitizeUtmValue(params.get(name));
       if (value) out[name] = value;
     }
-  } catch {
-    // no UTM capture on an unparseable request URL
-  }
+  } catch {}
 
   const referer = request.headers.get('referer');
   if (referer) {
     try {
       const refUrl = new URL(referer);
-      // External referrers stay hostname-only; a referring path is only
-      // captured for our own pages, and never its query string. `/d/<encoded>`
-      // share routes are excluded outright — there the share payload (the
-      // encoded GitHub URL) lives in the PATH itself.
       out.referrer = refUrl.hostname;
       if (isOwnSiteHostname(refUrl.hostname) && !refUrl.pathname.startsWith('/d/')) {
         out.referrer_path = refUrl.pathname.slice(0, 200);
       }
-    } catch {
-      // unparseable referer → no referrer properties
-    }
+    } catch {}
   }
 
   const secFetchSite = request.headers.get('sec-fetch-site');
@@ -238,16 +165,6 @@ export function attribution(request: Request): AttributionProperties {
   return out;
 }
 
-/**
- * Client identity for downloads and updates. `$useragent` is the property
- * PostHog's "User Agent Populator" transformation reads on server-captured
- * events — with that transformation enabled on the project, ingestion derives
- * `$browser`/`$browser_version` from it. `ua_class` is our own coarse,
- * bounded bucket for dashboard grouping (browsers vs bots/unfurlers vs
- * curl-style clients vs the Electron auto-updater) and needs no PostHog
- * configuration. The UA is deliberately the only request-shape property we
- * send — IP and geo stay suppressed (see buildCapturePayload).
- */
 export function userAgentProperties(request: Request): {
   $useragent?: string;
   ua_class?: UaClass;
@@ -257,10 +174,6 @@ export function userAgentProperties(request: Request): {
   return { $useragent: ua.slice(0, 300), ua_class: classifyUserAgent(ua) };
 }
 
-/**
- * Order matters: Electron and bot UAs both embed `Mozilla/5.0`, so the
- * browser check must come last.
- */
 function classifyUserAgent(ua: string): UaClass {
   if (/electron-updater|electron-builder|\belectron\//i.test(ua)) return 'electron';
   if (
@@ -281,12 +194,6 @@ function classifyUserAgent(ua: string): UaClass {
   return 'other';
 }
 
-/**
- * Browser and framework prefetches hit the download routes without a real
- * click (Chrome sends `Sec-Purpose: prefetch`, Safari `Purpose: prefetch`,
- * next/link `Next-Router-Prefetch: 1`). Counting them would inflate download
- * numbers with phantom events — callers skip capture but still redirect.
- */
 export function isPrefetchRequest(request: Request): boolean {
   const purpose = request.headers.get('sec-purpose') ?? request.headers.get('purpose') ?? '';
   if (/prefetch|prerender/i.test(purpose)) return true;

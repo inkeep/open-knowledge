@@ -1,14 +1,3 @@
-/**
- * Per-field editor over one frontmatter schema file. Renders the schema's
- * properties as friendly rows (name / type / required / description / allowed
- * values / pattern), recursing into object-typed fields so nested frontmatter
- * shapes are editable in place. Every edit persists as ONE operation through
- * `POST /api/lint/frontmatter-schema` — a non-destructive merge addressed by
- * `parentPath`, so keywords the editor does not model survive on disk and are
- * flagged per row. Reads the RESOLVED schema content from the effective lint
- * config (the server inlines loaded files; the browser never touches disk).
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import type {
@@ -52,21 +41,11 @@ import { cn } from '@/lib/utils';
 const FIELD_TYPES = ['string', 'number', 'boolean', 'array', 'object'] as const;
 type FieldType = (typeof FIELD_TYPES)[number];
 
-/**
- * The type select adds `enum` as pure UI sugar for discoverability (matching
- * the agents-manage-ui builder): picking it points the user at the
- * allowed-values input without writing anything, since on disk `enum` stays
- * what JSON Schema says it is — a constraint orthogonal to `type`. So the
- * select reads back `enum` only for a field the schema leaves untyped;
- * anything with a declared type presents as that type, allowed values or not.
- */
 const TYPE_SELECT_OPTIONS = ['string', 'number', 'boolean', 'enum', 'array', 'object'] as const;
 
-/** Element-type choices for an array field's `items` (no arrays-of-arrays UI). */
 const ITEMS_TYPE_SELECT_OPTIONS = ['string', 'number', 'boolean', 'enum', 'object'] as const;
 type ItemsType = 'string' | 'number' | 'boolean' | 'object';
 
-/** Same per-type color coding the agents-manage-ui builder uses. */
 const TYPE_ICONS: Record<
   (typeof TYPE_SELECT_OPTIONS)[number],
   { Icon: LucideIcon; className: string }
@@ -89,31 +68,15 @@ function TypeSelectItemLabel({ option }: { option: (typeof TYPE_SELECT_OPTIONS)[
   );
 }
 
-/** Leading row icon for a field's presented type — the scan anchor. */
 function RowTypeIcon({ option }: { option: (typeof TYPE_SELECT_OPTIONS)[number] }) {
   const { Icon, className } = TYPE_ICONS[option];
   return <Icon aria-hidden className={cn('size-4 shrink-0', className)} />;
 }
 
-/**
- * Deepest object level whose CHILDREN the editor renders (root = 0). The wire
- * caps `parentPath` at 8 segments; the UI stops well inside that.
- */
 const MAX_NESTING_DEPTH = 4;
 
-/**
- * Schema-ROOT keys the editor models (structurally or implicitly). Anything
- * else at the root — if/then, dependencies, additionalProperties, x-
- * extensions — is invisible to the per-field rows, so the editor surfaces a
- * top-of-list note naming them; the per-field preserved flag can't cover
- * keywords that don't belong to any field.
- */
 const ROOT_MODELED_KEYWORDS = new Set(['$schema', 'type', 'properties', 'required']);
 
-/**
- * The keywords the friendly rows model; anything else is preserved-but-flagged.
- * `properties`/`required` are modeled structurally — as the nested child rows.
- */
 const MODELED_KEYWORDS = new Set([
   'type',
   'enum',
@@ -146,7 +109,6 @@ function hasUnmodeledKeywords(property: Record<string, unknown>): boolean {
   return false;
 }
 
-/** Per-field write handlers threaded through the recursion. */
 interface FieldOps {
   save: (
     field: string,
@@ -157,7 +119,6 @@ interface FieldOps {
   remove: (field: string, parentPath: readonly SchemaParentPathSegment[]) => void;
 }
 
-/** Stable testid/key text for a path — `{items: true}` renders as `[]`. */
 function pathKeyOf(parentPath: readonly SchemaParentPathSegment[], field: string): string {
   return [...parentPath.map((seg) => (typeof seg === 'string' ? seg : '[]')), field].join('.');
 }
@@ -228,7 +189,6 @@ export function FrontmatterSchemaFieldEditor({ file }: { file: string }) {
   );
 }
 
-/** The rows for one object level (the schema root or a nested object field). */
 function FieldList({
   node,
   parentPath,
@@ -284,11 +244,7 @@ function FieldRow({
   ops: FieldOps;
 }) {
   const { t } = useLingui();
-  // The user picked the `enum` pseudo-type on a field the schema already types
-  // (or types nothing yet) — presentation only, since `enum` is a constraint
-  // rather than a type and picking it must not rewrite what was declared.
   const [enumIntent, setEnumIntent] = useState(false);
-  // Same buffer for the items-type select's enum choice.
   const [itemsEnumIntent, setItemsEnumIntent] = useState(false);
 
   const pathKey = pathKeyOf(parentPath, field);
@@ -302,11 +258,6 @@ function FieldRow({
   const pattern = typeof property.pattern === 'string' ? property.pattern : '';
   const description = typeof property.description === 'string' ? property.description : '';
   const preserved = hasUnmodeledKeywords(property);
-  // A declared type always wins: allowed values on a `string` field are a
-  // constraint on that string, so entering them must not re-present the field
-  // as an enum. The pseudo-type shows for a field the schema leaves untyped —
-  // a bare `{enum: [...]}`, which is what "an enum" actually is on disk — or
-  // while the user is picking it for one.
   const showAsEnum =
     type !== 'array' &&
     type !== 'object' &&
@@ -395,20 +346,10 @@ function FieldRow({
             value={showAsEnum ? 'enum' : (type ?? '')}
             onValueChange={(next) => {
               if (next === 'enum') {
-                // Nothing to write: `enum` is not a type, and defaulting one
-                // in is the conversion this select must not make.
                 setEnumIntent(true);
                 return;
               }
               setEnumIntent(false);
-              // Allowed values survive only a move to `string` — the one
-              // target that can still hold them, and the one this editor
-              // exists to stop discarding. Every other type would keep a
-              // vocabulary it can never satisfy: `{type: 'number', enum:
-              // ['draft']}` compiles (the validator runs non-strict) and then
-              // rejects every possible value, while the property panel keeps
-              // offering those strings because it reads `enum` without
-              // consulting `type`.
               const constraint: FrontmatterFieldConstraint =
                 next !== 'string' && (enumValues?.length ?? 0) > 0
                   ? { type: next as FieldType, enum: null }
@@ -473,8 +414,6 @@ function FieldRow({
                   return;
                 }
                 setItemsEnumIntent(false);
-                // Same rule one level down: only `string` elements can still
-                // hold the values, so every other element type clears them.
                 const constraint: FrontmatterFieldConstraint =
                   next !== 'string' && (itemsEnumValues?.length ?? 0) > 0
                     ? { itemsType: next as ItemsType, itemsEnum: null }
@@ -554,7 +493,6 @@ function FieldRow({
   );
 }
 
-/** Name input + Add button for one object level; owns its draft state. */
 function AddFieldInput({ inputId, onAdd }: { inputId: string; onAdd: (name: string) => void }) {
   const [name, setName] = useState('');
   return (
@@ -587,7 +525,6 @@ function AddFieldInput({ inputId, onAdd }: { inputId: string; onAdd: (name: stri
   );
 }
 
-/** Commit-on-blur/Enter buffer so a keystroke doesn't write the schema file. */
 function CommitInput({
   id,
   initial,

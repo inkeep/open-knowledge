@@ -10,14 +10,6 @@ import {
   type TestServer,
 } from './test-harness.ts';
 
-/**
- * End-to-end proof of `POST /api/skill/import` (slice 3): a fetched skill-dir
- * lands in `.ok/skills/<name>` as content via the sanctioned writers, its
- * scripts are written but NEVER executed, upstream is recorded in
- * `.ok/skills-lock.json`, collisions get an `-imported` name, and an identical
- * re-import is a no-op (contentHash dedupe).
- */
-
 let srcRoot: string;
 
 function writeSkillDir(dir: string, name: string, description: string, body = 'Body.'): void {
@@ -73,8 +65,6 @@ describe('POST /api/skill/import', () => {
       claudeRootExists: false,
       agentsRootExists: false,
     });
-    // The refusal has to be actionable, not merely correct: name the folders
-    // OK would accept and what to do, since it never creates one itself.
     expect(body.title).toContain('.claude/');
     expect(body.title).toContain('Create the folder your agent uses');
   });
@@ -82,7 +72,6 @@ describe('POST /api/skill/import', () => {
   test('imports a local skill-dir as content + records provenance; scripts not executed', async () => {
     const dir = join(srcRoot, 'single');
     writeSkillDir(dir, 'cool-skill', 'Does cool things', '# Cool\n');
-    // A script that WOULD create a marker file if executed.
     const marker = join(srcRoot, 'PWNED');
     mkdirSync(join(dir, 'scripts'), { recursive: true });
     writeFileSync(join(dir, 'scripts', 'run.sh'), `#!/bin/sh\ntouch '${marker}'\n`);
@@ -102,7 +91,6 @@ describe('POST /api/skill/import', () => {
     expect(out.alreadyImported).toBe(false);
     expect(out.provenance.contentHash).toMatch(/^[0-9a-f]{64}$/);
 
-    // Content landed on disk.
     const skillMd = resolve(server.contentDir, '.claude', 'skills', 'cool-skill', 'SKILL.md');
     await pollUntil(() => existsSync(skillMd));
     expect(readFileSync(skillMd, 'utf-8')).toContain('name: cool-skill');
@@ -111,10 +99,8 @@ describe('POST /api/skill/import', () => {
         resolve(server.contentDir, '.claude', 'skills', 'cool-skill', 'scripts', 'run.sh'),
       ),
     ).toBe(true);
-    // The script was imported as content, NOT executed.
     expect(existsSync(marker)).toBe(false);
 
-    // Provenance recorded in the lockfile.
     const lock = JSON.parse(
       readFileSync(resolve(server.contentDir, '.ok', 'skills-lock.json'), 'utf-8'),
     );
@@ -230,12 +216,6 @@ describe('POST /api/skill/import', () => {
     expect(picked.name).toBe('beta');
   });
 
-  /**
-   * The `skill` selector matches the SKILL.md frontmatter `name`, not only the
-   * on-disk folder — the skills.sh case where the folder (`react-native-skills`)
-   * and the frontmatter name (`vercel-react-native-skills`) diverge.
-   *
-   */
   test('picks a skill by frontmatter name when it differs from the folder', async () => {
     const repo = join(srcRoot, 'fm-name');
     writeSkillDir(join(repo, 'skills', 'react-native-skills'), 'vercel-react-native-skills', 'rn');
@@ -364,13 +344,11 @@ describe('POST /api/skill/reimport', () => {
     writeSkillDir(dir, 'evolving', 'v1', '# One\n');
     expect((await importSkill({ source: dir })).status).toBe(200);
 
-    // Unchanged source → up to date, nothing rewritten.
     const same = (await reimport({ name: 'evolving' }).then((r) => r.json())) as {
       updated: boolean;
     };
     expect(same.updated).toBe(false);
 
-    // Change the upstream, then reimport → overwrite in place (same name).
     writeSkillDir(dir, 'evolving', 'v2', '# Two\n');
     const changed = (await reimport({ name: 'evolving' }).then((r) => r.json())) as {
       updated: boolean;
@@ -416,8 +394,6 @@ describe('POST /api/skill/reimport', () => {
     };
     expect(second.updated).toBe(false);
 
-    // A legacy lock has no upstream-file manifest. Once local bytes diverge,
-    // ownership is ambiguous, so a user-authored file must survive reimport.
     const lockPath = resolve(server.contentDir, '.ok', 'skills-lock.json');
     const lock = JSON.parse(readFileSync(lockPath, 'utf-8'));
     delete lock.skills.shrinking.files;
@@ -440,7 +416,6 @@ describe('POST /api/skill/reimport', () => {
     expect((await importSkill({ source: dir })).status).toBe(200);
 
     const lockPath = resolve(server.contentDir, '.ok', 'skills-lock.json');
-    // An absent field delegates to the source-kind default (this local source is ON).
     expect(JSON.parse(readFileSync(lockPath, 'utf-8')).skills['auto-toggled'].autoUpdate).toBe(
       undefined,
     );
@@ -453,14 +428,11 @@ describe('POST /api/skill/reimport', () => {
       false,
     );
 
-    // The list surfaces the flag through `origin` for the toolbar toggle.
     const list = (await fetch(`${base()}/api/skills?scope=project`).then((r) => r.json())) as {
       skills: { name: string; origin?: { autoUpdate?: boolean } }[];
     };
     expect(list.skills.find((sk) => sk.name === 'auto-toggled')?.origin?.autoUpdate).toBe(false);
 
-    // Back on persists the explicit choice (remote sources default OFF, so
-    // deleting the field here would lose a user's opt-in).
     expect((await reimport({ name: 'auto-toggled', setAutoUpdate: true })).status).toBe(200);
     expect(JSON.parse(readFileSync(lockPath, 'utf-8')).skills['auto-toggled'].autoUpdate).toBe(
       true,
@@ -468,7 +440,6 @@ describe('POST /api/skill/reimport', () => {
   });
 
   test('reimport of a non-imported (authored) skill is rejected', async () => {
-    // No lockfile entry → nothing to update from.
     expect((await reimport({ name: 'never-imported' })).status).toBeGreaterThanOrEqual(400);
   });
 });
@@ -528,9 +499,6 @@ describe('GET /api/skills/preview', () => {
   });
 
   test('404s when the name does not match a source skill, exactly as import does', async () => {
-    // Preview is the consent surface. Rendering the first skill on a name miss
-    // showed one skill's prose under another's name and then import refused the
-    // same miss, so the user could only install something they had not read.
     const repo = join(srcRoot, 'preview-multi');
     writeSkillDir(join(repo, 'alpha'), 'alpha', 'A');
     writeSkillDir(join(repo, 'beta'), 'beta', 'B');
@@ -598,11 +566,6 @@ describe('GET /api/skills/discover', () => {
     expect(body.skills.map((s) => s.name)).toEqual(['solo']);
   });
 
-  /**
-   * A source with no SKILL.md is not an error here — it just yields no picker
-   * (the import path is what 404s when the user commits).
-   *
-   */
   test('returns an empty list (200) for a source with no SKILL.md', async () => {
     const empty = join(srcRoot, 'discover-empty');
     mkdirSync(empty, { recursive: true });

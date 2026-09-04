@@ -35,11 +35,6 @@ const baseDocuments: WorkspaceSearchDocument[] = [
   file('assets/diagram.png'),
 ];
 
-/**
- * The correctness bar for the incremental path: for any query/options pair, an
- * incrementally-maintained corpus must be indistinguishable from a corpus
- * built from scratch over the same documents — paths, scores, and signals.
- */
 function expectSearchEquivalence(
   incremental: ReturnType<typeof createWorkspaceSearchCorpus>,
   documents: readonly WorkspaceSearchDocument[],
@@ -124,9 +119,6 @@ describe('updateWorkspaceSearchCorpus', () => {
 
   test('unchanged document set patches nothing and stays searchable', () => {
     const corpus = createWorkspaceSearchCorpus(baseDocuments);
-    // New array, mixed identity: some reused objects, some re-created equal ones
-    // (the server reuses page objects via its cache but re-creates metadata-only
-    // folder/file documents every build).
     const next = baseDocuments.map((doc) =>
       doc.kind === 'page' ? doc : createWorkspaceSearchDocument({ ...doc }),
     );
@@ -158,8 +150,6 @@ describe('updateWorkspaceSearchCorpus', () => {
   test('emptying the corpus rebuilds electively and leaves a searchable empty index', () => {
     const corpus = createWorkspaceSearchCorpus(baseDocuments);
     const update = updateWorkspaceSearchCorpus(corpus, []);
-    // Removing everything mutates more entries than an (empty) rebuild inserts,
-    // so the bulk-change gate takes the cheap from-scratch path.
     expect(update.rebuilt).toBe(true);
     expect(update.rebuildReason).toBe('bulk-change');
     expect(searchWorkspaceCorpus(update.corpus, 'topology', { intent: 'full_text' })).toEqual([]);
@@ -180,8 +170,6 @@ describe('updateWorkspaceSearchCorpus', () => {
     ]);
     expect(first.rebuilt).toBe(false);
 
-    // Diffing against `corpus` again would patch an index that has already
-    // moved past it; the consumed-base gate must force a rebuild instead.
     const next = [...baseDocuments, page('guides/beta', 'Beta content', 41)];
     const second = updateWorkspaceSearchCorpus(corpus, next);
 
@@ -192,7 +180,6 @@ describe('updateWorkspaceSearchCorpus', () => {
 
   test('a diff touching more documents than a rebuild would insert rebuilds electively', () => {
     const corpus = createWorkspaceSearchCorpus(baseDocuments);
-    // Replace everything: every old id removed, every new id inserted.
     const next = [page('brand/new', 'Entirely new workspace', 70)];
 
     const update = updateWorkspaceSearchCorpus(corpus, next);
@@ -203,11 +190,8 @@ describe('updateWorkspaceSearchCorpus', () => {
   });
 
   test('mixed burst of inserts, updates, and removes matches a from-scratch build', () => {
-    // Deterministic pseudo-random burst: enough documents and churn to exercise
-    // the diff paths together, seeded so a failure replays exactly.
     let seed = 0xc0ffee;
     const rand = () => {
-      // LCG (Numerical Recipes constants) — deterministic across runs/platforms.
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 0x100000000;
     };
@@ -222,8 +206,6 @@ describe('updateWorkspaceSearchCorpus', () => {
 
     for (let step = 0; step < 8; step++) {
       const next = [...documents];
-      // Remove one, update two, insert one per step — small deltas, like a
-      // write burst with interleaved searches.
       next.splice(Math.trunc(rand() * next.length), 1);
       for (let u = 0; u < 2; u++) {
         const i = Math.trunc(rand() * next.length);

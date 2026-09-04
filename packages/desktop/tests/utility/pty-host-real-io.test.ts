@@ -7,11 +7,6 @@ import { describe, expect, test } from 'vitest';
 import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
 
-/**
- * Gate wrapper for the real-shell-I/O seam. The actual PTY drive runs in an
- * isolated Node subprocess so native handles cannot leak into the Vitest worker.
- */
-
 const HARNESS = fileURLToPath(new URL('./pty-host.real-io-harness.ts', import.meta.url));
 
 const TERMINAL_PLATFORM = isTerminalPlatform(process.platform);
@@ -24,8 +19,6 @@ async function runHarness(outputDir: string): Promise<string> {
   const outputFd = openSync(outputPath, 'w');
   const child = (() => {
     try {
-      // A descendant can inherit a captured pipe on Windows and keep the
-      // parent waiting for EOF after the harness itself has settled.
       return spawn(process.execPath, [HARNESS], {
         env: {
           ...process.env,

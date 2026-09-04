@@ -63,7 +63,6 @@ describe('resolveDesktopTarget', () => {
     const missing = resolveDesktopTarget({ env: { [PACKAGED_APP_ENV]: '/nope/Absent.app' } });
     expect(missing.exists).toBe(false);
     expect(missing.missingReason).toContain('/nope/Absent.app/Contents/MacOS/Absent');
-    // The suite migrated off Bun; the skip hint must not send a reader to it.
     expect(resolveDesktopTarget({ env: {} }).missingReason).toContain('pnpm run build:desktop');
     expect(resolveDesktopTarget({ env: {} }).missingReason).not.toContain('bun run');
   });
@@ -93,20 +92,12 @@ describe('desktopLaunchOptions', () => {
   });
 
   it('inherits the parent environment when the caller supplies none', () => {
-    // Load-bearing: 8 smoke launch sites pass no env and depend on the parent
-    // environment reaching the child untouched. Playwright REPLACES the child
-    // env when the key is present, so the language pin below has to carry
-    // `process.env` with it rather than stand alone. What must NOT appear is a
-    // synthesized OK_DESKTOP_E2E_SMOKE — dialog-helpers and the instance-name
-    // resolver read it unconditionally.
     const opts = desktopLaunchOptions({ target: unpackaged });
     expect(opts.env?.PATH).toBe(process.env.PATH);
     expect(opts.env?.OK_DESKTOP_E2E_SMOKE).toBe(process.env.OK_DESKTOP_E2E_SMOKE);
   });
 
   it('pins the interface language to English on every launch', () => {
-    // These walk the real menu by exact English label; the app otherwise reads
-    // the running user's own language preference off `~/.ok/global.yml`.
     expect(desktopLaunchOptions({ target: unpackaged }).env?.OK_LANG).toBe('en');
     expect(desktopLaunchOptions({ target: packaged }).env?.OK_LANG).toBe('en');
     expect(desktopLaunchOptions({ target: unpackaged, env: { OK_LANG: 'es' } }).env?.OK_LANG).toBe(
@@ -136,13 +127,6 @@ describe('desktopLaunchOptions', () => {
 });
 
 describe('no smoke file references __dirname without defining it', () => {
-  // Regression guard for the launch-helper migration. `__dirname` is not a
-  // runtime global under this package's "type": "module", but @types/node
-  // declares it ambiently — so a stale reference typechecks clean, and
-  // playwright.config.ts's testIgnore of `_*.e2e.ts` keeps CI from ever
-  // importing the dev-only files where it bit. The failure is a
-  // ReferenceError at module load, visible only to whoever runs the file
-  // directly. A static check is the only tier that catches it.
   const SMOKE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
   it.each(readdirSync(SMOKE_DIR).filter((f) => f.endsWith('.e2e.ts')))('%s', (file) => {

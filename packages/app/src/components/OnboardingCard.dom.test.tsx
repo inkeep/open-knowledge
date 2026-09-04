@@ -1,7 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Stub the animated mascot — its rAF/SVG internals aren't under test here.
 vi.doMock('@/components/OkBlob', () => ({
   OkBlob: () => <span data-testid="ok-blob" />,
 }));
@@ -13,8 +12,6 @@ import {
   type OnboardingCardStore,
 } from '@/lib/onboarding-card-store';
 
-// Import the component AFTER the mock above registers, so its transitive
-// `@/components/OkBlob` import binds to the stub rather than the real mascot.
 const { OnboardingCard } = await import('./OnboardingCard');
 
 function freshStore(): OnboardingCardStore {
@@ -48,14 +45,11 @@ describe('OnboardingCard', () => {
     expect(screen.getByText('Create your first project')).toBeTruthy();
     expect(screen.getByText('Create your first file')).toBeTruthy();
     expect(screen.getByText('Ask AI')).toBeTruthy();
-    // The live region is pre-registered (mounted always) but must stay silent
-    // during the checklist state — the other half of the WCAG 4.1.3 invariant.
     expect(screen.getByRole('status').textContent?.trim()).toBe('');
   });
 
   test('step rows are informational, not interactive buttons', () => {
     render(<OnboardingCard store={freshStore()} />);
-    // The only button in the card is Dismiss; steps are static.
     expect(screen.queryByRole('button', { name: /Create your first file/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Ask AI/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Create your first project/ })).toBeNull();
@@ -90,12 +84,9 @@ describe('OnboardingCard', () => {
     store.markStepComplete('file');
     store.markStepComplete('askedAi');
     render(<OnboardingCard store={store} lingerMs={20} />);
-    // In-card celebration: the mascot + "all set up" message, no checklist.
     expect(screen.getByTestId('ok-blob')).toBeTruthy();
-    // Visible message + the sr-only live-region announcement both carry the text.
     expect(screen.getAllByText(/all set up/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('Create your first file')).toBeNull();
-    // Auto-closes for good after the celebration.
     await waitFor(() => expect(store.getSnapshot().completed).toBe(true));
   });
 });

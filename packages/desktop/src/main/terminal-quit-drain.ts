@@ -8,12 +8,6 @@ export interface TerminalQuitDrainDeps {
   resumeQuit(): void;
 }
 
-/**
- * Holds the first will-quit event open until terminal hosts settle. Resuming on
- * a later event-loop turn is load-bearing: an already-resolved drain otherwise
- * re-enters app.quit() from a Promise microtask before Electron has unwound the
- * prevented native event, and that re-entry is ignored.
- */
 export function createTerminalQuitDrain(deps: TerminalQuitDrainDeps) {
   let drainStarted = false;
   let drainComplete = false;

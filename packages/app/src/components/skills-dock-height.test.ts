@@ -5,19 +5,12 @@ import {
   skillsDockMaxHeight,
 } from './skills-dock-expanded-store';
 
-/**
- * The dock's height bounds. Small functions, but they are the whole guard
- * between a drag and a panel dragged into a sliver or past the viewport — and
- * the drag feeds them raw pointer deltas, which go out of range constantly.
- */
 describe('skillsDockMaxHeight', () => {
   it('is a fraction of the viewport, so the tree above always keeps a body', () => {
     expect(skillsDockMaxHeight(1000)).toBe(700);
   });
 
   it('never drops below the floor, even in a viewport shorter than it', () => {
-    // A very short window would otherwise produce a max below the min and make
-    // the clamp below invert its own bounds.
     expect(skillsDockMaxHeight(100)).toBe(SKILLS_DOCK_MIN_HEIGHT);
     expect(skillsDockMaxHeight(0)).toBe(SKILLS_DOCK_MIN_HEIGHT);
   });
@@ -34,8 +27,6 @@ describe('clampSkillsDockHeight', () => {
   });
 
   it('survives a drag past the top of the screen', () => {
-    // Dragging up grows the dock, so a fast drag hands this a negative-derived
-    // number well outside any sane range.
     expect(clampSkillsDockHeight(-5000, 1000)).toBe(SKILLS_DOCK_MIN_HEIGHT);
   });
 

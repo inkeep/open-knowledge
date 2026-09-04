@@ -1,10 +1,3 @@
-/**
- * `countStaleAgentWipRefs` — the diagnose dead-agent-chain proxy.
- * Proves the disk-only signal counts stale `agent-*` chains, excludes principals
- * (folded by the 30-day TTL, not the fast auto path), excludes park/non-session
- * refs, and honors the staleness cutoff — all without the live keepalive map.
- */
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -32,7 +25,6 @@ beforeEach(async () => {
   shadow = await initShadowRepo(projectRoot);
 });
 
-/** Point a WIP ref at a commit stamped with an explicit committer date + subject. */
 async function createRefAt(refname: string, isoDate: string, subject: string): Promise<void> {
   const sg = shadowGit(shadow);
   const emptyTreeSha = (await sg.raw('hash-object', '-t', 'tree', '-w', '/dev/null')).trim();
@@ -52,7 +44,7 @@ async function createRefAt(refname: string, isoDate: string, subject: string): P
   await sg.raw('update-ref', refname, commitSha);
 }
 
-const OLD = '2020-01-01T00:00:00+00:00'; // far past the staleness window
+const OLD = '2020-01-01T00:00:00+00:00';
 const NOW_ISH = new Date().toISOString();
 const cutoff = () => Date.now() - 30 * 60 * 1000;
 
@@ -67,7 +59,6 @@ describe('countStaleAgentWipRefs (diagnose dead-agent-chain proxy)', () => {
     await createRefAt('refs/wip/main/agent-a', OLD, 'wip: a');
     await createRefAt('refs/wip/main/principal-b', OLD, 'wip: b');
     await createRefAt('refs/wip/main/principal-c', OLD, 'wip: c');
-    // Only the one agent chain counts; the two stale principals are expected, not degradation.
     expect(await countStaleAgentWipRefs(shadow, cutoff())).toBe(1);
   });
 
@@ -96,7 +87,6 @@ describe('countStaleAgentWipRefs (diagnose dead-agent-chain proxy)', () => {
   });
 
   test('the staleness cutoff is the boundary: a ref committed after the cutoff is not counted', async () => {
-    // Committed 5 min ago — inside the 30-min window, so still "live".
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     await createRefAt('refs/wip/main/agent-recent', fiveMinAgo, 'wip: recent');
     expect(await countStaleAgentWipRefs(shadow, cutoff())).toBe(0);

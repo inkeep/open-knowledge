@@ -34,8 +34,6 @@ describe('uninstall project picker', () => {
       expect(checkboxFor(project.path)).toBeDefined();
     }
 
-    // open and/or running collapse to `active`; a recents-only project is `recent`.
-    // PROJECTS[0] is open+running+recent → active; [1] and [2] are recent-only.
     const badges = screen.getAllByText(/^(active|recent)$/);
     expect(badges.map((el) => el.textContent)).toEqual(['active', 'recent', 'recent']);
   });
@@ -142,7 +140,6 @@ describe('uninstall project picker', () => {
     expect(
       screen.getByText('No active or recent OpenKnowledge projects were found.'),
     ).toBeDefined();
-    // No projects → no select-all header and no rows.
     expect(screen.queryByRole('checkbox')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Uninstall OpenKnowledge' }));

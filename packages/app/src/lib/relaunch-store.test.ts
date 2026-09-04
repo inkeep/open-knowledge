@@ -1,9 +1,3 @@
-/**
- * Runtime guards for `relaunch-store.ts`. The store is a module-level
- * singleton, so this file owns one fake `window.okDesktop` bridge and avoids
- * module mocking. Mirrors `update-notices-store.test.ts`.
- */
-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const store = await import('./relaunch-store');
@@ -17,7 +11,6 @@ function makeBridge() {
   const bridge = {
     onUpdateRelaunching: vi.fn((cb: RelaunchingCb) => {
       relaunching = cb;
-      // Real unsubscribe: detach severs the callback so later fires are no-ops.
       return () => {
         relaunching = () => {};
       };
@@ -39,8 +32,6 @@ function makeBridge() {
 }
 
 afterEach(() => {
-  // Reset the module singleton (flag + `attached` + listeners) so no test
-  // leaks into the next, and drop the fake window.
   store.resetRelaunchStoreForTest();
   Reflect.deleteProperty(globalThis, 'window');
 });
@@ -61,7 +52,6 @@ describe('relaunch-store', () => {
     expect(store.getRelaunchInFlightSnapshot()).toBe(true);
     expect(notifications).toBe(1);
 
-    // Idempotent set — already in flight, so no extra notification.
     fireRelaunching();
     expect(notifications).toBe(1);
 
@@ -102,7 +92,6 @@ describe('installRelaunchStateBridge', () => {
     expect(onRelaunching).toHaveBeenCalledTimes(1);
     expect(onRelaunchFailed).toHaveBeenCalledTimes(1);
 
-    // Second call is a no-op (the module-level `attached` guard).
     store.installRelaunchStateBridge();
     expect(onRelaunching).toHaveBeenCalledTimes(1);
     expect(onRelaunchFailed).toHaveBeenCalledTimes(1);

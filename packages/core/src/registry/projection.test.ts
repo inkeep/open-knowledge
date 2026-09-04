@@ -1,13 +1,3 @@
-/**
- * Tests for the agent-facing component projection helper.
- *
- * Covers:
- *  - rendered inventory text shape (golden-file via tokens, not byte-equality)
- *  - synthesized examples parse back to an mdast node of the expected kind
- *  - filter: canonical-and-not-wildcard
- *  - per-entry / per-param projection shape
- */
-
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { mdxFromMarkdown } from 'mdast-util-mdx';
 import { mdx } from 'micromark-extension-mdx';
@@ -123,13 +113,9 @@ describe('projectFull — example + form-aware params (FR-11)', () => {
     expect(callout).toBeDefined();
     const full = projectFull(callout as Parameters<typeof projectFull>[0]);
     const paramNames = full.params.map((p) => p.name);
-    // reactnode params (e.g. `children`) are part of the contract — agents
-    // need to know a body slot exists; example synthesis filters them
-    // separately (they go to children, not attributes).
     expect(paramNames).toContain('children');
     const childrenParam = full.params.find((p) => p.name === 'children');
     expect(childrenParam?.type).toBe('reactnode');
-    // `type` is an enum — values surface alongside.
     const typeParam = full.params.find((p) => p.name === 'type');
     expect(typeParam?.type).toBe('enum');
     expect(typeParam?.values).toBeDefined();

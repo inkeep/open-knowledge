@@ -17,7 +17,6 @@ describe('removeProjectSkill', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Create the managed skill dir with its SKILL.md ownership marker. */
   function seedSkill(): string {
     const skillPath = CLAUDE.projectSkillPath?.(dir);
     if (!skillPath) throw new Error('claude has no projectSkillPath');
@@ -29,7 +28,6 @@ describe('removeProjectSkill', () => {
   test('removes the managed skill directory whole', () => {
     const skillPath = seedSkill();
     const skillDir = dirname(skillPath);
-    // A sibling file inside the OK-owned dir goes too — the dir is OK's namespace.
     writeFileSync(join(skillDir, 'reference.md'), 'x');
     expect(existsSync(skillPath)).toBe(true);
 
@@ -51,7 +49,6 @@ describe('removeProjectSkill', () => {
     if (!skillPath) throw new Error('claude has no projectSkillPath');
     const skillDir = dirname(skillPath);
     mkdirSync(skillDir, { recursive: true });
-    // A directory squatting the name but with no managed SKILL.md is not ours.
     writeFileSync(join(skillDir, 'their-notes.md'), 'not ours');
 
     const result = removeProjectSkill(CLAUDE, dir);
@@ -62,8 +59,6 @@ describe('removeProjectSkill', () => {
   });
 
   test('refuses to remove through a symlinked ancestor escaping the project', () => {
-    // `.claude` is a symlink to an outside dir; the skill "exists" through it,
-    // but removal must refuse rather than route rmSync outside the project.
     const outside = mkdtempSync(join(tmpdir(), 'ok-remove-project-skill-outside-'));
     try {
       const managed = join(outside, 'skills', 'open-knowledge');
@@ -74,7 +69,6 @@ describe('removeProjectSkill', () => {
       const result = removeProjectSkill(CLAUDE, dir);
 
       expect(result.action).toBe('failed');
-      // The outside content is preserved — nothing was removed through the link.
       expect(existsSync(join(managed, 'SKILL.md'))).toBe(true);
     } finally {
       rmSync(outside, { recursive: true, force: true });
@@ -82,7 +76,6 @@ describe('removeProjectSkill', () => {
   });
 
   test('removes a skill dir that is itself a symlink, leaving the link target intact', () => {
-    // A projection-style install: the managed dir is a symlink into `.ok/skills`.
     const skillPath = CLAUDE.projectSkillPath?.(dir);
     if (!skillPath) throw new Error('claude has no projectSkillPath');
     const skillDir = dirname(skillPath);
@@ -96,7 +89,6 @@ describe('removeProjectSkill', () => {
 
     expect(result.action).toBe('removed');
     expect(existsSync(skillDir)).toBe(false);
-    // Only the link was removed; the projection source survives.
     expect(existsSync(join(source, 'SKILL.md'))).toBe(true);
   });
 

@@ -30,12 +30,10 @@ function makeProvider(overrides: Partial<TerminalFileLinkProviderDeps> = {}) {
   return { provider: createTerminalFileLinkProvider(deps), activated, checkTargetExists };
 }
 
-/** A single-row logical line (no wrapping): the whole text sits on `bufferLine`. */
 function row(text: string): TerminalFileLinkProviderDeps['readLogicalLine'] {
   return (bufferLine: number) => ({ text, startLine: bufferLine, cols: 80 });
 }
 
-/** Drive the pull-model `provideLinks` and resolve with the emitted links. */
 function provide(provider: ILinkProvider, line: number): Promise<ILink[] | undefined> {
   return new Promise((resolve) => provider.provideLinks(line, resolve));
 }
@@ -47,7 +45,6 @@ describe('createTerminalFileLinkProvider', () => {
     expect(links).toHaveLength(1);
     const link = links?.[0];
     expect(link?.text).toBe('src/foo.ts');
-    // "see " = 4 chars → 0-based [4,14) → 1-based start.x=5, end.x=14, y=line.
     expect(link?.range).toEqual({ start: { x: 5, y: 3 }, end: { x: 14, y: 3 } });
   });
 
@@ -71,7 +68,6 @@ describe('createTerminalFileLinkProvider', () => {
     });
     const links = await provide(provider, 1);
     expect(links).toHaveLength(1);
-    // External paths are optimistic — no project-scoped existence probe fires.
     expect(checkTargetExists).not.toHaveBeenCalled();
     links?.[0]?.activate({} as MouseEvent, links[0].text);
     expect(activated[0]).toEqual({ kind: 'external', absPath: '/tmp/out/report.pdf' });
@@ -86,9 +82,6 @@ describe('createTerminalFileLinkProvider', () => {
   });
 
   test('does not link a relative path that escapes the project (ambiguous once cd-ed)', async () => {
-    // A relative `..`-escape is ambiguous once the shell cd-s, so it stays
-    // non-clickable — unlike an out-of-project ABSOLUTE path (covered above),
-    // which links as `external`.
     const { provider, checkTargetExists } = makeProvider({
       readLogicalLine: row('cat ../../etc/passwd.md'),
     });
@@ -140,25 +133,16 @@ describe('createTerminalFileLinkProvider', () => {
   });
 
   test('maps a path that wraps across rows to a multi-row range', async () => {
-    // A logical line reconstructed from wrapped buffer rows: `cols` is narrow, so
-    // the path crosses the wrap boundary. The emitted range must span rows —
-    // start.y != end.y — which is how a long/absolute path underlines when a
-    // docked terminal wraps it (the single-row read that regressed this before
-    // only ever saw a truncated fragment).
     const { provider } = makeProvider({
       readLogicalLine: () => ({ text: 'see docs/guide/very-long.md end', startLine: 1, cols: 20 }),
     });
-    const links = await provide(provider, 2); // hovered on the continuation row
+    const links = await provide(provider, 2);
     expect(links).toHaveLength(1);
     expect(links?.[0]?.text).toBe('docs/guide/very-long.md');
-    // path at [4,27): start cell (4 → col 5, row 1); last char idx 26 → col 7, row 2.
     expect(links?.[0]?.range).toEqual({ start: { x: 5, y: 1 }, end: { x: 7, y: 2 } });
   });
 
   test('a slash-bearing directory without a trailing slash falls back to a folder link', async () => {
-    // `packages/app` (no trailing slash, no extension) classifies as an asset, so
-    // the file probe (`checkTargetExists('doc')` → isFile) misses on a real
-    // directory. The provider retries as a folder rather than dropping the link.
     const checkTargetExists = vi.fn(
       async (kind: 'doc' | 'folder'): Promise<CheckTargetExistsResult> =>
         kind === 'folder' ? 'exists' : 'missing',
@@ -171,13 +155,10 @@ describe('createTerminalFileLinkProvider', () => {
     expect(links).toHaveLength(1);
     links?.[0]?.activate({} as MouseEvent, links[0].text);
     expect(activated[0]).toEqual({ kind: 'folder', relPath: 'packages/app' });
-    // Probed as a file first, then as a folder — the fallback, not a snapshot hit.
     expect(checkTargetExists.mock.calls.map((c) => c[0])).toEqual(['doc', 'folder']);
   });
 
   test('a missing path WITH an extension does not waste a folder retry', async () => {
-    // The folder fallback is gated on extension-less tokens; `gone/file.md` is a
-    // file by shape, so a miss is final (one probe, no folder retry).
     const checkTargetExists = vi.fn(async (): Promise<CheckTargetExistsResult> => 'missing');
     const { provider } = makeProvider({
       readLogicalLine: row('open gone/file.md'),

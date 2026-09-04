@@ -87,16 +87,11 @@ describe('docNameToRelativePath', () => {
   });
 
   test('a docName recorded as markdown wins over the text-doc string shape', () => {
-    // `notes.ts.md` on disk strips to docName `notes.ts` — the registered
-    // extension must route it back to the markdown file, not the phantom
-    // `notes.ts` path.
     registerDocExtension('notes.ts', '.md');
     expect(docNameToRelativePath('notes.ts')).toBe('notes.ts.md');
   });
 
   test('returns Mermaid docNames verbatim (extension retained, no .md appended)', () => {
-    // A Mermaid docName IS the filename (`assets/flow.mmd`) — it must map 1:1 to
-    // the on-disk path, never `assets/flow.mmd.md`.
     expect(docNameToRelativePath('assets/flow.mmd')).toBe('assets/flow.mmd');
     expect(docNameToRelativePath('diagrams/seq.mermaid')).toBe('diagrams/seq.mermaid');
   });
@@ -136,26 +131,19 @@ describe('registerDocExtension / getDocExtension', () => {
   test('forgetDocExtension removes the mapping', () => {
     registerDocExtension('foo', '.mdx');
     forgetDocExtension('foo');
-    expect(getDocExtension('foo')).toBe('.md'); // back to default
+    expect(getDocExtension('foo')).toBe('.md');
   });
 
   test('forgetDocExtension after collision returns to default (no shadow restore)', () => {
-    // Both extensions observed on disk; .mdx wins precedence.
     registerDocExtension('foo', '.md');
     registerDocExtension('foo', '.mdx');
     expect(getDocExtension('foo')).toBe('.mdx');
 
-    // Forget clears the winning entry entirely — the shadowed .md is NOT
-    // resurrected. This is intentional: file-watcher re-registers the
-    // surviving extension on the next observed event, so drift is self-healing.
     forgetDocExtension('foo');
-    expect(getDocExtension('foo')).toBe('.md'); // back to default
+    expect(getDocExtension('foo')).toBe('.md');
   });
 
   test('preserves uppercase .MD casing observed on disk', () => {
-    // Persistence concatenates `${docName}${getDocExtension(docName)}` to derive
-    // the on-disk path. If we lowercase here, a `Foo.MD` file gets a duplicate
-    // `Foo.md` written next to it on case-sensitive filesystems.
     const result = registerDocExtension('foo', '.MD');
     expect(result).toEqual({ effective: '.MD', changed: true, shadowed: null });
     expect(getDocExtension('foo')).toBe('.MD');
@@ -211,9 +199,6 @@ describe('canonicalDocName', () => {
   });
 
   test('preserves the shadowed half of a real same-stem pair', () => {
-    // Registered the way the watcher does it: by STEM, once per file seen.
-    // `.mdx` wins, so `foo` resolves to the mdx and `foo.md` is the only way
-    // to reach the md file.
     registerDocExtension('foo', '.md');
     registerDocExtension('foo', '.mdx');
     expect(canonicalDocName('foo.md')).toBe('foo.md');
@@ -239,9 +224,6 @@ describe('canonicalDocName', () => {
   });
 
   test('registering a qualified name does not manufacture ambiguity', () => {
-    // Guards the blind spot that hid an earlier defect: hand-registering
-    // `notes.md` is a state the watcher never produces, and must not be
-    // mistaken for a real pair.
     registerDocExtension('notes.md', '.md');
     expect(canonicalDocName('notes.md')).toBe('notes');
   });

@@ -1,26 +1,3 @@
-/**
- * CONTRACT — source mode runs exactly ONE undo system, and it is origin-aware.
- *
- * The source editor binds a shared Y.Text to CodeMirror via y-codemirror.next.
- * Its Y.UndoManager tracks only the local sync origin, so remote peers and
- * agent writes (which arrive under other origins) are excluded from undo. The
- * shipped wiring removes CodeMirror's native `history()` and routes Mod-z to
- * that origin-aware manager via `yUndoManagerKeymap`; native history is
- * origin-blind and would revert the sync plugin's remote-reflecting
- * transactions — content the user never wrote.
- *
- * These rows drive a REAL CodeMirror 6 EditorView over a REAL Y.Text with the
- * production wiring imported from source. A remote/agent write is modeled the
- * way a provider delivers one: a diff applied under a non-binding origin (the
- * repo's established remote-peer stand-in). The `legacy` arm pins the pre-fix
- * dual-capture defect, so a regression back to native history flips it red
- * rather than silently re-baselining.
- *
- * Fidelity residual: the real browser Mod-z keydown → keymap resolution rides
- * the registered Playwright rung (source-mode-undo-keymap.e2e.ts); this tier
- * exercises the keymap's bound command.
- */
-
 import { undoDepth } from '@codemirror/commands';
 import type { EditorView } from '@codemirror/view';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
@@ -79,8 +56,6 @@ describe('source-mode single origin-aware undo (production wiring)', () => {
 
     typeInSource(view, 'hello');
     expect(ytext.toString()).toBe('hello');
-    // No native history state field is present, so there is exactly one undo
-    // system (the Y.UndoManager) — double capture is eliminated.
     expect(undoDepth(view.state)).toBe(0);
 
     runSourceUndo(view, 'production');
@@ -98,7 +73,6 @@ describe('source-mode single origin-aware undo (production wiring)', () => {
     expect(ytext.toString()).toBe('REMOTE\nlocal');
 
     runSourceUndo(view, 'production');
-    // Only the local edit is reverted; the remote write survives.
     expect(ytext.toString()).toBe('REMOTE\n');
     expect(view.state.doc.toString()).toBe('REMOTE\n');
   });
@@ -108,8 +82,6 @@ describe('source-mode single origin-aware undo (production wiring)', () => {
 
     applyRemoteSourceEdit(doc, (t) => t.insert(0, 'REMOTE\n'));
 
-    // The Y.UndoManager stack holds no local edit, so undo leaves the remote
-    // content untouched (contrast the legacy arm below).
     runSourceUndo(view, 'production');
     expect(ytext.toString()).toBe('REMOTE\n');
     expect(view.state.doc.toString()).toBe('REMOTE\n');
@@ -122,11 +94,9 @@ describe('source-mode undo pre-fix characterization (legacy CodeMirror history)'
 
     applyRemoteSourceEdit(doc, (t) => t.insert(0, 'REMOTE\n'));
     expect(view.state.doc.toString()).toBe('REMOTE\n');
-    // Native history captured the sync plugin's remote-reflecting transaction.
     expect(undoDepth(view.state)).toBeGreaterThan(0);
 
     runSourceUndo(view, 'legacy');
-    // Origin-blind: the local undo destroyed a remote peer's content.
     expect(view.state.doc.toString()).not.toContain('REMOTE');
   });
 });

@@ -6,7 +6,6 @@ import {
   writePreferBareTerminal,
 } from './terminal-new-tab-store';
 
-/** In-memory Storage stand-in matching the `NewTabStorage` seam. */
 function fakeStorage() {
   const map = new Map<string, string>();
   return {
@@ -32,8 +31,6 @@ describe('terminal-new-tab-store', () => {
     expect(s.has(TERMINAL_NEW_TAB_BARE_KEY)).toBe(true);
     expect(readPreferBareTerminal(s)).toBe(true);
 
-    // Clearing removes the key entirely (rather than storing '0'), so an absent
-    // key and an explicit false are the same on the next read.
     writePreferBareTerminal(false, s);
     expect(s.has(TERMINAL_NEW_TAB_BARE_KEY)).toBe(false);
     expect(readPreferBareTerminal(s)).toBe(false);
@@ -46,14 +43,8 @@ describe('terminal-new-tab-store', () => {
   });
 });
 
-// The two session hosts partition Ask-AI / ⇧⌘J work by comparing the kind each
-// one resolves, which only holds while they read the same inputs. Before this
-// store published, each host held a mount-time snapshot: one New-dropdown pick
-// diverged them, both claimed, and ⇧⌘J opened two sessions. Subscribers standing
-// in for the two hosts here.
 describe('cross-surface publication', () => {
   test('a write notifies every subscriber, and each re-reads the new value', () => {
-    // One shared backing store, two readers — exactly the two hosts' situation.
     const shared = fakeStorage();
     const seenA: boolean[] = [];
     const seenB: boolean[] = [];
@@ -66,7 +57,6 @@ describe('cross-surface publication', () => {
     stopA();
     stopB();
     expect(seenA).toEqual([true, false]);
-    // Both surfaces observe the SAME sequence — the invariant the partition needs.
     expect(seenB).toEqual(seenA);
   });
 

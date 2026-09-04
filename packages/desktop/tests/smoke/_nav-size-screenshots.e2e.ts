@@ -1,20 +1,3 @@
-/**
- * DEV-ONLY (underscore-prefixed, opt-in via OK_DESKTOP_E2E_SMOKE=1). Not a
- * CI assertion — it captures real screenshots of the rendered Navigator at
- * three candidate window sizes for visual comparison, then exits.
- *
- * Uses the proven smoke harness (same as navigator-return.e2e.ts /
- * window-min-size.e2e.ts): seed a project so the editor opens first, trigger
- * the Navigator via bridge.navigator.open(), then resize that ONE window
- * between captures. One Electron instance — no single-instance-lock fight.
- *
- * Output: packages/desktop/tmp/nav-shot-<w>x<h>.png (gitignored).
- *
- * Gated on a supported host platform, not on darwin: the capture is of the
- * renderer's own layout, which is the same React tree everywhere, so the shots
- * are worth having per-OS (window chrome differs and that is the point).
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -56,8 +39,6 @@ function seedHome(prefix: string): { tmpHome: string; projectDir: string } {
   );
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
-  // Seed a generous recents list so the list section is realistically full
-  // and scroll behavior is visible in the captures.
   const now = Date.now();
   const recentProjects = [
     'agents-private',
@@ -131,9 +112,7 @@ async function findWindow(
 function rmSafe(p: string): void {
   try {
     rmSync(p, { recursive: true, force: true });
-  } catch {
-    // ENOTEMPTY race during Electron shutdown — harmless.
-  }
+  } catch {}
 }
 
 test.describe('Navigator size screenshots (dev-only)', () => {
@@ -168,7 +147,6 @@ test.describe('Navigator size screenshots (dev-only)', () => {
           },
           { w, h },
         );
-        // Let the renderer reflow + the show-gate settle.
         await nav.waitForTimeout(900);
         const outPath = join(SHOT_DIR, `nav-shot-${label}.png`);
         await nav.screenshot({ path: outPath });

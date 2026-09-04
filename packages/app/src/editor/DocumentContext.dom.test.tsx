@@ -30,9 +30,6 @@ vi.doMock('@/lib/use-collab-url', () => ({
   }),
 }));
 
-// The provider no longer subscribes to the skills list — that subscription existed
-// to recompute the Files/Skills surface. The mock stays because components
-// rendered here may still call the hook; nothing varies it any more.
 const mockSkillsStatus: 'idle' | 'loading' | 'ready' = 'idle';
 
 vi.doMock('@/hooks/use-skills', () => ({
@@ -235,9 +232,6 @@ function makeEditorBridgeStub(
 
   return {
     bridge,
-    // The editor window's close-tab handler now listens on the renderer-local
-    // menu-action bus (a real menu click reaches it via the bus forwarder), so
-    // the test drives it with emitLocalMenuAction.
     fire: (action) => {
       act(() => emitLocalMenuAction(action));
     },
@@ -516,10 +510,7 @@ describe('DocumentContext preview-tab promotion on user edit', () => {
     window.location.hash = '';
   });
 
-  /** Opens bail during the restore window, so settle it before driving tabs. */
   async function renderSettled() {
-    // Restore is gated on a resolved collab URL; without one `tabSessionLoaded`
-    // never flips and every open stays in the restore window.
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
     window.localStorage.setItem(
@@ -541,7 +532,6 @@ describe('DocumentContext preview-tab promotion on user edit', () => {
     await user.click(screen.getByRole('button', { name: 'Preview first' }));
     expect(screen.getByTestId('preview-tab').textContent).toBe(docTabId('First.md'));
 
-    // The notification the editors emit on a user-intent content change.
     act(() => {
       requestPreviewTabPromotion('First.md');
     });
@@ -554,8 +544,6 @@ describe('DocumentContext preview-tab promotion on user edit', () => {
   });
 
   test('without an edit the preview tab is still replaced', async () => {
-    // The control. Preview replacement is correct behavior, not collateral of
-    // the bug — this pins that the fix did not turn every click permanent.
     const user = await renderSettled();
 
     await user.click(screen.getByRole('button', { name: 'Preview first' }));
@@ -579,14 +567,10 @@ describe('DocumentContext preview-tab promotion on user edit', () => {
   test('the listener is torn down with the provider', () => {
     const { unmount } = render(<PreviewEditHarness />, { wrapper: ProviderHarness });
     unmount();
-    // A notification arriving after teardown must not reach a disposed context.
     expect(() => requestPreviewTabPromotion('First.md')).not.toThrow();
   });
 
   test('a non-document preview tab promotes too, via its tab id', async () => {
-    // The sidebar can preview an asset, whose tab id is NOT its document name.
-    // Promotion is keyed by tab id precisely so this tab is reachable; the
-    // earlier docName-only API could not address it at all.
     const user = await renderSettled();
 
     await user.click(screen.getByRole('button', { name: 'Preview asset' }));
@@ -765,9 +749,6 @@ describe('DocumentContext tab close force contract', () => {
     expect(screen.getByTestId('active-new-tab').textContent).toBe('');
   });
 
-  // A blank tab renders exactly what the empty state renders, so synthesizing
-  // one on close made closing the last tab look like it reopened one. Blank
-  // tabs are now minted on explicit request only ("+" / Cmd-T).
   test('closing the last document tab leaves no tab rather than a blank one', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
@@ -924,9 +905,6 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
   });
 
   test('dragging the lone pinned tab out of the pinned zone unpins it (wired end-to-end)', async () => {
-    // Seed: [A,B,C] pinned {A}. Zone = index 0 only. Drag A → index 1.
-    // reorderTabs must thread the dragged id through applyDragPinMutation so
-    // the context's pinnedTabIds drops A.
     seedReorderSession();
     render(
       <ReorderHarness newOrder={[REORDER_B, REORDER_A, REORDER_C]} draggedTabId={REORDER_A} />,
@@ -946,13 +924,10 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     expect(screen.getByTestId('visible-tabs').textContent).toBe(
       `${REORDER_B}|${REORDER_A}|${REORDER_C}`,
     );
-    // A left the size-1 pinned zone → unpinned.
     expect(screen.getByTestId('pinned-tabs').textContent).toBe('');
   });
 
   test('dragging an unpinned tab into the pinned zone pins it; non-dragged tabs keep state', async () => {
-    // Seed: [A,B,C] pinned {A}. Drag C to index 0 (into the size-1 zone).
-    // C pins; A is not the dragged tab so it stays pinned.
     seedReorderSession();
     render(
       <ReorderHarness newOrder={[REORDER_C, REORDER_A, REORDER_B]} draggedTabId={REORDER_C} />,
@@ -983,16 +958,11 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     const beforePinned = screen.getByTestId('pinned-tabs').textContent;
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Reorder' }));
-    // Unchanged order short-circuits before pin mutation — pin set untouched.
     expect(screen.getByTestId('open-tabs').textContent).toBe(beforeOpen);
     expect(screen.getByTestId('pinned-tabs').textContent).toBe(beforePinned);
   });
 
   test('reorderTabs commits a new-tab-placeholder reorder among doc-tabs (QA-024)', async () => {
-    // Seed: openTabs=[A,B,C], pinned=[A]; harness creates a new-tab and reorders
-    // it BETWEEN A and B. Per-bucket orders are unchanged ([A,B,C] and [t1]),
-    // but the visible interleave moves t1 from end → middle. The reorder must
-    // commit the new visible order even though both buckets compare equal.
     seedReorderSession();
     function NewTabReorderHarness() {
       const ctx = useDocumentContext();
@@ -1013,7 +983,6 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
               const visible = ctx.visibleTabIds;
               const newTabId = ctx.newTabIds[0];
               if (!newTabId) return;
-              // Move new-tab from index 3 (end) to index 1 (between A and B).
               const next = visible.filter((id) => id !== newTabId);
               next.splice(1, 0, newTabId);
               ctx.reorderTabs(next, newTabId);
@@ -1039,11 +1008,6 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
 
   test('reorderTabs defensively appends any open tab the caller forgot to include', async () => {
     seedReorderSession();
-    // Caller passes only [C, A] — B was forgotten; reorderTabs must append B
-    // rather than silently drop it from openTabs. Dragged = B (the appended
-    // tab lands at index 2, outside the size-1 zone, and was already
-    // unpinned) so pin state is unperturbed and the test stays focused on the
-    // append backstop.
     render(<ReorderHarness newOrder={[REORDER_C, REORDER_A]} draggedTabId={REORDER_B} />, {
       wrapper: ProviderHarness,
     });
@@ -1052,7 +1016,6 @@ describe('DocumentContext reorderTabs — order + drag-mutable pin', () => {
     await user.click(screen.getByRole('button', { name: 'Reorder' }));
     const tabs = screen.getByTestId('open-tabs').textContent ?? '';
     expect(tabs.split('|')).toEqual([REORDER_C, REORDER_A, REORDER_B]);
-    // A was not dragged → still pinned; the defensive append did not touch pin.
     expect(screen.getByTestId('pinned-tabs').textContent).toBe(REORDER_A);
   });
 });
@@ -1062,8 +1025,6 @@ const SAME_STEM_MD_TAB = docTabId('foo.md');
 const SAME_STEM_MDX_TAB = docTabId('foo.mdx');
 
 function seedColdStartSession() {
-  // The state a cold single-file window reaches mid-startup: the seeded doc tab
-  // is already open + active while the page list is still loading.
   window.localStorage.setItem(
     localTabSessionStorageKey(window.location.origin),
     JSON.stringify(
@@ -1098,8 +1059,6 @@ function ColdStartSyncHarness() {
       <span data-testid="open-tabs">{ctx.openTabs.join('|')}</span>
       <button
         type="button"
-        // The first sync of a cold start fires while the page list is still
-        // empty (it arrives empty-then-populated).
         onClick={() =>
           ctx.syncOpenTabsWithKnownTargets({
             pages: new Set(),
@@ -1146,13 +1105,6 @@ describe('DocumentContext syncOpenTabsWithKnownTargets — cold-start hash prese
   });
 
   test('a sync against transiently-empty pages keeps the hash-targeted doc (no empty-state splash)', async () => {
-    // Regression: `ok <file>` cold launch. The window seeds `#/event_watcher`,
-    // the doc tab is open, but the page list arrives empty-then-populated. A
-    // sync firing in that empty window must NOT prune the doc and clear the hash
-    // — `activeTarget` is still `doc` (not yet `missing`), so `keepMissingDocName`
-    // is null here and only `keepHashDocName` saves it. Without the rescue the
-    // hash clears to '' and the editor falls through to the "Create something
-    // great" splash ~50% of cold opens.
     seedColdStartSession();
     window.location.hash = '#/event_watcher';
     render(<ColdStartSyncHarness />, { wrapper: ProviderHarness });
@@ -1196,7 +1148,6 @@ describe('DocumentContext repeat-crash recovery notice', () => {
 
   afterEach(() => {
     cleanup();
-    // The notice lives until dismissed; clear it so it cannot bleed across tests.
     toast.dismiss();
     delete window.okDesktop;
     mockCollabUrl = null;
@@ -1204,9 +1155,6 @@ describe('DocumentContext repeat-crash recovery notice', () => {
     window.localStorage.clear();
     window.location.hash = '';
     resetTabSessionRestoreSuppression();
-    // The restore reset deliberately leaves the hash-navigation latch armed, so
-    // a repeat-crash test would otherwise leak it into the next test in this
-    // file (module scope is shared; isolate is per-file).
     consumeHashNavigationSuppression();
   });
 
@@ -1223,8 +1171,6 @@ describe('DocumentContext repeat-crash recovery notice', () => {
   test('tells the user the last document could not be restored when a repeat crash suppresses the bridge session', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
-    // The same OTHER_TAB_ID session the normal-restore test below reopens over
-    // the bridge — here a repeat crash armed suppression, so it must not reopen.
     const stub = makeEditorBridgeStub(
       persistedTabSession(
         [OTHER_TAB_ID],
@@ -1242,7 +1188,6 @@ describe('DocumentContext repeat-crash recovery notice', () => {
     await waitFor(() => {
       expect(screen.getByTestId('session-loaded').textContent).toBe('true');
     });
-    // The crashing document stayed closed AND the empty workspace is explained.
     expect(screen.getByTestId('active-pane-tab').textContent).toBe('');
     await screen.findByText(RECOVERY_NOTICE);
   });
@@ -1279,17 +1224,10 @@ describe('DocumentContext tab restore', () => {
     window.localStorage.clear();
     window.location.hash = '';
     resetTabSessionRestoreSuppression();
-    // The restore reset deliberately leaves the hash-navigation latch armed, so
-    // a repeat-crash test would otherwise leak it into the next test in this
-    // file (module scope is shared; isolate is per-file).
     consumeHashNavigationSuppression();
   });
 
   test('suppresses the synchronous web session restore after a repeat app-shell crash', () => {
-    // Web mode, so no okDesktop bridge. Leaving collabUrl null keeps the async
-    // restore effect early-returning, which isolates the synchronous initializer
-    // as the only thing that can decide the first painted workspace. Sibling
-    // tests seed the same session and see OTHER_TAB_ID active on first render.
     seedActiveOtherTabSession();
     recordAppShellCrashTrip(new Error('same crash'));
     recordAppShellCrashTrip(new Error('same crash'));
@@ -1301,10 +1239,6 @@ describe('DocumentContext tab restore', () => {
   });
 
   test('restores the web session on a first crash trip', () => {
-    // One trip is not a repeat, so the session still restores. The suppression
-    // case records two same-key trips; without this counterpart, a latch that
-    // armed on every crash would satisfy that case while breaking ordinary
-    // single-crash recovery.
     seedActiveOtherTabSession();
     recordAppShellCrashTrip(new Error('first crash'));
 
@@ -1314,11 +1248,6 @@ describe('DocumentContext tab restore', () => {
   });
 
   test('a suppressed recovery leaves the stored session intact while the workspace is empty', async () => {
-    // The suppressed branch marks the session loaded, which arms the persist
-    // effect. This pins the quiet half: nothing is written before the user
-    // touches anything. The bridge and web open-a-tab cases cover the half that
-    // actually bites, where the recovered one-tab workspace would otherwise
-    // replace the whole stored session.
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
     const setSessionState = vi.fn(async () => undefined);
@@ -1344,10 +1273,6 @@ describe('DocumentContext tab restore', () => {
   });
 
   test('opening a tab after a suppressed bridge recovery does not overwrite the stored session', async () => {
-    // The recovered workspace is deliberately NOT what the user left behind, so
-    // it is never a faithful continuation of the stored session. Persisting it
-    // over the readable session we chose not to apply would drop every other
-    // tab, pin and pane the user still has stored.
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
     const setSessionState = vi.fn(async () => undefined);
@@ -1372,8 +1297,6 @@ describe('DocumentContext tab restore', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Open existing third' }));
 
-    // The open itself must land — otherwise the assertion below would hold for
-    // the wrong reason.
     await waitFor(() => {
       expect(screen.getByTestId('pane-tabs').textContent).toContain(THIRD_TAB_ID);
     });
@@ -1381,8 +1304,6 @@ describe('DocumentContext tab restore', () => {
   });
 
   test('opening a tab after a suppressed web recovery does not overwrite the stored session', async () => {
-    // Same invariant on the localStorage host, where the write replaces the
-    // stored value outright rather than going through the bridge.
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
     seedTabSession();
@@ -1438,8 +1359,6 @@ describe('DocumentContext tab restore', () => {
   test('suppresses the desktop bridge session restore after a repeat app-shell crash', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
-    // The same OTHER_TAB_ID session the normal-restore case reopens over the
-    // bridge — here it must NOT reopen, because a repeat crash armed suppression.
     const stub = makeEditorBridgeStub(
       persistedTabSession(
         [OTHER_TAB_ID],
@@ -1461,11 +1380,6 @@ describe('DocumentContext tab restore', () => {
   });
 
   test('a later mount with no new crash trips restores the session the recovery suppressed', async () => {
-    // Pins that the recovery mount RESETS the latch, not merely reads it. A
-    // repeat crash suppresses exactly one restore; the very next mount — with
-    // no new trips — must restore normally. Without the effect's reset,
-    // suppression would outlive its single recovery and strand the tab for the
-    // rest of the session.
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => new Promise(() => {})) as never;
     const stub = makeEditorBridgeStub(
@@ -1487,7 +1401,6 @@ describe('DocumentContext tab restore', () => {
     expect(first.getByTestId('active-pane-tab').textContent).toBe('');
     first.unmount();
 
-    // A fresh mount with the latch already consumed: the crashing tab returns.
     const second = render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
     await waitFor(() => {
       expect(second.getByTestId('session-loaded').textContent).toBe('true');
@@ -1646,10 +1559,6 @@ describe('DocumentContext pane workspace', () => {
     expect(screen.getByTestId('pane-tabs').textContent?.match(/Other/g)).toHaveLength(1);
   });
 
-  // The acceptance test for unifying the Files/Skills surfaces. `skillFocused`
-  // used to filter the tab strip, so a file tab and a skill tab could never be
-  // visible at once no matter how the panes were arranged. Both now show, and
-  // moving focus between panes changes nothing about what is visible.
   test('shows file and skill tabs together across panes', async () => {
     seedMixedSurfacePaneWorkspaceSession();
     render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
@@ -1762,10 +1671,6 @@ describe('DocumentContext local rename reconciliation — preserves tab position
   });
 
   test('renaming an open tab keeps its index in both openTabs and visibleTabIds', async () => {
-    // Seed: [foo, bar]. Rename foo → bazz. Expected: tabs stay [bazz, bar].
-    // Regression: previously the rename re-derived visibleTabIds via
-    // reconcileVisibleTabOrder, which dropped the stale `foo` id and re-appended
-    // the new `bazz` id at the end, producing [bar, bazz].
     seedRenameSession();
     render(<RenameHarness fromDocName="foo" toDocName="bazz" />, {
       wrapper: ProviderHarness,
@@ -1782,11 +1687,6 @@ describe('DocumentContext local rename reconciliation — preserves tab position
   });
 
   test('renaming the active tab commits the remapped tab id to activeTabId', async () => {
-    // Seed: [foo, bar], active = foo. Rename foo → bazz. Expected: activeTabId
-    // flips from RENAME_FOO to RENAME_BAZZ via commitActiveTabId — without this
-    // call, the active highlight would persist on the stale `foo` id even after
-    // the tab itself was remapped, leaving the editor's active-tab UI desynced
-    // from the rendered tab strip.
     seedRenameSession();
     render(<RenameHarness fromDocName="foo" toDocName="bazz" />, {
       wrapper: ProviderHarness,
@@ -1801,10 +1701,6 @@ describe('DocumentContext local rename reconciliation — preserves tab position
   });
 
   test('renaming a non-active tab leaves activeTabId untouched', async () => {
-    // Seed: [foo, bar], active = foo. Rename `bar` → `bazz`. Active stays foo —
-    // the `if (remappedActiveTabId && next.includes(remappedActiveTabId))` guard
-    // in local rename reconciliation only commits when the remapped active actually lands
-    // in the next tab set; an unrelated rename must not perturb the active tab.
     seedRenameSession();
     render(<RenameHarness fromDocName="bar.md" toDocName="bazz.md" />, {
       wrapper: ProviderHarness,

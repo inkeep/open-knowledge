@@ -1,12 +1,3 @@
-/**
- * Bucketing for the queue panel: queued comments grouped under their document.
- *
- * A file appears ONCE, at the position of its first queued comment, and later
- * comments on it join that bucket rather than opening a second one — commenting
- * across two files alternately would otherwise produce a heading per comment,
- * which is the repetition the grouping exists to remove.
- */
-
 import type { CommentThread } from './types';
 
 export interface QueueGroup {

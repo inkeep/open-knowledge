@@ -1,11 +1,3 @@
-/**
- * Behavioral tests for the docked-terminal missing-CLI banner — the codex/cursor
- * equivalent of ClaudeReadinessBanner's `not-found` branch. Asserts the
- * actionable "Get <Brand>" affordance opens the CLI's install docs and that the
- * dismiss control fires `onDismiss`. Symmetric with the Claude readiness banner,
- * which already tests its "Get Claude Code" action.
- */
-
 import { TERMINAL_CLIS } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -42,7 +34,6 @@ describe('TerminalCliMissingBanner', () => {
     const { bridge, openExternal } = makeBridge();
     render(<TerminalCliMissingBanner cli="codex" bridge={bridge} onDismiss={() => {}} />);
 
-    // Message names the brand + the actual binary so triage knows what's missing.
     expect(screen.getByText(/Codex \(codex\) isn't installed/)).toBeTruthy();
 
     await userEvent.click(screen.getByRole('button', { name: 'Get Codex' }));

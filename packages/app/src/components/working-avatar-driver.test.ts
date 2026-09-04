@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { subscribeToMorphClock } from './working-avatar-driver';
 
-/**
- * Drives the loop by hand: rAF callbacks are queued rather than run, so a test
- * can advance the clock and pump exactly one frame at a time.
- */
 function installFakeRaf() {
   let nextId = 1;
   let pending: { id: number; fn: FrameRequestCallback } | null = null;
@@ -21,7 +17,6 @@ function installFakeRaf() {
   });
 
   return {
-    /** Run the one queued callback, which re-queues the next frame. */
     pump() {
       const current = pending;
       pending = null;
@@ -30,7 +25,6 @@ function installFakeRaf() {
     get running() {
       return pending !== null;
     },
-    /** Total rAF calls — one per frame, however many subscribers there are. */
     get requests() {
       return requests;
     },
@@ -51,8 +45,6 @@ describe('working avatar morph clock', () => {
   });
 
   test('every subscriber starts its own cycle at zero', () => {
-    // Otherwise a turn that opens after the page has been up for a while drops
-    // in mid-cycle, on whatever arbitrary pose the shared clock had reached.
     const first: number[] = [];
     const stopFirst = subscribeToMorphClock((t) => first.push(t));
     raf.pump();
@@ -64,7 +56,6 @@ describe('working avatar morph clock', () => {
     const stopLate = subscribeToMorphClock((t) => late.push(t));
     raf.pump();
     expect(late[0]).toBeCloseTo(0, 2);
-    // The one that was already running keeps counting from its own join.
     expect(first.at(-1)).toBeGreaterThan(4.9);
 
     stopFirst();
@@ -99,11 +90,6 @@ describe('working avatar morph clock', () => {
   });
 
   test('the last subscriber leaving from inside its own tick stops the loop', () => {
-    // The path the size check in `loop()` exists for. `cancelAnimationFrame`
-    // here targets the frame that is already executing, so it does nothing —
-    // without the check the reschedule would revive an empty loop that runs for
-    // the page's lifetime, ticking nobody. An avatar unmounting mid-tick (any
-    // navigation away from a live thread) is how that would happen for real.
     let ticks = 0;
     let stop = () => {};
     stop = subscribeToMorphClock(() => {
@@ -115,7 +101,6 @@ describe('working avatar morph clock', () => {
     expect(ticks).toBe(1);
     expect(raf.running).toBe(false);
 
-    // And it stays stopped rather than spinning on an empty subscriber set.
     raf.pump();
     expect(ticks).toBe(1);
     expect(raf.running).toBe(false);
@@ -129,8 +114,6 @@ describe('working avatar morph clock', () => {
     raf.pump();
     expect(ticks).toBe(1);
 
-    // Keep a live subscriber so the loop stays running — this asserts the
-    // unsubscribe, not the shutdown path covered above.
     const keepAlive = subscribeToMorphClock(() => {});
     stop();
     raf.pump();

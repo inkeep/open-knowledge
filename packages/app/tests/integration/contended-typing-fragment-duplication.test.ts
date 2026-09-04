@@ -52,10 +52,6 @@ import {
   type TestServer,
 } from './test-harness';
 
-// Seeded UNCLOSED — the fragment materializes a rawMdxFallback (parse-error)
-// node for the span. Typing the closing tags flips the parse to a valid
-// wildcard jsxComponent, which is a STRUCTURAL replace by Observer B (not an
-// item-preserving content update) — one side of the concurrent replace pair.
 const STEPS_UNCLOSED = [
   '## Guide',
   '',
@@ -85,11 +81,9 @@ afterAll(async () => {
 test('concurrent client structural replace vs Observer-B rewrite must not duplicate the Step subtree', async () => {
   client = await createTestClient(server.port, undefined, {
     syncControl: true,
-    // We deliberately drive divergence — the watcher would throw first.
     skipInvariantWatcher: true,
   });
 
-  // Seed the doc UNCLOSED through the client Y.Text (source-mode surface, W2).
   client.doc.transact(() => {
     client.ytext.insert(0, STEPS_UNCLOSED);
   });
@@ -99,15 +93,8 @@ test('concurrent client structural replace vs Observer-B rewrite must not duplic
   expect(pre).not.toBeNull();
   expect(pre?.ytext.toString().match(/Step one body\./g)?.length).toBe(1);
 
-  // ── Open the concurrency window ──────────────────────────────────────
-  // Client stops SEEING server-side Observer-B fragment rewrites (inbound
-  // paused), exactly like a CPU-starved renderer whose WS deltas lag.
   client.pauseSync();
 
-  // Type the CLOSING tags per-keystroke (outbound flows). At the final
-  // keystrokes the server-side parse flips the span from rawMdxFallback to
-  // a valid wildcard jsxComponent — Observer B performs a STRUCTURAL
-  // delete+insert on the span.
   let at = client.ytext.length;
   for (const ch of CLOSING) {
     client.doc.transact(() => {
@@ -116,16 +103,6 @@ test('concurrent client structural replace vs Observer-B rewrite must not duplic
     at += 1;
   }
 
-  // Auto-convert-equivalent structural replace, computed against the
-  // client's STALE fragment (paused inbound — it still holds the seed-era
-  // paragraphs for the unclosed span; the server has meanwhile folded the
-  // span into one jsxComponent). Mirrors the JsxComponentView auto-convert
-  // replaceWith: delete the stale span items and insert ONE rawMdxFallback
-  // element whose text is the stale source snapshot — the exact byte-shape
-  // observed as the surviving orphan copy in the corrupted drains. Plain
-  // client origin, like the real dispatch. Inbound is paused, so the client
-  // fragment never changes after seed; only its Y.Text advanced. The stale
-  // span is the paragraphs at indices 2..4.
   expect(client.fragment.length).toBeGreaterThanOrEqual(5);
   const fallback = new Y.XmlElement('rawMdxFallback');
   fallback.setAttribute('reason', 'Unregistered component: Step');
@@ -135,8 +112,6 @@ test('concurrent client structural replace vs Observer-B rewrite must not duplic
     client.fragment.insert(2, [fallback]);
   });
 
-  // ── Close the window: let the server's queued rewrites reach the client
-  // and the final settlement run. ──────────────────────────────────────
   client.resumeSync();
   await awaitDocQuiescence(client.doc, { timeoutMs: 15_000, idleTicks: 10 });
 
@@ -144,16 +119,10 @@ test('concurrent client structural replace vs Observer-B rewrite must not duplic
   expect(post).not.toBeNull();
   const bytes = post?.ytext.toString() ?? '';
 
-  // INVARIANT (the duplication-gate recovery upholds this): the typed body
-  // line appears exactly once and the container tags stay singular in the
-  // authoritative bytes.
   expect(bytes.match(/Step one body\./g)?.length ?? 0).toBe(1);
   expect(bytes.match(/<Step>/g)?.length ?? 0).toBe(1);
   expect(bytes.match(/<Steps>/g)?.length ?? 0).toBe(1);
 
-  // Post-recovery bridge coherence: the re-derived server fragment must agree
-  // with Y.Text (a recovery that fixed the bytes but left a doubled fragment
-  // would just re-trip the gate on the next drain).
   expect(post?.md.match(/Step one body\./g)?.length ?? 0).toBe(1);
   expect(post?.md.match(/<Step>/g)?.length ?? 0).toBe(1);
 }, 30_000);

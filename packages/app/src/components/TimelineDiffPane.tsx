@@ -1,14 +1,3 @@
-/**
- * TimelineDiffPane — the full-pane version diff, painted by EditorArea as an
- * absolute overlay over the editor (not a viewContent branch: unmounting the
- * EditorActivityPool would recycle the doc's provider and break the vs-live
- * diff, which reads live Y.Text). Driven by `timeline-diff-store`; a Timeline
- * row opens it, this pane owns the mode toggle, the `+N −M` stat, the diff
- * layout, and Restore.
- *
- * The provider stays mounted underneath, so closing the pane returns to the
- * editor instantly with no remount flash.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
@@ -54,8 +43,6 @@ const LazyActivityPanelDiffView = lazy(async () => {
 
 interface TimelineDiffPaneProps {
   view: TimelineDiffView;
-  /** DocPanel collapsed state + toggle — the pane overlays the editor toolbar
-   *  that normally owns this control, so it surfaces its own. */
   isPanelCollapsed: boolean;
   onTogglePanel: () => void;
 }
@@ -64,51 +51,30 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
   const { t } = useLingui();
   const { docName, sha, parentSha, laterEdits, authorName, relativeTime } = view;
   const [cache] = useState(() => new LruStringCache(HISTORICAL_CONTENT_CACHE_LIMIT));
-  // Rendered (WYSIWYG inline track-changes) is the default; Source is the raw
-  // unified-diff view and the engine-failure fallback.
   const [renderMode, setRenderMode] = useState<'rendered' | 'source'>('rendered');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const diffBodyRef = useRef<HTMLDivElement>(null);
   const [currentChange, setCurrentChange] = useState(0);
-  // Controlled here rather than left to the disclosure: closing it unmounts the
-  // property rows, and the change stepper's total has to follow.
   const [propertiesOpen, setPropertiesOpen] = useState(true);
-  // The pane always shows "what changed in this version" (diff vs the previous
-  // version). There is no vs-live mode — the only thing it told you (what a
-  // restore would undo) lives in the Restore confirm as a plain count.
   const result = useTimelineEntryDiff(sha, docName, cache, 'vs-parent', parentSha);
 
-  // Rendered-diff engine result (plain compute, not a hook). `ok === false`
-  // (parse/recreate failure or over the size ceiling) → fall back to Source.
   const rendered =
     result.status === 'ready' ? computeRenderedDiff(result.before, result.after) : null;
   const usingRendered = renderMode === 'rendered' && rendered?.ok === true;
 
-  // Property delta and body diff answer different questions, so they are counted
-  // and rendered separately — `+N −M` stays a body line count.
   const properties = result.status === 'ready' ? result.properties : null;
   const propertyCount = properties?.changes.length ?? 0;
   const hasPropertyBlock =
     properties !== null && (properties.changes.length > 0 || properties.unparseable !== null);
 
-  // Header stepper count: rendered mode counts the engine's change regions;
-  // source mode counts unified-diff hunks. Property rows are anchors too, so
-  // they join the total in both modes.
   const bodyChangeCount =
     result.status !== 'ready'
       ? 0
       : usingRendered && rendered?.ok
         ? countRenderedDiffAnchors(rendered)
         : countChangeGroups(result.diff);
-  // Counts only the property anchors that are in the DOM, since `goToChange`
-  // re-reads anchors from the DOM and anything counted here that isn't rendered
-  // is a denominator the stepper can never reach. Two ways rows go missing: past
-  // the cap they collapse into one summary line, and while the disclosure is
-  // closed Radix unmounts them entirely. The unparseable block is a single
-  // anchor carrying no counted changes, and it renders outside the disclosure,
-  // so it is neither capped nor collapsible.
   const propertyAnchorCount =
     properties === null
       ? 0
@@ -119,10 +85,6 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
           : 0;
   const changeCount = bodyChangeCount + propertyAnchorCount;
 
-  // Scroll to the Nth change (wraps). Anchors are re-read from the live DOM each
-  // call so they stay valid across re-renders — property rows sit above the diff
-  // body, then rendered mode marks changes with `.ok-diff-*` decoration DOM and
-  // source mode with react-diff-view change rows.
   function goToChange(next: number): void {
     const container = diffBodyRef.current;
     if (!container) return;
@@ -138,12 +100,10 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     anchors[clamped]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
-  // Abort an in-flight restore if the pane unmounts (close / doc nav).
   useEffect(() => {
     return () => abortRef.current?.abort();
   }, []);
 
-  // The diff is whole-file, so jump to the first changed line once it renders.
   const diffKey = result.status === 'ready' ? `${renderMode}:${result.diff}` : '';
   useEffect(() => {
     const container = diffBodyRef.current;
@@ -157,8 +117,6 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
 
     const scrollToFirstChange = (): void => {
       if (done) return;
-      // First property row, else first rendered-diff decoration, else first
-      // source-diff change row.
       const el =
         container.querySelector<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR) ??
         container.querySelector<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR) ??
@@ -170,9 +128,6 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
       el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
     };
 
-    // Debounce: reset on every mutation so we only fire once the diff DOM has
-    // stopped changing for `settleMs`. The double rAF lets that final batch
-    // paint before we measure.
     const settleMs = 120;
     const scheduleAfterSettle = (): void => {
       if (done) return;
@@ -187,8 +142,6 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
 
     observer = new MutationObserver(scheduleAfterSettle);
     observer.observe(container, { childList: true, subtree: true });
-    // Kick once for the case where the anchor is already present and no further
-    // mutations arrive to trigger the observer.
     scheduleAfterSettle();
 
     const failsafe = setTimeout(() => observer?.disconnect(), 5000);
@@ -200,18 +153,9 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     };
   }, [diffKey]);
 
-  // Esc closes the pane — parity with a full-screen overlay's expected dismiss,
-  // but only when no layer sits above it (the restore-confirm dialog, the
-  // command palette, a menu). Capture phase on `window` so the probe runs
-  // before Radix's DismissableLayer (capture phase on `document`) flips
-  // `data-state` and the pane closes out from under the layer Escape targeted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
-      // `dialogOpen` is kept alongside the DOM probe rather than replaced by it:
-      // the restore-confirm is this pane's own state, so reading it cannot fail,
-      // and closing the pane out from under that particular dialog would lose
-      // the user's place in a restore they were part-way through confirming.
       if (dialogOpen) return;
       if (isOverlayLayerOpen()) return;
       closeTimelineDiff();
@@ -220,9 +164,6 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [dialogOpen]);
 
-  // No try/finally: the React Compiler cannot lower a `finally` clause in a
-  // component-nested function (same constraint that hoisted pollHistoryOnce in
-  // TimelinePanel). `cleanup()` is called explicitly at each exit instead.
   async function handleRestore(): Promise<void> {
     setRestoring(true);
     const controller = new AbortController();
@@ -266,9 +207,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     try {
       const problem = ProblemDetailsSchema.safeParse(await res.json());
       if (problem.success) detail = problem.data.title;
-    } catch {
-      // non-JSON body; keep status detail
-    }
+    } catch {}
     toast.error(t`Restore failed`, { description: detail, duration: 6000 });
     cleanup();
   }
@@ -280,9 +219,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
       className="absolute inset-0 z-20 flex flex-col bg-background"
       data-testid="timeline-diff-pane"
     >
-      {/* Header spans the pane: close · title · [stat · mode · render · restore].
-          The control cluster wraps to a second row on a narrow pane instead of
-          clipping off the right edge. */}
+      {}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-border px-3 py-2">
         <Tooltip>
           <TooltipTrigger asChild>
@@ -433,7 +370,7 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
         </div>
       </div>
 
-      {/* Diff body — scrolls independently of the header. */}
+      {}
       <div ref={diffBodyRef} className="min-h-0 flex-1 overflow-auto subtle-scrollbar">
         {result.status === 'loading' && (
           <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
@@ -447,28 +384,19 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
           </p>
         )}
         {result.status === 'ready' && properties !== null && (
-          // Above the body in both render modes: a property change is a change
-          // to this version whichever way the body is being read.
           <PropertyDiffBlock
             delta={properties}
             open={propertiesOpen}
             onOpenChange={(next) => {
               setPropertiesOpen(next);
-              // The anchor set just changed under the stepper — restart the walk
-              // instead of leaving the index pointing past the new end.
               setCurrentChange(0);
             }}
           />
         )}
         {result.status === 'ready' &&
           (renderMode === 'rendered' && rendered?.ok ? (
-            // Rendered (WYSIWYG) inline track-changes. Also the no-change path:
-            // with zero changes it renders the document plain.
             <RenderedDiffView diff={rendered} />
           ) : result.diff === '' ? (
-            // Source mode, no net body change. Only claim nothing changed when
-            // the properties are unchanged too — otherwise the block above has
-            // already said what happened.
             <>
               <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground italic">
                 {hasPropertyBlock ? (

@@ -57,9 +57,6 @@ export function fixDocument(
   return out;
 }
 
-/** Bounded because an object throw's `JSON.stringify` is unbounded by
- * construction, and this string lands verbatim in the agent-context-bound
- * `warnings[]` channel. */
 const MAX_FAILURE_MESSAGE_LENGTH = 500;
 
 function errorMessage(error: unknown): string {

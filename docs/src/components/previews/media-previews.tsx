@@ -1,10 +1,3 @@
-/**
- * Trivial previews for the media canonicals — `img`, `video`, `audio`,
- * `Pdf`, `Embed`. Each renders the native HTML element the app uses,
- * matching the app render's zero-chrome default. `Pdf` reuses a public
- * pdfjs-hosted document so the multi-page viewer is real.
- */
-
 interface ImgPreviewProps {
   src: string;
   alt?: string;
@@ -50,8 +43,6 @@ export function VideoPreview({
   width,
   height,
 }: VideoPreviewProps) {
-  // No `<track>` child — a captionless <track> without src is invalid
-  // and some browsers throw on it. Docs demos never need captions.
   return (
     <video
       src={src}
@@ -85,12 +76,6 @@ export function AudioPreview({ src, controls = true, autoPlay, loop }: AudioPrev
   );
 }
 
-/**
- * PDF preview via `<iframe>` — the app's `Pdf` uses pdfjs-dist for a
- * proper multi-page canvas viewer. Getting pdfjs to run in a docs context
- * requires shipping the worker bundle; the iframe shortcut is honest to
- * the "embedded PDF" idea without dragging pdfjs into the docs build.
- */
 export function PdfPreview({ src, height = 480 }: { src: string; height?: number }) {
   return (
     <iframe
@@ -102,11 +87,6 @@ export function PdfPreview({ src, height = 480 }: { src: string; height?: number
   );
 }
 
-/**
- * Generic sandboxed iframe embed. Same defaults as the app render:
- * `referrerpolicy="no-referrer"` + minimal sandbox that allows scripts,
- * same-origin, and popups needed for e.g. CodeSandbox demos.
- */
 export function EmbedPreview({
   src,
   height = 400,

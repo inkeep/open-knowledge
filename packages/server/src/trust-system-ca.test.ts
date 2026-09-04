@@ -16,7 +16,7 @@ describe('trustSystemCertificates', () => {
     let sets = 0;
     const api = tls as unknown as { setDefaultCACertificates?: unknown };
     const original = api.setDefaultCACertificates;
-    if (typeof original !== 'function') return; // older Node — nothing to assert
+    if (typeof original !== 'function') return;
     api.setDefaultCACertificates = () => {
       sets += 1;
     };
@@ -33,17 +33,16 @@ describe('trustSystemCertificates', () => {
     _resetTrustSystemCertificatesForTest();
     const api = tls as unknown as { setDefaultCACertificates?: (c: readonly string[]) => void };
     const original = api.setDefaultCACertificates;
-    if (typeof original !== 'function') return; // older Node — nothing to assert
+    if (typeof original !== 'function') return;
     let calls = 0;
     api.setDefaultCACertificates = () => {
       calls += 1;
-      // e.g. a locked Keychain at cold start — transient, not permanent.
       if (calls === 1) throw new Error('keychain locked');
     };
     try {
-      trustSystemCertificates(); // fails, must not latch the guard
-      trustSystemCertificates(); // retries and succeeds, latches
-      trustSystemCertificates(); // idempotent after success
+      trustSystemCertificates();
+      trustSystemCertificates();
+      trustSystemCertificates();
       expect(calls).toBe(2);
     } finally {
       api.setDefaultCACertificates = original;
@@ -61,7 +60,7 @@ describe('trustSystemCertificates', () => {
       typeof api.getCACertificates !== 'function' ||
       typeof api.setDefaultCACertificates !== 'function'
     ) {
-      return; // older Node — nothing to assert
+      return;
     }
     const bundledCount = api.getCACertificates('default').length;
     trustSystemCertificates();

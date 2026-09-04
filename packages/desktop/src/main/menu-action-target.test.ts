@@ -50,8 +50,6 @@ describe('menu action origins', () => {
   });
 
   test('both are frozen, so one dispatch cannot poison every later one', () => {
-    // Module-level singletons shared by every dispatch: a mutation here would
-    // silently reclassify unrelated actions rather than fail near its cause.
     expect(Object.isFrozen(LAUNCHER_FREE_ORIGIN)).toBe(true);
     expect(Object.isFrozen(LAUNCHER_BORNE_ORIGIN)).toBe(true);
     expect(() => {
@@ -63,10 +61,6 @@ describe('menu action origins', () => {
 
 describe('originForMenuDispatch', () => {
   test('only menu-action is launcher-borne', () => {
-    // Pins the mapping against inversion. Exhaustiveness is NOT this test's job
-    // and cannot be: a roster listed here would be a copy of the union, free to
-    // drift from it. `ORIGIN_BY_DISPATCH_KIND`'s `satisfies` is what forces a new
-    // kind to be classified, and it fails at typecheck rather than here.
     expect(originForMenuDispatch('menu-action')).toBe(LAUNCHER_BORNE_ORIGIN);
     for (const kind of MENU_DISPATCH_KINDS.filter((k) => k !== 'menu-action')) {
       expect(originForMenuDispatch(kind)).toBe(LAUNCHER_FREE_ORIGIN);

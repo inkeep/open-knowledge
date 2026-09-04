@@ -1,18 +1,9 @@
-/**
- * DOM tests for NewSkillDialog. Runs under jsdom via `test:dom`.
- *
- * The dialog is the "name before create" prompt: both fields pre-fill (first-free
- * `new-skill[-N]` + a placeholder description) so one click still creates a valid,
- * immediately-installable skill, while a typed name/description flows through.
- */
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DEFAULT_NEW_SKILL_DESCRIPTION } from '@/hooks/use-create-blank-skill';
 import { NewSkillDialog } from './NewSkillDialog';
 
-// Radix Dialog (focus-trap) reaches for DOM globals the shared jsdom preload
-// doesn't expose — same local shims as NewTemplateDialog.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -55,8 +46,6 @@ describe('NewSkillDialog (PRD-7602)', () => {
     const user = userEvent.setup();
     const { onCreate } = renderDialog(new Set(['new-skill']));
 
-    // `new-skill` taken → suggests `new-skill-2`; description defaults so the
-    // result installs without erroring.
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('new-skill-2');
     expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe(
       DEFAULT_NEW_SKILL_DESCRIPTION,

@@ -1,16 +1,7 @@
-/**
- * RTL mount tests for the appliesTo folder picker combobox: cmdk row selection
- * authors `folder/**` globs without closing the popover, search filters the
- * list, covered descendants read as disabled, and hand-authored patterns
- * survive round-trips untouched.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Radix/cmdk reach for DOM globals the jsdom preload doesn't expose; hoist the
-// same shims the sibling settings DOM tests use.
 type WindowGlobals = { MutationObserver?: typeof MutationObserver; NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -35,7 +26,6 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   }
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
-// jsdom does not implement scrollIntoView; cmdk calls it on highlight.
 if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
   HTMLElement.prototype.scrollIntoView = () => {};
 }
@@ -94,7 +84,6 @@ describe('AppliesToFolderPicker', () => {
     await openPicker(user);
     await user.click(folderItem('blog'));
     expect(onChange).toHaveBeenCalledWith(['blog/**']);
-    // Multi-select: the list is still mounted for the next toggle.
     expect(screen.getByTestId(`frontmatter-schema-folder-tree-${FILE}`)).toBeTruthy();
   });
 

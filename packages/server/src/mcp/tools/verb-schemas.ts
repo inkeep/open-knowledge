@@ -1,22 +1,3 @@
-/**
- * Shared leaves + teaching-error helpers for the CRUD verb tools
- * (`write` / `edit` / `delete` / `move`).
- *
- * Anti-confusion design (Pattern B): each verb nests a target's fields inside
- * its address key (`document` / `folder` / `template` / `asset`) so the
- * per-target REQUIRED fields are visible in the JSON Schema the model reads.
- * The one irreducible soft constraint — "pass exactly one target" — can't be
- * compiled to JSON Schema by the MCP SDK (no `z.discriminatedUnion` / "exactly
- * one key"), so it is stated in each tool's top-level description AND enforced
- * by a teaching error here, so any miss self-corrects on the next call.
- *
- * One argument vocabulary across all verbs: `document` / `folder` / `template`
- * / `asset` addressing, `content` / `frontmatter` / `from` / `to`, and a
- * single `frontmatter` merge-patch shape reused from the doc frontmatter
- * schema (`FrontmatterPatchSchema` in core) so doc + folder + template
- * frontmatter behave identically.
- */
-
 import {
   type FrontmatterValue,
   FrontmatterValueSchema,
@@ -27,40 +8,8 @@ import {
 import { z } from 'zod';
 import { SUPPORTED_DOC_EXTENSIONS } from '../../doc-extensions.ts';
 
-/**
- * Frontmatter merge-patch value: the canonical recursive doc-frontmatter
- * value union (scalar | scalar[] | nested map | array of nested maps) plus
- * `null` as the RFC 7396 delete sentinel at the TOP level of the patch.
- * Shared by every verb's `frontmatter` field so doc, folder, and template
- * frontmatter validate identically.
- *
- * Nested merge is whole-subtree REPLACE — a nested object at a top-level key
- * replaces the existing subtree at that key. A nested null INSIDE a subtree
- * is rejected; to delete a single nested leaf, send the full subtree without
- * that leaf, or null out the whole top-level key to drop the subtree.
- */
-/** The real per-value contract: a recursive frontmatter value, or top-level `null` (RFC 7396 delete). */
 const FrontmatterPatchValue = z.union([FrontmatterValueSchema, z.null()]);
 
-/**
- * Flat, ref-free ADVERTISED shape for the frontmatter value. Superset of what
- * {@link FrontmatterPatchValue} admits at the top level (array/object leaves are
- * open), so the `.superRefine` below narrows it to the exact recursive contract
- * without the base union ever pre-rejecting a valid value.
- *
- * Why not just advertise the recursive schema: a self-referential Zod schema
- * serializes to `$ref: "#/definitions/__schema0"` in the tool's JSON Schema.
- * Constrained-decoding MCP hosts (LM Studio) and some function-calling APIs
- * (Gemini) can't resolve a `$ref` inside a tool schema and reject the whole
- * tool. This flat union carries no `$ref`, and refinements don't appear in JSON
- * Schema — so the wire schema stays portable while runtime validation is
- * unchanged for every client and every write path (write-with-inline-content
- * and folder frontmatter have no downstream value gate, so this IS the gate).
- */
-// The runtime union is the real schema the SDK serializes (flat, ref-free) and
-// the `.superRefine` validates against the recursive contract — so pinning the
-// INFERRED output type to the recursive `FrontmatterValue | null` is sound and
-// keeps every consuming handler typed against the canonical frontmatter value.
 const FrontmatterAdvertisedValue = z.union([
   z.string(),
   z.number(),
@@ -70,7 +19,6 @@ const FrontmatterAdvertisedValue = z.union([
   z.null(),
 ]) as unknown as z.ZodType<FrontmatterValue | null>;
 
-/** A frontmatter merge-patch map with an instructive description + example. */
 export const FrontmatterArg = z
   .record(z.string(), FrontmatterAdvertisedValue)
   .superRefine((patch, ctx) => {
@@ -94,7 +42,6 @@ export const FrontmatterArg = z
       'Example: { title: "Q3 Planning", tags: ["planning"], metadata: { version: "1.0", author: "Inkeep" } }.',
   );
 
-/** Where written content lands in a document body. */
 const POSITIONS = ['append', 'prepend', 'replace'] as const;
 export const PositionArg = z
   .enum(POSITIONS)
@@ -103,12 +50,6 @@ export const PositionArg = z
       'append / prepend = add to the end / start.',
   );
 
-/**
- * On-disk file format for a NEW document. Single-sourced from the canonical
- * `SUPPORTED_DOC_EXTENSIONS` so the MCP field, the file format the engine
- * writes, and the supported-extension list can never drift apart.
- * Honored only on a pure create; an existing doc keeps its recorded extension.
- */
 export const DocExtensionArg = z
   .enum(SUPPORTED_DOC_EXTENSIONS)
   .describe(
@@ -117,13 +58,6 @@ export const DocExtensionArg = z
       'Takes precedence over an extension typed into `path`.',
   );
 
-/**
- * Split an addressing `path` into its parent folder (the slashes — where it
- * goes) and its final segment (the name — what it is). Every verb target is
- * addressed by `path`; the handler resolves the per-kind storage from this
- * split (a document → `<path>.md`; a template → `<folder>/.ok/templates/<name>.md`;
- * an asset → `<folder>/<name>`).
- */
 export function splitTargetPath(path: string): { folder: string; name: string } {
   const clean = path.replace(/^\/+/, '').replace(/\/+$/, '');
   const idx = clean.lastIndexOf('/');
@@ -132,18 +66,11 @@ export function splitTargetPath(path: string): { folder: string; name: string } 
     : { folder: clean.slice(0, idx), name: clean.slice(idx + 1) };
 }
 
-// Template name grammar (`TEMPLATE_NAME_REGEX`) is the canonical core export —
-// `resolveTemplatePath` below validates the final path segment against it.
 export const TEMPLATE_PATH_DESCRIBE =
   'Template path = `<folder>/<name>` (e.g. "fishing-log/trip-log"). The slashes are the folder it belongs to; the final segment is the template name (letters, digits, `_`, `-` only — no dots/spaces). Stored at `<folder>/.ok/templates/<name>.md`.';
 export const TEMPLATE_CONTENT_DESCRIBE =
   "Starter content — the Markdown a new document becomes. A leading `---…---` frontmatter block here sets the STARTING PROPERTIES every doc created from this template gets (e.g. `type`, `status`, `tags`); the markdown below it is the body. The template's own picker identity (title/description) is the separate `frontmatter` field, NOT this block — it is stripped at instantiation and never copied onto created docs. (On disk this composes to one frontmatter block with the identity under a reserved `template:` key; you don't author that — just give the starter content here.) Only the `{{date}}` and `{{user}}` substitution tokens are allowed; any other `{{...}}` token hard-errors at write time.";
 
-/**
- * Resolve a template `path` into its folder + name, validating the final
- * segment against the template-name grammar. Returns a teaching-error message
- * (not a throw) on a bad name, so write / edit / delete share one rule.
- */
 export function resolveTemplatePath(
   path: string,
 ): { ok: true; folder: string; name: string } | { ok: false; error: string } {
@@ -157,37 +84,17 @@ export function resolveTemplatePath(
   return { ok: true, folder, name };
 }
 
-// ─────────────────────────── skill target ───────────────────────────
-// Skills are addressed by `name` (their identity == directory under
-// `.ok/skills/`) plus an optional `scope`, NOT a folder path — a skill has no
-// leaf-to-root walk. Frontmatter is the Agent Skills schema (`name` +
-// `description`); the verb tools pass `name` / `description` / `body`
-// separately and the server composes the SKILL.md.
-
 export const SKILL_NAME_DESCRIBE =
   'Skill name — the skill\'s identity AND its bundle-dir name, wherever the skill lives (e.g. `.agents/skills/<name>/`). Lowercase letters, digits, hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase). Example: "trip-log".';
 export const SKILL_DESCRIPTION_DESCRIBE =
   'One-line description (≤1024 chars) — the PRIMARY triggering surface telling an agent WHEN to use this skill. No XML tags (`<...>`), which break the skill loader.';
 export const SKILL_BODY_DESCRIBE =
   'SKILL.md body (markdown guidance). Authored WITHOUT frontmatter — `name` + `description` are passed separately and composed server-side. Keep under ~500 lines; move depth into one-level-deep `references/`.';
-// Local — only consumed by `SkillScopeArg` below.
 const SKILL_SCOPE_DESCRIBE =
   'Level: "project" (default — a Project skill: lives in this KB wherever its folder is, shared with teammates via git) or "global" (a Global skill: lives under your user home, available in every project on this machine — not shared, not version-tracked). Pass the literal value "global" for a Global skill.';
 
-/**
- * Shared skill `scope` argument for the CRUD verb tools — the single source for
- * the enum (derived from the canonical `MANAGED_ARTIFACT_SCOPES`) plus the
- * standard describe. Tools use `SkillScopeArg.optional()`; a tool needing a
- * different describe (e.g. `move`'s `toScope`) reuses the bare
- * `z.enum(MANAGED_ARTIFACT_SCOPES)` so the value list still single-sources here.
- */
 export const SkillScopeArg = z.enum(MANAGED_ARTIFACT_SCOPES).describe(SKILL_SCOPE_DESCRIBE);
 
-/**
- * Validate a skill `name` against the name grammar. Returns a teaching-error
- * message (not a throw) on a bad name so write / edit / delete / move share
- * one rule (mirrors `resolveTemplatePath`).
- */
 export function resolveSkillName(
   name: string,
 ): { ok: true; name: string } | { ok: false; error: string } {
@@ -205,16 +112,6 @@ export function resolveSkillName(
   return { ok: true, name };
 }
 
-// ─────────────────────────── skill bundle files ───────────────────────────
-// A skill is a DIRECTORY: `SKILL.md` (authored via `body`) plus any other file
-// beside it — conventionally `references/**` + `scripts/**`, but published
-// skills also ship `assets/`, `.claude-plugin/`, per-harness dirs, and root
-// files, and acquisition preserves all of it byte-for-byte. Bundle files are
-// addressed by a SKILL-RELATIVE path — agents never see or pass `.ok/...`
-// paths; the verb maps the relative path onto the on-disk skill dir. The gate
-// below is the single containment check every bundle-file verb
-// (write / edit / delete / read) funnels through.
-
 export const SKILL_FILES_DESCRIBE =
   'Bundle files to write beside `SKILL.md`, as an ARRAY of `{ path, content }` (consistent with `documents`/`asset`). ' +
   '`path` is SKILL-RELATIVE and must stay inside the skill dir (e.g. "references/tiers.md", "scripts/run.sh", "assets/logo.svg") — ' +
@@ -224,27 +121,8 @@ export const SKILL_FILE_DESCRIBE =
   'A single SKILL-RELATIVE bundle file path (e.g. "references/tiers.md"). ' +
   'For `edit`, names the one bundle file to find/replace in; for `skills`, the one file to read.';
 
-/** `script` for anything under `scripts/`; `reference` for every other bundle
- *  file. Two values, because the only distinction that changes handling is
- *  "is this executable-shaped" — not which folder it sits in. */
 export type SkillFileKind = 'reference' | 'script';
 
-/**
- * Validate + normalize a SKILL-RELATIVE bundle-file path: it must stay inside
- * the skill dir (no `..` segments, no absolute path, no NUL) and name a file
- * rather than a bare directory. Returns the normalized POSIX-relative path +
- * its `kind`, or a teaching error (not a throw) so write / edit / delete / read
- * share one rule (mirrors `resolveTemplatePath`). `SKILL.md` is rejected — it
- * is authored via `body`, never as a bundle file.
- *
- * ANY root is accepted, not just `references/` + `scripts/`. Acquisition
- * captures a skill's whole directory byte-for-byte (`acquire/parse.ts`:
- * root files, `assets/`, `.claude-plugin/`, any subdir), so a two-root
- * allowlist here meant OK could WRITE a file on import that it then refused to
- * let an agent read or edit — real published skills ship exactly that
- * (`mattpocock/skills/grill-me` carries `agents/openai.yaml`). Containment is
- * the invariant worth enforcing; a directory-name allowlist was never it.
- */
 export function resolveSkillFilePath(
   path: string,
 ): { ok: true; path: string; kind: SkillFileKind } | { ok: false; error: string } {
@@ -260,7 +138,6 @@ export function resolveSkillFilePath(
       error: `a skill file \`path\` must be skill-relative, not absolute — "${path}" is rejected. e.g. { path: "references/tiers.md" }.`,
     };
   }
-  // Normalize separators + collapse, then reject any `..` segment lexically.
   const segments = path
     .replace(/\\/g, '/')
     .split('/')
@@ -274,17 +151,12 @@ export function resolveSkillFilePath(
   if (segments.length === 0) {
     return { ok: false, error: 'a skill file `path` is required (e.g. "references/tiers.md").' };
   }
-  // A bare `references` / `scripts` is a directory, not a file — the one
-  // ambiguity worth naming, since any other single segment (`LICENSE`,
-  // `AGENTS.md`) is a legitimate root file and can't be told apart lexically.
   if (segments.length === 1 && (segments[0] === 'references' || segments[0] === 'scripts')) {
     return {
       ok: false,
       error: `a skill file \`path\` needs a file under \`${segments[0]}/\` (e.g. "${segments[0]}/notes.md") — "${path}" names only the directory.`,
     };
   }
-  // SKILL.md has exactly one authoring surface (`body`). Admitting it here too
-  // would give the same bytes two write paths with different validation.
   if (segments.length === 1 && segments[0]?.toLowerCase() === 'skill.md') {
     return {
       ok: false,
@@ -298,11 +170,6 @@ export function resolveSkillFilePath(
   };
 }
 
-/**
- * Enforce the "exactly one target" soft constraint with a teaching error.
- * Returns a corrective message (the exact shape to retry with) when zero or
- * more than one target key is present, or `null` when exactly one is present.
- */
 export function exactlyOneTargetError(
   args: Record<string, unknown>,
   keys: readonly string[],

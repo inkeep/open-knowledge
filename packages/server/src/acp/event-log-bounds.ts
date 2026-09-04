@@ -1,12 +1,3 @@
-/**
- * Size bounds for the retained thread event log. Tool-call diffs can embed
- * whole-file before/after text; the log keeps thousands of events per thread
- * and re-sends them on every replay, so unbounded payloads turn one busy
- * doc-rewriting agent into hundreds of MB of server memory and replay
- * traffic. Only the transcript's retained copy is bounded — the live
- * document content is untouched.
- */
-
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import type { CodexLegacyAgentIdentity } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
 import { isCodexLegacyWarningUpdate } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
@@ -19,11 +10,6 @@ function truncateEventText(text: string): string {
   return `${text.slice(0, EVENT_TEXT_CAP)}\n… [truncated ${text.length - EVENT_TEXT_CAP} chars]`;
 }
 
-/**
- * Bound oversized tool-call payloads (diffs, content blocks) before
- * retention. Returns the input unchanged (same reference) when nothing
- * exceeds the cap — the common path allocates nothing.
- */
 export function boundSessionUpdateForLog(update: SessionUpdate): SessionUpdate {
   const u = update as { sessionUpdate?: string; content?: unknown };
   if (
@@ -61,22 +47,12 @@ export function boundSessionUpdateForLog(update: SessionUpdate): SessionUpdate {
   return { ...update, content } as SessionUpdate;
 }
 
-/**
- * Streaming `session_update` chunk kinds the app coalesces into one message
- * bubble (see `pushMessageChunk` in the app's thread-event-model). Folding the
- * retained transcript along the same lines keeps disk == what the UI renders.
- */
 const COALESCIBLE_CHUNK_KINDS = new Set([
   'agent_message_chunk',
   'agent_thought_chunk',
   'user_message_chunk',
 ]);
 
-/**
- * Stop growing a folded chunk past this many chars — the next chunk starts a
- * fresh event instead. Bounds a single streamed answer to a handful of NDJSON
- * lines rather than one unbounded one (mirrors EVENT_TEXT_CAP for tool diffs).
- */
 const COALESCE_TEXT_CAP = 16_000;
 
 interface ChunkUpdate {
@@ -85,48 +61,21 @@ interface ChunkUpdate {
   content?: { type?: string; text?: string } | unknown;
 }
 
-/** The chunk's single text block, or null when it isn't a `{type:'text'}` block. */
 function chunkText(content: unknown): string | null {
   if (typeof content !== 'object' || content === null) return null;
   const c = content as { type?: string; text?: string };
   return c.type === 'text' && typeof c.text === 'string' ? c.text : null;
 }
 
-/** Matches the app's `messageId(update)`: string messageId, else 'default'. */
 function chunkMessageId(u: ChunkUpdate): string {
   return typeof u.messageId === 'string' ? u.messageId : 'default';
 }
 
-/**
- * Fold `next` into `prev` when both are consecutive streamed text chunks of
- * the SAME stream — same `sessionUpdate` kind and messageId, both text
- * content — by appending next's text onto prev's in place. Returns true when
- * folded (the caller then drops `next`, so it consumes no seq); false when the
- * pair isn't mergeable or prev already hit {@link COALESCE_TEXT_CAP}.
- *
- * The predicate is a safe subset of the app's own role:messageId chunk
- * coalescing: it never folds two chunks the UI would keep in separate bubbles
- * (a thought↔message switch, a differing messageId, or an interleaved tool
- * call / permission all break the run), so concatenation stays faithful. It
- * may leave adjacent chunks unfolded across a flush boundary — the app merges
- * those on its side, exactly as it already does with today's per-word events.
- *
- * Callable ONLY on the not-yet-flushed tail event: growing an event whose seq
- * was already broadcast/persisted would break the line-index-IS-the-seq
- * contract. A fold assigns no new seq, so that contract is preserved.
- *
- * `agent` is the thread's configured agent identity, required so no call site
- * can reach the fold without deciding whether the Codex legacy carve-out below
- * applies.
- */
 export function coalesceChunkInto(
   prev: ThreadEvent,
   next: ThreadEvent,
   agent: CodexLegacyAgentIdentity,
 ): boolean {
-  // Terminal output folds along the same lines as streamed text: the app
-  // concatenates a terminal's chunks anyway, so consecutive chunks of the
-  // SAME terminal merge into one retained event (and one seq).
   if (prev.kind === 'terminal_output' && next.kind === 'terminal_output') {
     if (prev.terminalId !== next.terminalId) return false;
     if (prev.chunk.length >= COALESCE_TEXT_CAP) return false;
@@ -134,12 +83,6 @@ export function coalesceChunkInto(
     return true;
   }
   if (prev.kind !== 'session_update' || next.kind !== 'session_update') return false;
-  // One legacy producer flattens operational warnings into this same text
-  // stream, and the only evidence that it did is the shape of the event the
-  // producer emitted. Folding either side into its neighbour destroys that
-  // evidence irreversibly, so a complete envelope is kept whole. Retention is
-  // all this changes: the bytes, the event kind, and the order are the
-  // producer's, and the warning reading is minted downstream, not here.
   if (
     isCodexLegacyWarningUpdate(prev.update, agent) ||
     isCodexLegacyWarningUpdate(next.update, agent)

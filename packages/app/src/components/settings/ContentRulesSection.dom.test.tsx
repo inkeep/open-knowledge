@@ -1,10 +1,3 @@
-/**
- * Behavioral tests for the Content rules settings section (This project →
- * Content rules): the broken-link posture select and the file-tree indicator
- * toggle write `validation.*` patches through the project binding, defaults
- * read as warning/on, and the lint-plugins pointer is present.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -95,13 +88,9 @@ describe('ContentRulesSection', () => {
 
   test('changing the links posture writes a validation patch', async () => {
     render(<ContentRulesSection />);
-    // Radix Select in jsdom: open the trigger, then choose an option.
     fireEvent.click(screen.getByTestId('settings-content-rules-links'));
     fireEvent.click(screen.getByRole('option', { name: 'Error' }));
     expect(patches).toEqual([{ validation: { links: 'error' } }]);
-    // Let the popup fully close before the test ends: Radix's focus-scope
-    // dispatches from a timer, and a dispatch landing after this file's jsdom
-    // window is torn down surfaces as a cross-file unhandled error.
     await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 0));
   });

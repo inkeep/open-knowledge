@@ -6,15 +6,6 @@ import { notFound } from 'next/navigation';
 import { getChangelogSource, getReleasePages } from '@/lib/changelog-source';
 import { CHANGELOG_ROUTE, metaDescription, SITE_NAME, SITE_URL } from '@/lib/site';
 
-/**
- * `/docs/changelog/<tag>` — one indexable page per stable release.
- *
- * These pages exist for search-engine indexing: every release gets its own URL in
- * the sitemap and the timeline links to these pages. Data comes from the same
- * build-time changelog source adapter; `dynamic = 'force-static'` +
- * `dynamicParams = false` prerender exactly the known tags as static HTML and 404
- * anything else (so the sibling `rss.xml` route is never shadowed).
- */
 export const dynamic = 'force-static';
 export const dynamicParams = false;
 

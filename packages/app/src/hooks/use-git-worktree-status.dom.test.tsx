@@ -1,10 +1,3 @@
-/**
- * Panel-open fetch behavior for {@link useGitWorktreeStatus}.
- *
- * The throttle is module-scoped state, so each case re-imports the module via
- * `vi.resetModules()` to get a fresh window rather than inheriting the previous
- * test's timestamp.
- */
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -30,7 +23,6 @@ vi.mock('@/lib/documents-events', () => ({
   },
 }));
 
-/** Fire a CC1 `sync-status` signal at every mounted hook, as the engine does. */
 function signalSyncStatus() {
   for (const fn of cc1Listeners) fn(['sync-status']);
 }
@@ -58,8 +50,6 @@ afterEach(() => {
 
 describe('useGitWorktreeStatus panel-open fetch', () => {
   test('refreshes remote refs when the panel opens', async () => {
-    // Opening a panel headed "2 behind" is the user asking about remote state;
-    // `fetch` is the read-only op that can answer without moving their files.
     const useGitWorktreeStatus = await loadHook();
     renderHook(() => useGitWorktreeStatus(true));
 
@@ -80,14 +70,10 @@ describe('useGitWorktreeStatus panel-open fetch', () => {
     first.unmount();
 
     renderHook(() => useGitWorktreeStatus(true));
-    // The throttle outlives the unmount on purpose: without that, fidgeting
-    // with the popover would hit the remote on every open.
     await waitFor(() => expect(triggered).toEqual(['fetch']));
   });
 
   test('a failed fetch frees the window so the next open can retry', async () => {
-    // Offline is the common failure. Burning the throttle window on a call that
-    // never reached the engine would leave the panel stale for no reason.
     triggerResult = Promise.reject(new Error('offline'));
     const useGitWorktreeStatus = await loadHook();
     const first = renderHook(() => useGitWorktreeStatus(true));
@@ -101,12 +87,6 @@ describe('useGitWorktreeStatus panel-open fetch', () => {
 });
 
 describe('useGitWorktreeStatus single-flight', () => {
-  /**
-   * A status read is four git subprocesses, and a sync cycle signals CC1 on
-   * every state transition — so an open popover during a sync would otherwise
-   * issue a burst of them, and a slower EARLIER response could land after (and
-   * overwrite) a newer listing.
-   */
   function deferredFetch() {
     const resolvers: ((value: unknown) => void)[] = [];
     const fetchMock = vi.fn(
@@ -127,18 +107,14 @@ describe('useGitWorktreeStatus single-flight', () => {
     const useGitWorktreeStatus = await loadHook();
     renderHook(() => useGitWorktreeStatus(true));
 
-    // The mount read is in flight and unresolved.
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    // Five transitions land while it is still open.
     for (let i = 0; i < 5; i++) signalSyncStatus();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // Releasing the first issues exactly ONE trailing re-run, not five.
     respond(0, { staged: [], readable: true });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
-    // And that re-run does not itself cascade.
     respond(1, { staged: [], readable: true });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
@@ -151,22 +127,16 @@ describe('useGitWorktreeStatus single-flight', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     signalSyncStatus();
 
-    // Resolve the mount read with the OLD listing; the queued re-run fires.
     respond(0, { staged: [{ path: 'stale.md', code: 'M' }], readable: true });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     respond(1, { staged: [{ path: 'fresh.md', code: 'M' }], readable: true });
     await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('fresh.md'));
 
-    // Single-flight means there is no third in-flight read left to land late.
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('an unreadable read keeps the last good listing rather than blanking it', async () => {
-    // A 200 with empty lists is truthy, so the keep-last-good guard cannot see
-    // the difference — `readable: false` is what distinguishes "git failed"
-    // from "genuinely clean", and showing a false-clean tree would tell the
-    // user a push has nothing to send.
     const { fetchMock, respond } = deferredFetch();
     const useGitHook = await loadHook();
     const { result } = renderHook(() => useGitHook(true));
@@ -184,9 +154,6 @@ describe('useGitWorktreeStatus single-flight', () => {
   });
 
   test('a server predating the readable field is still trusted', async () => {
-    // `readable !== false`, not `readable === true`: under version skew an old
-    // server sends nothing, and treating that as unreadable would freeze the
-    // panel permanently.
     const { fetchMock, respond } = deferredFetch();
     const useGitHook = await loadHook();
     const { result } = renderHook(() => useGitHook(true));

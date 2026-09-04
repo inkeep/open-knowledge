@@ -19,7 +19,6 @@ const MCP_REFERENCE = readFileSync(
   'utf8',
 );
 
-/** The one row of `mcp.mdx`'s tool table that documents `tool`. */
 function mcpReferenceRow(tool: string): string {
   const row = MCP_REFERENCE.split('\n').find((line) => line.startsWith(`| \`${tool}\` |`));
   if (row === undefined) throw new Error(`no mcp.mdx table row for \`${tool}\``);
@@ -33,10 +32,6 @@ describe('validation coverage source contract', () => {
   });
 
   test('every surface states the absence inference, not just the enumeration', () => {
-    // The measured failure is the PARTIAL case — a roster that lists two
-    // families while the one the task named is silently missing. Contraposing
-    // that from an enumeration is a weaker signal than saying it outright, and
-    // the DESCRIPTIONs are the surface an agent reads every turn.
     const clause = 'absent from `ran` was not checked';
     expect(LINT_DESCRIPTION).toContain(clause);
     expect(AUDIT_DESCRIPTION).toContain(clause);
@@ -47,10 +42,6 @@ describe('validation coverage source contract', () => {
   });
 
   test('agent guidance and public docs explain ran in lockstep', () => {
-    // Phrase pins, not bare source-id substrings: `markdownlint`, `frontmatter`,
-    // and `links` each occur a dozen-plus times on these pages for unrelated
-    // reasons, so a loop over the vocabulary stays green even if the whole `ran`
-    // sentence is deleted from the row it documents.
     expect(PROJECT_SKILL).toContain('Read `ran`');
     expect(PROJECT_SKILL).toContain('`[]` means no checks were selected');
 
@@ -62,8 +53,6 @@ describe('validation coverage source contract', () => {
     expect(CONTENT_RULES_OVERVIEW).toContain('The top-level `ran` array');
     expect(CONTENT_RULES_OVERVIEW).toContain("The audit's top-level `ran` array");
     expect(CONTENT_RULES_OVERVIEW).toContain('selected validator degrades');
-    // The zero state is the DEFAULT first-run output — every linter ships off —
-    // so the string a user searches for has to appear on the page.
     expect(CONTENT_RULES_OVERVIEW).toContain('No checks ran.');
   });
 

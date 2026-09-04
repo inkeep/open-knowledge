@@ -16,13 +16,11 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-// Sonner is loaded by the SUT — stub to mute its real toaster.
 const toastError = vi.fn(() => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
-// Spy on the perf-mark instrumentation while keeping the module's other exports.
 const markSpy = vi.fn();
 vi.doMock('@/lib/perf', async () => {
   const actual = await vi.importActual<typeof import('@/lib/perf')>('@/lib/perf');
@@ -32,7 +30,6 @@ vi.doMock('@/lib/perf', async () => {
 const { AiToolsSection } = await import('./AiToolsSection');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
-/** Production mounts under the app-level TooltipProvider (main.tsx). */
 function renderSection() {
   return render(
     <TooltipProvider>
@@ -131,8 +128,6 @@ function installBridge({ status = baseStatus, setResult, ptyAvailable = true }: 
   return { setCalls };
 }
 
-/** Open the MCP-connections fold. Rows that are neither configured nor detected
- *  sit below it now, so a test asserting on one has to expand first. */
 async function expandEditors(): Promise<void> {
   await userEvent.click(await screen.findByTestId('ai-tools-editors-show-more'));
 }
@@ -154,14 +149,11 @@ describe('AiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('ai-tools-path-checkbox')).toBeTruthy();
     });
-    // PATH row: not installed → names the rc file a grant would touch.
     expect(screen.getByTestId('ai-tools-path-status').textContent).toContain('~/.zshrc');
 
-    // Editors: checked reflects installed/foreign, per-state status copy.
     expect(screen.getByTestId('ai-tools-editor-checkbox-claude').getAttribute('data-state')).toBe(
       'checked',
     );
-    // Cursor is neither configured nor detected, so it starts below the fold.
     expect(screen.queryByTestId('ai-tools-editor-checkbox-cursor')).toBeNull();
     await expandEditors();
     expect(screen.getByTestId('ai-tools-editor-checkbox-cursor').getAttribute('data-state')).toBe(
@@ -173,21 +165,16 @@ describe('AiToolsSection', () => {
     expect(screen.getByTestId('ai-tools-editor-status-codex').textContent).toContain(
       'not managed by OpenKnowledge',
     );
-    // Undetected, never-configured tools link to their setup guide instead of
-    // a dead-end "Not detected" — same contract as the first-launch dialog.
     const cursorLink = screen.getByTestId('ai-tools-editor-status-cursor');
     expect(cursorLink.tagName).toBe('A');
     expect(cursorLink.getAttribute('href')).toBe(
       'https://openknowledge.ai/docs/integrations/cursor',
     );
-    // Unmanageable rows render disabled and keep their status text (no link).
     expect(screen.getByTestId('ai-tools-editor-checkbox-opencode').hasAttribute('disabled')).toBe(
       true,
     );
     expect(screen.getByTestId('ai-tools-editor-status-opencode').tagName).toBe('SPAN');
 
-    // Skills are NOT here any more — they live in Skills Studio, and
-    // this page says so rather than leaving the reader to find out.
     expect(screen.queryByTestId('ai-tools-skill-uninstall-discovery')).toBeNull();
     expect(screen.queryByTestId('skills-studio-skill-install-write-skill')).toBeNull();
     expect(screen.getByTestId('ai-tools-skills-moved').textContent).toContain('Skills Studio');
@@ -217,11 +204,6 @@ describe('AiToolsSection', () => {
   });
 
   test('detection orders a row but never claims presence on it', async () => {
-    // One rule across the agent lists: the probe may pick a row's position, and
-    // on the external-apps group its default, but no row prints an assertion of
-    // presence. The signal answers "is this tool on the machine", not "is it set
-    // up with us", so ranking is all it earns — the row still reads
-    // "How to set up", never "Detected on this machine".
     const detectedButUnwired: OkIntegrationsStatus = {
       ...baseStatus,
       editors: baseStatus.editors.map((e) =>
@@ -231,11 +213,9 @@ describe('AiToolsSection', () => {
     installBridge({ status: detectedButUnwired });
     renderSection();
 
-    // Ordered up: above the fold without expanding.
     await screen.findByTestId('ai-tools-editor-checkbox-cursor');
     expect(screen.queryByTestId('ai-tools-editors-show-more')).toBeNull();
 
-    // But making no claim.
     const status = screen.getByTestId('ai-tools-editor-status-cursor');
     expect(status.textContent).not.toContain('Detected on this machine');
     expect(status.textContent).toContain('How to set up');
@@ -269,8 +249,6 @@ describe('AiToolsSection', () => {
       setResult: () => ({ ok: true as const, status: flipped }),
     });
     renderSection();
-    // Cursor is neither configured nor detected in the fixture, so reaching its
-    // checkbox means opening the fold first.
     await expandEditors();
     await waitFor(() => {
       expect(screen.getByTestId('ai-tools-editor-checkbox-cursor')).toBeTruthy();
@@ -280,7 +258,6 @@ describe('AiToolsSection', () => {
     await waitFor(() => {
       expect(setCalls).toEqual([{ component: { kind: 'editor', id: 'cursor' }, enabled: true }]);
     });
-    // The fresh snapshot from the result drives the re-render.
     await waitFor(() => {
       expect(screen.getByTestId('ai-tools-editor-checkbox-cursor').getAttribute('data-state')).toBe(
         'checked',
@@ -296,8 +273,6 @@ describe('AiToolsSection', () => {
       expect(screen.getByTestId('ai-tools-editor-checkbox-claude')).toBeTruthy();
     });
 
-    // Claude is installed → unchecking it removes the MCP entry. (Skill
-    // uninstall is the Install/Uninstall button flow, covered separately.)
     await userEvent.click(screen.getByTestId('ai-tools-editor-checkbox-claude'));
     await waitFor(() => {
       expect(setCalls).toEqual([{ component: { kind: 'editor', id: 'claude' }, enabled: false }]);
@@ -321,7 +296,6 @@ describe('AiToolsSection', () => {
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('left unchanged');
     });
-    // Status snapshot from the refused result still applies — checkbox stays checked.
     expect(screen.getByTestId('ai-tools-editor-checkbox-codex').getAttribute('data-state')).toBe(
       'checked',
     );
@@ -351,8 +325,6 @@ describe('AiToolsSection', () => {
       expect(screen.getByTestId('ai-tools-editor-info-claude')).toBeTruthy();
     });
 
-    // Radix tooltips open on trigger focus (keyboard path — also the stable
-    // one under happy-dom). Content portals to the body.
     screen.getByTestId('ai-tools-editor-info-claude').focus();
     const paths = await screen.findAllByText('~/.claude.json');
     expect(paths.length).toBeGreaterThan(0);

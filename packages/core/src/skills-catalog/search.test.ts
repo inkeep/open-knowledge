@@ -19,13 +19,10 @@ describe('parseSkillsShSearch', () => {
     expect(parseSkillsShSearch({})).toEqual([]);
     expect(parseSkillsShSearch({ skills: 'nope' })).toEqual([]);
     expect(parseSkillsShSearch(null)).toEqual([]);
-    // A row with no source and no id is unimportable → skipped.
     expect(parseSkillsShSearch({ skills: [{ name: 'x' }] })).toEqual([]);
   });
 
   test('clamps out-of-contract installs (negative / non-integer) to null', () => {
-    // Schema requires int().nonnegative(); a bad upstream row must degrade to null
-    // rather than fail the whole search response's validation.
     expect(
       parseSkillsShSearch({ skills: [{ id: 'a/b/c', name: 'c', source: 'a/b', installs: -5 }] })[0]
         .installs,

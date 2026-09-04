@@ -1,10 +1,3 @@
-/**
- * The login-shell PATH probe: sentinel parsing, append-only merge semantics,
- * the skip conditions that must never spawn a shell, and the real-subprocess
- * rung — a fake `$SHELL` that proves stdout capture, the timeout kill, and
- * that the probe script itself is valid POSIX shell.
- */
-
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -31,7 +24,6 @@ afterEach(() => {
   dirs = [];
 });
 
-/** A stand-in `$SHELL` that ignores its args and prints `body`. */
 function fakeShell(body: string): string {
   const dir = tmp();
   const path = join(dir, 'fake-shell');
@@ -74,7 +66,6 @@ describe('mergeLoginShellPath', () => {
   });
 
   test('an existing entry keeps winning — order is never rewritten', () => {
-    // /usr/bin holds a `node` too; appending must not let the shell's copy take over.
     expect(mergeLoginShellPath('/usr/bin', '/opt/other/bin:/usr/bin', ':')).toBe(
       '/usr/bin:/opt/other/bin',
     );
@@ -171,7 +162,6 @@ describe('createLoginShellPathProvider (skip conditions)', () => {
 });
 
 describe('createLoginShellPathProvider (bash needs both startup branches)', () => {
-  /** Records the argv of each capture and answers per-invocation. */
   const recordingProbe = (answers: Array<string | null>) => {
     const seen: string[][] = [];
     const runProbe = async (_shell: string, args: readonly string[]) => {
@@ -194,8 +184,6 @@ describe('createLoginShellPathProvider (bash needs both startup branches)', () =
   });
 
   test('bash gets a second, non-login capture — `-l` locks it out of .bashrc', async () => {
-    // The nvm shape under bash: `.bash_profile` holds one dir, `.bashrc` holds
-    // the nvm one, and only the second capture can see the latter.
     const { seen, runProbe } = recordingProbe([wrap('/usr/bin'), wrap('/home/u/.nvm/v24/bin')]);
     const provider = createLoginShellPathProvider({
       log,
@@ -266,13 +254,10 @@ describe('createLoginShellPathProvider (failed probes stay retryable)', () => {
       now: () => clock,
       runProbe: async () => {
         calls += 1;
-        // A transient failure (a shell that hung once), then a real answer.
         return calls === 1 ? null : wrap('/recovered');
       },
     });
     expect(await provider()).toBeNull();
-    // Inside the backoff the failure is reused, so a burst of launches doesn't
-    // re-pay the timeout.
     expect(await provider()).toBeNull();
     expect(calls).toBe(1);
 
@@ -312,8 +297,6 @@ describe.skipIf(process.platform === 'win32')(
     test('the probe script is valid shell — /bin/sh answers with a real PATH', async () => {
       const provider = createLoginShellPathProvider({ log, platform: 'darwin', shell: '/bin/sh' });
       const value = await provider();
-      // The exact PATH depends on the machine's profiles; that it parsed at all
-      // is the contract under test (printf + printenv + the sentinels).
       expect(value).not.toBeNull();
       expect(value).toContain('/');
     });
@@ -339,15 +322,6 @@ describe.skipIf(process.platform === 'win32')(
       await expect(provider()).resolves.toBeNull();
     });
 
-    // The reason the bash branch exists, against real bash rather than a fake:
-    // a PATH entry that only `.bashrc` adds is invisible to `-l -i` (bash takes
-    // the login branch and never reads it), so collapsing back to a single
-    // capture would silently stop rescuing bash's default nvm setup.
-    //
-    // Only the `.bashrc` half is asserted. Which login profile a given bash
-    // reads — and whether it reads one at all under `-l -i -c` — varies with
-    // the distro's build and its /etc/profile, so pinning that would make this
-    // a test of the runner rather than of the union.
     test('real bash: a .bashrc-only directory is reached', async () => {
       const home = tmp();
       writeFileSync(join(home, '.bash_profile'), 'export PATH="/from/profile:$PATH"\n');

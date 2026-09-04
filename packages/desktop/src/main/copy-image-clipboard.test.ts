@@ -1,22 +1,6 @@
-/**
- * Unit tests for the copy-image main-process pipeline. Every FS + network
- * + Electron dep is injected, so no Electron / real fs / real network is
- * exercised. Coverage priorities (from the PR review):
- *   1. Path containment — %-encoded traversal, absolute paths.
- *   2. Cross-origin fetch failure paths.
- *   3. `nativeImage` empty-decode surfaces `empty-image`.
- *   4. Happy path — `clipboard.writeImage` is called and result is ok.
- *   5. Realpath before containment — a symlink escape is refused.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import { type CopyImageToClipboardDeps, copyImageToClipboard } from './copy-image-clipboard.ts';
 
-/**
- * Base deps with sensible stubs. Individual tests override what they
- * need. Real-`Buffer` returns from nativeImage.toPNG are not asserted
- * because we only need `isEmpty` for the branch coverage below.
- */
 function baseDeps(overrides: Partial<CopyImageToClipboardDeps> = {}): CopyImageToClipboardDeps {
   return {
     projectPath: '/proj',
@@ -38,9 +22,6 @@ describe('copyImageToClipboard — same-origin path handling', () => {
     const result = await copyImageToClipboard(
       baseDeps({
         clipboard: { writeImage },
-        // Force the realpath step to canonicalize outside the project so
-        // the containment check has real work to do — %2E%2E doesn't
-        // survive as ".." after decode+resolve alone.
         resolveCanonical: () => '/etc/passwd',
       }),
       { src: 'http://localhost:5173/%2E%2E/%2E%2E/etc/passwd', alt: 'x' },
@@ -54,13 +35,6 @@ describe('copyImageToClipboard — same-origin path handling', () => {
   });
 
   test('windows drive-letter after decode triggers the isAbsolute guard', async () => {
-    // On Windows, `http://localhost/C:/Windows/…` decodes to `/C:/…`;
-    // leading-slash strip leaves `C:/…`, which `pathWin32.isAbsolute`
-    // classifies as absolute. The guard fires BEFORE realpath, so the
-    // injected `resolveCanonical` never runs — asserts the guard's
-    // reachability from a real URL shape (from POSIX URL input the
-    // strip always leaves a relative path, so the guard is a
-    // Windows-specific defense).
     const writeImage = vi.fn();
     const resolveCanonical = vi.fn((p: string) => p);
     const result = await copyImageToClipboard(
@@ -142,9 +116,6 @@ describe('copyImageToClipboard — same-origin path handling', () => {
     const result = await copyImageToClipboard(
       baseDeps({
         clipboard: { writeImage },
-        // `assets/logo.png` lexically stays in project, but realpath
-        // resolves it to `/etc/passwd` — a symlink escape that a
-        // lexical containment check would miss.
         resolveCanonical: () => '/etc/passwd',
       }),
       { src: 'http://localhost:5173/assets/logo.png', alt: 'x' },

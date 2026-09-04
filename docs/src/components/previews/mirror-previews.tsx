@@ -1,15 +1,6 @@
 import { Copy, Link } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-/**
- * Preview clones for `Mirror` and `MirrorSource`. The app implementations
- * plug into the CRDT provider pool to project a `<MirrorSource id="x">`
- * from one doc into every `<Mirror sourceId="x">` elsewhere — impossible
- * to boot in a standalone docs page. These previews render the same
- * visual chrome (source badge, "read-only" indicator) so authors can
- * see the shape without wiring up transclusion for a demo.
- */
-
 export function MirrorSourcePreview({ id, children }: { id: string; children?: ReactNode }) {
   return (
     <div className="rounded-md border border-fd-border border-l-4 border-l-fd-primary bg-fd-card/50 px-4 py-3 text-fd-foreground text-sm">

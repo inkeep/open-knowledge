@@ -31,12 +31,10 @@ describe('buildSkillRegistry', () => {
   test('same name, different content: BOTH admitted, neither hidden', () => {
     const reg = buildSkillRegistry([
       loc('foo', 'codex', 'h2', '.codex/skills/foo'),
-      loc('foo', 'claude', 'h1', '.claude/skills/foo'), // claude wins precedence
+      loc('foo', 'claude', 'h1', '.claude/skills/foo'),
     ]);
     expect([...reg.admittedDirs].sort()).toEqual(['.claude/skills/foo', '.codex/skills/foo']);
-    // Neither is a copy of the other, so nothing is excluded...
     expect(reg.excludedCopyDirs.size).toBe(0);
-    // ...and precedence only decides where a host-less by-name lookup lands.
     expect(reg.canonicalDir.get(skillRegistryKey('project', 'foo'))).toBe('.claude/skills/foo');
   });
 
@@ -53,8 +51,8 @@ describe('buildSkillRegistry', () => {
   test('a same-named sibling still dedups its OWN copies', () => {
     const reg = buildSkillRegistry([
       loc('foo', 'claude', 'h1', '.claude/skills/foo'),
-      loc('foo', 'cursor', 'h1', '.cursor/skills/foo'), // copy of the claude one
-      loc('foo', 'codex', 'h2', '.codex/skills/foo'), // a different skill
+      loc('foo', 'cursor', 'h1', '.cursor/skills/foo'),
+      loc('foo', 'codex', 'h2', '.codex/skills/foo'),
     ]);
     expect([...reg.admittedDirs].sort()).toEqual(['.claude/skills/foo', '.codex/skills/foo']);
     expect([...reg.excludedCopyDirs]).toEqual(['.cursor/skills/foo']);

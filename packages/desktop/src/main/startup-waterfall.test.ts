@@ -70,7 +70,6 @@ describe('StartupWaterfall', () => {
     w.mark('appReady', 100);
     w.mark('windowShown', 300);
     const p = w.buildPayload();
-    // No bootstrapDone mark → the appReady→bootstrap delta is absent.
     expect(p.appReadyToBootstrapMs).toBeUndefined();
     expect(p.totalLaunchToShownMs).toBe(200);
   });
@@ -78,7 +77,6 @@ describe('StartupWaterfall', () => {
   test('passes through server boot timings + spawn→server-start vs serverSpawned', () => {
     const w = new StartupWaterfall({ otelEnabled: false });
     w.mark('appReady', 0);
-    // server startedAt is 2026-06-30T00:00:00Z; main observed the spawn 30ms before.
     const serverStartedAtMs = Date.parse(SERVER_BOOT.startedAt);
     w.mark('serverSpawned', serverStartedAtMs - 30);
     w.ingestServerBoot(SERVER_BOOT);
@@ -89,7 +87,6 @@ describe('StartupWaterfall', () => {
     expect(p.serverIndexesMs).toBe(60);
     expect(p.serverReadyMs).toBe(120);
     expect(p.serverFileCount).toBe(17);
-    // serverStartedAt - serverSpawned = +30ms.
     expect(p.spawnToServerStartMs).toBe(30);
   });
 
@@ -97,7 +94,6 @@ describe('StartupWaterfall', () => {
     const w = new StartupWaterfall({ otelEnabled: true });
     w.mark('appReady', 100);
     w.mark('bootstrapDone', 150);
-    // No serverSpawned mark → the bootstrap→spawn and spawn→lock intervals drop.
     w.mark('serverLockReady', 400);
     w.mark('windowCreated', 420);
     w.mark('loadUrlResolved', 480);
@@ -105,16 +101,13 @@ describe('StartupWaterfall', () => {
 
     const intervals = w.mainPhaseIntervals();
     const byName = new Map(intervals.map((i) => [i.name, i]));
-    // appReady→bootstrapDone present.
     expect(byName.get('ok.startup.bootstrap')).toEqual({
       name: 'ok.startup.bootstrap',
       startMs: 100,
       endMs: 150,
     });
-    // Intervals depending on the missing serverSpawned mark are absent.
     expect(byName.has('ok.startup.spawn')).toBe(false);
     expect(byName.has('ok.startup.lock-wait')).toBe(false);
-    // Later contiguous phases still resolve.
     expect(byName.get('ok.startup.window-create')).toEqual({
       name: 'ok.startup.window-create',
       startMs: 400,
@@ -133,15 +126,14 @@ describe('StartupWaterfall', () => {
     w.ingestRendererMarks(RENDERER_MARKS);
     w.mark('windowShown', 1300);
     const p = w.buildPayload();
-    expect(p.rendererPageListMs).toBe(200); // 1000 - 800
-    expect(p.rendererFirstContentMs).toBe(400); // 1200 - 800
+    expect(p.rendererPageListMs).toBe(200);
+    expect(p.rendererFirstContentMs).toBe(400);
     expect(p.totalLaunchToFirstContentMs).toBe(400);
   });
 
   test('emit fires once and only after windowShown', () => {
     const w = new StartupWaterfall({ otelEnabled: false });
     const logger = captureLogger();
-    // Not shown yet → no emit.
     expect(w.emit(logger)).toBeUndefined();
     expect(logger.calls.length).toBe(0);
 
@@ -152,7 +144,6 @@ describe('StartupWaterfall', () => {
     expect(logger.calls.length).toBe(1);
     expect(logger.calls[0][1]).toBe('desktop.startup-timeline');
 
-    // Second emit is a no-op.
     expect(w.emit(logger)).toBeUndefined();
     expect(logger.calls.length).toBe(1);
   });
@@ -162,9 +153,9 @@ describe('StartupWaterfall', () => {
     w.mark('appReady', 0);
     w.mark('windowShown', 100);
     expect(w.canEmit).toBe(true);
-    expect(w.readyToEmit).toBe(false); // no server boot / renderer marks yet
+    expect(w.readyToEmit).toBe(false);
     w.ingestServerBoot(SERVER_BOOT);
-    expect(w.readyToEmit).toBe(false); // still missing renderer marks
+    expect(w.readyToEmit).toBe(false);
     w.ingestRendererMarks(RENDERER_MARKS);
     expect(w.readyToEmit).toBe(true);
   });

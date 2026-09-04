@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
-import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import type { TrashFailedTarget } from './TrashFailureModal';
 
 vi.doMock('@lingui/core/macro', () => ({
@@ -104,8 +103,10 @@ describe('TrashFailureModal runtime behavior', () => {
     expect(cancel.getAttribute('data-variant')).toBe('outline');
     expect(retry.getAttribute('data-variant')).toBe('outline');
     expect(deletePermanently.getAttribute('data-variant')).toBe('destructive');
-    expectVisualClassTokens(cancel.className, ['font-mono']);
-    expectVisualClassTokens(retry.className, ['font-mono']);
+    const footer = document.querySelector('[data-slot="alert-dialog-footer"]');
+    for (const action of [cancel, retry, deletePermanently]) {
+      expect(action.closest('[data-slot="alert-dialog-footer"]')).toBe(footer);
+    }
 
     await userEvent.click(cancel);
     await userEvent.click(retry);

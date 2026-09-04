@@ -1,13 +1,3 @@
-/**
- * The queue groups its cards by file, so the file name is a heading rather than
- * a badge on every card.
- *
- * What matters is the bucketing rule: a file appears ONCE, at its first queued
- * comment, and comments added later join that bucket. Commenting back and forth
- * across two files is the case that would otherwise reproduce the per-card
- * repetition the grouping removes, so it's the case pinned here.
- */
-
 import { describe, expect, it } from 'vitest';
 import { groupByDoc } from './queue-grouping';
 import type { CommentThread } from './types';
@@ -50,8 +40,6 @@ describe('grouping the queue by file', () => {
   });
 
   it('separates files that share a basename', () => {
-    // The heading shows the basename, but the bucket key is the full path —
-    // two `README`s in different folders are two files, not one group.
     const groups = groupByDoc([thread('x', 'a/README'), thread('y', 'b/README')]);
 
     expect(groups.map((group) => group.docName)).toEqual(['a/README', 'b/README']);

@@ -1,15 +1,3 @@
-/**
- * SubscribeForm — reusable email-capture form for product updates.
- *
- * Self-contained: owns its react-hook-form state, validation, submit, and the
- * success / error views. Drop it into any surface (the Resources dropdown's
- * Subscribe popover today; other surfaces later) — callers override the
- * `title` / `description` copy, pass `onDismiss` to get a close affordance, and
- * `onSuccess` to react after a confirmed subscribe.
- *
- * Mirrors the docs-site SubscribeForm (react-hook-form `Controller` + zod) so
- * the two stay behaviourally aligned.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,24 +18,12 @@ interface SubscribeValues {
 }
 
 export interface SubscribeFormProps {
-  /** Which surface this form renders on — sent to analytics for per-surface attribution. */
   source: SubscribeSource;
-  /** Heading copy. Defaults to "Stay in the loop". */
   title?: ReactNode;
-  /** Sub-heading copy. Defaults to a product-updates blurb. */
   description?: ReactNode;
-  /** Fired once after a subscribe is confirmed by the server. */
   onSuccess?: () => void;
-  /** When provided, renders a close (X) button in the header. */
   onDismiss?: () => void;
-  /** Focus the email input on mount (popover/dialog entry). */
   autoFocus?: boolean;
-  /**
-   * Render the submit control as an arrow icon rather than the "Subscribe"
-   * text label — for narrow surfaces (the sidebar subscribe card) where the
-   * full word doesn't fit. The accessible name stays "Subscribe" via sr-only
-   * text + aria-label.
-   */
   compactSubmit?: boolean;
   className?: string;
 }
@@ -66,15 +42,10 @@ export function SubscribeForm({
   const [subscribed, setSubscribed] = useState(false);
   const successHeadingRef = useRef<HTMLParagraphElement>(null);
 
-  // After a successful submit the form unmounts and the success view takes its
-  // place; move focus to the confirmation heading so keyboard/SR focus isn't
-  // orphaned to the document body.
   useEffect(() => {
     if (subscribed) successHeadingRef.current?.focus();
   }, [subscribed]);
 
-  // Schema is built in render so the validation message resolves against the
-  // active locale at call time (the t macro can't run at module top level).
   const schema = z.object({
     email: z.email({ message: t`Please enter a valid email address.` }),
   });
@@ -85,8 +56,6 @@ export function SubscribeForm({
   });
 
   const { isSubmitting } = form.formState;
-  // The field-level error covers invalid addresses; the form-level `root`
-  // error carries server-side failures (Resend down, subscriptions disabled).
   const errorMessage = form.formState.errors.email?.message ?? form.formState.errors.root?.message;
 
   async function onSubmit(values: SubscribeValues) {
@@ -112,8 +81,7 @@ export function SubscribeForm({
     <div className={cn('flex flex-col gap-3', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          {/* tabIndex/-1 + ref only matter post-success, when this heading
-              becomes the focus landing spot for the unmounted form. */}
+          {}
           <p
             ref={successHeadingRef}
             tabIndex={subscribed ? -1 : undefined}
@@ -128,10 +96,7 @@ export function SubscribeForm({
               (title ?? <Trans>Stay in the loop</Trans>)
             )}
           </p>
-          {/* role="status" is unconditional so the live region is registered
-              before the success text replaces the description — adding the role
-              and the new content in the same render makes screen readers miss
-              the announcement (WCAG 4.1.3). */}
+          {}
           <p className="text-1sm text-muted-foreground" role="status">
             {subscribed ? (
               <Trans>Thanks for subscribing. Watch your inbox for product updates.</Trans>
@@ -171,7 +136,6 @@ export function SubscribeForm({
                   inputMode="email"
                   autoComplete="email"
                   spellCheck={false}
-                  // Opt-in via prop; popover/dialog callers focus the sole input on entry.
                   autoFocus={autoFocus}
                   placeholder={t`my@email.com`}
                   aria-invalid={fieldState.invalid}

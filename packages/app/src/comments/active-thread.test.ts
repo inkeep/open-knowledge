@@ -27,7 +27,6 @@ describe('active thread', () => {
   it('ignores a stale leave from the card the pointer already left', () => {
     setActiveThread('a');
     setActiveThread('b');
-    // 'a' loses the pointer only after 'b' has taken it.
     clearActiveThread('a');
     expect(getActiveThread()).toBe('b');
   });

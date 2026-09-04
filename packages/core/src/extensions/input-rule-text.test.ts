@@ -6,12 +6,10 @@ import { sharedExtensions } from './shared.ts';
 
 const schema = getSchema(sharedExtensions);
 
-/** Every inline node that is not text — the nodes the runner needs a chunk for. */
 function inlineObjectTypes(): NodeType[] {
   return Object.values(schema.nodes).filter((type) => type.isInline && type.name !== 'text');
 }
 
-/** One instance of `type`, filled with text when the node takes content. */
 function sample(type: NodeType): PMNode | null {
   return type.isLeaf ? type.createAndFill() : type.createAndFill(null, [schema.text('foo')]);
 }
@@ -40,7 +38,6 @@ describe('renderInlineObjectText', () => {
     expect(renderInlineObjectText({ node: jsx as PMNode })).toBe(
       INLINE_OBJECT_PLACEHOLDER.repeat(2),
     );
-    // The children are walked separately, so the wrapper must not speak for them.
     expect(renderInlineObjectText({ node: jsx as PMNode })).toHaveLength(
       (jsx as PMNode).nodeSize - (jsx as PMNode).content.size,
     );
@@ -48,10 +45,6 @@ describe('renderInlineObjectText', () => {
 });
 
 describe('input-rule matching text is position-faithful', () => {
-  // The contract the range arithmetic `from - (match[0].length - text.length)`
-  // depends on: the derived string is as long as the span it describes. A node
-  // that breaks it skews the range for EVERY rule whose match window covers it,
-  // so this walks the whole schema rather than the nodes known to have broken.
   it.each(
     inlineObjectTypes().map((type) => [type.name, type] as const),
   )('%s contributes exactly the positions it occupies', (_name, type) => {

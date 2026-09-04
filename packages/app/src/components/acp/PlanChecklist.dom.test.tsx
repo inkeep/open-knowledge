@@ -55,11 +55,9 @@ describe('PlanChecklist', () => {
     };
 
     test('hidden without approval, hidden when every item is completed', () => {
-      // No approval prop: buttons hidden.
       const a = render(<PlanChecklist plan={[p('one')]} />);
       expect(a.queryByTestId('agent-thread-plan-approval')).toBeNull();
       cleanup();
-      // approval prop but all items completed: nothing to approve.
       const c = render(<PlanChecklist plan={[p('one', 'completed')]} approval={handlers} />);
       expect(c.queryByTestId('agent-thread-plan-approval')).toBeNull();
     });
@@ -113,8 +111,6 @@ describe('PlanChecklist', () => {
     });
 
     test('the approval row auto-expands the checklist so the user sees what they are approving', () => {
-      // Approving a plan whose items are hidden trains click-through — the
-      // component opens itself the first time the approval buttons appear.
       const { getByTestId } = render(<PlanChecklist plan={[p('one')]} approval={handlers} />);
       expect(getByTestId('agent-thread-plan-toggle').getAttribute('aria-expanded')).toBe('true');
       expect(getByTestId('agent-thread-plan-list')).not.toBeNull();

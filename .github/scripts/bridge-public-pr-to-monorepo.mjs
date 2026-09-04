@@ -6,44 +6,15 @@ import { pathToFileURL } from 'node:url';
 
 import { applyClaGate } from './cla-gate.mjs';
 
-// Keep the public PR bridge copies code-shape aligned. They ship to
-// separate public repos through Copybara, so they cannot import shared code.
-// Sibling bridge copies:
-// - public/agents/.github/scripts/bridge-public-pr-to-monorepo.mjs
-// - public/agents-optional-local-dev/.github/scripts/bridge-public-pr-to-monorepo.mjs
-// - public/open-knowledge-skills/.github/scripts/bridge-public-pr-to-monorepo.mjs
-// - public/visimer/.github/scripts/bridge-public-pr-to-monorepo.mjs
-// The Open Knowledge copy additionally imports a co-located `cla-gate.mjs` for
-// contributor-CLA enforcement — an OK-only divergence. That module ships to the
-// same repo via Copybara, so the import resolves on the mirror; the "no shared
-// code" rule still holds (no module is shared ACROSS the public repos).
-// The OK copy also routes 3-way-apply conflicts to a draft maintainer PR rather
-// than hard-failing (the OK mirror strips comments, so contributor patches
-// conflict against the comment-rich internal tree); the sibling copies keep the
-// hard-fail behavior. No drift check enforces shape alignment, so this OK-only
-// divergence is intentional and scoped here.
 const OSS_SYNC_BOT_NAME = 'inkeep-oss-sync[bot]';
 const OSS_SYNC_BOT_EMAIL = '274976938+inkeep-oss-sync[bot]@users.noreply.github.com';
 
-// Strip x-access-token credentials from any string that might end up in an
-// error message, log line, or thrown exception. GitHub Actions masks repo
-// secrets in its own job log, but this script's exceptions can also surface in
-// failure-alert issues or future error-reporting integrations — none of which
-// inherit the Actions log mask. Defense-in-depth: redact at the boundary so
-// token leakage is impossible regardless of where the message ends up.
 function sanitizeErrorMessage(value) {
   if (typeof value !== 'string') return value;
   return value.replace(/https:\/\/x-access-token:[^@\s]+@/g, 'https://x-access-token:***@');
 }
 
 function run(command, args, options = {}) {
-  // Drop inherited GIT_* repo-targeting vars: every git spawn in
-  // this script targets an explicit clone/worktree via cwd, never the repo a
-  // calling git hook belongs to. In CI these variables are unset (no-op);
-  // locally they leak from pre-push/pre-commit hooks into harnesses that
-  // import this module (the bridge canary) and break explicit-cwd git.
-  // Sanitize AFTER merging a caller-supplied env so the guarantee is
-  // unconditional — an options.env override must not reintroduce the vars.
   const {
     GIT_DIR: _d,
     GIT_WORK_TREE: _w,
@@ -96,8 +67,6 @@ async function githubRequest({
     throw error;
   }
 
-  // .patch and .diff return raw text, not JSON. All other accept types
-  // (incl. the default application/vnd.github+json) return JSON.
   const isTextResponse =
     accept === 'application/vnd.github.patch' || accept === 'application/vnd.github.diff';
   return isTextResponse ? text : text ? JSON.parse(text) : null;
@@ -141,14 +110,6 @@ function parseJsonEnv(name, fallback) {
   }
 }
 
-// True when a `githubRequest` failed because the PR diff exceeds GitHub's
-// hard cap on the diff endpoint (currently 20,000 lines). The API surfaces
-// this as a 406 with body `diff exceeded the maximum number of lines (20000)`,
-// or a JSON error with `diff_too_large` in the message. Detect by message
-// text since we don't preserve the HTTP status separately. The patterns are
-// kept narrow on purpose: a bare `too_large` would also match unrelated 422s
-// (e.g. PR body validation `{"code":"too_long"}` is adjacent — `too_large`
-// itself is rare for non-diff endpoints, but we don't rely on coincidence).
 function isDiffTooLargeError(error) {
   if (!error || typeof error.message !== 'string') return false;
   return /diff exceeded the maximum number of lines|diff is too large|diff_too_large/i.test(
@@ -156,16 +117,6 @@ function isDiffTooLargeError(error) {
   );
 }
 
-// Compute the PR's diff locally from the public PR refs that syncPublicPr has
-// already fetched into agents-private's object store. 3-dot diff mirrors
-// GitHub's `.diff` semantics (compares against merge-base). Used as the
-// fallback when the API rejects the PR as too large; also implicitly helps
-// `git apply --3way` later because the same fetch made the patch's base blobs
-// reachable in agents-private's clone.
-//
-// maxBuffer is bumped to 50 MB because this fallback fires specifically for
-// oversized PRs (>20,000 lines on the API endpoint). Node's default 1 MB
-// would truncate the very diffs this path is meant to handle.
 function fetchPullRequestDiffViaLocalGit({ internalRepoDir, sourceBaseRef, sourceHeadRef }) {
   return run('git', ['-C', internalRepoDir, 'diff', `${sourceBaseRef}...${sourceHeadRef}`], {
     maxBuffer: 50 * 1024 * 1024,
@@ -205,12 +156,6 @@ async function fetchPullRequestDiff({
   }
 }
 
-// Drop diff sections whose old or new path matches any excluded prefix.
-// Excluded paths are relative to the PUBLIC repo root (pre-prefix). Used to
-// stop pre-cutover branches from re-introducing internal-only paths
-// (`specs/`, `reports/`, `.codex/`, etc.) that the public mirror no longer
-// exports — those paths exist on agents-private's side but should not flow
-// back through the bridge.
 function filterDiffByPath(patch, excludedPrefixes) {
   if (!excludedPrefixes || excludedPrefixes.length === 0) return patch;
 
@@ -262,7 +207,6 @@ function prefixPatchPaths(patch, prefix, pathRewrites = {}) {
 
     const unquoted = value.replace(/^"(.+)"$/, '$1');
 
-    // Reject path traversal attempts
     const segments = unquoted.split('/');
     if (segments.some((s) => s === '..' || s === '.')) {
       throw new Error(`Rejecting patch with path traversal: ${unquoted}`);
@@ -469,7 +413,6 @@ function buildCommitAttribution({ commitAuthors, commitMessages = [], publicRepo
   return { trailers, originalCommitMessages, body };
 }
 
-// GitHub PR body hard limit. Exceeding returns 422 "body is too long".
 const GITHUB_PR_BODY_LIMIT = 65536;
 
 function buildInternalPrBody({ publicPr, branchName, mirrorPath }) {
@@ -574,14 +517,6 @@ async function ensureDraftState({ token, pullRequest, shouldBeDraft }) {
   });
 }
 
-// Read the `license/cla` combined-status state on a commit (cla-assistant posts
-// it on the public PR head). Returns null when the context is absent.
-//
-// `?per_page=100` raises the embedded-statuses ceiling from GitHub's default of
-// 30 to the documented max. The combined-status array holds the latest status
-// per context, so a commit would need >100 distinct status contexts before
-// `license/cla` could fall off the first page — at which point the gate would
-// read null and fail closed (a false hold), never falsely release.
 async function readCommitClaStatus({ token, repo, sha, request = githubRequest }) {
   const result = await request({
     token,
@@ -591,10 +526,6 @@ async function readCommitClaStatus({ token, repo, sha, request = githubRequest }
   return cla ? cla.state : null;
 }
 
-// Check org membership for a public-PR author. GitHub returns 204 for a member
-// and 404 for a non-member (or a membership this token cannot see). Real errors
-// — a 403 when the bridge App lacks `members:read`, or a 5xx — propagate so
-// `applyClaGate` fails closed rather than treating an outage as "not a member".
 async function checkOrgMembership({ token, org, login, request = githubRequest }) {
   try {
     await request({ token, path: `/orgs/${org}/members/${encodeURIComponent(login)}` });
@@ -607,8 +538,6 @@ async function checkOrgMembership({ token, org, login, request = githubRequest }
   }
 }
 
-// Post a commit status — used for the bridge's own `cla/verified` context on the
-// internal PR head, the signal the agents-private branch ruleset requires.
 async function postCommitStatus({
   token,
   repo,
@@ -626,11 +555,6 @@ async function postCommitStatus({
   });
 }
 
-// Build the GitHub adapter `applyClaGate` consumes. Extracted so the wiring —
-// which token/repo each call uses, and the `cla/verified` context the
-// agents-private ruleset requires — is testable in isolation rather than buried
-// in `syncPublicPr`. `request` is injectable for hermetic tests; production
-// uses the module's `githubRequest`.
 function createClaGateGh({
   publicToken,
   publicRepo,
@@ -638,9 +562,6 @@ function createClaGateGh({
   internalRepo,
   request = githubRequest,
 }) {
-  // Membership is checked against the org that owns the internal repo (inkeep),
-  // on the internal App token — the only credential that can carry
-  // `members:read`. The public Actions token cannot read org membership.
   const org = internalRepo.split('/')[0];
   return {
     readClaStatus: (pr) =>
@@ -661,37 +582,17 @@ function createClaGateGh({
   };
 }
 
-// Marker appended to the bridge's mirror commit when the 3-way apply left
-// conflicts, so the conflict draft-hold survives a metadata-only re-sync (where
-// the apply block is skipped) instead of being silently lost.
 const CONFLICT_COMMIT_MARKER = 'with conflicts; needs manual resolution';
 
-// True when a bridge commit message marks a conflict-carrying sync commit (see
-// CONFLICT_COMMIT_MARKER), used to keep that PR held draft across
-// metadata-only re-syncs.
 function commitIndicatesConflicts(commitMessage) {
   return typeof commitMessage === 'string' && commitMessage.includes(CONFLICT_COMMIT_MARKER);
 }
 
-// Apply the prefixed PR patch onto the internal checkout and classify the
-// outcome. `git apply --index --3way` exits non-zero BOTH when the patch cannot
-// apply at all AND when it applies but leaves conflict markers, so the exit code
-// alone can't tell a genuine failure from a conflict a maintainer can resolve.
-// Distinguish them by the index: a 3-way merge that conflicted leaves unmerged
-// (stage > 0) entries; a genuine non-apply leaves none.
-//   - 'clean'     — applied with no conflicts (exit 0)
-//   - 'conflicts' — applied WITH conflict markers (unmerged entries present)
-//   - 'failed'    — could not apply (no unmerged entries); `message` carries the
-//                   sanitized git output for the contributor-facing comment
 function applyPatchWithConflictDetection(internalRepoDir, patchFile) {
   try {
     run('git', ['-C', internalRepoDir, 'apply', '--index', '--3way', patchFile]);
     return { outcome: 'clean', conflictedPaths: [], message: '' };
   } catch (error) {
-    // `run()` has already stripped any x-access-token URL from error.message.
-    // Guard the unmerged-index probe: if even it throws (corrupt/locked index),
-    // fall through to 'failed' rather than escaping the classifier. Fail-closed,
-    // never route a real error as a resolvable conflict.
     let conflictedPaths = [];
     try {
       const unmerged = run('git', [
@@ -703,8 +604,6 @@ function applyPatchWithConflictDetection(internalRepoDir, patchFile) {
       ]);
       conflictedPaths = unmerged ? unmerged.split('\n').filter(Boolean) : [];
     } catch (probeError) {
-      // Fail-closed routing to 'failed' is still correct, but surface the probe
-      // failure so a maintainer can tell "no unmerged entries" from "probe broke".
       console.warn(
         `Bridge: git diff --diff-filter=U probe threw after a failed apply; routing as 'failed'. Probe error: ${probeError.message}`,
       );
@@ -753,23 +652,9 @@ async function syncPublicPr() {
   let hasStagedChanges = false;
   let hasConflicts = false;
   if (!metadataOnlyAction) {
-    // Bring agents-private's main into the local clone and check out the new
-    // branch first. We need this in place before the public-PR-refs fetch so
-    // any blob already on main is deduplicated; we also need it before
-    // `git apply --3way` (later) regardless.
     run('git', ['-C', internalRepoDir, 'fetch', 'origin', internalBaseRef, '--prune']);
     run('git', ['-C', internalRepoDir, 'checkout', '-B', branchName, `origin/${internalBaseRef}`]);
 
-    // Fetch the public PR's base + head into agents-private's object store.
-    // Two purposes:
-    //   1. `git apply --3way` resolves the patch's base blobs locally even
-    //      when public-mirror-sync is stalled and agents-private/main has
-    //      drifted from `inkeep/<repo>/main`. Without this, every conflicting
-    //      hunk fails with "repository lacks the necessary blob to perform
-    //      3-way merge" — the dominant bridge-failure pattern for drifted
-    //      public PRs.
-    //   2. Provides the baseline pair of refs for the local-git-diff fallback
-    //      when the GitHub diff endpoint rejects the PR as too large.
     const sourceRemote = `bridge-public-${publicPrNumber}`;
     const sourceBaseRef = `refs/remotes/${sourceRemote}/pr-base`;
     const sourceHeadRef = `refs/remotes/${sourceRemote}/pr-head`;
@@ -778,16 +663,10 @@ async function syncPublicPr() {
     try {
       run('git', ['-C', internalRepoDir, 'remote', 'remove', sourceRemote]);
     } catch {
-      // remote did not exist; harmless
     }
     run('git', ['-C', internalRepoDir, 'remote', 'add', sourceRemote, publicRepoUrl]);
 
     try {
-      // Initial fetch: --depth=10000 covers the long-running branches that
-      // trip the size-fallback. On the rare branch whose merge-base is deeper, the
-      // subsequent `git diff base...head` errors clearly with "no merge
-      // base" rather than producing a wrong diff — so we re-fetch with
-      // increasing depth before giving up.
       let refsFetched = false;
       for (const depth of [10000, 50000]) {
         try {
@@ -818,17 +697,6 @@ async function syncPublicPr() {
         );
       }
 
-      // Use .diff (unified squash diff) not .patch (multi-commit mailbox
-      // format). .patch returns one patch per PR commit, each with
-      // intermediate blob SHAs that only exist in inkeep/agents' object
-      // store; any conflicting hunk forces git apply --3way to look up
-      // those intermediates and fail with "repository lacks the necessary
-      // blob". .diff is a single base-vs-head diff — no intermediates,
-      // only the PR base blobs are referenced.
-      //
-      // For PRs whose .diff exceeds GitHub's 20,000-line endpoint cap,
-      // fetchPullRequestDiff falls back to a local 3-dot `git diff`
-      // against the refs we just fetched.
       const rawPatch = await fetchPullRequestDiff({
         publicToken,
         publicRepo,
@@ -858,11 +726,6 @@ async function syncPublicPr() {
 
         hasConflicts = applyResult.outcome === 'conflicts';
 
-        // A conflicted 3-way apply leaves unmerged (stage > 0) entries with
-        // conflict markers in the working tree; `git apply --index` already
-        // staged the cleanly-merged files. Stage the marker versions too so the
-        // commit captures the full state for a maintainer to resolve on the
-        // internal PR (the markers make it un-mergeable; it's held draft below).
         if (hasConflicts) {
           run('git', ['-C', internalRepoDir, 'add', '-A']);
         }
@@ -923,12 +786,9 @@ async function syncPublicPr() {
         rmSync(tempDir, { recursive: true, force: true });
       }
     } finally {
-      // Always tear down the bridge-public remote, even on early return or
-      // throw, so subsequent runs (or a retry of the same PR) start clean.
       try {
         run('git', ['-C', internalRepoDir, 'remote', 'remove', sourceRemote]);
       } catch {
-        // best-effort
       }
     }
 
@@ -944,21 +804,12 @@ async function syncPublicPr() {
     }
   }
 
-  // On a metadata-only re-sync (edited / ready_for_review / converted_to_draft)
-  // the apply block above is skipped, so `hasConflicts` is still its initial
-  // false even for a PR previously bridged with conflicts. Re-derive the conflict
-  // hold from the existing internal PR's head-commit marker, otherwise a metadata
-  // event (e.g. the contributor editing their PR body) would un-draft a
-  // conflict-carrying PR and overwrite its comment with 'synced'.
   if (metadataOnlyAction && internalPr) {
     const headCommit = await githubRequest({
       token: internalToken,
       path: `/repos/${internalRepo}/commits/${internalPr.head.sha}`,
     });
     if (headCommit?.commit?.message == null) {
-      // A structurally unexpected 200 (no commit message) would silently default
-      // hasConflicts to false and un-draft a conflict-carrying PR. The endpoint is
-      // stable so this is defensive, but make the implicit fail-open observable.
       console.warn(
         `Bridge: missing commit message for ${internalPr.head.sha}; conflict hold not re-derived on metadata re-sync.`,
       );
@@ -991,12 +842,6 @@ async function syncPublicPr() {
     });
   }
 
-  // Enforce the contributor CLA. cla-assistant posts `license/cla` on the public
-  // PR, but the bridge re-commits under a new SHA here, so that status can't gate
-  // the internal PR directly. Hold the internal PR (draft + a failing
-  // `cla/verified` status) until signed, re-checked on every sync. This also
-  // takes over draft-state mirroring: shouldBeDraft = publicPr.draft || gated ||
-  // hasConflicts (a conflict-carrying PR must stay a draft until reconciled).
   await applyClaGate({
     gh: createClaGateGh({ publicToken, publicRepo, internalToken, internalRepo }),
     publicPr,
@@ -1051,7 +896,6 @@ async function closeLinkedInternalPr() {
     body: { state: 'closed' },
   });
 
-  // Clean up the stale branch on agents-private
   try {
     await githubRequest({
       token: internalToken,
@@ -1059,7 +903,6 @@ async function closeLinkedInternalPr() {
       path: `/repos/${internalRepo}/git/refs/heads/${branchName}`,
     });
   } catch {
-    // Branch may already be deleted or protected
   }
 }
 
@@ -1104,6 +947,5 @@ export {
   postCommitStatus,
   prefixPatchPaths,
   readCommitClaStatus,
-  // Exported solely for the metadata-event composition test.
   syncPublicPr,
 };

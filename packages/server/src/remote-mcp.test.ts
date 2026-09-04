@@ -1,24 +1,3 @@
-/**
- * Remote access — mount-level admission matrix for the trust-the-tunnel model.
- *
- * Boots the REAL `mountMcpAndApi` + `createMcpHttpHandler` on a loopback
- * port, then plays remote callers by shaping requests the way any tunnel's
- * local agent delivers them: loopback TCP peer + the tunnel's public Host
- * (+ the forwarding headers proxies inject). That is byte-for-byte what the
- * server sees behind a real ngrok / cloudflared / tailscale tunnel — the
- * transport itself is the only untested hop.
- *
- * The ingress policy is built from the `server.*` runtime shape a tunneled
- * deployment declares (`server.externalUrl` + consent on a loopback bind);
- * these tests are the behavior pins for the tunnel contract. With the tunnel
- * shape armed there is ONE gate: Host on the
- * allowlist (loopback names or the tunnel's public host). Admitted callers
- * get the full surface; there is no per-origin tiering and no server-side
- * auth — restricting WHO can reach the tunnel is the tunnel's job (edge
- * auth). Without the shape, proxied requests trip the forwarding-header
- * tripwire instead of inheriting local trust.
- */
-
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import {
   createServer as createHttpServer,
@@ -41,9 +20,7 @@ const MCP_PROTOCOL_VERSION = '2025-06-18';
 const EXTERNAL_URL = 'https://myproject.ngrok.app';
 const EXTERNAL_HOST = 'myproject.ngrok.app';
 
-/** What any tunnel's local agent delivers: public Host over a loopback socket. */
 const TUNNEL_HEADERS = { host: EXTERNAL_HOST };
-/** Same, with the forwarding headers mainstream tunnels inject. */
 const TUNNEL_FORWARDED_HEADERS = {
   host: EXTERNAL_HOST,
   'x-forwarded-for': '203.0.113.7',
@@ -82,7 +59,6 @@ interface RigExtras {
     res: import('node:http').ServerResponse,
     next: () => void,
   ) => void;
-  /** Stub thread manager to exercise the `/collab/thread` admission gate. */
   acpThreadManager?: unknown;
 }
 
@@ -90,8 +66,6 @@ async function bootRemoteRig(externalUrl: string | null, extras: RigExtras = {})
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-remote-mcp-'));
   const localDir = join(contentDir, '.ok', 'local');
   mkdirSync(localDir, { recursive: true });
-  // A tunneled deployment's keys: declared public origin + consent; the rig's
-  // listener stays loopback (the tunnel is the only ingress).
   const config = ConfigSchema.parse(
     externalUrl === null ? {} : { server: { externalUrl, allowExternal: true } },
   );
@@ -138,7 +112,6 @@ interface RawResponse {
   body: string;
 }
 
-/** Raw request with full Host-header control (fetch forbids overriding Host). */
 function raw(
   port: number,
   opts: {
@@ -174,7 +147,6 @@ function raw(
   });
 }
 
-/** Initialize an MCP session through the mount with the given gate headers. */
 async function openSession(
   port: number,
   gateHeaders: Record<string, string>,
@@ -249,7 +221,6 @@ const WRITE_TOOLS = [
   'resolve_conflict',
 ];
 
-/** Raw WS upgrade attempt; resolves 'upgraded' on a 101, 'closed' on drop. */
 function attemptCollabUpgrade(
   port: number,
   headers: Record<string, string>,
@@ -294,8 +265,6 @@ function attemptCollabUpgrade(
   });
 }
 
-// ---------------------------------------------------------------------------
-
 describe('remote enabled — trust-the-tunnel admission', () => {
   test('tunnel-Host /mcp is admitted with the full tool set (no server-side auth tier)', async () => {
     const rig = await bootRemoteRig(EXTERNAL_URL);
@@ -326,8 +295,6 @@ describe('remote enabled — trust-the-tunnel admission', () => {
 
   test('non-/mcp surfaces are reachable under the tunnel Host (one gate for everything)', async () => {
     const rig = await bootRemoteRig(EXTERNAL_URL);
-    // The mocked hocuspocus answers nothing, so the mount's own 404 backstop
-    // responding at all (vs a 403) proves admission.
     const api = await raw(rig.port, { path: '/api/pages', headers: TUNNEL_HEADERS });
     expect(api.status).toBe(404);
     const spa = await raw(rig.port, { path: '/', headers: TUNNEL_HEADERS });
@@ -342,8 +309,6 @@ describe('remote enabled — trust-the-tunnel admission', () => {
 
   test('vendor identity/marker headers are inert — admission is Host-only', async () => {
     const rig = await bootRemoteRig(EXTERNAL_URL);
-    // Pre-R0 these headers switched tiers (tailnet/funnel). Now they must
-    // change nothing: same Host, same admission, same tool set.
     const names = await listToolNames(rig.port, {
       host: EXTERNAL_HOST,
       'tailscale-funnel-request': '?1',
@@ -371,9 +336,6 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 
   test('/collab/thread upgrade admits the tunnel Host so Ask AI works over the tunnel', async () => {
-    // The stub thread manager only clears the fail-closed `acp == null` guard;
-    // the socket touches it solely when a client sends a frame (this raw
-    // upgrade never does), so admission is the only thing under test.
     const rig = await bootRemoteRig(EXTERNAL_URL, { acpThreadManager: { listThreads: () => [] } });
     await expect(
       attemptCollabUpgrade(rig.port, { Host: EXTERNAL_HOST }, '/collab/thread'),
@@ -381,7 +343,6 @@ describe('remote enabled — trust-the-tunnel admission', () => {
     await expect(
       attemptCollabUpgrade(rig.port, { Host: 'evil.example.com' }, '/collab/thread'),
     ).resolves.toBe('closed');
-    // A foreign browser Origin is refused even under the correct tunnel Host.
     await expect(
       attemptCollabUpgrade(
         rig.port,
@@ -402,13 +363,6 @@ describe('remote enabled — trust-the-tunnel admission', () => {
 });
 
 describe('session verbs through the native mount', () => {
-  // GET with a live session opens the transport's standalone SSE channel —
-  // idle (no priming bytes) but held open for server-initiated notifications;
-  // `enableJsonResponse: true` shapes POST responses only. The pin is that the
-  // response HEAD arrives as `text/event-stream` while the stream stays open:
-  // an adapter that buffered the stream to completion would never flush the
-  // head for an idle channel, so headers-before-end is the proof the router
-  // adapter does not buffer long-lived MCP streams.
   test('GET with a live session opens the standalone SSE stream unbuffered', async () => {
     const rig = await bootRemoteRig(null);
     const gateHeaders = { host: `127.0.0.1:${rig.port}` };
@@ -434,8 +388,6 @@ describe('session verbs through the native mount', () => {
             res.on('end', () => {
               ended = true;
             });
-            // Give a buffered/short-circuited response time to end; a held-open
-            // idle SSE channel must still be open when the timer fires.
             setTimeout(() => {
               const status = res.statusCode ?? 0;
               const contentType = res.headers['content-type'];
@@ -575,7 +527,6 @@ describe('remote enabled — UI over the same port', () => {
     expect(root.body).toContain('SHELL /');
     const asset = await raw(rig.port, { path: '/assets/app.js', headers: TUNNEL_HEADERS });
     expect(asset.status).toBe(200);
-    // /mcp stays MCP — the shell never shadows it.
     const mcp = await raw(rig.port, { method: 'POST', path: '/mcp', headers: TUNNEL_HEADERS });
     expect(mcp.body).not.toContain('SHELL');
   });

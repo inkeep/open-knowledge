@@ -35,16 +35,6 @@ import { isWithinDir } from './path-utils.ts';
 
 const log = getLogger('mermaid-persistence');
 
-/**
- * Transaction origin for Mermaid seed / reconcile / external-import writes to
- * `Y.Text('source')`. `skipStoreHooks: true` so seeding never re-triggers a disk
- * write. Deliberately NOT `FILE_WATCHER_ORIGIN`: that origin is `paired: true`
- * (it mutates BOTH Y.Text and Y.XmlFragment and must route through a bridge-intake
- * primitive — enforced by `paired-write-enforcement.test.ts`). Mermaid docs are
- * Y.Text-only (the markdown bridge is gated off), so this origin is NON-paired,
- * mirroring config docs' `CONFIG_VALIDATION_REVERT_ORIGIN` (registered in that
- * test's SANCTIONED_NON_PRIMITIVE_ORIGINS for the identical reason).
- */
 export const MERMAID_SOURCE_ORIGIN = {
   source: 'local' as const,
   skipStoreHooks: true,
@@ -52,25 +42,12 @@ export const MERMAID_SOURCE_ORIGIN = {
 } as const satisfies LocalTransactionOrigin;
 
 export interface MermaidPersistenceCtx {
-  /** Content root — a Mermaid doc resolves to `<contentDir>/<docName>`. */
   contentDir: string;
-  /**
-   * Per-server-instance last-known-good cache: the verbatim bytes last loaded
-   * from or written to disk. Drives the store short-circuit, the concurrent-
-   * writer reconcile, and the file-watcher self-write guard. Its own cache
-   * (distinct doc-name space from the config / managed-artifact LKG caches).
-   */
   lkgCache: Map<string, string>;
 }
 
-/** Store outcome — surfaced for tests + telemetry. */
 export type StoreMermaidOutcome = 'persisted' | 'no-op' | 'reconciled' | 'write-failed';
 
-/**
- * Resolve + containment-guard the on-disk path for a Mermaid docName. Mirrors
- * `safeContentPath` (NUL guard + `docNameToRelativePath` + within-dir check);
- * `docNameToRelativePath` returns a `.mmd` docName verbatim (it retains its ext).
- */
 function mermaidAbsPath(documentName: string, contentDir: string): string {
   if (documentName.includes('\x00')) {
     throw new Error(`Invalid document name: ${documentName}`);
@@ -82,34 +59,17 @@ function mermaidAbsPath(documentName: string, contentDir: string): string {
   return filePath;
 }
 
-/**
- * Replace the whole `Y.Text('source')` with `raw` under `MERMAID_SOURCE_ORIGIN`
- * (`skipStoreHooks: true`, so seeding never re-triggers a disk write). Full
- * delete+insert rather than a diff: external-disk / reconcile imports are rare,
- * and yCollab merges the replacement for connected peers.
- */
 function replaceSource(document: Y.Doc, raw: string, bumpLineage: boolean): void {
   const ytext = document.getText('source');
   document.transact(() => {
     if (ytext.length > 0) ytext.delete(0, ytext.length);
     if (raw.length > 0) ytext.insert(0, raw);
     if (bumpLineage) {
-      // Fresh Yjs lineage per seed-from-disk (mirrors the content + managed-
-      // artifact load paths): no Y-binary survives an unload, so the source is
-      // re-inserted under fresh client IDs. Without an epoch a client's prior-
-      // lineage IndexedDB copy would rejoin and concatenate the two independent
-      // same-text insertions (self-duplication). Reconcile/external imports do
-      // NOT bump — they mutate an already-established lineage.
       document.getMap('lifecycle').set(LINEAGE_EPOCH_KEY, crypto.randomUUID());
     }
   }, MERMAID_SOURCE_ORIGIN);
 }
 
-/**
- * Seed a Mermaid doc's `Y.Text('source')` from disk. Idempotent: re-seeds only
- * when Y.Text is empty. Lazy: a missing file seeds nothing (admitting a doc must
- * never auto-create disk).
- */
 export function loadMermaidDoc(
   document: Y.Doc,
   documentName: string,
@@ -161,9 +121,6 @@ export async function storeMermaidDoc(
       try {
         disk = readFileSync(filePath, 'utf-8');
       } catch (readErr) {
-        // ENOENT (vanished between existsSync and read) is the benign race —
-        // fall through and write. Anything else, log before proceeding so a
-        // failed atomic write below isn't the first sign a read preceded it.
         if ((readErr as NodeJS.ErrnoException).code !== 'ENOENT') {
           log.warn(
             { documentName, err: readErr },
@@ -172,8 +129,6 @@ export async function storeMermaidDoc(
         }
         disk = null;
       }
-      // Concurrent external writer (CLI / another editor) diverged from our LKG:
-      // import their bytes into Y.Text instead of clobbering.
       if (disk !== null && disk !== lkg && disk !== content) {
         replaceSource(document, disk, false);
         ctx.lkgCache.set(documentName, disk);
@@ -189,13 +144,3 @@ export async function storeMermaidDoc(
     return 'write-failed';
   }
 }
-
-// NOTE (follow-up): live external-disk-edit → open-Y.Doc sync is intentionally
-// not wired here. `.mmd` stays a first-class asset in the file-watcher/index, so
-// an external edit while the doc is OPEN is not pushed into `Y.Text` live; it is
-// picked up on the next open (`loadMermaidDoc` re-reads disk) and, if the doc was
-// edited in-app meanwhile, `storeMermaidDoc`'s reconcile makes disk win rather
-// than clobbering the external change. Adding a `mermaid-*` file-watcher event
-// (an `applyExternalMermaidChange` that replaces `Y.Text` under
-// `MERMAID_SOURCE_ORIGIN`) would close that gap — deferred to avoid touching the
-// file-watcher's DiskEvent taxonomy + fileIndex "never widen" contract.

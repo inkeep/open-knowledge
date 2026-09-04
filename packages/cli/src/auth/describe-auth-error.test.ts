@@ -3,7 +3,6 @@ import { describeAuthFailure } from './describe-auth-error.ts';
 
 describe('describeAuthFailure', () => {
   test('a self-signed / untrusted TLS cert is reported as a cert problem, not a bad token', () => {
-    // undici surfaces TLS failures via err.cause.code
     const err = { cause: { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' } };
     const failure = describeAuthFailure(err, 'ghes.acme.test');
     expect(failure.kind).toBe('tls');

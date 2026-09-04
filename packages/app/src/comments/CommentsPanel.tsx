@@ -1,11 +1,3 @@
-/**
- * The "This doc" comment scope: every thread on the open document.
- *
- * The list, header, ticks and send footer are shared with the "This project"
- * scope (see CommentListPanel) — all this side decides is which threads arrive
- * and that they need no filename headings, there being one file.
- */
-
 import { Trans } from '@lingui/react/macro';
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
@@ -22,8 +14,6 @@ function CommentsPanelInner({
 }) {
   const threads = useCommentThreads(docName);
 
-  // Load this doc's threads when the panel opens — it can open before (or
-  // without) the editor's anchor layer having mounted.
   useEffect(() => {
     void refresh(docName).catch(() => undefined);
   }, [docName]);

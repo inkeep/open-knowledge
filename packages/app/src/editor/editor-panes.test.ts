@@ -537,11 +537,6 @@ describe('editor pane workspace', () => {
   });
 
   test('an edited preview tab survives opening the next file; an untouched one is replaced', () => {
-    // The two halves of the sidebar contract. Click a file, click another: the
-    // first is provisional and gives up its slot. Click a file, EDIT it, click
-    // another: the edit promoted it, so it stays open. The edited bytes were
-    // never at risk (they live in the CRDT), but the tab vanishing read as
-    // lost work.
     const opened: EditorWorkspaceState = transitionEditorWorkspace(
       { panes: [pane('pane-a', [], null)], focusedPaneId: 'pane-a' },
       {
@@ -565,10 +560,8 @@ describe('editor pane workspace', () => {
         consumeActiveNewTab: false,
       }).workspace;
 
-    // Untouched: the preview slot is reused, so `first` is gone.
     expect(openSecond(opened).panes[0]?.openTabs).toEqual(['second']);
 
-    // Edited: `promote-preview` is what the user-edit listener dispatches.
     const edited = transitionEditorWorkspace(opened, {
       type: 'promote-preview',
       paneId: 'pane-a',
@@ -579,13 +572,10 @@ describe('editor pane workspace', () => {
     const afterSecond = openSecond(edited).panes[0];
     expect(afterSecond?.openTabs).toEqual(['first', 'second']);
     expect(afterSecond?.activeTabId).toBe('second');
-    // `second` takes the slot `first` vacated, so it stays provisional itself.
     expect(afterSecond?.previewTabId).toBe('second');
   });
 
   test('promoting a tab that is not the pane preview leaves the preview alone', () => {
-    // The listener fires on every user keystroke, so the no-match path is the
-    // common one — it must not clear a different tab's preview state.
     const workspace: EditorWorkspaceState = {
       panes: [
         {

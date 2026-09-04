@@ -13,13 +13,7 @@ import type { AsyncState } from './use-folder-config';
 
 export interface SkillTargetsHandle {
   state: AsyncState<SkillTargetsGetSuccess>;
-  /** True while a folder-verb PUT is in flight. */
   saving: boolean;
-  /** Folder-level verb: LINK a host's skills folder into a root (merge-then-
-   *  swap; conflicts reject with a message) or UNLINK it back into per-skill
-   *  symlinks. Refreshes the snapshot + skills list on success. `preview`
-   *  classifies a LINK and resolves with the plan instead — nothing is written,
-   *  so nothing is refreshed. */
   folderAction: (action: {
     scope: SkillScope;
     root: string;
@@ -29,20 +23,11 @@ export interface SkillTargetsHandle {
   }) => Promise<SkillFolderLinkPreview | undefined>;
 }
 
-/**
- * The project's editable skill-target set (`.ok/skill-targets.json`): which
- * editors OK projects skills into. `GET` reads the effective set (`configured`
- * distinguishes an explicit committed set from one detected from the project's
- * configured editors). `save` writes a new set and triggers a re-projection.
- */
 export function useSkillTargets(): SkillTargetsHandle {
   const [state, setState] = useState<AsyncState<SkillTargetsGetSuccess>>({ status: 'idle' });
   const [refreshKey, setRefreshKey] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  // `refreshKey` is intentionally listed in the dep array even though it's
-  // not read inside the effect body — incrementing it after a successful
-  // `save` is the mechanism that re-fetches the committed set.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-fetch trigger is the only purpose of refreshKey
   useEffect(() => {
     let cancelled = false;
@@ -88,8 +73,6 @@ export function useSkillTargets(): SkillTargetsHandle {
     preview?: boolean;
   }): Promise<SkillFolderLinkPreview | undefined> => {
     setSaving(true);
-    // One client for this endpoint. Two independently-written ones had drifted
-    // into reporting different fields of the same error body.
     const result = await putSkillFolderAction(action);
     if (!result.ok) {
       setSaving(false);

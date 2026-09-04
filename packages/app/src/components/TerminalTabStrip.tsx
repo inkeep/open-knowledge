@@ -39,19 +39,8 @@ import {
 } from './editor-tabs-chrome';
 import { scrollTabStripOnWheel } from './tab-strip-wheel';
 
-/** Attribute marking a terminal tab's sortable node — the surface-neutral chrome
- *  module measures the reorder bounds against this (editor tabs use their own). */
 const TERMINAL_TAB_SORTABLE_SELECTOR = '[data-terminal-tab-sortable]';
 
-/**
- * One terminal tab as a `@dnd-kit/sortable` node. Only the pointer listeners +
- * transform are wired (no `attributes` spread and no `KeyboardSensor`): dnd-kit's
- * `attributes` would overwrite the Radix trigger's tab semantics, while keyboard
- * reorder belongs to the host's dedicated primary-modifier chord rather than dnd-kit's
- * Space-lift model. The pointer listeners attach to the trigger, but without a
- * keyboard sensor they do not claim Radix arrow keys or F2. `disabled`
- * short-circuits sortable while any rename is open.
- */
 function SortableTerminalTab({
   id,
   disabled,
@@ -78,19 +67,12 @@ function SortableTerminalTab({
   return children({ setNodeRef, listeners, style });
 }
 
-/** One session as the tab strip sees it: a stable id, a display label, and an
- *  optional leading icon. The strip is kind-agnostic — the host bakes the kind
- *  glyph (a shell icon for a terminal, an agent avatar + status dot for a thread)
- *  into {@link icon} so the strip never learns about session kinds. */
 export interface TerminalTabDescriptor {
   readonly id: string;
   readonly label: string;
-  /** Leading icon rendered before the label (host-provided, kind-specific). */
   readonly icon?: ReactNode;
 }
 
-/** Which edge of the editor a session panel occupies. The strip uses the edge to
- *  point the collapse chevron; accessible identity comes from the session kind. */
 export type SessionPanelEdge = 'bottom' | 'right';
 type SessionKind = 'terminal' | 'agent';
 
@@ -146,107 +128,26 @@ function BottomTerminalPlacementMenu({
 }
 
 interface TerminalTabStripProps {
-  /** Sessions in tab order. */
   readonly sessions: readonly TerminalTabDescriptor[];
-  /** Kept separate from edge because the terminal can occupy either edge. */
   readonly sessionKind: SessionKind;
-  /** Currently active session id (controlled — the strip keeps no selection state). */
   readonly activeSessionId: string;
-  /** Fires with a session id when the user activates a tab (click or arrow keys). */
   readonly onSelect: (id: string) => void;
-  /**
-   * Fires when a tab is activated by pointer or Enter (not by arrow-key
-   * navigation), so the consumer can move focus into that session's terminal.
-   * Keeping it pointer/Enter-only leaves arrow-key tab navigation intact — the
-   * caret stays in the tablist while arrowing.
-   */
   readonly onTabActivate?: (id: string) => void;
-  /** The "new session" split button, built by the host (it owns the pick model +
-   *  the agent/CLI menus). Rendered hugging the last tab, outside the scroll
-   *  container so the fade mask never clips it. */
   readonly newButton?: ReactNode;
-  /** Host-provided trailing control(s), rendered at the far right immediately
-   *  before the collapse button (e.g. the conversation-history menu). */
   readonly trailingControls?: ReactNode;
-  /** Fires with the session id when the user closes a tab. */
   readonly onClose: (id: string) => void;
-  /**
-   * Commit a manual tab rename: the trimmed label the user typed, or the empty
-   * string to clear a previously-set custom name (revert to the program's OSC
-   * title / positional default). Fires on Enter or blur, never on Escape. When
-   * omitted, the rename affordance (double-click / F2) is inert — the host owns
-   * whether a surface supports renaming.
-   */
   readonly onRename?: (id: string, label: string) => void;
-  /**
-   * Commit a pointer-drag reorder: the new visual order of session ids after a
-   * drop. When omitted, tabs are not draggable.
-   */
   readonly onReorder?: (newOrderIds: readonly string[]) => void;
-  /**
-   * Reports whether a pointer drag is currently lifted, so the host can suppress
-   * the primary-modifier keyboard-reorder chord while a drag is in flight.
-   */
   readonly onDragActiveChange?: (active: boolean) => void;
-  /** Which edge this panel occupies — drives the collapse chevron's direction.
-   *  Absent on the standalone terminal window (nothing to collapse — the window
-   *  is the terminal). */
   readonly edge?: SessionPanelEdge;
-  /** Moves the terminal workspace to another editor edge. Terminal dock only. */
   readonly onPlacementChange?: (placement: SessionPanelEdge) => void;
-  /** Leaves room for the agents-panel reveal tab when it overlays the right edge. */
   readonly reserveRightRevealTabGutter?: boolean;
-  /** Fires when the user collapses (hides) the panel — sessions stay alive.
-   *  The collapse button renders only when provided. */
   readonly onCollapse?: () => void;
-  /**
-   * Tab panels, one per session. Rendered inside this component's `Tabs` root so
-   * Radix can wire each trigger's `aria-controls` to its panel's `aria-labelledby`
-   * — keeping the panels in a sibling root would leave those references dangling.
-   * The consumer supplies `TabsContent` elements (it owns the panel content); the
-   * strip only provides the shared root and the tablist.
-   */
   readonly children?: ReactNode;
   readonly className?: string;
-  /**
-   * Standalone-terminal-window mode (macOS): the tab row doubles as the window
-   * title bar. Tall enough (`h-[62px]`) to vertically center the tabs against the
-   * traffic lights (taller than `EditorHeader`'s `h-12` — see the height note at
-   * the row below), reserves the light footprint
-   * (`--ok-titlebar-reserve-left`) so the first tab clears them, and makes the
-   * empty bar area the `-webkit-app-region: drag` handle (controls opt out via
-   * `no-drag`). The docked strip omits this (it sits at the editor's bottom).
-   */
   readonly draggable?: boolean;
 }
 
-/**
- * Controlled tab widget for one session panel's concurrent sessions. Holds no
- * state of its own: the consumer owns the session list and active id and reacts
- * to the callbacks below (tab select/activate, new-chat launch/pick, close,
- * collapse).
- *
- * Each tab pairs a Radix tab trigger (the roving-focus, arrow-navigable target)
- * with a sibling close button rather than nesting the close inside the trigger —
- * a button nested in a `role="tab"` button is invalid and unreachable. The
- * New-chat split button sits outside the tablist so the list contains only tabs.
- *
- * The New-chat split button ({@link TerminalNewChatButton}) hugs the last tab
- * (immediately right of the scrollable tablist, outside the scroll container so
- * the fade mask never clips it): its primary opens a new tab in the default CLI,
- * its carat switches CLI or opens a bare terminal. A flex-1 spacer then pushes the
- * trailing controls to the far right. Terminal placement is available from a
- * dock button on either edge and from the bottom strip's context menu; the
- * collapse button hides the panel while sessions stay alive. The consumer owns
- * placement and visibility; this strip only fires the callbacks.
- *
- * The standalone terminal window is the second placement (via the session
- * host's window variant): it passes `draggable` (the row doubles as the macOS
- * title bar) and no dock/collapse handlers (the window is the terminal).
- *
- * The tablist is a thin bar; `children` (the consumer's tab panels) render below
- * it under the same `Tabs` root so the trigger↔panel a11y relationship resolves.
- */
 export function TerminalTabStrip({
   sessions,
   sessionKind,
@@ -276,28 +177,19 @@ export function TerminalTabStrip({
       ? () => onPlacementChange('right')
       : undefined;
 
-  // Inline rename is transient presentation state owned here; the host owns the
-  // durable custom label and receives the commit via onRename. Mirrors the
-  // editor file-tab rename contract (double-click / F2 to enter, Enter or blur
-  // to commit, Escape to cancel) without any of its document-rename plumbing.
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
-  // Set the instant Escape fires so the ensuing blur does not commit —
-  // Escape-then-blur must cancel. Reset after each rename ends.
   const cancelRenameRef = useRef(false);
   const renameEnabled = onRename != null;
 
-  // Focus + select-all when a rename opens so the user types over the label.
   useEffect(() => {
     if (renamingId == null) return;
     renameInputRef.current?.focus();
     renameInputRef.current?.select();
   }, [renamingId]);
 
-  // A tab that closes (PTY exit, ⌘W) mid-rename auto-cancels — its descriptor is
-  // gone from `sessions`, so there is nothing left to commit to.
   useEffect(() => {
     if (renamingId != null && !sessions.some((session) => session.id === renamingId)) {
       cancelRenameRef.current = false;
@@ -313,20 +205,13 @@ export function TerminalTabStrip({
     setRenameValue(session.label);
   }
 
-  // Return focus to the tab's trigger after the input unmounts so a keyboard
-  // user who renamed is not stranded on the document body.
   function focusTrigger(id: string) {
-    // Session ids are attribute-safe (`terminal-session-<n>`), but escape
-    // defensively where `CSS.escape` exists (absent in the jsdom test preload).
     const safeId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
     queueMicrotask(() => {
       document.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${safeId}"]`)?.focus();
     });
   }
 
-  // Single exit point for commit AND cancel: Enter/Escape only blur the input,
-  // and the input's blur is the sole caller — so a value is never committed
-  // twice, and Escape's cancel flag suppresses the commit on the same blur.
   function endRename(id: string) {
     if (!cancelRenameRef.current) onRename?.(id, renameValue.trim());
     cancelRenameRef.current = false;
@@ -335,12 +220,6 @@ export function TerminalTabStrip({
     focusTrigger(id);
   }
 
-  // Pointer-drag reorder. PointerSensor distance:8 keeps a plain click (activate
-  // / double-click-to-rename) from starting a drag. No KeyboardSensor — keyboard
-  // reorder is the host's primary-modifier chord, so arrow keys stay with Radix roving focus.
-  // Drag is disabled entirely while a rename is open. The chrome module (shared
-  // with editor tabs) supplies the horizontal clamp, edge-snap collision, and
-  // width stabilization; bounds are measured against the row on drag start.
   const rowRef = useRef<HTMLDivElement>(null);
   const tabListRef = useRef<HTMLDivElement>(null);
   const [tabReorderBounds, setTabReorderBounds] = useState<TabReorderBounds | null>(null);
@@ -352,9 +231,6 @@ export function TerminalTabStrip({
       ? null
       : `${activeSessionId}\u0000${sessions.map((session) => session.id).join('\u0000')}`;
 
-  // Selection can change through click, arrow keys, shortcuts, close-neighbor
-  // fallback, reload restore, or a newly appended session. Keep the selected tab
-  // visible for every path without moving it in the user's chosen tab order.
   useEffect(() => {
     if (activeTabScrollKey === null) return;
     const [activeId] = activeTabScrollKey.split('\u0000', 1);
@@ -394,27 +270,10 @@ export function TerminalTabStrip({
         <div
           ref={rowRef}
           data-terminal-tab-row=""
-          // Window mode: this row is the macOS title bar — h-[62px] to center the
-          // tabs against the traffic lights, traffic-light reserve so the first tab
-          // clears them, and a drag handle on the empty area (controls opt out via
-          // no-drag below). The dock omits all of this.
           data-electron-drag={draggable ? '' : undefined}
           className={cn(
             'flex shrink-0 flex-row items-center gap-1 px-1.5 py-1',
             rightEdge && reserveRightRevealTabGutter && 'pr-9',
-            // h-[62px] centers the tab on the traffic-light row: the lights sit at
-            // trafficLightPosition.y=24 with ~14px height (center ~y31), so an
-            // items-center row must be ~62px tall (center 31) for the tab to line
-            // up with the bubbles rather than floating above them.
-            //
-            // Left padding = the shared traffic-light reserve PLUS an extra 0.75rem:
-            // the reserve (78px) is tuned for the editor's icon content, but a tab
-            // is a background pill, so the bare reserve leaves its left edge touching
-            // the green light. The extra gutter clears the bubbles cleanly.
-            // pr-[22px] matches the traffic lights' own inset from the left edge
-            // (trafficLightPosition.x=22) so the trailing "+" sits the same distance
-            // from the right edge as the bubbles are from the left — a consistent
-            // window gutter.
             draggable &&
               'h-[62px] [-webkit-app-region:drag] pr-[22px] pl-[calc(var(--ok-titlebar-reserve-left,1rem)+0.75rem)]',
           )}
@@ -427,8 +286,6 @@ export function TerminalTabStrip({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
             onDragCancel={handleDragCancel}
-            // Portal dnd-kit's SR live-region/described-by helpers to the body so
-            // they don't land inside the tablist grid (same as editor tabs).
             accessibility={{
               container: typeof document !== 'undefined' ? document.body : undefined,
             }}
@@ -437,11 +294,7 @@ export function TerminalTabStrip({
               items={sessions.map((session) => session.id)}
               strategy={horizontalListSortingStrategy}
             >
-              {/* The scrollable visual run is a grid, while the semantic tablist and
-                auxiliary controls are sibling ownership trees. `display: contents`
-                lets both sets share the same grid cells: close/rename controls stay
-                visually attached to their tab without becoming invalid tablist
-                children. */}
+              {}
               <div
                 onWheel={scrollTabStripOnWheel}
                 className={cn(
@@ -572,18 +425,15 @@ export function TerminalTabStrip({
               </div>
             </SortableContext>
           </DndContext>
-          {/* The host's "new session" split button hugs the last tab (outside the
-            tablist's scroll+fade so it is never clipped). Wrapped so window mode
-            can opt it out of the title-bar drag region. */}
+          {}
           {newButton != null ? (
             <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
               {newButton}
             </div>
           ) : null}
-          {/* Spacer pushes the trailing controls to the far right. */}
+          {}
           <div className="flex-1" />
-          {/* Host-provided trailing controls (e.g. conversation history), just left
-            of the collapse button. */}
+          {}
           {trailingControls != null ? (
             <div className={cn('shrink-0', draggable && '[-webkit-app-region:no-drag]')}>
               {trailingControls}
@@ -625,8 +475,7 @@ export function TerminalTabStrip({
                   className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
                   onClick={onCollapse}
                 >
-                  {/* Chevron points the way the panel slides shut: down for the
-                    bottom dock, right for the right column. */}
+                  {}
                   {rightEdge ? (
                     <ChevronRightIcon aria-hidden="true" />
                   ) : (

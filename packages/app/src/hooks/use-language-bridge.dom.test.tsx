@@ -3,17 +3,6 @@ import { describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { useLanguageBridge } from './use-language-bridge';
 
-/**
- * The renderer→main half of the `'system'` sentinel contract.
- *
- * The value that crosses IPC has to be the user's unresolved intent, because
- * main re-resolves it against the OS preferred-language list on its own side.
- * A resolved tag would look identical on the wire and silently freeze the
- * preference at whatever the OS said the day it was picked — which is exactly
- * the failure `no-resolved-value-theme-source.grit` exists to prevent for
- * theme, and the one thing no unit test on the resolver can see.
- */
-
 function makeBridge(): { bridge: OkDesktopBridge; sent: string[] } {
   const sent: string[] = [];
   const setLanguagePreference = vi.fn(async (preference: string) => {
@@ -60,8 +49,6 @@ describe('useLanguageBridge', () => {
       ({ synced }: { synced: boolean }) => useLanguageBridge(bridge, 'es', synced),
       { initialProps: { synced: false } },
     );
-    // An unsynced layer's `undefined` is indistinguishable from "no preference",
-    // so pushing then would tell main the wrong thing and rebuild the menu twice.
     expect(sent).toEqual([]);
     rerender({ synced: true });
     await waitFor(() => expect(sent).toEqual(['es']));
@@ -72,10 +59,6 @@ describe('useLanguageBridge', () => {
   });
 
   test('no-ops against a bridge that predates the method rather than crashing the shell', () => {
-    // A renderer can outrun its preload — a version-skewed update, or any caller
-    // that stands up its own bridge stub. Reaching for the method anyway throws
-    // inside the effect, so the error boundary replaces the whole app shell over
-    // a menu label that was documented as best-effort.
     const olderBridge = { project: {} } as unknown as OkDesktopBridge;
     expect(() => renderHook(() => useLanguageBridge(olderBridge, 'es', true))).not.toThrow();
   });

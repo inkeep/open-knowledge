@@ -48,9 +48,7 @@ afterAll(async () => {
   for (const s of servers) {
     try {
       await tearDown(s);
-    } catch {
-      // best-effort cleanup
-    }
+    } catch {}
   }
 });
 
@@ -94,17 +92,10 @@ describe('collab WebSocket message size limits', () => {
     servers.push(s);
     const { booted } = s;
 
-    // Frame layout from makeOversizedSyncUpdate('test-doc', N):
-    //   9 bytes  — varstring "test-doc" (1-byte length varint + 8 UTF-8 bytes)
-    //   1 byte   — MessageType.Sync (varuint 0)
-    //   1 byte   — messageYjsUpdate (varuint 2)
-    //   3 bytes  — payload length varuint (3 bytes for N in [16384, 2097151])
-    //   N bytes  — payload
-    // Total = 14 + N → N = 1024 * 1024 - 14 = 1_048_562 for an exactly-1MB frame.
     const MAX = 1024 * 1024;
     const payloadBytes = MAX - 14;
     const frame = makeOversizedSyncUpdate('test-doc', payloadBytes);
-    expect(frame.byteLength).toBe(MAX); // validates the layout constant
+    expect(frame.byteLength).toBe(MAX);
 
     const ws = new WsClient(`ws://127.0.0.1:${booted.port}/collab`);
     await new Promise<void>((resolve, reject) => {
@@ -118,7 +109,6 @@ describe('collab WebSocket message size limits', () => {
         closedEarly = true;
       });
       ws.send(frame);
-      // Give the server enough time to process and any close frame to propagate.
       await wait(300);
 
       expect(closedEarly).toBe(false);
@@ -159,12 +149,6 @@ describe('collab WebSocket message size limits', () => {
       ws.send(makeOversizedSyncUpdate('test-doc', 2 * 1024 * 1024));
       const close = await closePromise;
 
-      // Two rejection paths reach the peer with different close codes: the
-      // in-handler byte guard closes cleanly with 1009, while ws's own
-      // maxPayload rejection surfaces as a WS_ERR_UNSUPPORTED_MESSAGE_LENGTH
-      // error the server handles by terminating the socket, which the peer
-      // observes as an abnormal 1006. The metric assertion below is the
-      // runtime-independent proof the frame was rejected before Yjs processing.
       expect([1006, 1009]).toContain(close.code);
       expect(getMetrics().collabMessageTooLargeCount).toBe(1);
 
@@ -182,8 +166,6 @@ describe('collab WebSocket message size limits', () => {
       expect(afterRead.ok).toBe(true);
       expect((await afterRead.json()).content).toBe('# Test doc\n');
 
-      // Give the event loop one tick after the close so a rejected oversized frame
-      // cannot continue processing asynchronously after the socket is gone.
       await wait(0);
     } finally {
       if (ws.readyState === WsClient.OPEN || ws.readyState === WsClient.CONNECTING) {

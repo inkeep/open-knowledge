@@ -1,22 +1,3 @@
-/**
- * Preview-tab promotion, in a real browser.
- *
- * A preview tab (single sidebar click, italic label) is provisional — the next
- * click reuses its slot. Committing to the document makes it permanent. These
- * flows need a real browser for reasons the jsdom tests cannot reach:
- *
- *   - A real double-click is `click → click → dblclick`, and click 2 lands on
- *     an already-selected row, which re-runs the sidebar's open path. If that
- *     re-open settled AFTER the promotion, the tab would silently go
- *     provisional again. The dom test fires a synthetic `doubleClick` with no
- *     preceding clicks, so only this layer proves the ordering.
- *   - Promotion-on-edit runs off real ProseMirror/CodeMirror transactions
- *     carrying real y-prosemirror sync metadata, which is what the origin
- *     guards actually read.
- *   - An agent write arrives over the wire as a remote CRDT update, the exact
- *     shape that must NOT promote.
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Locator, Page } from '@playwright/test';
 import {
@@ -32,14 +13,12 @@ function sidebarTreeItem(page: Page, accessibleLabel: string): Locator {
     .getByRole('treeitem', { name: accessibleLabel, exact: true });
 }
 
-/** The tab strip's primary button for a tab, by its filename aria-label. */
 function editorTab(page: Page, label: string): Locator {
   return page
     .locator('[data-editor-pane-focused] [data-editor-pane-tabs] [data-editor-tab-sortable]')
     .locator(`button[aria-label="${label}"]`);
 }
 
-/** Open tab ids from the persisted session — the durable record of what survived. */
 async function openTabIds(page: Page): Promise<string[] | null> {
   return page.evaluate(() => {
     const raw = window.localStorage.getItem(`ok-editor-tabs-v1:${window.location.origin}`);
@@ -54,11 +33,6 @@ async function expectOpenTabs(page: Page, expected: string[]) {
   await expect.poll(() => openTabIds(page)).toEqual(expected);
 }
 
-/**
- * Preview state is carried by the `italic` class on the tab's title button —
- * the same signal the user reads. No data attribute mirrors it, so this
- * doubles as the assertion that the visual cue clears.
- */
 async function expectPreviewTab(tab: Locator, isPreview: boolean) {
   if (isPreview) {
     await expect(tab).toHaveClass(/italic/);
@@ -74,11 +48,6 @@ interface Fixture {
   second: string;
 }
 
-/**
- * Two fresh docs, sidebar visible, nothing open. Unique per test so parallel
- * workers never share a docName (shared names corrupt CRDT state across
- * workers).
- */
 async function seedTwoDocs(api: ApiHelpers, page: Page): Promise<Fixture> {
   const id = randomUUID().slice(0, 8);
   const first = `promo-a-${id}`;
@@ -94,8 +63,6 @@ async function seedTwoDocs(api: ApiHelpers, page: Page): Promise<Fixture> {
 
 test.describe('preview-tab promotion', () => {
   test('an untouched preview tab is replaced by the next sidebar click', async ({ page, api }) => {
-    // The control. Preview replacement is correct behavior, and the promotion
-    // work must not turn every click permanent.
     const { first, second } = await seedTwoDocs(api, page);
 
     await sidebarTreeItem(page, `${first}.md`).click();
@@ -107,21 +74,15 @@ test.describe('preview-tab promotion', () => {
   });
 
   test('editing keeps the file open when the next one is clicked', async ({ page, api }) => {
-    // The reported bug: the edited file vanished from the tab strip as soon as
-    // the next one was opened.
     const { first, second } = await seedTwoDocs(api, page);
 
     await sidebarTreeItem(page, `${first}.md`).click();
-    // Wait on the seeded text rather than provider sync: the typing needs the
-    // document's content actually rendered into ProseMirror, and a keystroke
-    // that lands before then is applied to an empty doc and then overwritten.
     const body = page.locator('.ProseMirror:not(.composer-prosemirror)');
     await expect(body).toContainText('Seed body.');
     await body.click();
     await page.keyboard.type('EDITED');
     await expect(body).toContainText('EDITED');
 
-    // The italic cue clears the moment the edit lands, before any navigation.
     await expectPreviewTab(editorTab(page, `${first}.md`), false);
 
     await sidebarTreeItem(page, `${second}.md`).click();
@@ -132,8 +93,6 @@ test.describe('preview-tab promotion', () => {
     page,
     api,
   }) => {
-    // The ordering risk: click 2 of the pair re-runs the sidebar open path for
-    // an already-selected row. Promotion must survive that re-open.
     const { first, second } = await seedTwoDocs(api, page);
 
     await sidebarTreeItem(page, `${first}.md`).dblclick();
@@ -145,7 +104,6 @@ test.describe('preview-tab promotion', () => {
   });
 
   test('switching between source and visual mode promotes', async ({ page, api }) => {
-    // A mode flip changes no bytes, so no editor origin guard can see it.
     const { first, second } = await seedTwoDocs(api, page);
 
     await sidebarTreeItem(page, `${first}.md`).click();
@@ -160,8 +118,6 @@ test.describe('preview-tab promotion', () => {
   });
 
   test('an agent write does NOT promote a tab you are only reading', async ({ page, api }) => {
-    // Arrives as a remote CRDT update — the shape the origin guards exist to
-    // reject. A tab must not become permanent because something else wrote.
     const { first, second } = await seedTwoDocs(api, page);
 
     await sidebarTreeItem(page, `${first}.md`).click();
@@ -183,29 +139,17 @@ test.describe('preview-tab promotion', () => {
     page,
     api,
   }) => {
-    // The editor converts an unregistered component to a raw-source view by
-    // itself, on open, with no user involved. That dispatch changes the
-    // document and carries no CRDT meta, so it is indistinguishable from a
-    // keystroke unless the swap is stamped. Needs the browser: the conversion
-    // runs off the real NodeView effect and its rAF, which no jsdom tier
-    // reaches.
     const { first, second } = await seedTwoDocs(api, page);
     await api.replaceDoc(first, '<Steps>\n\n<Step>\n\nContent one.\n\n</Step>\n\n</Steps>\n');
 
     await sidebarTreeItem(page, `${first}.md`).click();
     await waitForProvider(page);
-    // Wait on the raw-source view the conversion PRODUCES, not on the body
-    // text: the pre-conversion placeholder renders that text too, so it would
-    // satisfy the assertion even if the auto-convert silently stopped firing
-    // and there were no autonomous transaction left to misclassify.
     await expect(page.locator('.raw-mdx-fallback-wrapper').first()).toBeAttached({
       timeout: 10_000,
     });
 
     await expectPreviewTab(editorTab(page, `${first}.md`), true);
 
-    // The provisional slot is still reusable, which is what the italic cue
-    // promises.
     await sidebarTreeItem(page, `${second}.md`).click();
     await expectOpenTabs(page, [second]);
   });

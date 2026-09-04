@@ -20,6 +20,8 @@ Timeline entries include:
 
 Project-wide checkpoints saved by agents via the [`checkpoint` MCP tool](/docs/reference/mcp#tools) do not appear on the timeline; agents find and restore them with the `history` and `restore_version` tools.
 
+The timeline is not the editor's undo history. Each timeline entry is a snapshot of the whole document, while undo steps back through your own recent edits in the pane where you are working. Agent edits, human edits, and file-system changes are batched into an entry once activity settles. Upstream syncs get their own entry when the sync lands. For when source-mode undo starts fresh, see [Editor → Undo in source mode](/docs/features/editor#undo-in-source-mode).
+
 The timeline is per branch: it shows the branch's own edits, plus history from before the branch diverged from `main`. History is stored in a shadow git repo inside your project, so entries and attribution survive app restarts and agent sessions — see [Attribution and collaboration](/docs/reference/core-concepts#attribution-and-collaboration).
 
 ## Review changes

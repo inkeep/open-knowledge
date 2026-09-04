@@ -1,16 +1,5 @@
-/**
- * Reconciliation metrics — in-memory counters for observability.
- *
- * Exposed via GET /api/metrics/reconciliation.
- */
-
 import type { BridgeToleranceSignal, CC1Channel } from '@inkeep/open-knowledge-core';
 
-/**
- * Why an Observer A drain could not be served by the map-driven splice.
- * Closed union — keys a bounded-cardinality counter map, so call sites are
- * compile-time checked the same way `BridgeToleranceSignal` keys are.
- */
 export type MapDrivenSpliceFallbackReason =
   | 'text-mismatch'
   | 'synthetic-doc'
@@ -22,250 +11,50 @@ export interface ReconciliationMetrics {
   conflictCount: number;
   batchCount: number;
   upstreamImportCount: number;
-  /** Stores that wrote a doc the removal cache still records as removed. */
   persistenceStoreRemovedDocCount: number;
   rescueBufferCount: number;
   branchSwitchCount: number;
   parkCount: number;
   gitAutoSaveFailureCount: number;
-  /** Count of per-writer fan-out commitWipFromTree failures. */
   gitWriterCommitFailureCount: number;
   cc1BroadcastCount: number;
   cc1BroadcastDropCount: number;
   cc1SubscriberCount: number;
-  /** Per-channel watermark of the most recent broadcast `seq`. Bounded
-   *  cardinality: keys are constrained to the `CC1Channel` union (9 entries
-   *  total — five derived-view channels + four broadcast-shape channels).
-   *  Tightening from `string` to `Partial<Record<CC1Channel, number>>`
-   *  enforces typo-resistance at compile time so no caller can silently
-   *  pollute the map with arbitrary labels and inflate the operator
-   *  metric surface. Mirrors the cardinality discipline applied to
-   *  `bridgeToleranceApplied`. */
   cc1LastSeq: Partial<Record<CC1Channel, number>>;
   serverObserverFiresA: number;
   serverObserverFiresB: number;
   serverObserverErrorsA: number;
   serverObserverErrorsB: number;
-  /** Count of successful atomic disk writes from persistence.onStoreDocument.
-   *  Regression gate: if OBSERVER_SYNC_ORIGIN drops skipStoreHooks,
-   *  onStoreDocument fires on every observer write and produces amplified
-   *  disk I/O. Under skipStoreHooks: true, a single agent-write produces
-   *  exactly one persistence disk write. */
   persistenceDiskWrites: number;
-  /** Bridge-correctness — count of Observer A Path B
-   *  content-preservation post-condition violations. Calibration signal
-   *  for the parallel single-CRDT-collapse exploration. */
   bridgeMergeContentLoss: number;
-  /** Path B growth verdicts (`which: 'growth'`) — content GAIN events, counted apart from loss so the two failure classes chart independently. */
   bridgeMergeContentGrowth: number;
-  /** Bridge-correctness — count of successful silent rescue
-   *  checkpoints written via saveInMemoryCheckpoint. Bounds the rate a user
-   *  might see in TimelinePanel; if high, coalescing becomes worth adding. */
   bridgeMergeCheckpointCreated: number;
-  /** Bridge-correctness — count of Observer A producer-guard fires: the bytes
-   *  about to persist failed structural legality (a fresh parse loses authored
-   *  content). Separate rate accounting from `bridgeMergeContentLoss` — the
-   *  guard is an independent detection site at the serialize boundary, not a
-   *  Path B merge-drop. The counter increments only on emit; the companion
-   *  `producerGuardFiresSuppressed` counts fires the per-doc log throttle
-   *  dropped, so `actual_rate = fires + suppressed`. */
   producerGuardFires: number;
-  /** Companion to `producerGuardFires` — count of producer-guard fires whose
-   *  structured log the per-doc cooldown suppressed. The recovery checkpoint is
-   *  written regardless of this throttle (it gates only the log), so a
-   *  suppressed fire still leaves a restore anchor. */
   producerGuardFiresSuppressed: number;
-  /** Bridge-correctness — count of producer-guard recovery checkpoints written
-   *  via saveInMemoryCheckpoint on the `producer-guard-loss` path. Kept
-   *  separate from `bridgeMergeCheckpointCreated` so an operator dashboarding on
-   *  checkpoint rate can distinguish producer-guard recoveries (serialize-
-   *  boundary content-loss) from Path-B merge-drop recoveries; the rest of the
-   *  feature is likewise separately observable (`producerGuardFires` /
-   *  `producerGuardFiresSuppressed`). */
   producerGuardCheckpointCreated: number;
-  /** Y.Text-is-truth contract — count of bridge invariant violation events
-   *  emitted by the watchdog (Observer B post-Phase-1, the persistence
-   *  pre-write sanity check, and any test-harness watcher).
-   *  Steady-state target: ~0 in production. A non-zero value means
-   *  ytext bytes diverged from `serialize(fragment)` outside the tolerated
-   *  equivalence classes enumerated in `normalizeBridge`. Surface via
-   *  `bridge-invariant-violation` log events for triage. */
   bridgeInvariantViolations: number;
-  /** Y.Text-is-truth contract — count of suppressed
-   *  bridge-invariant-violation events that the rate-limiter dropped to
-   *  prevent log flooding when a single (site, doc) tuple fires repeatedly
-   *  within the debounce window. (Tolerance-class is NOT a rate-limit
-   *  dimension on the violation path — by definition a violation is OUTSIDE
-   *  any tolerated class. The bridge-tolerance-applied event has its own
-   *  rate-limiter keyed by (site, class).) Reported counts are upper bounds
-   *  — actual violation rate = `bridgeInvariantViolations` +
-   *  `bridgeInvariantViolationsSuppressed`. */
   bridgeInvariantViolationsSuppressed: number;
-  /** Quiescence gate — count of persistence cycles that the quiescence gate
-   *  skipped because `isDocQuiescent` returned false (Hocuspocus's debounce
-   *  fired mid-burst before `afterAllTransactions` had landed since the last
-   *  user-origin transaction). The next debounce cycle retries; a healthy
-   *  steady-state has occasional skips during heavy collaborative bursts but
-   *  they always converge to a flush within `QUIESCENCE_MAX_DEFER` cycles.
-   *  Persistent non-zero growth alongside `persistenceForceFlushDuringBurst`
-   *  indicates the user has been typing without pause for ≥16 s — surfacing
-   *  the force-flush backstop. */
   persistenceSkipNonQuiescent: number;
-  /** Quiescence-gate backstop — count of force-flushes that
-   *  proceeded despite the document not being quiescent because the
-   *  per-doc deferral counter exceeded `QUIESCENCE_MAX_DEFER` (default 8
-   *  ≈ 16 s of sustained typing under default 2 s debounce). Bounds
-   *  staleness so sustained collaborative bursts can't leave material
-   *  work undurable. The matching fragment-reconciliation queues
-   *  unconditionally on the next settlement after the force-flush. */
   persistenceForceFlushDuringBurst: number;
-  /** Staleness watchdog — count of loaded docs first observed with
-   *  unpersisted in-memory edits older than the grace window and no pending
-   *  store (memory diverged from the persistence reconciled base). Counted
-   *  once per distinct stale content per doc, whether or not the watchdog
-   *  then forced a store or stood down for disk safety. A healthy server
-   *  stays at 0; any growth means a store cycle was lost after a session's
-   *  last edit. */
   persistenceStalenessDetected: number;
-  /** Staleness watchdog — count of forced store dispatch attempts through
-   *  the normal persistence spine (retries after a failed attempt included,
-   *  so this can exceed `persistenceStalenessDetected`, which counts once
-   *  per distinct stale content). Stand-down detections don't dispatch and
-   *  never increment this. A healthy server stays at 0; growth means lost
-   *  store cycles are being rescued — investigate the underlying store
-   *  failures even though durability recovered. */
   persistenceStalenessForcedStores: number;
-  /** Staleness watchdog — count of stand-down events: a stale doc was
-   *  detected but NOT re-flushed because disk holds state the reconciled
-   *  base does not account for (unreconciled external edit or delete,
-   *  never-loaded file) or the disk read failed. Verified-external-state
-   *  stand-downs AND structural read refusals (symlink-escape, symlink
-   *  cycle, oversized file — additionally logged at error) count once per
-   *  distinct stale content, then suppress until the doc's content
-   *  changes; only transient disk-read failures recount on each retry
-   *  (one per grace window). Any sustained non-zero rate is alertable —
-   *  unflushed edits are pinned in memory and lost on restart. */
   persistenceStalenessStoodDown: number;
-  /** Collab WebSocket upgrade sockets emitting EPIPE from `ws.send()` AFTER
-   *  the call returned control — kernel-level TCP race against a peer that
-   *  has sent FIN. Filtered at the socket-boundary listener per precedent
-   *  §23 (known-safe at half-close). Counted for observability: a spike
-   *  indicates upstream network load or peer-disconnect patterns worth
-   *  investigating, even though individual events are expected. */
   collabSocketEpipeCount: number;
-  /** Collab WebSocket upgrade sockets emitting ECONNRESET — peer-side
-   *  unclean close (RST). Same precedent §23 filter boundary; same
-   *  observability rationale as `collabSocketEpipeCount`. */
   collabSocketEconnresetCount: number;
-  /** Collab WebSocket messages rejected before Hocuspocus/Yjs processing
-   *  because their frame exceeded the server-side byte cap. A non-zero
-   *  value means a peer attempted to send an update large enough to risk
-   *  monopolizing the single Node event loop during Yjs integration. */
   collabMessageTooLargeCount: number;
-  /** Count of legacy WIP refs deleted by the allowlist-based sweep in
-   *  initShadowRepo on first run post-upgrade. */
   shadowMigrationLegacyRefsDeleted: number;
-  /** Count of captureEffect failures. Prod swallows; dev/test throws. */
   effectDiffCaptureFailures: number;
-  /** Count of awareness-mutation failures in `AgentPresenceBroadcaster`
-   *  (setPresence / clearPresence / touchMode catching a throw from
-   *  `awareness.setLocalState`). Each failure logs at ERROR but the call
-   *  sites (HTTP handlers, keepalive close) swallow the return and move
-   *  on, so the counter is the operator-visible signal that presence is
-   *  silently dropping. A non-zero value means the badge state on clients
-   *  may disagree with what the server thinks it published — investigate
-   *  the correlated `[agent-presence] awareness mutation failed` log line. */
   agentPresenceMutationErrors: number;
-  /** Successful agent-write API calls that reached recordContributor —
-   *  denominator for the summary-adoption metric. Incremented by the five
-   *  agent-write handlers only AFTER a successful recordContributor;
-   *  UI-driven rollback/rename without agentId does NOT increment. */
   agentWriteCalls: number;
-  /** Agent sessions evicted (LRU-idle) under capacity pressure so a new
-   *  (docName, agentId) session could be admitted under
-   *  `MAX_AGENT_SESSIONS`. Steady growth alongside 503s means the live
-   *  working set genuinely exceeds the cap; growth WITHOUT 503s means
-   *  eviction is absorbing bursts as designed. */
   agentSessionEvictions: number;
-  /** Agent-write calls that carried a non-empty summary through
-   *  normalizeSummary — numerator for the summary-adoption metric.
-   *  Adoption rate = summariesProvided / agentWriteCalls. */
   summariesProvided: number;
-  /** Agent-write calls whose input summary exceeded the API cap and was
-   *  truncated to 79 visible chars + `…`. Steady-state target <10 %. */
   summariesTruncated: number;
-  /** Y.Text-is-truth contract — count of `agent-patch`
-   *  invocations whose `find` target failed to match the document's source
-   *  bytes (returns 404 not-found OR 409 stale-target). Useful for
-   *  detecting downstream tools that compute offsets against canonical
-   *  bytes (e.g. `serialize(fragment)`) rather than user-typed source
-   *  bytes (`ytext.toString()`). Steady-state non-zero is acceptable
-   *  (agents legitimately try-and-retry); spikes correlate with tool
-   *  upgrades that bypass the user-bytes search surface. */
   agentPatchFindMismatches: number;
-  /** Y.Text-is-truth contract — count of bridge-tolerance-applied
-   *  events emitted per tolerance class. Each entry tracks how often the
-   *  comparator passed via that tolerance class while bytes were not
-   *  byte-equal pre-normalization. Steady-state non-zero is acceptable
-   *  (architectural-floor cases like CRLF/leading-newline are normal); growth
-   *  highlights which classes are most worth closing via fidelity attrs.
-   *
-   *  Keys are bounded to `BridgeToleranceSignal` (the enumerated labels in
-   *  `BRIDGE_TOLERANCE_CLASSES` plus the check-layer parse-equivalence
-   *  fallback). Lazy keys: a class only appears once the
-   *  first event for it has fired. Tightening from `string` enforces typo-
-   *  resistance at compile time so no caller can silently pollute the map
-   *  with arbitrary labels and drop those counters from operator visibility. */
   bridgeToleranceApplied: Partial<Record<BridgeToleranceSignal, number>>;
-  /** Y.Text-is-truth contract — count of Observer A Path B
-   *  fires (mergeThreeWay slow path triggered by ytext divergence from the
-   *  baseline) that escaped the per-doc rate-limiter and emitted a
-   *  structured `observer-a-path-b-fired` event. Steady-state non-zero is
-   *  normal under collaborative editing; spikes correlate with reconcile
-   *  contention or undo collisions. The counter increments only on emit,
-   *  matching the bridge-invariant-violation pattern. The companion
-   *  `observerAPathBFiresSuppressed` counts events the rate-limiter
-   *  dropped within the per-doc debounce window. Each Path B fire bumps
-   *  exactly one of the two, so `actual_rate = fires + suppressed`. */
   observerAPathBFires: number;
-  /** Companion to `observerAPathBFires` — count of Path B fires the
-   *  rate-limiter suppressed within the per-doc debounce window. The
-   *  unsuppressed `console.warn` would flood the log under multi-peer
-   *  concurrent editing. The counter increments only on suppress,
-   *  matching the bridge-invariant-violation pattern; the emit counter
-   *  is bumped only on the corresponding emit. Operators see the true
-   *  Path-B rate via `actual_rate = observerAPathBFires +
-   *  observerAPathBFiresSuppressed`. */
   observerAPathBFiresSuppressed: number;
-  /** Count of Observer A drains where the map-driven block-aligned splice
-   *  computed and applied — the byte-preserving default path that keeps
-   *  untouched blocks byte-identical in Y.Text. The companion
-   *  `mapDrivenSpliceFallback` records every drain the splice could NOT
-   *  serve, keyed by reason; `splice_rate = applied / (applied + Σfallback)`
-   *  is the health signal for the default fidelity path. */
   mapDrivenSpliceApplied: number;
-  /** Companion to `mapDrivenSpliceApplied` — count of Observer A drains
-   *  that fell back off the map-driven splice, keyed by reason:
-   *  `text-mismatch` (Y.Text diverged from baseline → Path B; expected
-   *  under concurrent edits), `synthetic-doc` (system/config docs never
-   *  use the splice; expected), `parse-error` (parse/serialize threw
-   *  inside the splice computation — a sustained non-zero here means a
-   *  serializer/parser regression is silently routing every edit through
-   *  the lossier incremental-diff fallback), and `missing-position` (a
-   *  top-level mdast block lacked byte offsets). Keys are a closed
-   *  4-value union, mirroring `bridgeToleranceApplied`'s compile-time
-   *  bounded-cardinality guard. */
   mapDrivenSpliceFallback: Partial<Record<MapDrivenSpliceFallbackReason, number>>;
-  /** Y.Text-is-truth contract — count of Observer A in-sync canonical-base
-   *  residual merges: the byte-preserving slow path on docs whose settled
-   *  bytes sit beyond `normalizeBridge` tolerance of the canonical witness.
-   *  NOT a Path B fire — `observerAPathBFires`/`...Suppressed` stay scoped
-   *  to real divergence. Increments on every run with no rate-limiter
-   *  (there is no per-fire console event to flood), so growth on every
-   *  WYSIWYG-edit drain of a beyond-tolerance doc is expected — this is the
-   *  "merge machinery is hot on this doc class" volume signal operators
-   *  need when triaging editor latency, which the divergence-scoped Path B
-   *  counters deliberately exclude. */
   observerAResidualMergeRuns: number;
   /** Count of Observer A duplication-gate recoveries — a substantive body
    *  line materialized more times in the fragment than clean Y.Text justified,
@@ -276,100 +65,24 @@ export interface ReconciliationMetrics {
    *  confirmed recovery; the rate-limited `bridge-split-brain-rederive`
    *  console event under site `duplication-guard` carries the per-doc signal. */
   observerADuplicationRederives: number;
-  /** Successful duplication-recovery checkpoint writes — the forensic anchor for a destructive re-derive; divergence from `observerADuplicationRederives` means anchors are being lost. */
   observerADuplicationCheckpointCreated: number;
-  /** Count of Observer A APPLY-arm content-loss trips — the byte-preserving
-   *  apply arms (map-driven splice / incremental diff) dropped content the
-   *  fragment's intended markdown held. An INDEPENDENT detection site from the
-   *  Path-B merge post-condition, so it keeps its own event counter rather than
-   *  inflating `bridgeMergeContentLoss` — an operator reading the
-   *  anchors-per-loss ratio must be able to tell an apply drop from a merge
-   *  drop. Increments on every trip, including one with no shadow wired, so a
-   *  run whose checkpoint writes all fail does not read as healthy. */
   observerAApplyLoss: number;
-  /** Successful `observer-a-apply-loss` checkpoint writes — the paired
-   *  `...CheckpointCreated` sibling. `observerAApplyLoss - observerAApplyLossCheckpointCreated`
-   *  is exactly the number of trips whose restore anchor never landed. */
   observerAApplyLossCheckpointCreated: number;
-  /** Count of derive-timing defer-guard force-resolves — the guard reached its
-   *  drain-count bound and resolved the re-derive loudly, checkpointing the
-   *  pre-resolve fragment. A nonzero value in CI or a dogfood bundle is a
-   *  surfaced regression: a doc was stuck in sustained defer-exhaustion. */
   deriveTimingDeferForceResolved: number;
-  /** Count of persistence pre-write checks that HELD the fragment instead of
-   *  rebuilding it, because the whole divergence was content the derive-timing
-   *  guard is protecting. A tolerated divergence, not a loss: Y.Text still went
-   *  to disk. A sustained nonzero rate on one doc is the quiescent-hold signal
-   *  — the keystroke is alive in the fragment but not yet durable. */
   persistenceDeferHold: number;
-  /** Count of persistence pre-write checks that found a divergence OUTSIDE the
-   *  guard's protected set and rebuilt the fragment. Increments on every trip,
-   *  including deduped ones and ones with no shadow wired, so a run whose
-   *  anchors never landed does not read as healthy. */
   persistenceReconcileLoss: number;
-  /** Successful `persistence-reconcile-loss` checkpoint writes. With the
-   *  deduped sibling this closes the identity
-   *  `persistenceReconcileLoss = created + deduped + (anchors that never landed)`. */
   persistenceReconcileLossCheckpointCreated: number;
-  /** Trips whose pre-rebuild fragment state was byte-identical to the anchor
-   *  already on the timeline for that doc, so no new checkpoint was minted. A
-   *  doc resting on a construct that diverges on every write-back lives here;
-   *  without the dedup it would evict its own useful anchors. */
   persistenceReconcileLossDeduped: number;
-  /** Count of structural-duplication tripwire fires that BLOCKED the store and
-   *  reset the live document from disk. Increments on every reset, including
-   *  ones with no shadow wired, so a run whose anchors never landed does not
-   *  read as healthy. A nonzero value in a dogfood bundle means a user's live
-   *  content was replaced by the disk copy. */
   persistenceDuplicationReset: number;
-  /** Successful `persistence-duplication-reset` checkpoint writes. With the
-   *  deduped sibling this closes the identity
-   *  `persistenceDuplicationReset = created + deduped + (anchors that never landed)`. */
   persistenceDuplicationResetCheckpointCreated: number;
-  /** Resets whose pre-reset document was byte-identical to the anchor already on
-   *  the timeline for that doc, so no new checkpoint was minted. A client stuck
-   *  re-materializing the same duplicate lives here; without the dedup it would
-   *  evict its own useful anchors. */
   persistenceDuplicationResetDeduped: number;
-  /** Count of duplication verdicts the tripwire declined to act on because the
-   *  document already had a settled write behind it, so the doubling is an
-   *  incremental edit (a paste) rather than a load-time materialization. The
-   *  false-positive class the guard used to destroy; a healthy signal, not a
-   *  loss. */
   persistenceDuplicationSpared: number;
-  /** Count of L3 store-time divergence realigns — disk moved away from the
-   *  reconciled base between L1's check and the store, so disk won and the live
-   *  document was replaced. Increments on every realign, including ones with no
-   *  shadow wired, so a run whose anchors never landed does not read as healthy.
-   *  A nonzero value in a dogfood bundle means a second writer's edit displaced
-   *  live CRDT state (the agent's write, and any human edit merged alongside). */
   persistenceDivergenceRealign: number;
-  /** Successful `persistence-divergence-realign` checkpoint writes. With the
-   *  deduped sibling this closes the identity
-   *  `persistenceDivergenceRealign = created + deduped + (anchors that never landed)`. */
   persistenceDivergenceRealignCheckpointCreated: number;
-  /** Realigns whose pre-realign document was byte-identical to the anchor already
-   *  on the timeline for that doc, so no new checkpoint was minted. An agent
-   *  retry-looping against a file a second writer keeps rewriting lives here;
-   *  without the dedup it would evict its own useful anchors. */
   persistenceDivergenceRealignDeduped: number;
-  /** Count of managed-artifact (skill/template) stores that reconciled against a
-   *  concurrent writer instead of clobbering — the live artifact doc was replaced
-   *  with the disk bytes. Increments on every reconcile, including unversioned
-   *  artifacts (global skills) where no anchor can exist. */
   managedArtifactReconcile: number;
-  /** Successful `managed-artifact-reconcile` checkpoint writes. Always ≤
-   *  `managedArtifactReconcile`: global skills live outside any project shadow
-   *  repo, so their reconciles are counted but structurally unanchorable. */
   managedArtifactReconcileCheckpointCreated: number;
-  /** Reconciles whose pre-reconcile artifact was byte-identical to the anchor
-   *  already on the timeline for that doc, so no new checkpoint was minted. */
   managedArtifactReconcileDeduped: number;
-  /** Count of Y.Text→XmlFragment re-derive-loop backstop trips — a run of
-   *  re-derive drains never reached a raw-byte fixed point and the B-direction
-   *  re-derive was frozen (checkpoint + ring event). A nonzero value in CI or a
-   *  dogfood bundle is a surfaced regression: a doc was stuck in a runaway
-   *  re-derive loop. */
   reDeriveBackstopTripped: number;
   /** Y.Text-is-truth contract (precedent #38) — count of Observer A
    *  settlement checks that detected a drain settling split-brain (Y.Text
@@ -385,138 +98,20 @@ export interface ReconciliationMetrics {
    *  recurs per drain). Counter increments only on emit; the companion
    *  suppressed counter preserves `actual_rate = fires + suppressed`. */
   bridgeSplitBrainRederives: number;
-  /** Companion to `bridgeSplitBrainRederives` — count of split-brain
-   *  re-derive detections the rate-limiter suppressed within the
-   *  per-(site, doc) debounce window. On an irreducibly-divergent doc the
-   *  check fires on every Observer A drain (every WYSIWYG keystroke), so
-   *  the unsuppressed `console.warn` would drown the very drift signal
-   *  operators need. Incremented only on suppress, mirroring
-   *  `observerAPathBFiresSuppressed`. */
   bridgeSplitBrainRederivesSuppressed: number;
-  /** Y.Text-is-truth contract — count of best-effort
-   *  fragment-reconciliation attempts (`reconcileFragmentNow`) that
-   *  threw inside persistence's pre-write sanity-check recovery path. The
-   *  reconciliation is the second half of the contract's hazard
-   *  mitigation: when the watchdog fires `bridge-invariant-violation` at
-   *  persistence-time, the disk write proceeds with ytext bytes and a
-   *  fragment-reconciliation queues to re-derive fragment from `parse(ytext)`
-   *  on the next settlement. A persistent non-zero value means the repair
-   *  itself is failing — operator-visible signal that bridge divergence is
-   *  stuck rather than self-healing. Distinct from
-   *  `bridgeInvariantViolations` (which counts the detection signal). */
   persistenceReconciliationFailures: number;
-  /** Count of non-contract errors swallowed by the file-watcher's
-   *  external-change handler (`createExternalChangeHandler`). The handler
-   *  intentionally re-throws `BridgeInvariantViolationError` and
-   *  `BridgeMergeContentLossError` (those signal contract violations and
-   *  trip the dev/test loud-failure gate), but logs and swallows everything
-   *  else so a single doc's failure can't kill the watcher. The counter is
-   *  the operator-visible signal: a parse pipeline failure leaves the Y.Doc
-   *  unadvanced for that doc, and the next persistence flush would
-   *  overwrite the external edit. Steady-state target ~0; non-zero growth
-   *  indicates `parseWithFallback`'s paragraph fallback isn't catching some
-   *  malformed-bytes class. */
   externalChangeHandlerErrors: number;
-  /** Disk-reconcile guard outcomes inside the server's own flush-commit
-   *  window. `reconcileOwnFlushSkips` counts agent writes where disk matched
-   *  the in-flight flush snapshot (guard skipped; the flush continuation owns
-   *  the base advance). `reconcileInFlightFallthroughs` counts the rare case
-   *  where a flush was in flight but disk held OTHER bytes — a genuinely
-   *  foreign edit landing inside the window, routed to the three-way merge.
-   *  Both bounded; growth in fallthroughs under zero external editors would
-   *  indicate the own-write discrimination is mis-matching. */
   reconcileOwnFlushSkips: number;
   reconcileInFlightFallthroughs: number;
-  /** Y.Text-is-truth contract — count of persistence pre-write
-   *  sanity-check cycles where `mdManager.serialize` itself threw, blocking
-   *  the bridge invariant assertion from running. Distinct from
-   *  `bridgeInvariantViolations` (assertion ran and detected divergence)
-   *  and `persistenceReconciliationFailures` (queued repair failed). Schema-
-   *  rejection errors (malformed remote-peer CRDT update, schema drift,
-   *  exotic Y.XmlElement types) land here. The catch path conservatively
-   *  treats a serialize throw as definite divergence: queues fragment
-   *  reconciliation, proceeds to write Y.Text bytes verbatim (hazard
-   *  mitigation). Steady-state target ~0; non-zero growth means the
-   *  fragment side is producing values the canonical serializer rejects —
-   *  worth investigating before the divergence becomes systemic. */
   persistenceSanityCheckSerializeFailures: number;
-  /** Audit-framework — count of deferred-drain cycles in
-   *  `flushDeferredStores` where `storeDocumentNow` threw past its inner
-   *  catches. The deferred drain runs after a quiescence-gate timeout post-
-   *  burst; the worst-case frequency is tens-per-day, so there is no rate-
-   *  limit gate (suppressing real signal during a disk-failure outage would
-   *  be the wrong default). Bounded-cardinality `errorClass` lives on the
-   *  structured `deferred-store-failed` event, not on a per-class counter
-   *  fan-out. Steady-state target ~0; non-zero growth on the `disk-write`
-   *  class is the operator-visible signal of an unhealthy filesystem; growth
-   *  on `unknown` warrants triage on whether the classifier needs a new bin. */
   deferredStoreFailures: number;
-  /** Count of WebSocket connections rejected by `removalRedirectGuard` with
-   *  the `'rename-redirect'` reason — incoming connections to a docName whose
-   *  file has been renamed away and whose new target exists on disk. Each
-   *  rejection corresponds to one prevented phantom-resurrection write that
-   *  the IDB-resync would otherwise have produced. Steady-state non-zero is
-   *  expected (every external rename closes existing tabs and they reconnect
-   *  to the OLD name once before redirect); a sudden zero where you expected
-   *  redirects suggests the cache populate sites have drifted from the auth
-   *  extension. */
   authRenameRedirectCount: number;
-  /** Count of WebSocket connections rejected by `removalRedirectGuard` with
-   *  the `'doc-deleted'` reason — incoming connections to a docName that was
-   *  deleted (no on-disk file, cache entry has `kind: 'deleted'`). Same
-   *  observability rationale as `authRenameRedirectCount`. */
   authDocDeletedCount: number;
-  /** Count of LRU evictions on the per-process `recentlyRemovedDocs` cache
-   *  (oldest entry dropped when the cap is exceeded). Bounds the
-   *  resurrection-protection window: evicted entries no longer trigger a
-   *  redirect, so a stale client reconnecting to that exact docName after
-   *  eviction may still resurrect the file. Frequent evictions mean the cap
-   *  is too low for the workload — raise it (cap is 10 000 with headroom
-   *  for AI-driven mass renames). */
   recentlyRemovedDocsEvictions: number;
-  /** Gauge — current cardinality of the per-process `recentlyRemovedDocs`
-   *  cache. Read directly from the cache's `size` getter; updated on every
-   *  populate / eviction so operators can correlate evictions with the cap.
-   *  Per-process, drops on restart along with the cache itself. */
   recentlyRemovedDocsSize: number;
-  /** Count of `removalRedirectGuard` invocations that fell through to admit
-   *  via the defensive try/catch — the guard's body threw something other
-   *  than a `HocuspocusAuthRejection` (cache shape mismatch, fs probe
-   *  failure, programming error introduced by a future refactor). Each
-   *  fall-through silently disables the phantom-resurrection defense for
-   *  that connection, so the counter is the operator-visible signal that
-   *  the guard is being bypassed at scale. Steady-state target ~0; non-zero
-   *  growth correlates with `removal-redirect-extension-error` warns and
-   *  warrants investigation before resurrection events accumulate. */
   authRemovalGuardErrors: number;
-  /** Count of pathological cache cycles (e.g. A → B → A) detected by the
-   *  chain walk's visited-Set guard. Each detection admits the connection
-   *  (the phantom-resurrection defense is bypassed for that admit) and
-   *  emits a `removal-redirect-chain-cycle` warn. Steady-state target ~0;
-   *  non-zero indicates a cache populator is producing inconsistent
-   *  rename pairs and the defense is silently degrading. */
   removalRedirectChainCycles: number;
-  /** Count of WebSocket connections rejected by `docLineageGuard` with the
-   *  `'doc-lineage-mismatch'` reason — a client claimed a lineage epoch that
-   *  doesn't match the live doc (or claimed against an unloaded doc, stale
-   *  by construction). Each rejection is one prevented union-merge of a dead
-   *  materialization, at the cost of a client close → clearIDB → reopen
-   *  round-trip. Steady-state near-zero with bursts after external
-   *  delete/recreate or rename; a high steady rate means the epoch minting
-   *  or the client's record bookkeeping has drifted and every connection is
-   *  paying the recovery round-trip. Lifetime total: the operator signal is
-   *  the growth rate computed at the metrics consumer (burst = expected;
-   *  sustained = drifted bookkeeping), not the absolute value. */
   authDocLineageMismatchCount: number;
-  /** Count of `docLineageGuard` invocations that fell through to admit via
-   *  the defensive try/catch — same fail-open philosophy and observability
-   *  rationale as `authRemovalGuardErrors`: each fall-through silently
-   *  disables the stale-lineage fence for that connection, so non-zero
-   *  growth (correlated with `doc-lineage-guard-error` warns) means the
-   *  corruption class the fence exists to prevent can reach docs unnoticed.
-   *  Lifetime total with no built-in threshold: alert on sustained growth
-   *  rate at the metrics consumer — a one-time blip is a transient, a
-   *  climbing rate means the fence is silently disabled under live traffic. */
   authDocLineageGuardErrors: number;
 }
 
@@ -746,15 +341,6 @@ export function incrementAgentPatchFindMismatches(): void {
   counters.agentPatchFindMismatches++;
 }
 
-/**
- * Increment the bridge-tolerance-applied counter for a specific tolerance
- * class. Bounded cardinality: the enumerated labels in
- * `BRIDGE_TOLERANCE_CLASSES` plus the check-layer parse-equivalence
- * fallback (`BridgeToleranceSignal` in `@inkeep/open-knowledge-core`).
- * Tightening from `string` is a compile-time guard against
- * typos at call sites that would otherwise silently pollute the metrics map
- * with arbitrary keys and drop those counters from operator dashboards.
- */
 export function incrementBridgeToleranceApplied(toleranceClass: BridgeToleranceSignal): void {
   counters.bridgeToleranceApplied[toleranceClass] =
     (counters.bridgeToleranceApplied[toleranceClass] ?? 0) + 1;
@@ -772,12 +358,6 @@ export function incrementMapDrivenSpliceApplied(): void {
   counters.mapDrivenSpliceApplied++;
 }
 
-/**
- * Increment the map-driven-splice fallback counter for a specific reason.
- * Bounded cardinality: the 4-value `MapDrivenSpliceFallbackReason` union is
- * a compile-time guard against arbitrary keys, mirroring
- * `incrementBridgeToleranceApplied`.
- */
 export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallbackReason): void {
   counters.mapDrivenSpliceFallback[reason] = (counters.mapDrivenSpliceFallback[reason] ?? 0) + 1;
 }
@@ -930,11 +510,6 @@ export function incrementAuthDocLineageGuardError(): void {
   counters.authDocLineageGuardErrors++;
 }
 
-/**
- * Record a filtered collab-socket error. Prefer `handleCollabSocketError`
- * at call sites — it pairs the classify + counter update atomically so the
- * two can't drift. This low-level function is exported for tests.
- */
 export function incrementCollabSocketFilteredError(code: 'EPIPE' | 'ECONNRESET'): void {
   if (code === 'EPIPE') counters.collabSocketEpipeCount++;
   else counters.collabSocketEconnresetCount++;
@@ -993,12 +568,6 @@ export function handleCollabSocketError(err: NodeJS.ErrnoException): boolean {
   return false;
 }
 
-/**
- * Record a per-channel CC1 watermark. The `channel` parameter is narrowed
- * to `CC1Channel` so the bounded-cardinality contract is enforced at
- * compile time — every call site is keyed by one of the nine enumerated
- * channel labels and arbitrary strings are rejected by the type checker.
- */
 export function setCC1LastSeq(channel: CC1Channel, seq: number): void {
   counters.cc1LastSeq[channel] = seq;
 }

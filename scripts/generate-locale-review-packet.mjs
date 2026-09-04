@@ -1,50 +1,4 @@
 #!/usr/bin/env node
-/**
- * Build a self-contained review packet for one interface locale.
- *
- * Most of the offered locales are machine-translated and unread. This produces
- * the artifact that asks someone who reads one to fix that: a single Markdown
- * file with no links into a checkout, so the reviewer needs a text editor and
- * nothing else — no clone, no install, no running app.
- * `packages/app/src/locales/REVIEW.md` is the process around it, and the record
- * of which languages a reader has actually been through.
- *
- * The packet is a SAMPLE and says so. The catalogs hold ~2,900 messages per
- * locale; nobody reads 2,900 strings as a favour, and a review request that
- * asks for it gets declined or gets skimmed, which is worse than asking for
- * less. So the packet asks for roughly a hundred, chosen where a wrong answer
- * does the most damage.
- *
- * ## The selection rule
- *
- * Deterministic, so two runs on the same catalog produce the same packet and a
- * reviewer's numbered feedback still points at the same strings tomorrow.
- * Nothing here samples randomly or reads the clock.
- *
- *   1. **The glossary.** Every locked noun for this locale, whole. It is under
- *      ten rows and it is the highest-leverage text in the project: CI enforces
- *      whatever it pins across every message that uses the term, so a wrong
- *      entry is not one bad string, it is the same bad string everywhere.
- *   2. **The glossary in use.** For each locked noun, up to
- *      `MAX_PER_GLOSSARY_TERM` messages whose English contains it — shortest
- *      English first, ties broken by message id. Shortest-first selects labels
- *      and buttons over paragraphs, which is where a mistranslated noun is most
- *      visible and least recoverable from context.
- *   3. **High-traffic chrome.** The surfaces in `CHROME_SURFACES`, filled
- *      round-robin so no single surface eats the budget, each ordered
- *      shortest-English-first and tie-broken by message id. Round-robin rather
- *      than by volume: the menu bar has 60 messages and the language picker
- *      has one, and the one matters more.
- *
- * No message is offered twice, whether it was already taken by step 2 or sits
- * on two surfaces at once — several menu labels also live in the command
- * palette.
- *
- * Usage:
- *   node scripts/generate-locale-review-packet.mjs <locale> [--out <file>]
- *
- * With no `--out` the packet goes to stdout.
- */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -61,21 +15,10 @@ const GLOSSARY_MD = 'packages/app/src/locales/GLOSSARY.md';
 const REVIEW_MD = 'packages/app/src/locales/REVIEW.md';
 const CATALOG_REL = (locale) => `packages/app/src/locales/${locale}/messages.po`;
 
-/** Roughly how many numbered strings the packet asks a reviewer to read. */
 export const TARGET_MESSAGES = 100;
 
-/** How many uses of one locked noun to show. Enough to see drift, not a corpus. */
 export const MAX_PER_GLOSSARY_TERM = 3;
 
-/**
- * The chrome a reader of this language meets before anything else, in the order
- * they meet it.
- *
- * Source paths rather than a heuristic, because "high traffic" is a product
- * judgement and a heuristic would quietly re-derive it wrong. A surface that
- * matches no messages is a hard error, not an empty section: it means a file
- * moved and the packet silently stopped covering a screen.
- */
 export const CHROME_SURFACES = [
   {
     label: 'Preferences, where the language picker lives',
@@ -112,15 +55,6 @@ export const CHROME_SURFACES = [
   },
 ];
 
-/**
- * Pull a locale tuple out of core's TypeScript source by name.
- *
- * Read as text rather than imported: this runs as plain Node with no build step
- * and no TS loader. Parameterized where the two gate scripts each hard-code the
- * one tuple they gate, because a packet reports on all three at once — a
- * reviewer of a layout-deferred locale needs to be told their review cannot
- * promote it yet.
- */
 export function readLocaleTuple(source, name) {
   const block = new RegExp(`export const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\]`).exec(source);
   if (!block) {
@@ -133,16 +67,6 @@ export function readLocaleTuple(source, name) {
   return tags;
 }
 
-/**
- * Parse the catalog into entries that keep their source references.
- *
- * `parsePoCatalog` drops comment lines, and `#:` references are what say which
- * screen a message is on. Rather than fork its quoting and continuation
- * handling — the part that is fiddly and the part that must not drift — each
- * blank-line-separated block is handed to it whole and the references are
- * scavenged alongside. The header block keys on an empty msgid, which
- * `parsePoCatalog` already drops.
- */
 export function parsePoEntries(text) {
   const entries = [];
   for (const block of text.split(/\n[ \t]*\n/)) {
@@ -160,13 +84,6 @@ export function parsePoEntries(text) {
   return entries;
 }
 
-/**
- * The locked nouns for one locale, read out of the glossary's own tables.
- *
- * The glossary splits its rows across several tables so the columns stay
- * readable; which table a locale sits in is a formatting decision, so this
- * looks for the column by header rather than by position.
- */
 export function readGlossaryTerms(markdown, locale) {
   const terms = [];
   let headers = null;
@@ -188,7 +105,6 @@ export function readGlossaryTerms(markdown, locale) {
       column = headers.indexOf(locale);
       continue;
     }
-    // The `| --- | --- |` separator under every header row.
     if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
     if (column > 0 && cells[column]) {
       terms.push({ term: cells[0], translation: cells[column] });
@@ -197,7 +113,6 @@ export function readGlossaryTerms(markdown, locale) {
   return terms;
 }
 
-/** The verbatim body of one `##` section, for quoting into the packet. */
 export function readSection(markdown, heading) {
   const lines = markdown.split('\n');
   const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
@@ -207,12 +122,6 @@ export function readSection(markdown, heading) {
   return (end === -1 ? rest : rest.slice(0, end)).join('\n').trim();
 }
 
-/**
- * The per-locale review state, read out of `REVIEW.md`'s tracking table.
- *
- * Parsed rather than trusted as prose so the table cannot quietly fall out of
- * step with the catalogs it tracks: a locale with no row here has no packet.
- */
 export function readReviewStatus(markdown) {
   const rows = new Map();
   for (const raw of markdown.split('\n')) {
@@ -232,31 +141,16 @@ export function readReviewStatus(markdown) {
   return rows;
 }
 
-/** A locked noun, its plural, and neither one wearing another word's tail. */
 function termPattern(term) {
   const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?<!\\p{L})${escaped}s?(?!\\p{L})`, 'iu');
 }
 
-/**
- * Shortest English first, ties broken by message id.
- *
- * Length is a proxy for how much surrounding context a reader gets: a
- * three-word button carries its meaning alone and a paragraph explains itself,
- * so the short ones are where a wrong word does the damage.
- */
 function byLeverage(a, b) {
   const lengthDelta = (a.source ?? '').length - (b.source ?? '').length;
   return lengthDelta !== 0 ? lengthDelta : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-/**
- * Apply the selection rule to a parsed catalog pair.
- *
- * Returns `{ glossaryUses, surfaces }`, both already deduplicated and ordered.
- * Split out from the formatting so the rule can be tested without reading a
- * hundred lines of Markdown.
- */
 export function selectMessages({
   entries,
   translations,
@@ -302,11 +196,6 @@ export function selectMessages({
     progressed = false;
     for (const queue of queues) {
       if (budget === 0) break;
-      // A message can be referenced from more than one surface — "Back" and
-      // "View" sit in both the menu bar and the command palette — so it can be
-      // in two queues at once. Re-check at the point of picking rather than
-      // only when the queues were built, or the packet offers the same string
-      // twice under two numbers and the reviewer reads it twice.
       let next = queue.remaining.shift();
       while (next && chosen.has(next.id)) next = queue.remaining.shift();
       if (!next) continue;
@@ -323,7 +212,6 @@ export function selectMessages({
   };
 }
 
-/** Message text on one line, so a multi-line string cannot break the list. */
 const oneLine = (text) => text.replace(/\r?\n/g, ' ⏎ ').trim();
 
 function renderMessage(number, locale, message) {
@@ -334,7 +222,6 @@ function renderMessage(number, locale, message) {
   ].join('\n');
 }
 
-/** The locale's name in its own language, which is how the reviewer knows it. */
 function endonym(locale) {
   try {
     return new Intl.DisplayNames([locale], { type: 'language' }).of(locale) ?? locale;
@@ -343,15 +230,6 @@ function endonym(locale) {
   }
 }
 
-/**
- * What approving this packet actually changes, which is not the same question
- * for all three kinds of locale.
- *
- * An already-offered locale is the awkward case and the one worth being
- * straight about: the review does not add it to anything, it replaces an
- * assumption with a fact. A reviewer told "you are deciding whether to ship
- * this" about a language that already shipped will notice.
- */
 function stakes({ offered, promotable }) {
   if (offered) {
     return '- **If you approve:** nothing changes on screen — the language is already offered. What changes is that it is offered because someone read it, rather than because nobody had reason to doubt it. Corrections are the expected answer and land as ordinary edits; if you tell us it is not usable as it stands, we take it out of the picker.';
@@ -451,8 +329,6 @@ export function buildPacket({
   for (const { term, translation, uses } of selection.glossaryUses) {
     push(`### ${term} → ${translation}`);
     if (uses.length === 0) {
-      // A pinned word no message uses yet. Said out loud rather than skipped:
-      // silence would read as "reviewed in context" when nothing was.
       push(
         'No interface message uses this word today, so there is nothing to read it in context.',
         'Judge the table entry above on its own.',

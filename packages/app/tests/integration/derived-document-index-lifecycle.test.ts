@@ -125,9 +125,6 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
       }),
     );
     expect(created.status).toBe(200);
-    // The template itself carries `tags: [lifecycle]` and a `[[target]]` link, so
-    // as an ordinary content doc it indexes as a tag/backlink SOURCE alongside
-    // the doc generated from it (it sorts first — `.` precedes letters).
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
       '.ok/templates/lifecycle',
       'folder/item',
@@ -195,8 +192,6 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
       }),
     );
     expect(deleted.status).toBe(200);
-    // The generated docs are gone, but the template SOURCE persists (it was never
-    // touched), so it remains under its own tag and as a backlink source.
     expect(await tagDocuments(server.baseUrl, 'lifecycle')).toEqual([
       '.ok/templates/lifecycle',
       'folder/item',
@@ -213,15 +208,6 @@ test('direct create, duplicate, rename, and delete keep links and tags in lockst
   }
 });
 
-/**
- * Content-doc name for a skill, taken from the path the SERVER reports.
- *
- * Never hardcode it. The `.ok/skills` store is retired, so a skill lands at the
- * project's DEFAULT skill home — `resolveDefaultSkillHomeRel` picks `.agents/skills`,
- * else the first existing editor root, else `.claude/skills`. Which of those wins
- * depends on what exists in the content dir, so a literal that holds locally can
- * fail on another machine.
- */
 const docNameFromPath = (skillMdPath: unknown): string =>
   String(skillMdPath).replace(/\.mdx?$/i, '');
 
@@ -267,9 +253,6 @@ test('project skill moves refresh backlinks and tags at the relocated content do
     );
     expect(moved.status).toBe(200);
 
-    // Stuck (not slow) on CI while passing locally, so capture what the index
-    // actually holds and put it in the failure — a bare `pollUntil` timeout says
-    // only "never became true", which is not a diagnosis.
     const expected = createdDoc.replace('lifecycle-skill', 'relocated-skill');
     let lastTags: string[] = [];
     let lastBacklinks: string[] = [];

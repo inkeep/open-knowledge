@@ -26,10 +26,8 @@ describe('createRetryingLoader', () => {
       .mockResolvedValue({ id: 'mod' });
     const loader = createRetryingLoader(load);
     await expect(loader()).rejects.toThrow('chunk load failed');
-    // The failed promise must not be handed out again.
     await expect(loader()).resolves.toEqual({ id: 'mod' });
     expect(load).toHaveBeenCalledTimes(2);
-    // And the successful retry is cached like any first success.
     await loader();
     expect(load).toHaveBeenCalledTimes(2);
   });

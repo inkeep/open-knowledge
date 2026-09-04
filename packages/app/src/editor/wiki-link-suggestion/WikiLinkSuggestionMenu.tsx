@@ -5,12 +5,6 @@ import { useEffect, useId, useRef } from 'react';
 import type { WikiLinkSuggestionItem } from '../extensions/wiki-link-suggestion';
 import { getFileIcon } from '../registry/file-icons';
 
-/**
- * Icon for a non-anchor suggestion row, mirroring the sidebar via
- * {@link getFileIcon}: a page → document glyph, an asset → media glyph by its
- * extension, a `create` row → the new-file glyph. Anchors render their own
- * `H{level}` badge and never reach here.
- */
 function itemIcon(item: WikiLinkSuggestionItem) {
   if (item.kind === 'create') {
     return <FilePlus2 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
@@ -30,12 +24,6 @@ interface WikiLinkSuggestionMenuProps {
   mode?: 'page' | 'anchor';
   pageTarget?: string;
   anchorQuery?: string;
-  /**
-   * True when the suggestion list was truncated at the per-popup cap
-   * (`MAX_ITEMS` in `wiki-link-suggestion.ts`). Menu renders a passive footer
-   * telling the user the visible set may not be exhaustive — typing more
-   * characters narrows the corpus via the same `searchWorkspaceCorpus` path.
-   */
   hasMore?: boolean;
 }
 
@@ -44,7 +32,6 @@ function itemKey(item: WikiLinkSuggestionItem): string {
   return item.kind === 'anchor' ? `${item.docName}#${item.slug}` : item.docName;
 }
 
-/** Screen-reader announcement text for the currently-selected item. */
 function announcementText(item: WikiLinkSuggestionItem): string {
   if (item.kind === 'anchor') {
     const { level, text } = item;
@@ -78,7 +65,6 @@ export function WikiLinkSuggestionMenu({
       ? `${listboxId}-option-${selectedIndex}`
       : undefined;
 
-  // Scroll selected item into view
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -87,8 +73,6 @@ export function WikiLinkSuggestionMenu({
     if (selected) selected.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  // Prevent any click on the popup (buttons or empty space) from stealing focus
-  // from the editor — without this, Backspace events go to the popup instead.
   const preventFocusSteal = (e: React.MouseEvent) => e.preventDefault();
 
   if (loading) {
@@ -147,12 +131,7 @@ export function WikiLinkSuggestionMenu({
       className="w-80 overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
       style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
     >
-      {/*
-        Live region announces the selected item on arrow navigation. Required
-        because aria-activedescendant on the listbox is inert — focus stays in
-        ProseMirror's contenteditable, and screen readers only announce
-        activedescendant on the focused element.
-      */}
+      {}
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {selectedItem ? announcementText(selectedItem) : ''}
       </span>
@@ -217,11 +196,7 @@ export function WikiLinkSuggestionMenu({
               <span className="truncate font-medium">
                 {item.kind === 'create' ? item.actionLabel : item.title}
               </span>
-              {/*
-                Secondary path/docName line. Wrap (break-all + clamp) rather
-                than end-truncate so the discriminating tail of a long path
-                stays visible — the wider popup gives it room.
-              */}
+              {}
               {item.kind === 'page' && item.title !== item.docName && (
                 <span className="line-clamp-2 break-all text-xs text-muted-foreground">
                   {item.docName}
@@ -242,11 +217,6 @@ export function WikiLinkSuggestionMenu({
         );
       })}
       {hasMore && (
-        // Passive overflow hint. Non-interactive (no `role="option"`, no
-        // selectedIndex slot) so arrow-key navigation skips it and the live
-        // region's `announcementText` never reads it as a selectable item.
-        // Renders OUTSIDE the items map so the `selectedIndex`-keyed
-        // `<button>` indices stay 1:1 with the items array.
         <div
           data-prop-suggestion-more-hint=""
           className="border-t border-border mt-1 px-2 py-1.5 text-xs text-muted-foreground"

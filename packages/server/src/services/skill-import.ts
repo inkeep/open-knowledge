@@ -33,18 +33,6 @@ import {
 } from '../skill-projection.ts';
 import { mutateSkillsLock, readSkillsLockFile } from '../skills-lock-store.ts';
 
-/**
- * The shared skill-import spine (steps 2-6): given an on-disk skill dir +
- * provenance, dedupe by content hash, land under a free `-imported` name on
- * collision, write SKILL.md + bundle files via the sanctioned writers,
- * attribute + shadow-commit (project scope), record the lockfile entry, and
- * best-effort project into editor dirs. Returns an outcome; the transport
- * writes the response. Used by `/api/skill/import` (by-reference),
- * `/api/skill-upload` (by-bytes), and `/api/skills/import-bulk` (many
- * skills, one clone). The CALLER owns temp-dir cleanup (its `finally`), so
- * this never cleans up.
- */
-
 const log = getLogger('skill-import');
 
 type ActorIdentity = ReturnType<typeof extractActorIdentity>;
@@ -73,12 +61,6 @@ export function importedBundleLimitError(
     : null;
 }
 
-/**
- * What the spine concluded. Returned rather than written so the bulk path
- * can run it once per skill against a SINGLE clone and report per-skill
- * rows; the transport's `respondSkillImport` applies the single-skill HTTP
- * shape.
- */
 export type SkillImportOutcome =
   | { ok: true; body: z.infer<typeof SkillImportSuccessSchema> }
   | {
@@ -117,8 +99,6 @@ export interface SkillImportService {
     publisher?: string;
     upstreamSkill?: string;
     actor: ActorIdentity;
-    /** Skip the default-editor auto-projection — for callers that install
-     *  explicitly afterwards (explore preview toggles / custom-path place). */
     skipProjection?: boolean;
   }): Promise<SkillImportOutcome>;
 }
@@ -140,9 +120,6 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
           detail: 'NO_PROJECT_ROOT',
         };
       }
-      // Pre-flight the caps by stat, BEFORE the parse materializes every byte —
-      // `importedBundleLimitError` below runs on an already-built array, which a
-      // repo of half-gigabyte blobs never reaches.
       const oversize = acquiredBundleTooLarge(acquiredDir);
       if (oversize) {
         return {
@@ -173,24 +150,14 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         };
       }
 
-      // 2. Dedupe by contentHash via the lockfile (re-import is a no-op).
       const lockPath = join(
         scope === 'project' ? deps.projectDir : deps.skillsHome,
         ...SKILLS_LOCK_REL,
       );
       const lock = readSkillsLockFile(lockPath);
-      // WRITE-PATH INVERSION (store retirement, step 1): NEW imports land
-      // IN-PLACE at the vendor-neutral `.agents/skills` hub — versioned, listed,
-      // and read at their real path from day one. The store gains no new
-      // residents; existing store bundles keep working until their migration.
       const importBase = scope === 'project' ? deps.contentDir : deps.skillsHome;
       const importHomeRel = resolveDefaultSkillHomeRel(importBase, scope);
       if (importHomeRel === null) {
-        // Actionable, not just accurate: this refusal is reachable by anyone
-        // importing into a project (or home) that has adopted no agent folder,
-        // and "no host available" leaves them with nothing to do about it. The
-        // folder list comes from the resolver's own candidate set, so onboarding
-        // a new host cannot leave this message naming a stale one.
         return {
           ok: false,
           status: 400,
@@ -215,16 +182,7 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         };
       }
 
-      // 3. Collision with an existing skill → land under a free `-imported` name.
-      // `acquired.name` is attacker-controlled (imported SKILL.md frontmatter).
-      // applySkillWrite's validateName blocks a malformed WRITE, but the existence
-      // probes below resolve the name against skillsRoot — sanitize first so a
-      // `../…` name can't turn firstFreeSkillName into a filesystem existence
-      // oracle. No-op for a normal `[a-z0-9-]` name. (defense-in-depth)
       const probeName = sanitizeFilename(acquired.name);
-      // Collision probe spans the WHOLE registry (store + every in-place host
-      // dir), not just the import root — a same-name skill at `.claude/skills`
-      // would fork against the new `.agents` bundle.
       const nameTaken = (n: string) =>
         deps.resolveSkillDirForRead(scope, n) !== null ||
         existsSync(resolve(importRoot, n, 'SKILL.md'));
@@ -239,16 +197,6 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         }
       }
 
-      // 4. Write SKILL.md + every bundle file via the sanctioned writers. The
-      // frontmatter is canonicalized to {name,description} (OK's skill model);
-      // upstream version lives in the lockfile, not the SKILL.md.
-      //
-      // `metadata.pack` is the one upstream key carried through. It is identity,
-      // not version: it is the only proof that a generically-named skill is a
-      // starter pack of ours, and the provenance retrofit refuses to act without
-      // it. Dropping it meant an imported pack whose lock entry went missing —
-      // routine, the lockfile is gitignored — could never be recognised again,
-      // so it showed no source and sat outside its group.
       const acquiredDoc = deps.parseFrontmatterDoc(acquired.skillMd);
       const skillBody = acquiredDoc.body;
       const pack = packMarkerOf(acquiredDoc.frontmatter);
@@ -301,12 +249,7 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         }
       }
 
-      // 5. Attribute + shadow-commit (project scope; global is unversioned).
       if (scope === 'project') {
-        // Attribute under the content-doc key (`<dir>/SKILL`) that `/api/history`
-        // filters on — same fix as the create path; the bare dir key fell through
-        // the OkActor match so an imported skill's first version never showed in
-        // (or was restorable from) its history.
         deps.attributeOkArtifactWrite(
           actor,
           `${importHomeRel}/${targetName}/SKILL`,
@@ -315,17 +258,12 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         await deps.commitOkArtifactWrite('skill-import');
       }
 
-      // 6. Record upstream in the lockfile.
       const importedLocalHash = localSkillHash(importRoot, targetName);
       const importedPlugin = inspectPluginSource(sourceLabel);
-      // baselineRef only for project scope — global is unversioned (no commit above).
       const importedBaselineRef =
         scope === 'project'
           ? await deps.shadowHeadSha(deps.artifactWriterId(actor), `${importHomeRel}/${targetName}`)
           : undefined;
-      // Re-read inside the serialized mutation: `lock` above was snapshotted before
-      // the fetch, and writing that snapshot back would erase any entry a
-      // concurrent import added while this one was cloning.
       await mutateSkillsLock(lockPath, (current) =>
         upsertLockEntry(current, targetName, {
           source: sourceLabel,
@@ -341,22 +279,12 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
         }),
       );
 
-      // Fan the freshly-imported IN-PLACE skill out to the configured editors so
-      // it is live in Claude/Cursor/Codex on import (guarded copy/link
-      // primitives — never clobbers a differing dir). Best-effort: a projection
-      // failure must not fail the import. Skipped when the caller installs
-      // explicitly afterwards (`install: false`). Copies auto-pair into the
-      // placements ledger at the next re-sync, so forward refresh covers them.
       if (params.skipProjection !== true) {
         try {
           const targets = resolveSkillTargets(importBase);
           if (targets.length > 0) {
             const canonicalAbs = resolve(importRoot, targetName);
-            // A re-import lands on a skill that may already occupy editor dirs as
-            // copies; only a genuinely fresh one takes the symlink default.
             const projectionRoots = skillProjectionRoots(scope);
-            // A re-import can land on dests that already exist; those that are
-            // symlinks keep the symlink default, matching what is already there.
             const occupied = targets.filter((editor) => {
               const dest = skillHostDir(importBase, editor, targetName, projectionRoots);
               return dest !== null && dest !== canonicalAbs && existsSync(dest);

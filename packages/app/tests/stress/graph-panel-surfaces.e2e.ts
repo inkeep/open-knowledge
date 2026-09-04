@@ -37,12 +37,6 @@ interface GraphFixtures {
   zeta: string;
 }
 
-/**
- * Seed four per-test unique graph fixtures. Returns the suffix-bearing
- * docNames so tests can thread them through helpers and assertions. We do
- * NOT call `test-reset` here — doing so would reset `test-doc` globally and
- * interfere with parallel tests.
- */
 async function seedGraphFixtures(api: ApiHelpers, baseURL: string): Promise<GraphFixtures> {
   const suffix = randomUUID().slice(0, 8);
   const fixtures: GraphFixtures = {
@@ -65,9 +59,6 @@ async function seedGraphFixtures(api: ApiHelpers, baseURL: string): Promise<Grap
   await api.replaceDoc(fixtures.gamma, '# Gamma');
   await api.replaceDoc(fixtures.zeta, `# Zeta\n\n[[${fixtures.beta}]]`);
 
-  // Poll until the backlink index reflects our fixtures. We check for our
-  // specific docs rather than global orphan/hub state (parallel tests may
-  // contribute other orphans or hubs).
   await expect
     .poll(
       async () => {
@@ -157,10 +148,6 @@ function getGraphSurface(page: Page) {
   return page.getByRole('img', { name: 'Graph visualization of document links' });
 }
 
-// The expanded-graph signal. The control moved off the browser Fullscreen API
-// (document.fullscreenElement) to in-app panel expansion, so the Explore/
-// Orphans/Hubs mode toggle — which renders only while expanded — is the
-// authoritative "expanded" indicator. Visible ⇒ expanded; count 0 ⇒ collapsed.
 function getExpandedGraphIndicator(page: Page) {
   return page.getByRole('group', { name: 'Expanded graph mode' });
 }
@@ -283,11 +270,6 @@ async function waitForGraphLinkClickPoint(
 async function expectGraphToFillAvailableHeight(page: Page) {
   const metrics = await getGraphLayoutMetrics(page);
   expect(metrics.graphHeight).toBeGreaterThan(0);
-  // 16px tolerance absorbs DPI rounding (Retina sub-pixel), scrollbar width
-  // reservation, and the 1-2 layout ticks between `requestFullscreen` and the
-  // graph canvas's final ResizeObserver callback. A real regression (graph
-  // rendering at half-height or missing a flex rule) is orders of magnitude
-  // off this threshold; 16px won't hide it.
   expect(Math.abs(metrics.availableHeight - metrics.graphHeight)).toBeLessThanOrEqual(16);
   expect(Math.abs(metrics.containerHeight - metrics.graphHeight)).toBeLessThanOrEqual(16);
 }
@@ -314,8 +296,6 @@ test('fullscreen graph exposes Explore, Orphans, Hubs, and a visible orphan togg
   await expect(page.getByRole('radio', { name: 'No Incoming' })).toBeVisible();
   await expect(page.getByRole('radio', { name: 'No Outgoing' })).toBeVisible();
 
-  // Match our per-test fixture names exactly to avoid collisions with any
-  // orphans contributed by parallel tests.
   const gammaButton = orphanPanel.getByRole('button', { name: fixtures.gamma });
   const alphaButton = orphanPanel.getByRole('button', { name: fixtures.alpha });
   const betaButton = orphanPanel.getByRole('button', { name: fixtures.beta });
@@ -434,10 +414,6 @@ test('fullscreen graph edge clicks clear selection on the first try', async ({
   await waitForGraphNode(page, fixtures.beta);
   await waitForGraphNodeClickPoint(page, fixtures.beta);
   await waitForGraphLinkClickPoint(page, fixtures.alpha, fixtures.beta);
-  // Gate canvas-coordinate clicks on simulation settlement per precedent
-  // #20(a) category C (physics-sim race). Without this, beta drifts ~24px
-  // between `getGraphNodeClickPoint` capture and Playwright's pointerdown —
-  // well outside the 8px hit radius — so the click routes to background.
   await waitForGraphSimulationSettled(page);
 
   const betaPoint = await getGraphNodeClickPoint(page, fixtures.beta);
@@ -477,8 +453,6 @@ test('fullscreen graph clicking the selected node toggles selection off', async 
   await openGraph(page, { docName: fixtures.alpha, fullscreen: true });
   await waitForGraphNode(page, fixtures.beta);
   await waitForGraphNodeClickPoint(page, fixtures.beta);
-  // Gate canvas-coordinate clicks on simulation settlement per precedent
-  // #20(a) category C (physics-sim race).
   await waitForGraphSimulationSettled(page);
 
   const betaPoint = await getGraphNodeClickPoint(page, fixtures.beta);
@@ -509,11 +483,6 @@ test('fullscreen graph external nodes use the same selection affordance', async 
 }) => {
   const fixtures = await seedGraphFixtures(api, baseURL ?? '');
   await openGraph(page, { docName: fixtures.alpha, fullscreen: true });
-  // External URL nodes default to hidden (see `GraphPanel.tsx` —
-  // `GRAPH_URL_NODES_FULLSCREEN_KEY` loadBoolPref returns false for a fresh
-  // context). Toggle them on through the UI so the test exercises the full
-  // user journey (enable → click → selection) rather than reaching past the
-  // interface to localStorage.
   await page.getByLabel('Show external URL nodes').click();
   expect(await clickGraphExternal(page, 'https://example.com/docs')).toBe(true);
 

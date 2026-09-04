@@ -18,7 +18,6 @@ interface FetchCall {
   authHeader: string | undefined;
 }
 
-/** A stub fetch that records calls and replays a scripted sequence of replies. */
 function stubFetch(replies: Array<{ status?: number; json?: unknown } | { abortable: true }>): {
   fetchImpl: typeof fetch;
   calls: FetchCall[];
@@ -48,7 +47,6 @@ function stubFetch(replies: Array<{ status?: number; json?: unknown } | { aborta
   return { fetchImpl, calls };
 }
 
-/** Build a canned OpenAI embeddings response of `count` vectors of `dims`. */
 function embeddingsResponse(count: number, dims: number, totalTokens = 7): unknown {
   return {
     data: Array.from({ length: count }, (_, index) => ({
@@ -75,7 +73,6 @@ describe('createOpenAiEmbedder', () => {
     const out = await embedder.embed(['alpha', 'beta'], { role: 'document' });
     expect(out.length).toBe(2);
     expect(out[0].length).toBe(1536);
-    // L2-normalized → self-cosine ~1.
     expect(cosineSimilarity(out[0], out[0])).toBeCloseTo(1, 5);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe('https://api.openai.com/v1/embeddings');
@@ -152,13 +149,10 @@ describe('createOpenAiEmbedder', () => {
     expect(caught).not.toBeNull();
     expect((caught as unknown as Error).message).toContain('401');
     expect((caught as unknown as Error).message).not.toContain(KEY);
-    expect(calls).toHaveLength(1); // no retry on 4xx
+    expect(calls).toHaveLength(1);
   });
 
   test('a provider error body echoing the key never leaks into the thrown error (R4)', async () => {
-    // A misbehaving provider that reflects the request (key included) in its
-    // error body. The embedder drains but never surfaces the body — only the
-    // status — so the key cannot escape via an error message or a log.
     const { fetchImpl } = stubFetch([
       { status: 500, json: { error: `bad auth for Bearer ${KEY}` } },
     ]);
@@ -203,8 +197,6 @@ describe('createOpenAiEmbedder', () => {
     expect((caught as EmbeddingDimsMismatchError).reason).toBe('dims_mismatch');
   });
 
-  // The bug this whole feature exists for: a custom model whose native size
-  // isn't 1536 used to fail every single response and degrade to keyword-only.
   test('with no configured size, adopts whatever length the provider returns', async () => {
     const { fetchImpl } = stubFetch([{ json: embeddingsResponse(1, 1024) }]);
     const embedder = createOpenAiEmbedder(
@@ -232,9 +224,6 @@ describe('createOpenAiEmbedder', () => {
     );
   });
 
-  // A gateway can fail over between two models mid-call; the caller would
-  // otherwise store a mix of lengths under one cache entry, and cosine
-  // similarity truncates to the shorter vector rather than erroring.
   test('holds every batch of one call to the first batch’s size', async () => {
     const { fetchImpl } = stubFetch([
       { json: embeddingsResponse(2, 1024) },
@@ -280,8 +269,6 @@ describe('createOpenAiEmbedder', () => {
     expect(embedder.dims).toBe(1024);
   });
 
-  // The likeliest custom-endpoint misconfiguration: a base URL that lands on a
-  // proxy's HTML error page or a site root and answers 200 with markup.
   test('a 200 carrying non-JSON is a fatal config error, not a retryable network fault', async () => {
     let calls = 0;
     const fetchImpl = (() => {
@@ -302,7 +289,7 @@ describe('createOpenAiEmbedder', () => {
       caught = e;
     });
     expect((caught as EmbeddingProviderError).reason).toBe('malformed_response');
-    expect(calls).toBe(1); // fatal — never retried
+    expect(calls).toBe(1);
   });
 
   test('with no key, sends NO Authorization header (keyless loopback)', async () => {
@@ -313,7 +300,6 @@ describe('createOpenAiEmbedder', () => {
     );
     await embedder.embed(['q'], { role: 'document' });
     expect(calls[0].authHeader).toBeUndefined();
-    // Never the string "Bearer undefined".
     expect(JSON.stringify(calls[0])).not.toContain('Bearer');
   });
 
@@ -344,7 +330,6 @@ describe('loadOpenAiEmbedder', () => {
   const config = { baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' };
   const CUSTOM = 'https://my-vllm.internal/v1';
   const projectDir = '/tmp/proj';
-  /** A store stub that returns `key` for any (project, endpoint) lookup. */
   const stubStore = (key: string | null) => ({
     resolveForProject: () => Promise.resolve({ key, source: key ? 'project' : null }),
   });
@@ -361,17 +346,15 @@ describe('loadOpenAiEmbedder', () => {
     });
     expect(embedder).not.toBeNull();
     expect(embedder?.modelId).toBe('text-embedding-3-small');
-    expect(embedder?.dims).toBeNull(); // no configured size — the provider decides
+    expect(embedder?.dims).toBeNull();
     expect(embedder?.providerId).toBe('https://api.openai.com/v1');
   });
 
   test('env var is used ONLY for the default OpenAI endpoint', async () => {
     process.env[EMBEDDINGS_API_KEY_ENV] = 'sk-from-env';
-    // Default host + no stored key → env applies.
     expect(
       await loadOpenAiEmbedder({ keyStore: stubStore(null), projectDir, config }),
     ).not.toBeNull();
-    // A CUSTOM endpoint must NOT inherit the machine-wide env key.
     expect(
       await loadOpenAiEmbedder({
         keyStore: stubStore(null),
@@ -394,14 +377,14 @@ describe('loadOpenAiEmbedder', () => {
       projectDir,
       config: { baseUrl: 'http://localhost:11434/v1', model: 'nomic-embed-text' },
     });
-    expect(loopback).not.toBeNull(); // keyless is allowed for loopback
+    expect(loopback).not.toBeNull();
 
     const custom = await loadOpenAiEmbedder({
       keyStore: stubStore(null),
       projectDir,
       config: { baseUrl: CUSTOM, model: 'm' },
     });
-    expect(custom).toBeNull(); // non-loopback + no key → unready
+    expect(custom).toBeNull();
   });
 });
 

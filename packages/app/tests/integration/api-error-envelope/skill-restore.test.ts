@@ -1,13 +1,3 @@
-/**
- * Narrow-integration test for per-skill restore against a real
- * server with a shadow repo.
- *
- * edit a skill twice → the timeline shows attributed versions → restore an
- * earlier version → the source reverts (fs-direct, net-new — not the CRDT
- * rollback path). Skill writes carry an agent identity so they are attributed
- * and committed to the shadow repo (anonymous writes record nothing).
- */
-
 import {
   HistorySuccessSchema,
   SkillGetSuccessSchema,
@@ -15,11 +5,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 
-// Project skills are content docs, so their version history comes from the
-// unified document-history path (`/api/history?docName=<real-dir>/SKILL`), NOT a
-// bespoke skill-history endpoint (removed — it was a buggy duplicate). Store
-// retirement: a fresh project skill authors IN-PLACE at the default home
-// (`.claude/skills` in a bare contentDir), not the retired `.ok/skills` store.
 const SKILL_DOC_NAME = '.claude/skills/trip-log/SKILL';
 
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -56,16 +41,10 @@ afterAll(async () => {
 
 describe('skill restore (R6)', () => {
   test('history → restore reverts the source to an earlier version', async () => {
-    // Both the create and the edit land as their own committed version on the
-    // skill's timeline (the create is attributed under the content-doc key
-    // `/api/history` filters on, so it is restorable — not just edits).
-    expect((await writeSkill('# Version ONE')).status).toBe(200); // create → commit 1
-    expect((await writeSkill('# Version TWO')).status).toBe(200); // edit → commit 2
+    expect((await writeSkill('# Version ONE')).status).toBe(200);
+    expect((await writeSkill('# Version TWO')).status).toBe(200);
     expect(await getBody()).toContain('Version TWO');
 
-    // The unified document timeline shows the skill's attributed versions
-    // (correctly scoped to this skill — the duplicate skill-history path that
-    // leaked other skills' commits is gone).
     const histRes = await fetch(
       `${base()}/api/history?docName=${encodeURIComponent(SKILL_DOC_NAME)}`,
     );
@@ -74,11 +53,9 @@ describe('skill restore (R6)', () => {
     expect(hist.success).toBe(true);
     if (!hist.success) return;
     expect(hist.data.entries.length).toBeGreaterThanOrEqual(2);
-    // Entries are newest-first; the oldest is the create (Version ONE).
     const oldest = hist.data.entries[hist.data.entries.length - 1];
     expect(oldest?.sha).toMatch(/^[0-9a-f]{40}$/);
 
-    // Restore the oldest version.
     const restoreRes = await fetch(`${base()}/api/skill/restore`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -89,7 +66,6 @@ describe('skill restore (R6)', () => {
     expect(restored.success).toBe(true);
     if (restored.success) expect(restored.data.restoredFiles).toContain('SKILL.md');
 
-    // The source reverted to the created version (Version ONE).
     expect(await getBody()).toContain('Version ONE');
     expect(await getBody()).not.toContain('Version TWO');
   });

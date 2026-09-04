@@ -20,10 +20,6 @@
  * `editor.chain()`, so it needs a mounted TipTap Editor.
  */
 
-// `cleanup` satisfies the Tier-3 filename contract (every `*.dom.test.tsx`
-// must value-import from `@testing-library/react`). The suite constructs the
-// Editor directly rather than rendering through RTL; `cleanup` runs in
-// `afterEach` so any future RTL render is torn down between tests.
 import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { Zap } from 'lucide-react';
@@ -60,12 +56,6 @@ function makeItem(overrides: Partial<SlashCommandItem>): SlashCommandItem {
   };
 }
 
-/**
- * Type stand-in trigger text and return the range the suggestion would hand
- * over. Deliberately NOT slash-prefixed: `applySlashCommandItem` only sees a
- * positional range, and real trigger text would open the live suggestion
- * popup, whose async floating-ui positioning outlives the test's teardown.
- */
 function typeTrigger(editor: Editor, text: string): { from: number; to: number } {
   editor.commands.focus('end');
   const from = editor.state.selection.from;
@@ -99,16 +89,12 @@ describe('applySlashCommandItem error paths', () => {
 
       applySlashCommandItem({ editor, item, range });
 
-      // The user's trigger text must not survive the broken item.
       expect(editor.state.doc.textContent).not.toContain('xboom');
-      // The delete still landed as a normal dispatch, not a rollback.
       expect(docChangingCount).toBe(1);
-      // The failure is surfaced, attributed to the item command.
       expect(consoleError).toHaveBeenCalledWith(
         '[slash-command] command "boom" threw an error',
         itemFailure,
       );
-      // The editor is still usable after the failure.
       expect(editor.commands.insertContent('still alive')).toBe(true);
       expect(editor.state.doc.textContent).toContain('still alive');
     } finally {
@@ -136,13 +122,9 @@ describe('applySlashCommandItem error paths', () => {
 
       applySlashCommandItem({ editor, item, range });
 
-      // The insert committed and the trigger is gone.
       expect(editor.state.doc.textContent).toContain('inserted');
       expect(editor.state.doc.textContent).not.toContain('xdefer');
-      // The second deferred callback still ran despite the first throwing.
       expect(secondCallback).toHaveBeenCalledTimes(1);
-      // The message names the afterCommit path, not the item-command path —
-      // the two failure modes must stay distinguishable in logs.
       expect(consoleError).toHaveBeenCalledWith(
         '[slash-command] afterCommit callback for "defer" threw an error',
         deferredFailure,
@@ -157,11 +139,6 @@ describe('applySlashCommandItem error paths', () => {
   });
 
   test('a dispatch failure surfaces a preceding item failure instead of swallowing it', () => {
-    // Editor double: the chain invokes the boundary's `.command()` wrapper
-    // (so `item.command` runs and its throw is captured as `itemError`), then
-    // `.run()` itself throws — the dual-failure case. A real TipTap chain
-    // can't be made to throw at dispatch without patching internals, so the
-    // double stands in for the chain contract only.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     const dispatchFailure = new Error('dispatch exploded');
     const itemFailure = new Error('item exploded');
@@ -219,7 +196,6 @@ describe('applySlashCommandItem error paths', () => {
 
       applySlashCommandItem({ editor, item, range });
 
-      // Steps contributed before the throw ride the same single dispatch.
       expect(docChangingCount).toBe(1);
       expect(editor.state.doc.textContent).toContain('kept');
       expect(editor.state.doc.textContent).not.toContain('xpartial');

@@ -65,8 +65,6 @@ describe('decodeLinks', () => {
   });
 
   test('does not mis-toggle fence state on a mismatched fence character', () => {
-    // A backtick block containing a `~~~` line must stay a code block; the link
-    // after the real closing ``` must still be rewritten.
     const input = [
       '```',
       '[x](Foo%20Bar.md)',
@@ -76,9 +74,9 @@ describe('decodeLinks', () => {
       '[z](Q%20R.md)',
     ].join('\n');
     const out = decodeLinks(input);
-    expect(out).toContain('[x](Foo%20Bar.md)'); // inside the block, untouched
-    expect(out).toContain('[y](Baz%20Qux.md)'); // still inside the block, untouched
-    expect(out).toContain('[z](<Q R.md>)'); // after the block, rewritten
+    expect(out).toContain('[x](Foo%20Bar.md)');
+    expect(out).toContain('[y](Baz%20Qux.md)');
+    expect(out).toContain('[z](<Q R.md>)');
   });
 
   test('redirects internal _all.csv link targets to the .md table page when enabled', () => {

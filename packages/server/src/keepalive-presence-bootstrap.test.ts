@@ -1,28 +1,3 @@
-/**
- * Pins the "MCP keepalive WS upgrade bootstraps a presence entry" contract.
- *
- * Why this exists: `setPresence` was historically wired into only the four
- * mutating HTTP write handlers in `api-extension.ts`
- * (`handleAgentWrite` / `handleAgentWriteMd` / `handleAgentPatch` /
- * `handleAgentUndo`). Agents that only ran read-class MCP tools
- * (`read_document`, `list_documents`, `search`, `exec`, `grep`, …) never
- * appeared in the presence bar — the keepalive WS opened, the 3 s
- * `bumpPresenceTs` heartbeat fired, but `bumpPresenceTs` is a documented
- * no-op when no entry exists, so the badge stayed missing until the
- * agent's first write.
- *
- * This test pins the lifecycle-anchor fix: when the cli's MCP shim forwards
- * `displayName` + `clientName` + `colorSeed` alongside `connectionId` in
- * the `/collab/keepalive` URL, the server's WS-upgrade handler immediately
- * fires `setPresence` — surfacing the agent in the presence bar from MCP
- * connect onward, regardless of which tools (if any) the agent invokes.
- *
- * Pairs with `keepalive-presence-cleanup.test.ts` which pins the
- * grace-timer → `clearPresence` cleanup at WS close. Together: lifecycle
- * bootstrap + lifecycle cleanup, with the existing `bumpPresenceTs`
- * heartbeat keeping the entry fresh during the open WS.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,9 +52,7 @@ afterAll(async () => {
     try {
       await s.booted.destroy();
       rmSync(s.contentDir, { recursive: true, force: true });
-    } catch {
-      // best-effort cleanup
-    }
+    } catch {}
   }
 });
 
@@ -127,9 +100,6 @@ describe('parseKeepaliveIdentity', () => {
   });
 
   test('decodes URL-encoded values (spaces, special chars)', () => {
-    // Legacy CLI binaries sent `Claude%20Code` (the editor's old displayName) —
-    // the decoded form must round-trip verbatim. The server handles both the
-    // legacy "Claude Code" name and the renamed "Claude" surface.
     expect(
       parseKeepaliveIdentity(
         '/collab/keepalive?connectionId=abc&displayName=Claude%20Code&clientName=claude-code&colorSeed=Claude%20Code',
@@ -150,8 +120,6 @@ describe('parseKeepaliveIdentity', () => {
   });
 
   test('rejects control chars (log-injection / awareness-pollution defense)', () => {
-    // CRLF in displayName — the kind of injection that would pollute pino
-    // log output and downstream awareness consumers.
     const dirty =
       '/collab/keepalive?connectionId=abc&displayName=Claude%0D%0Aadmin&clientName=claude&colorSeed=Claude';
     expect(parseKeepaliveIdentity(dirty)).toBeNull();
@@ -200,9 +168,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
       ws.once('error', (err) => reject(err));
     });
 
-    // The setPresence call happens synchronously inside the WS-upgrade
-    // handler. A short poll handles the case where the awareness mutation
-    // dispatch is one microtask deep.
     const map = await poll(
       () => broadcaster.getPresenceMap(),
       (m) => presenceKey in m,
@@ -216,11 +181,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
     expect(entry?.icon.length).toBeGreaterThan(0);
     expect(typeof entry?.color).toBe('string');
     expect(entry?.color.length).toBeGreaterThan(0);
-    // Sentinel currentDoc: client-side filter at
-    // packages/app/src/lib/agent-presence.ts drops entries with falsy
-    // currentDoc. The bootstrap entry uses '(connected)' so the badge
-    // surfaces in the cross-doc bucket until the agent's first write
-    // supplies a real docName.
     expect(entry?.currentDoc).toBe('(connected)');
     expect(entry?.mode).toBe('idle');
     expect(entry?.ts).toBeGreaterThan(0);
@@ -236,7 +196,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
     const connectionId = 'legacy-no-identity';
     const presenceKey = toBroadcasterKey(connectionId);
 
-    // Same URL shape the cli used pre-fix: `connectionId` only.
     const ws = new WsClient(
       `ws://127.0.0.1:${booted.port}/collab/keepalive?pid=${process.pid}&connectionId=${connectionId}`,
     );
@@ -244,7 +203,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
       ws.once('open', () => resolve());
       ws.once('error', (err) => reject(err));
     });
-    // Give the server a moment to process the upgrade.
     await wait(50);
     expect(broadcaster.getPresenceMap()[presenceKey]).toBeUndefined();
     ws.close();
@@ -264,7 +222,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
         `&connectionId=${connectionId}` +
         `&displayName=${encodeURIComponent('Claude')}` +
         `&colorSeed=${encodeURIComponent('Claude')}`,
-      // No clientName — half-populated entry would be invalid.
     );
     await new Promise<void>((resolve, reject) => {
       ws.once('open', () => resolve());
@@ -276,10 +233,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
   });
 
   test('reconnect during grace window with identity preserves the entry', async () => {
-    // Combines bootstrap with the existing reconnect-cancels-grace
-    // semantics: an identity-bearing reconnect within the grace window
-    // re-bootstraps a new entry (idempotent setPresence upsert) AND
-    // cancels the pending eviction.
     const s = await bootTestServer();
     servers.push(s);
     const { booted } = s;
@@ -307,9 +260,6 @@ describe('keepalive WS upgrade → setPresence bootstrap', () => {
     expect(broadcaster.getPresenceMap()[presenceKey]).toBeDefined();
     ws1.close();
 
-    // Reconnect within the 100ms grace window — bootstrap re-fires,
-    // grace timer is cancelled, entry stays present past the original
-    // grace deadline.
     await wait(30);
     const ws2 = new WsClient(`ws://127.0.0.1:${booted.port}/collab/keepalive${baseQuery}`);
     await new Promise<void>((resolve, reject) => {

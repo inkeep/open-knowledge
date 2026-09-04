@@ -1,17 +1,3 @@
-/**
- * Claude plugin adapter — the one provenance-carrying harness source.
- *
- * Source of truth is `installed_plugins.json` (version 2), NOT a `cache/**`
- * glob: the cache holds GC'd duplicate versions; the manifest names the ACTIVE
- * one and carries provenance (version, gitCommitSha, scope, marketplace). For
- * each `<plugin>@<marketplace>` key, entries are per `(scope, projectPath)`
- * install site; we pick the newest `lastUpdated` per site and skip any entry
- * that is `.orphaned_at` or missing its `installPath`.
- *
- * Read-only. The Claude plugin cache is the ONE store OK must never write —
- * this only reads it.
- */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { SkillProvenance } from '../schema.ts';
@@ -23,7 +9,6 @@ import {
   skillDirNames,
 } from './shared.ts';
 
-/** Split a `<plugin>@<marketplace>` key; marketplace omitted → undefined. */
 function splitPluginKey(key: string): { plugin: string; marketplace?: string } {
   const at = key.lastIndexOf('@');
   if (at <= 0) return { plugin: key };
@@ -40,15 +25,6 @@ interface PluginEntry {
   orphaned_at?: string;
 }
 
-/**
- * Pick the active entry per `(scope, projectPath)`: newest `lastUpdated`, never
- * orphaned. `resolveDirInstall` is the DIRECTORY-marketplace escape hatch: a
- * marketplace registered from a local directory serves its plugins IN PLACE, so
- * the recorded `installPath` names a cache dir that was never written. Those
- * installs are exactly as real as cached ones — the harness loads the skills
- * straight from the marketplace dir — and dropping them made every such plugin
- * invisible to detection.
- */
 function activeEntries(
   entries: PluginEntry[],
   resolveDirInstall: (entry: PluginEntry) => string | null,
@@ -69,14 +45,6 @@ function activeEntries(
   return [...bySite.values()];
 }
 
-/**
- * `marketplace name → { dir, pluginRoots }` for every DIRECTORY-sourced
- * marketplace in the registry: `dir` from the registry's own
- * `source.path`/`installLocation` (absolute), plugin roots from the
- * marketplace's `.claude-plugin/marketplace.json` (`source` per plugin,
- * relative to the marketplace dir). Read once per enumeration, like the repo
- * map — resolving per entry would re-read both files per installed plugin.
- */
 function readDirectoryMarketplaces(pluginsDir: string): Map<string, Map<string, string>> {
   const out = new Map<string, Map<string, string>>();
   let registry: Record<
@@ -102,15 +70,11 @@ function readDirectoryMarketplaces(pluginsDir: string): Map<string, Map<string, 
         roots.set(p.name, resolve(dir, p.source));
       }
       if (roots.size > 0) out.set(name, roots);
-    } catch {
-      // A directory marketplace whose manifest is unreadable contributes
-      // nothing — same posture as an unreadable registry.
-    }
+    } catch {}
   }
   return out;
 }
 
-/** Read `<installPath>/.claude-plugin/plugin.json`; `{}` on absence/parse error. */
 function readPluginJson(installPath: string): {
   description?: string;
   version?: string;
@@ -125,15 +89,6 @@ function readPluginJson(installPath: string): {
   }
 }
 
-/**
- * Marketplace name → its GitHub repo URL, from the plugin registry.
- *
- * Read ONCE per enumeration and shared across every skill: the registry is one
- * small file, and resolving it per skill would re-read and re-parse it a few
- * hundred times on a machine with a handful of plugins installed. A registry
- * that is absent, malformed, or lists a non-GitHub source yields an empty map,
- * and the skills simply carry no repository URL.
- */
 function readMarketplaceRepos(pluginsDir: string): Map<string, string> {
   const out = new Map<string, string>();
   try {
@@ -147,17 +102,10 @@ function readMarketplaceRepos(pluginsDir: string): Map<string, string> {
       if (source?.source === 'github' && typeof source.repo === 'string' && source.repo)
         out.set(name, `https://github.com/${source.repo}`);
     }
-  } catch {
-    // No registry, or unreadable — every skill just goes without a URL.
-  }
+  } catch {}
   return out;
 }
 
-/**
- * Enumerate installed Claude plugins as skill bundles. `pluginsDir` is the
- * `~/.claude/plugins` directory. Returns `[]` when `installed_plugins.json` is
- * absent or malformed.
- */
 export function enumerateClaudePlugins(pluginsDir: string, harness: string): SkillBundle[] {
   const manifestPath = join(pluginsDir, 'installed_plugins.json');
   if (!existsSync(manifestPath)) return [];
@@ -165,8 +113,6 @@ export function enumerateClaudePlugins(pluginsDir: string, harness: string): Ski
   try {
     manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
   } catch (err) {
-    // A malformed manifest (e.g. a partial write mid-Claude-upgrade) erases
-    // every provenance-carrying skill; log so that's distinguishable from "none".
     console.warn(
       '[skills-catalog] failed to parse installed_plugins.json, skipping Claude plugins',
       { manifestPath, err },
@@ -199,9 +145,6 @@ export function enumerateClaudePlugins(pluginsDir: string, harness: string): Ski
           ...(entry.version ? { version: entry.version } : {}),
           ...(entry.gitCommitSha ? { gitCommitSha: entry.gitCommitSha } : {}),
           ...(entry.scope ? { scope: entry.scope } : {}),
-          // The project a `project`-scoped install is bound to — the catalog is
-          // machine-global, so this is how a detected skill is attributed to the
-          // project that installed it (project-locality; see core `scope.ts`).
           ...(entry.projectPath ? { projectPath: entry.projectPath } : {}),
           ...(marketplace && repoByMarketplace.get(marketplace)
             ? { repositoryUrl: repoByMarketplace.get(marketplace) }

@@ -30,53 +30,20 @@ import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { cn } from '@/lib/utils';
 
 interface TerminalNewChatButtonProps {
-  /** The current primary pick — an in-app agent, a CLI, or a bare shell. Drives
-   *  the primary icon/label and the dropdown checkmark. */
   readonly selected: NewSessionChoice;
-  /** Primary click — launch the current {@link selected} pick. A plain launch: it
-   *  does not change the pick. (When the pick is an agent with no concrete agent
-   *  remembered, the host routes this to Configure agents instead.) */
   readonly onLaunchSelected: () => void;
-  /** Render the in-app agent rows (the dock) — false in the standalone terminal
-   *  window, which hosts only shells. */
   readonly showAgents: boolean;
-  /** The user's registered agents (most-recently-registered first). */
   readonly registeredAgents: readonly RegisteredAgent[];
-  /** Dropdown agent row — register it as the new default AND start a thread. */
   readonly onPickAgent: (agent: RegisteredAgent) => void;
-  /** "Configure agents" row — opens the Configure agents settings tab. */
   readonly onOpenSettings: () => void;
-  /** Live (non-archived) agent-thread count, checked against the server cap to
-   *  disable the agent rows when the workspace is at its running-agent limit. */
   readonly liveThreadCount: number;
-  /** Render the CLI + bare-Terminal rows (a desktop bridge with a PTY). */
   readonly showClis: boolean;
-  /** Dropdown CLI row — make `cli` the new default (persist) AND open a tab in it. */
   readonly onPickCli: (cli: TerminalCli) => void;
-  /** Dropdown "Terminal" row — make a bare shell the new default AND open one. */
   readonly onPickTerminal: () => void;
-  /** The CLIs to list — already gated by the host via `isTerminalCliEnabled`
-   *  (CLIs the probe hasn't ruled out, plus the current pick), so a CLI that's
-   *  been probed absent doesn't appear. This is a presentational component: it
-   *  renders the list as given. Falls back to the full {@link VISIBLE_CLIS} only
-   *  for callers/tests that don't pass a gated list. */
   readonly visibleClis?: readonly TerminalCli[];
   readonly className?: string;
 }
 
-/**
- * The sessions dock's "new session" control: a split button pairing a primary
- * launch of the current pick with a dropdown to switch it across all three
- * families. The primary opens whatever is currently selected: a bare terminal, a
- * CLI chat, or an in-app agent thread. The menu mirrors the Ask-AI surfaces: an
- * "In app" group (enabled agents), then — on the desktop host — a "Terminal"
- * group (the CLIs the host admits via `visibleClis`, plus a bare "Terminal"
- * shell), then a "Configure agents" footer last.
- *
- * The pick sticks: agent + CLI picks via the shared Ask-AI store, the bare-terminal
- * pick via a terminal-only flag. The brand icon / agent avatar mirrors the Ask-AI
- * surfaces so a glance tells you what a new session will start.
- */
 export function TerminalNewChatButton({
   selected,
   onLaunchSelected,
@@ -94,10 +61,6 @@ export function TerminalNewChatButton({
   const { t } = useLingui();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Fetch the catalog lazily — only while the menu is open on a thread surface —
-  // for the max-running-agents cap. Shares the `['acp-catalog']` query cache (and
-  // 5-min staleness) with the catalog dialog, so opening the menu after browsing
-  // the catalog is free. Default 8 until it resolves (matches the server default).
   const catalog = useQuery({
     queryKey: ['acp-catalog'],
     queryFn: ({ signal }) => fetchAgentCatalog(signal),
@@ -108,8 +71,6 @@ export function TerminalNewChatButton({
   const atCap = liveThreadCount >= maxThreads;
   const hasMenu = showAgents || showClis;
 
-  // The `t` template macro is scope-bound, so the label is computed inline here
-  // rather than in a helper that receives `t` as an argument.
   const primaryLabel =
     selected.kind === 'terminal'
       ? t`New terminal`
@@ -161,11 +122,7 @@ export function TerminalNewChatButton({
           </DropdownMenuTrigger>
         ) : null}
         <DropdownMenuContent align="start" className="max-h-80 min-w-[200px]">
-          {/* Same section structure as the Ask-AI menus — an "In app" group
-              over the agent rows, a "Terminal" group over the CLIs, and a
-              "Configure agents" footer last — so the dock picker reads consistently. The
-              bare "Terminal" (plain shell) is the last row of the Terminal group,
-              where it belongs alongside the CLIs. */}
+          {}
           {showAgents && registeredAgents.length > 0 ? (
             <DropdownMenuGroup aria-label={t`In app`}>
               <DropdownMenuLabel>
@@ -220,12 +177,7 @@ export function TerminalNewChatButton({
                     key={cli}
                     onSelect={() => onPickCli(cli)}
                     data-testid={`terminal-new-chat-cli-${cli}`}
-                    // The accessible name carries "<name> CLI" so it is distinct and
-                    // unambiguous (matches the Ask-AI Terminal rows, WCAG 2.5.3).
                     aria-label={t`${name} CLI`}
-                    // `aria-current` over menuitemradio: each row both selects a
-                    // default AND launches, so radio semantics overstate the
-                    // selection aspect (WCAG 1.3.1).
                     aria-current={isSelected ? 'true' : undefined}
                   >
                     <TargetIcon id={cliIconTargetId(cli)} className="size-4" aria-hidden="true" />
@@ -236,7 +188,7 @@ export function TerminalNewChatButton({
                   </DropdownMenuItem>
                 );
               })}
-              {/* Bare shell — last row of the Terminal group. */}
+              {}
               <DropdownMenuItem
                 onSelect={onPickTerminal}
                 data-testid="terminal-new-chat-terminal"
@@ -252,13 +204,10 @@ export function TerminalNewChatButton({
               </DropdownMenuItem>
             </DropdownMenuGroup>
           ) : null}
-          {/* Settings — the global footer, last in every menu (matches the Ask-AI
-              surfaces). Opens Configure agents; only on the agent-hosting dock,
-              never the standalone terminal window. "Settings" is never capped. */}
+          {}
           {showAgents ? (
             <>
-              {/* Separator only when a section sits above it, so the all-disabled
-                  dock menu isn't a lone rule over the footer. */}
+              {}
               {registeredAgents.length > 0 || showClis ? <DropdownMenuSeparator /> : null}
               <DropdownMenuItem onSelect={onOpenSettings} data-testid="terminal-new-chat-settings">
                 <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />
@@ -274,7 +223,6 @@ export function TerminalNewChatButton({
   );
 }
 
-/** Primary-button icon for the current pick (brand icon / agent avatar / shell). */
 function NewSessionPrimaryIcon({
   selected,
   className,

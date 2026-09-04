@@ -1,8 +1,8 @@
 import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
+import { MultiFileDiff } from '@pierre/diffs/react';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
-import { DiffView } from '@/components/DiffView';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,24 +15,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { okPierreTheme } from '@/lib/pierre-theme';
 import { skillHostRootDir } from '@/lib/skill-scope';
 import { fetchSkillPreview, resolveSkillFork } from '@/lib/skills-api';
 
 export interface SkillForkTarget {
   skill: SkillsListEntry;
-  /** The editor whose dir holds the divergent same-name copy. */
   editor: string;
 }
 
-/**
- * Fork resolution — the CONFLICT chip's door. Same name, different bytes in a
- * non-canonical editor dir: show the two SKILL.md bodies as a diff and offer
- * the three verbs (keep the source / make the fork the source / keep both
- * under a new name). Every server-side path stashes the discarded bytes
- * out-of-tree first, so no choice is silently lossy. One-row-per-name stays
- * the invariant: "keep both" is a deliberate rename, never two rows sharing
- * an identity.
- */
 export function SkillForkDialog({
   target,
   onOpenChange,
@@ -44,17 +35,11 @@ export function SkillForkDialog({
   const inputId = useId();
   const [forkBody, setForkBody] = useState<string | null>(null);
   const [canonicalBody, setCanonicalBody] = useState<string | null>(null);
-  // The diff is a PREVIEW aid, not a gate: if either version fails to load (a
-  // preview fetch error, or a missing `absolutePath` so we can't even locate the
-  // dirs), surface that instead of hanging on "Loading both versions" forever
-  // — the three resolve actions stay usable regardless.
   const [previewError, setPreviewError] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [toName, setToName] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Load both bodies via the local-dir preview path (the detected-skill class):
-  // the canonical from its real dir, the fork from the editor's dir.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reload only when the target identity changes
   useEffect(() => {
     setForkBody(null);
@@ -65,8 +50,6 @@ export function SkillForkDialog({
     const { skill, editor } = target;
     const base = skill.absolutePath?.slice(0, -`/${skill.path}`.length) ?? null;
     if (base === null) {
-      // Can't locate the two dirs — show the resolve options without a diff
-      // rather than spin indefinitely.
       setPreviewError(true);
       return;
     }
@@ -128,10 +111,8 @@ export function SkillForkDialog({
         if (!open && !busy) onOpenChange(false);
       }}
     >
-      {/* `w-full` so the dialog holds its max width even before/without the diff
-          — otherwise it collapses to the placeholder's width and the footer
-          buttons spread edge-to-edge. */}
-      <DialogContent className="flex max-h-[85vh] w-full max-w-3xl flex-col">
+      {}
+      <DialogContent className="flex max-h-[85vh] w-full flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>
             <Trans>
@@ -147,7 +128,12 @@ export function SkillForkDialog({
         </DialogHeader>
         <DialogBody className="min-h-0 flex-1 overflow-auto">
           {canonicalBody !== null && forkBody !== null ? (
-            <DiffView oldContent={canonicalBody} newContent={forkBody} layout="unified" />
+            <MultiFileDiff
+              className="conflict-view"
+              oldFile={{ name: skill.name, contents: canonicalBody }}
+              newFile={{ name: skill.name, contents: forkBody }}
+              options={{ overflow: 'wrap', diffStyle: 'unified', theme: okPierreTheme() }}
+            />
           ) : previewError ? (
             <div className="flex min-h-56 items-center justify-center px-6 text-center text-muted-foreground text-sm">
               <Trans>

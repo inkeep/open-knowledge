@@ -5,7 +5,6 @@ import {
   formatIgnoredCommittedKey,
 } from './committed-scope-diagnostics.ts';
 
-/** Dotted paths of the findings, sorted for order-independent assertions. */
 function paths(value: unknown): string[] {
   return detectCommittedProjectLocalKeys({ value })
     .map((f) => f.path.join('.'))
@@ -21,8 +20,6 @@ describe('detectCommittedProjectLocalKeys', () => {
   });
 
   test('flags a committed loopback bind too — placement, not value, is the fault', () => {
-    // The whole point is that a committed bind is IGNORED regardless of value;
-    // a loopback one is harmless but still silently dropped, so name it.
     expect(paths({ server: { bind: ['127.0.0.1'] } })).toEqual(['server.bind']);
   });
 
@@ -69,8 +66,6 @@ describe('detectCommittedProjectLocalKeys', () => {
   });
 
   test('separates ignored project-local keys from in-scope siblings in one pass', () => {
-    // A realistic mixed committed file: a shared content.dir + port (fine)
-    // alongside a bind + allowExternal that leaked in (ignored).
     expect(
       paths({
         content: { dir: 'docs' },

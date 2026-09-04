@@ -1,14 +1,3 @@
-/**
- * Schema-driven settings field definitions, extracted from the heavy lazy
- * `SettingsDialogBody` so the main-chunk settings SEARCH index can read field
- * labels without pulling the form harness (RHF, ConfigSchema, schema-walker)
- * into the main bundle. Deps here are intentionally light: the `MessageDescriptor`
- * type + the `msg` macro only.
- *
- * The body imports these back for rendering; `INDEXED_FIELD_GROUPS` maps each
- * FieldDef array to the `activeId` section it renders under, so the search index
- * can attribute a field hit to a navigable section.
- */
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 
@@ -16,14 +5,6 @@ export interface FieldDef {
   path: string[];
   label: MessageDescriptor;
   description?: MessageDescriptor;
-  /**
-   * Optional override: 'enum-toggle' renders enum as a ToggleGroup;
-   * 'theme-cards' renders the light/dark/system cards with mode thumbnails;
-   * 'theme-tiles' renders the IDE color-palette tile picker;
-   * 'language-select' renders the interface-language picker, whose options
-   * come from the reviewed picker set rather than from the schema enum;
-   * default is a select-style toggle.
-   */
   control?: 'enum-toggle' | 'theme-cards' | 'theme-tiles' | 'language-select';
 }
 
@@ -57,20 +38,11 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
   },
   {
     path: ['telemetry', 'skillInstallReports', 'enabled'],
-    // Behavior first: most people have never visited skills.sh, so leading with
-    // the destination names something they can't evaluate. What it DOES — count
-    // an install so a published skill shows a real number — is the decision.
     label: msg`Count skill installs publicly`,
     description: msg`When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine.`,
   },
 ];
 
-// The color-theme picker is a theme "plugin": it lives in the Plugins menu
-// (Settings → Plugins → Themes) as a peer of the lint plugins, not in
-// Preferences. `appearance.theme` (light/dark/system) stays in Preferences.
-// One control writes both palette slots, so it is declared against the light
-// one — the path is what the search index navigates to and what the field row
-// is keyed by, not a per-slot rendering hint.
 export const FIELDS_THEME_PLUGIN: FieldDef[] = [
   {
     path: ['appearance', 'colorThemeLight'],
@@ -80,18 +52,11 @@ export const FIELDS_THEME_PLUGIN: FieldDef[] = [
   },
 ];
 
-/** A settings section's `activeId` paired with the schema fields it renders. */
 export interface IndexedFieldGroup {
   sectionId: string;
   fields: FieldDef[];
 }
 
-/**
- * The schema-field groups the settings search indexes, keyed to the section id
- * a field hit navigates to. Only the two declarative `FieldDef` arrays are
- * indexed at field granularity; bespoke non-schema sections are reachable via
- * their section-level entry.
- */
 export const INDEXED_FIELD_GROUPS: IndexedFieldGroup[] = [
   { sectionId: 'preferences', fields: FIELDS_USER_PREFERENCES },
   { sectionId: 'plugin:theme', fields: FIELDS_THEME_PLUGIN },

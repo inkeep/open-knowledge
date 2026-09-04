@@ -5,20 +5,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * One file on disk must be backed by exactly one collaboration document.
- *
- * A name that keeps its markdown extension resolves to the same file as its
- * extension-less twin, so if the two key separate rooms both persist to that
- * file independently and the later write silently overwrites the earlier one.
- *
- * This drives a REAL booted server over a real socket rather than testing a
- * name-normalizing helper in isolation: the room key is chosen deep inside the
- * collaboration server, and a helper that looks correct can sit on a seam the
- * client never crosses. Only an end-to-end write/read across both spellings
- * proves the two names share a room.
- */
-
 let tmpRoot: string;
 let server: BootedServer;
 let contentDir: string;
@@ -41,8 +27,6 @@ beforeAll(async () => {
   tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-room-canon-'));
   contentDir = tmpRoot;
   await writeFile(resolve(contentDir, 'notes.md'), '# original\n', 'utf-8');
-  // A genuine same-stem pair: both files exist, so `pair.md` is the only way
-  // to reach the md half once `pair` resolves to the mdx half.
   await writeFile(resolve(contentDir, 'pair.md'), 'MD-ORIGINAL\n', 'utf-8');
   await writeFile(resolve(contentDir, 'pair.mdx'), 'MDX-ORIGINAL\n', 'utf-8');
   server = await bootCompositionRig(contentDir);
@@ -61,9 +45,6 @@ describe('one file is backed by one collaboration document', () => {
 
     expect(await writeDoc('notes.md', 'CONTENT-B')).toBe(200);
 
-    // The failure this guards: the extension-qualified write lands in a second
-    // room, disk holds CONTENT-B, and this read still returns the stale
-    // CONTENT-A from a room that never converged.
     expect(await readDoc('notes')).toContain('CONTENT-B');
     expect(await readDoc('notes')).not.toContain('CONTENT-A');
   }, 30_000);
@@ -71,13 +52,10 @@ describe('one file is backed by one collaboration document', () => {
   test('both spellings resolve to the same document, and it reaches disk', async () => {
     await writeDoc('notes.md', 'CONVERGED');
 
-    // Both spellings answer from one room, and echo the canonical name back.
     expect(await readDoc('notes')).toContain('CONVERGED');
     expect(await readDoc('notes.md')).toContain('CONVERGED');
     expect(await readDoc('notes.md')).toContain('"docName":"notes"');
 
-    // Disk lags by the persistence debounce, so poll rather than assuming the
-    // write has already landed.
     await expect
       .poll(() => readFile(resolve(contentDir, 'notes.md'), 'utf-8'), { timeout: 15_000 })
       .toContain('CONVERGED');
@@ -94,10 +72,7 @@ describe('a genuine same-stem pair stays independently addressable', () => {
     const viaStem = await readDoc('pair');
     const viaShadowed = await readDoc('pair.md');
 
-    // `.mdx` wins the stem by precedence, so the bare name must serve it.
     expect(viaStem).toContain('MDX-ORIGINAL');
-    // ...and the md half must remain reachable rather than being answered
-    // with its sibling's content.
     expect(viaShadowed).toContain('MD-ORIGINAL');
     expect(viaShadowed).not.toContain('MDX-ORIGINAL');
   }, 30_000);

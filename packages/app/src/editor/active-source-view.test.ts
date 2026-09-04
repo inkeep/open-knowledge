@@ -1,14 +1,3 @@
-/**
- * Module-level registry mapping docName → the mounted CodeMirror view.
- *
- * Active-heading tracking reads the view out of this registry to measure line
- * geometry, so the registry's answer is what decides whether the outline can
- * track at all. Two properties carry the weight: the entry means "mounted"
- * (a stale entry produces measurements from a view that is no longer on screen),
- * and subscribers are notified on every transition (a missed notification
- * leaves the outline frozen until some unrelated render happens to recompute).
- */
-
 import type { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -24,8 +13,6 @@ const TOUCHED_DOCS = ['doc-a', 'doc-b', 'doc-remounted'];
 
 describe('active-source-view registry', () => {
   afterEach(() => {
-    // Registry state is module-scoped and outlives each test, so clear every
-    // docName any test may have touched rather than letting bleed hide a bug.
     for (const docName of TOUCHED_DOCS) {
       const current = getSourceViewForDoc(docName);
       if (current) unregisterSourceView(docName, current);
@@ -54,9 +41,6 @@ describe('active-source-view registry', () => {
   });
 
   test('a stale unregister does not evict the live successor', () => {
-    // A StrictMode or HMR double-invoke runs the previous mount's cleanup after
-    // the next mount has already registered its view. Deleting by docName alone
-    // would leave the live view unreachable and tracking permanently dead.
     const previous = fakeView('previous');
     const current = fakeView('current');
     registerSourceView('doc-remounted', previous);

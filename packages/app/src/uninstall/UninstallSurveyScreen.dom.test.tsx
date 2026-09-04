@@ -28,9 +28,6 @@ describe('uninstall churn survey', () => {
     ).toBeDefined();
     expect(screen.getByText('What you share is sent to the OpenKnowledge team.')).toBeDefined();
 
-    // The labels this window renders are its own translations, while the slugs
-    // and their order are the wire contract churn tickets are grouped by. Both
-    // halves have to line up, or a ticket files under a reason nobody picked.
     expect(screen.getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(
       UNINSTALL_FEEDBACK_REASONS.map((option) => option.value),
     );

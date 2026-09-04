@@ -1,10 +1,3 @@
-/**
- * useHydrateRegisteredAgentMeta fills a seeded agent's placeholder name/icon
- * from the registry catalog on mount. This is what runs at app startup (mounted
- * in main.tsx) so the launcher menus show real brand icons without the user ever
- * opening Configure agents.
- */
-
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -60,7 +53,6 @@ afterEach(() => cleanup());
 
 describe('useHydrateRegisteredAgentMeta', () => {
   test('fills a seeded agent brand icon from the catalog on mount', async () => {
-    // A freshly registered agent ships id + name only, no icon.
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude' });
     expect(getDefaultRegisteredAgent()?.iconUrl).toBeUndefined();
 

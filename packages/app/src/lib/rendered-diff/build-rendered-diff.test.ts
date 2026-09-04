@@ -1,10 +1,3 @@
-/**
- * Unit tests for the rendered-diff engine — pure, no DOM. Exercises the
- * block-level content diff plus the mark-change pass (from `recreate-transform`)
- * against the shared markdown schema (core `sharedExtensions`, node-safe) and
- * asserts the resulting block/mark ranges.
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
@@ -65,7 +58,6 @@ describe('buildRenderedDiff', () => {
     const before = '# H\n\none';
     const after = '# H\n\none\n\ntwo';
     const r = ok(before, after);
-    // afterDoc is the recreated target; serializing it back yields the after body.
     expect(md.serialize(r.afterDoc.toJSON()).trim()).toBe(after.trim());
   });
 
@@ -89,7 +81,6 @@ describe('buildRenderedDiff', () => {
     expect(mc.kind).toBe('remove');
     expect(mc.markName).toBe('strong');
     expect(mc.toB).toBeGreaterThan(mc.fromB);
-    // Pure mark change (no content edits) → before/after coords coincide.
     expect(mc.fromA).toBe(mc.fromB);
     expect(mc.toA).toBe(mc.toB);
   });
@@ -108,16 +99,12 @@ describe('buildRenderedDiff', () => {
   });
 
   test('mark on newly inserted text is not double-reported (dropped)', () => {
-    // The whole bold phrase is inserted — it must read as an insertion, not as a
-    // separate "formatting added" mark change on the same range.
     const r = ok('start.', 'start. **fresh bold**');
     const { ins } = counts(r.changes);
     expect(ins).toBeGreaterThan(0);
     expect(r.markChanges.length).toBe(0);
   });
 
-  // Block-level alignment: heavy rewrite/reorder must produce a few whole-block
-  // changes, not word-salad, and must leave unchanged sibling blocks alone.
   test('editing one list item leaves the other items untouched', () => {
     const before = `- [[proposals/0001|Proposal 0001]] vision.
 - [[specs/x/spec|Spec A]] tasks.
@@ -126,7 +113,6 @@ describe('buildRenderedDiff', () => {
 - [[specs/x/spec|Spec A]] tasks.
 - Reworded third item.`;
     const r = ok(before, after);
-    // Exactly the third item: one whole-block delete + one whole-block insert.
     expect(r.changes.length).toBe(2);
     const touched = r.changes
       .map(
@@ -147,8 +133,6 @@ describe('buildRenderedDiff', () => {
 - Agent Activity Panel (separate, agent-scoped: per-file diffs, per-file undo).
 - Change summaries per write, shown on Timeline rows.`;
     const r = ok(before, after);
-    // Two removed bullets + three added bullets = 5 whole-block changes, not the
-    // ~29 interleaved word ranges the whole-doc word diff produced.
     expect(r.changes.length).toBeLessThanOrEqual(6);
   });
 });

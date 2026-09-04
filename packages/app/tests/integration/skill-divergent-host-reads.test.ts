@@ -4,22 +4,9 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
 
-/**
- * Same name, different content across host dirs = two different skills, each its
- * own row. Every per-row READ must therefore be addressed by host, or a row
- * silently serves its namesake's bytes.
- *
- * OK's own `open-knowledge*` bundles resolve through a SEPARATE branch from
- * authored skills, and that branch ignored the host — so both rows of a diverged
- * built-in served whichever dir the editor-id order reached first. The two
- * `open-knowledge` cases below are the regression guard; the authored-skill
- * cases pin the path that was always correct so the two can't drift apart.
- *
- */
 let server: TestServer;
 const base = () => `http://127.0.0.1:${server.port}`;
 
-/** A bundle with a distinguishing SKILL.md body and its own reference file. */
 function writeBundle(root: string, name: string, marker: string, refName: string): void {
   const dir = join(server.contentDir, root, name);
   mkdirSync(join(dir, 'references'), { recursive: true });
@@ -32,11 +19,8 @@ function writeBundle(root: string, name: string, marker: string, refName: string
 
 beforeAll(async () => {
   server = await createTestServer();
-  // A diverged BUILT-IN: `.agents` holds a stale single-file copy, `.claude` the
-  // current one. This is the shape that shipped broken.
   writeBundle('.agents/skills', 'open-knowledge', 'agents-side', 'from-agents.md');
   writeBundle('.claude/skills', 'open-knowledge', 'claude-side', 'from-claude.md');
-  // A diverged AUTHORED skill, same shape, different resolution path.
   writeBundle('.agents/skills', 'reviewer', 'agents-side', 'from-agents.md');
   writeBundle('.claude/skills', 'reviewer', 'claude-side', 'from-claude.md');
 }, HARNESS_BOOT_TIMEOUT_MS);
@@ -85,8 +69,6 @@ describe('divergent same-name skills read per host', () => {
       expect(own.status).toBe(200);
       expect(((await own.json()) as { text: string }).text).toContain('agents-side');
 
-      // The sibling's file is NOT in this host's bundle — serving it would be the
-      // silent wrong-bytes read this whole contract exists to prevent.
       expect((await fileAt(name, 'agents', 'references/from-claude.md')).status).toBe(404);
     });
   }

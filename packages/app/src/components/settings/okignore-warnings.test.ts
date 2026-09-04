@@ -64,7 +64,6 @@ describe('checkHeuristicWarnings — lone bang', () => {
   });
 
   test('flags lone bang surrounded by whitespace (after trim)', () => {
-    // Surrounded whitespace → both leading-whitespace AND lone-bang fire.
     const out = checkHeuristicWarnings('  !  ').map((w) => w.code);
     expect(out).toContain('lone-bang');
   });

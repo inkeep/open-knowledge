@@ -1,15 +1,11 @@
-/**
- * `replaceYText` splices new content into an existing `Y.Text` using the
- * smallest edit that spans the change — the prefix/suffix shrink is the
- * primary WYSIWYG write path (`commitChart → replaceYText`) so its
- * boundary logic needs targeted coverage. A bug in the `start` /
- * `endCur` / `endNext` interactions would produce incorrect splices,
- * manifesting as corrupted diagram labels after a click-edit.
- */
-
-import { describe, expect, test } from 'vitest';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
-import { replaceYText } from './MermaidDocEditor.tsx';
+import {
+  acquireMermaidUndoManager,
+  MERMAID_DIAGRAM_EDIT_ORIGIN,
+  replaceYText,
+} from './MermaidDocEditor.tsx';
 
 function makeYText(initial: string): { doc: Y.Doc; ytext: Y.Text; events: Y.YTextEvent[] } {
   const doc = new Y.Doc();
@@ -32,7 +28,6 @@ describe('replaceYText', () => {
     const { ytext, events } = makeYText('OldPrefix middle suffix');
     replaceYText(ytext, 'NewPrefix middle suffix');
     expect(ytext.toString()).toBe('NewPrefix middle suffix');
-    // Exactly one splice — the prefix region.
     expect(events.length).toBe(1);
   });
 
@@ -68,9 +63,6 @@ describe('replaceYText', () => {
   });
 
   test('overlapping prefix/suffix (identical surrounding text) locates the middle change', () => {
-    // The classic diff-boundary trap: prefix/suffix common runs meet in
-    // the middle. If the algorithm shrinks suffix too aggressively, it
-    // will delete or insert the wrong characters.
     const { ytext } = makeYText('abcXabc');
     replaceYText(ytext, 'abcYabc');
     expect(ytext.toString()).toBe('abcYabc');
@@ -89,8 +81,6 @@ describe('replaceYText', () => {
   });
 
   test('multi-line mermaid label rewrite (real WYSIWYG shape)', () => {
-    // What the WYSIWYG click-edit actually produces: replace one node
-    // label mid-chart, everything else unchanged.
     const before = 'graph LR\n  Shopper --> Storefront\n  Storefront --> Cart\n';
     const after = 'graph LR\n  Buyer --> Storefront\n  Storefront --> Cart\n';
     const { ytext } = makeYText(before);
@@ -109,5 +99,158 @@ describe('replaceYText', () => {
     replaceYText(ytext, 'prefix NEW suffix');
     expect(transactionCount).toBe(1);
     expect(ytext.toString()).toBe('prefix NEW suffix');
+  });
+});
+
+describe('acquireMermaidUndoManager', () => {
+  test('tracks diagram edits but excludes origin-less seed and reconcile writes', () => {
+    const { doc, ytext } = makeYText('');
+    const provider = {
+      document: doc,
+      on() {},
+      off() {},
+    } as unknown as HocuspocusProvider;
+
+    const undoManager = acquireMermaidUndoManager(provider, ytext);
+
+    expect(undoManager.trackedOrigins.has(null)).toBe(false);
+    expect(undoManager.trackedOrigins.has(MERMAID_DIAGRAM_EDIT_ORIGIN)).toBe(true);
+
+    replaceYText(ytext, 'seed');
+    expect(undoManager.undoStack).toHaveLength(0);
+
+    replaceYText(ytext, 'diagram edit', MERMAID_DIAGRAM_EDIT_ORIGIN);
+    expect(undoManager.undoStack).toHaveLength(1);
+  });
+
+  test('an untracked full reconcile clears a stale diagram edit before undo can corrupt it', () => {
+    const before = 'graph LR\n  Shopper --> Storefront\n';
+    const afterDiagramEdit = 'graph LR\n  Buyer --> Storefront\n';
+    const afterReconcile = 'graph LR\n  Buyer --> Warehouse\n';
+    const { doc, ytext } = makeYText(before);
+    const provider = {
+      document: doc,
+      on() {},
+      off() {},
+    } as unknown as HocuspocusProvider;
+    const undoManager = acquireMermaidUndoManager(provider, ytext);
+
+    replaceYText(ytext, afterDiagramEdit, MERMAID_DIAGRAM_EDIT_ORIGIN);
+    expect(undoManager.canUndo()).toBe(true);
+
+    doc.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, afterReconcile);
+    }, Symbol('mermaid-source-reconcile'));
+
+    expect(ytext.toString()).toBe(afterReconcile);
+    expect(undoManager.undoStack).toHaveLength(0);
+    undoManager.undo();
+    expect(ytext.toString()).toBe(afterReconcile);
+  });
+
+  test('a remote full reconcile clears history even though transport replaces the server origin', () => {
+    const before = 'graph LR\n  Shopper --> Storefront\n';
+    const afterDiagramEdit = 'graph LR\n  Buyer --> Storefront\n';
+    const afterReconcile = 'graph LR\n  Buyer --> Warehouse\n';
+    const serverDoc = new Y.Doc();
+    const serverText = serverDoc.getText('source');
+    serverText.insert(0, before);
+    const clientDoc = new Y.Doc();
+    Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+    const clientText = clientDoc.getText('source');
+    const provider = {
+      document: clientDoc,
+      on() {},
+      off() {},
+    } as unknown as HocuspocusProvider;
+    const undoManager = acquireMermaidUndoManager(provider, clientText);
+
+    replaceYText(clientText, afterDiagramEdit, MERMAID_DIAGRAM_EDIT_ORIGIN);
+    Y.applyUpdate(serverDoc, Y.encodeStateAsUpdate(clientDoc));
+    let reconcileUpdate: Uint8Array | undefined;
+    serverDoc.on('update', (update, origin) => {
+      if (origin === 'server-reconcile') reconcileUpdate = update;
+    });
+    serverDoc.transact(() => {
+      serverText.delete(0, serverText.length);
+      serverText.insert(0, afterReconcile);
+    }, 'server-reconcile');
+    expect(reconcileUpdate).toBeDefined();
+    if (!reconcileUpdate) throw new Error('Expected the server reconcile update');
+    Y.applyUpdate(clientDoc, reconcileUpdate, provider);
+
+    expect(clientText.toString()).toBe(afterReconcile);
+    expect(undoManager.canUndo()).toBe(false);
+    undoManager.undo();
+    expect(clientText.toString()).toBe(afterReconcile);
+  });
+
+  test('an untracked partial peer edit preserves diagram undo history', () => {
+    const { doc, ytext } = makeYText('graph LR\n  Shopper --> Storefront\n');
+    const provider = {
+      document: doc,
+      on() {},
+      off() {},
+    } as unknown as HocuspocusProvider;
+    const undoManager = acquireMermaidUndoManager(provider, ytext);
+    replaceYText(ytext, 'graph LR\n  Buyer --> Storefront\n', MERMAID_DIAGRAM_EDIT_ORIGIN);
+
+    doc.transact(() => ytext.insert(ytext.length, '  Storefront --> Cart\n'), Symbol('peer'));
+
+    expect(undoManager.canUndo()).toBe(true);
+  });
+
+  test('repeated acquisition installs one full-reconcile observer', () => {
+    const listeners = new Set<() => void>();
+    const { doc, ytext } = makeYText('graph LR\n  Shopper --> Storefront\n');
+    const provider = {
+      document: doc,
+      on(name: string, listener: () => void) {
+        if (name === 'destroy') listeners.add(listener);
+      },
+      off(name: string, listener: () => void) {
+        if (name === 'destroy') listeners.delete(listener);
+      },
+    } as unknown as HocuspocusProvider;
+    const observe = vi.spyOn(ytext, 'observe');
+
+    const first = acquireMermaidUndoManager(provider, ytext);
+    const destroyListenerCount = listeners.size;
+    expect(observe).toHaveBeenCalledTimes(1);
+
+    const second = acquireMermaidUndoManager(provider, ytext);
+
+    expect(second).toBe(first);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(listeners.size).toBe(destroyListenerCount);
+
+    for (const listener of listeners) listener();
+    expect(listeners.size).toBe(0);
+  });
+
+  test('provider teardown detaches the full-reconcile observer', () => {
+    const listeners = new Set<() => void>();
+    const { doc, ytext } = makeYText('graph LR\n  Shopper --> Storefront\n');
+    const provider = {
+      document: doc,
+      on(name: string, listener: () => void) {
+        if (name === 'destroy') listeners.add(listener);
+      },
+      off(name: string, listener: () => void) {
+        if (name === 'destroy') listeners.delete(listener);
+      },
+    } as unknown as HocuspocusProvider;
+    const undoManager = acquireMermaidUndoManager(provider, ytext);
+    const clear = vi.spyOn(undoManager, 'clear');
+
+    for (const listener of listeners) listener();
+    clear.mockClear();
+    doc.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, 'graph LR\n  Buyer --> Warehouse\n');
+    }, Symbol('late-reconcile'));
+
+    expect(clear).not.toHaveBeenCalled();
   });
 });

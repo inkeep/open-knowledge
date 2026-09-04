@@ -1,16 +1,3 @@
-/**
- * CreateProjectDialog — pure-helper tests.
- *
- * What this file pins (and only this):
- *   1. `joinPathPreview`, `basenamePreview`, `computeCascade`,
- *      `parseCreateNewError` — the four pure helpers that drive the caption,
- *      the banner, and the submit-error inline copy.
- *   2. Module-shape guards — named exports.
- *
- * Runtime form/button/editor wiring lives in
- * `CreateProjectDialog.runtime.dom.test.tsx`; cascade effect behavior lives
- * in `CreateProjectDialog.cascade-staleness.dom.test.tsx`.
- */
 import { describe, expect, test } from 'vitest';
 import {
   basenamePreview,
@@ -47,8 +34,6 @@ describe('basenamePreview', () => {
   });
 
   test('extracts the trailing component from a Windows path', () => {
-    // Forward-compat: a future Windows port can deliver backslash-shaped
-    // rootPaths over IPC; the basename helper must not return the whole path.
     expect(basenamePreview('C:\\Users\\me\\Projects\\Foo')).toBe('Foo');
   });
 
@@ -102,13 +87,6 @@ describe('computeCascade', () => {
   });
 
   test('confirm-git fires when parent IS the git root (banner explains content-dir alignment)', () => {
-    // After the content-dir alignment change, picking a git root directly
-    // still results in `.ok/config.yml` landing at the git root (one level
-    // UP from the new target folder `<parent>/<name>`), and content.dir
-    // defaults to the git root. The on-disk consequence is identical to
-    // the "parent is below git root" case, so the banner fires in both
-    // shapes — users should not be silently surprised by where the project
-    // file lands or what scope is tracked.
     expect(
       computeCascade({
         ...baseInput,

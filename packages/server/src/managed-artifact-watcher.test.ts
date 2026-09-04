@@ -20,7 +20,6 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-// Poll until `predicate` is true or the deadline elapses (watcher is async).
 async function eventually(predicate: () => boolean, timeoutMs = 20_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -30,13 +29,6 @@ async function eventually(predicate: () => boolean, timeoutMs = 20_000): Promise
   throw new Error('eventually: predicate never became true');
 }
 
-// These two assert real chokidar event delivery (create/edit a file, wait for
-// onChange). The watcher uses `usePolling: true`, whose detection depends on a
-// setInterval firing on the event loop. macOS (the only supported platform) runs
-// them fast, but on the Linux CI runner the whole server suite shares one
-// saturated event loop, so the poll never gets a tick within even a 20s deadline
-// and the file change is missed. Gate them off CI — the watcher's wiring is
-// verified locally on the supported platform; CI keeps the rest of the suite.
 const RUNNING_IN_CI = Boolean(process.env.CI);
 
 describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
@@ -70,7 +62,6 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
 
     rmSync(leaf, { force: true });
 
-    // Deletion drives the list-refresh callback, not the reconcile-into-open-doc path.
     await eventually(() => unlinked.includes(leaf));
     expect(changed).not.toContain(leaf);
   }, 25_000);
@@ -85,7 +76,6 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     const contents: string[] = [];
     cleanup = await startManagedArtifactWatcher([skillsRoot], (_p, c) => contents.push(c));
 
-    // A non-SKILL.md sibling must never fire.
     writeFileSync(resolve(skillDir, 'NOTES.md'), 'noise', 'utf-8');
     writeFileSync(leaf, 'v2', 'utf-8');
 
@@ -94,15 +84,6 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
   }, 25_000);
 });
 
-/**
- * The branch invariant: OK never CREATES a harness home, it only writes into
- * one that already exists. This watcher is where that broke — it `mkdir -p`s
- * every root handed to it, and the roots list was the full vocabulary, so
- * booting a server against a home with only `.claude` grew `.codex`,
- * `.copilot`, `.cursor`, `.opencode` and `.pi` before a single skill was
- * written. Asserted as "no dotdir the home did not start with", not as a list
- * of the five that leaked, so a newly onboarded editor is covered too.
- */
 describe('managed-artifact watch roots never conjure a harness home', () => {
   test('booting the watcher against a home with only .claude adds no host dotdir', async () => {
     mkdirSync(join(root, '.claude'));
@@ -120,7 +101,6 @@ describe('managed-artifact watch roots never conjure a harness home', () => {
     );
 
     expect(readdirSync(root).sort()).toEqual(before);
-    // …and the one host that IS installed still gets its watchable skills leaf.
     expect(existsSync(resolve(root, '.claude', 'skills'))).toBe(true);
   }, 25_000);
 });

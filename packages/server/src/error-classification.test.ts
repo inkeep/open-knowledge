@@ -117,9 +117,6 @@ describe('classifyGitError', () => {
       expect(r.retryable).toBe(false);
     });
 
-    // No-credential: the credential helper returned nothing and git fell back to
-    // a no-TTY prompt. Must classify as auth (non-retryable) so the UI offers
-    // reconnect rather than looping in a retryable "offline" state.
     test('no credential — "could not read Username … Device not configured" (no GIT_TERMINAL_PROMPT)', () => {
       const r = classifyGitError(
         mkErr(
@@ -157,13 +154,6 @@ describe('classifyGitError', () => {
       expect(r.subclass).toBe('no-credential');
     });
 
-    // Verbatim stderr from a Windows 11 + Git 2.54 + Git Credential Manager
-    // fetch once `credential.interactive=false` is pinned. GCM declines the
-    // prompt rather than opening its sign-in window, so this is now the normal
-    // shape of "no credential" and must not degrade to a retryable unknown
-    // (which would silently retry forever with no "Sign in" affordance).
-    // The second line is git's own, not GCM's, so a credential miss takes this
-    // shape on macOS/Linux too — it is not a Windows-only case.
     test('no credential — GCM declines to prompt (credential.interactive=false)', () => {
       const r = classifyGitError(
         mkErr(
@@ -210,8 +200,6 @@ describe('classifyGitError', () => {
       expect(r.class).toBe('auth');
       expect(r.subclass).toBe('not-found-as-identity');
       expect(r.retryable).toBe(false);
-      // The message asserts only what the stderr proves: the repo is missing
-      // OR the identity used can't see it — never which, never "wrong account".
       expect(r.message).toBe(
         'Repository not found — it may not exist, or the account used may not have access',
       );
@@ -300,10 +288,6 @@ describe('classifyGitError', () => {
     });
 
     test('simple-git GitResponseError shape (CONFLICTS: file:reason)', () => {
-      // Mirrors the actual error simple-git throws from `git.merge()` when
-      // conflicts occur: `new GitResponseError(MergeSummaryDetail)` produces
-      // `message = "CONFLICTS: <file>:<reason>[, …]"` and `git` is the
-      // MergeSummaryDetail object whose toString() yields the same string.
       const mergeSummary = {
         conflicts: [{ file: 'test.md', reason: 'content' }],
         merges: [],
@@ -402,8 +386,6 @@ describe('classifyGitError', () => {
     });
 
     test('bare ENOSPC (case-insensitive, no "no space left" text to fall back on)', () => {
-      // Regression: /ENOSPC/ (no /i) was matched against a lowercased string,
-      // so it never fired — only the sibling /no space left on device/i did.
       const r = classifyGitError(mkErr('fatal: write error: ENOSPC'));
       expect(r.class).toBe('local');
       expect(r.subclass).toBe('disk-full');
@@ -426,7 +408,6 @@ describe('classifyGitError', () => {
 
     test('rawStderr is optional but included when available', () => {
       const r = classifyGitError(mkErr('fatal', 'stderr content here'));
-      // rawStderr may or may not be populated depending on classification path
       if (r.rawStderr !== undefined) {
         expect(typeof r.rawStderr).toBe('string');
       }
@@ -557,13 +538,10 @@ describe('classifyGitError', () => {
     });
 
     test('the wire never carries English in the code path', () => {
-      // Belt-and-braces guard: anyone scanning the code field across every
-      // classification result must see only the bounded enum values (no raw
-      // sentence ever slips through). Localization lives entirely client-side.
       const r403 = classifyGitError(mkErr('HTTP 403: Permission denied'));
       expect(typeof r403.userFacingCode === 'string').toBe(true);
       expect(r403.userFacingCode).not.toMatch(/permission to push/i);
-      expect(r403.userFacingCode).not.toMatch(/^\w+\s/); // no whitespace = no sentence
+      expect(r403.userFacingCode).not.toMatch(/^\w+\s/);
     });
   });
 

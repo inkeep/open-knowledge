@@ -1,15 +1,3 @@
-/**
- * Transport-truth tests for the shared read-only live-doc provider pool —
- * the substrate `<Mirror>` and `<Excalidraw>` embeds subscribe through.
- * Runs against a real CRDT server: refcounted sharing, last-release
- * teardown, live-update fan-out to subscribers, and the admission gate
- * (system/config names refused before any provider is constructed). The
- * React-hook mapping, the watchdog-release policy, and the hard capacity
- * cap are covered in `src/editor/components/live-doc-pool.dom.test.tsx`
- * with a faked transport (fake timers and cheap providers make those
- * deterministic there).
- */
-
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import {
   __liveDocPoolSize,
@@ -39,8 +27,6 @@ afterAll(async () => {
 });
 
 afterEach(() => {
-  // The pool is module-level state; a leaked entry in one test must not
-  // masquerade as a shared entry in the next.
   disposeLiveDocPool();
 });
 
@@ -76,7 +62,6 @@ describe('live-doc pool machinery', () => {
 
     releaseLiveDocProvider(collabUrl, docName);
     expect(__liveDocPoolSize()).toBe(0);
-    // A post-teardown acquire builds a FRESH entry, not a zombie hand-off.
     const third = expectEntry(acquireLiveDocProvider(collabUrl, docName));
     expect(third).not.toBe(first);
     releaseLiveDocProvider(collabUrl, docName);
@@ -99,7 +84,6 @@ describe('live-doc pool machinery', () => {
 
     client.ytext.insert(client.ytext.length, '\nsecond line');
     await waitFor(() => entry.ySource.toString().includes('second line'));
-    // One shared Y.Text observer fans out to BOTH subscribers.
     expect(updates).toBeGreaterThanOrEqual(1);
     expect(updatesB).toBeGreaterThanOrEqual(1);
 

@@ -1,20 +1,3 @@
-/**
- * Unit tests for the shift-tracker module — the latch that powers the
- * Cmd+Shift+V plain-text escape hatch.
- *
- * `bun test` runs in a Node-ish env with no DOM, so we install a minimal
- * fake `window` + `document` before importing the module. The tracker's
- * listeners attach to `window` at capture phase — we can then dispatch
- * via the fake window's `__dispatch(type, event)` helper.
- *
- * This gives us deterministic coverage of:
- *   - `isShiftHeld()` reflects the latch state set by preceding events.
- *   - `pasteShiftHeld(event)` honors both the latch and the test-injected
- *     `shiftKey` channel (Playwright's Object.defineProperty path).
- *   - Shift keyup + no-modifier keyup + blur all clear the latch.
- *   - `installShiftTracker()` is idempotent.
- */
-
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 
 interface Listener {
@@ -23,7 +6,6 @@ interface Listener {
 }
 const listeners: Listener[] = [];
 
-// Fake window with addEventListener/dispatchEvent-like shape.
 const fakeWindow = {
   addEventListener(type: string, fn: (e: unknown) => void, _opts?: unknown) {
     listeners.push({ type, fn });
@@ -39,35 +21,24 @@ const fakeWindow = {
   },
 };
 
-// The tracker does `typeof window === 'undefined'` to bail in SSR. Install
-// the fake BEFORE the module imports so ensureAttached wires up its
-// listeners to our stub.
 const origWindow = (globalThis as { window?: unknown }).window;
 (globalThis as { window?: unknown }).window = fakeWindow;
 
-// Dynamic import so the install happens after the fake is in place.
 // biome-ignore lint/suspicious/noExplicitAny: dynamic module surface for tests
 let mod: any;
 
 beforeAll(async () => {
   mod = await import('./shift-tracker.ts');
-  // The attach guard is a module singleton: a sibling test file in the same
-  // bun process (e.g. handle-paste.test.ts) may have already wired the
-  // tracker to ITS window, in which case installShiftTracker() would
-  // early-return and our fake window's dispatches would reach nobody.
-  // Detach from whatever came before so beforeEach re-attaches to the fake.
   mod.__resetShiftTrackerForTests();
 });
 
 afterAll(() => {
-  // Leave the singleton detached so later files re-wire to their own window.
   mod.__resetShiftTrackerForTests();
   (globalThis as { window?: unknown }).window = origWindow;
 });
 
 beforeEach(() => {
   mod.installShiftTracker();
-  // Clear any residual latch state from the previous test.
   fakeWindow.__dispatch('keyup', { key: 'Shift', shiftKey: false });
 });
 
@@ -109,7 +80,6 @@ describe('shift-tracker', () => {
   });
 
   test('pasteShiftHeld returns true when the event carries a Playwright-injected shiftKey', () => {
-    // Latch is clear; the test-harness injection is the only signal.
     const evt = {} as { shiftKey?: boolean };
     evt.shiftKey = true;
     expect(mod.pasteShiftHeld(evt as unknown as ClipboardEvent)).toBe(true);
@@ -125,7 +95,6 @@ describe('shift-tracker', () => {
     mod.installShiftTracker();
     mod.installShiftTracker();
     mod.installShiftTracker();
-    // Listener count is unchanged (same key+fn pair is registered once).
     expect(listeners.length).toBe(before);
   });
 });

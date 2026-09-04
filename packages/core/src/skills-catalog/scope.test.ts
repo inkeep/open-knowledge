@@ -30,7 +30,6 @@ describe('isDetectedSkillInProject', () => {
 
   it('keeps a project-scoped install bound to THIS project', () => {
     expect(isDetectedSkillInProject(prov({ scope: 'project', projectPath: DIR }), DIR)).toBe(true);
-    // Trailing-slash-insensitive.
     expect(isDetectedSkillInProject(prov({ scope: 'project', projectPath: `${DIR}/` }), DIR)).toBe(
       true,
     );
@@ -55,18 +54,11 @@ describe('isDetectedSkillInProject', () => {
     ).toBe(true);
   });
 
-  // The server normalizes a linked worktree's own path to its parent-checkout
-  // IDENTITY (resolveProjectIdentity) before calling in, so a parent-recorded
-  // project install matches from inside the worktree while a genuinely different
-  // project stays dropped. Here the caller passes that pre-resolved identity.
   it('matches a parent-recorded install when passed the resolved parent identity', () => {
     const MAIN = '/Users/me/inkeep/agents-private';
-    // projectDir here is the worktree normalized to MAIN, so the parent's
-    // project-scoped install (keyed on MAIN) is kept.
     expect(isDetectedSkillInProject(prov({ scope: 'project', projectPath: MAIN }), MAIN)).toBe(
       true,
     );
-    // A different project's install is still dropped under the same identity.
     expect(
       isDetectedSkillInProject(prov({ scope: 'project', projectPath: '/Users/me/other' }), MAIN),
     ).toBe(false);
@@ -75,8 +67,6 @@ describe('isDetectedSkillInProject', () => {
 
 describe('isSkillOutsideOpenProject', () => {
   const prov = (p: Partial<SkillProvenance>): SkillProvenance => p;
-  // The worktree shape: the OPEN tree is the linked worktree, while enumeration
-  // resolved identity to the parent checkout that actually holds the files.
   const WORKTREE = '/Users/me/inkeep/wt-blog';
   const PARENT = '/Users/me/inkeep/agents-private';
 
@@ -100,9 +90,6 @@ describe('isSkillOutsideOpenProject', () => {
     ).toBe(false);
   });
 
-  // The regression this guards: a global skill sits outside contentDir BY
-  // DEFINITION, so a locality-only test would condemn every global row and
-  // send working skills down the read-only copy-in path.
   it('never flags a global skill, however far outside it sits', () => {
     for (const scope of ['user', 'something-else', undefined]) {
       expect(

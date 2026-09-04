@@ -18,86 +18,33 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-/**
- * One CLI row in the "Terminal" section — a docked-terminal launcher for a
- * single agent CLI. The parent supplies the visible label + accessible name;
- * the row reports its own selected check.
- */
 export interface TerminalCliRow {
-  /** Which CLI this row launches — drives the per-CLI sticky id + testid. */
   readonly cli: TerminalCli;
-  /** Visible row text (e.g. "Claude"). */
   readonly label: ReactNode;
-  /** Accessible name, distinct from the same-named external-app row (WCAG 2.5.3). */
   readonly ariaLabel: string;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
 
-/**
- * One registered in-app agent in the "In app" section — selecting it makes
- * that agent the thread target (the parent owns registration/default bumping).
- * One row per enabled agent, so the first registration never locks the choice
- * in; when none are enabled the whole section is hidden.
- */
 export interface ThreadAgentRow {
-  /** Stable row key (`<source>:<id>`). */
   readonly key: string;
-  /** Registry/custom agent id used to select a known local brand icon. */
   readonly id: string;
-  /** Agent display name ("Claude Agent"). */
   readonly name: string;
-  /** Registry-manifest icon URL, when any. */
   readonly iconUrl?: string;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }
 
 export interface AgentSplitButtonTestIds {
-  /** The primary action button. */
   primary: string;
-  /** The chevron menu trigger. */
   trigger: string;
-  /** The menu content container. */
   menu: string;
-  /** Per-agent option row, keyed by target id. */
   option: (id: HandoffTarget) => string;
-  /**
-   * The docked-terminal CLI row testid. A string applies to the single legacy
-   * `terminal` slot; a function keys each row of the `terminals` array by CLI.
-   */
   terminal: string | ((cli: TerminalCli) => string);
-  /** Per-registered-agent thread row testid, keyed by the row key. */
   threadAgent?: (key: string) => string;
-  /** The "Settings" row testid — opens Configure agents. */
   settings?: string;
 }
 
-/**
- * Presentational split button that pairs a primary action with an agent picker:
- * `[ primary ▸ | ⌄ ]`. Shared by the footer "Ask <agent>" composer
- * (`BottomComposer`) and the Comments panel's send control
- * (`CommentSendFooter`) so those two surfaces can't drift. The empty-state
- * create composer is NOT a consumer — it renders the same three sections from
- * its own menu, so a change to the section structure here has to be made there
- * too.
- *
- * It owns only the view — the joined `ButtonGroup`, the primary button, and the
- * chevron menu: any caller-supplied `menuLeading` rows first, then the enabled
- * in-app agents ("In app"), the docked-terminal CLI rows ("Terminal"), the
- * enabled app targets ("External apps"), and a "Configure agents" row last.
- * Everything stateful (which agent is
- * selected, where that preference is stored, what the primary button does, the
- * pending/disabled affordance, the label verb) stays in the parent and arrives
- * as props. The parent composes `primary` (icon + label + any spinner) and the
- * caller decides whether to render this at all (e.g. the empty-state swaps in a
- * disabled standalone button until an agent resolves).
- *
- * Uses a non-modal DropdownMenu (not a Popover): these are menu actions, but the
- * "Configure agents" row hands directly to the modal Settings dialog. A modal
- * dropdown would leave Radix's body pointer lock active during that handoff and
- * make that dialog appear frozen.
- */
 export function AgentSplitButton({
   primary,
   onPrimary,
@@ -116,46 +63,17 @@ export function AgentSplitButton({
   triggerAriaLabel,
   testIds,
 }: {
-  /** Primary button content — icon + label (+ optional pending spinner). */
   primary: ReactNode;
   onPrimary: () => void;
   primaryDisabled?: boolean;
-  /** Enabled desktop apps — detected installs plus Settings-enabled overrides
-   *  (`enabledDesktopTargets`) — rendered as the "External apps" section. */
   enabledTargets: readonly TargetData[];
-  /** Checkmarked row; `null` when the terminal (or nothing) is selected. */
   selectedTargetId: HandoffTarget | null;
   onSelectTarget: (target: TargetData) => void;
-  /**
-   * Legacy single docked-terminal Claude CLI row. Omit on the web host (no
-   * terminal). Superseded by {@link terminals} for the N-CLI picker — pass one
-   * or the other, not both (`terminals` wins if both are set).
-   */
   terminal?: { selected: boolean; onSelect: () => void };
-  /**
-   * Docked-terminal CLI rows — one per launchable CLI.
-   * Omit (or pass empty) on the web host. When non-empty, the "Terminal" section
-   * renders these rows instead of the legacy single {@link terminal} slot.
-   */
   terminals?: readonly TerminalCliRow[];
-  /**
-   * Enabled in-app agents, one selectable row each. When empty, the "In app"
-   * group is hidden entirely (no generic fallback row).
-   */
   threadAgents?: readonly ThreadAgentRow[];
-  /**
-   * Opens Settings → Configure agents — rendered as the last row of the menu so
-   * the user manages which agents appear here. Replaces the former catalog
-   * "Choose another agent…" affordance.
-   */
   onOpenSettings: () => void;
-  /** Rendered inside the menu when there are no app agents and no terminal. */
   menuEmptyState?: ReactNode;
-  /**
-   * Caller-owned rows rendered ABOVE the agent sections, separated from them.
-   * For surfaces with a second decision to make alongside which agent — the
-   * comment queue's send picks a destination here.
-   */
   menuLeading?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
   menuAlign?: 'start' | 'end';
@@ -168,15 +86,10 @@ export function AgentSplitButton({
   const showTerminal = cliRows != null || terminal != null;
   const hasOptions = showDesktop || showTerminal;
   const showThreadAgents = threadAgents !== undefined && threadAgents.length > 0;
-  // The terminal-row testid is either a static string (legacy slot) or a
-  // per-CLI function (N-row mode); normalize to a per-CLI resolver here.
   const terminalTestId = (cli: TerminalCli): string =>
     typeof testIds.terminal === 'function' ? testIds.terminal(cli) : testIds.terminal;
 
   return (
-    // ButtonGroup joins the corners and collapses the seam to a single shared
-    // 1px border between the two outline buttons — that shared border IS the
-    // divider, so no ButtonGroupSeparator.
     <ButtonGroup>
       <Button
         type="button"
@@ -205,11 +118,7 @@ export function AgentSplitButton({
           className="max-h-80 min-w-[200px]"
           data-testid={testIds.menu}
         >
-          {/* Caller-owned rows above the agent sections. The queue's send uses
-              it for WHERE the batch goes (append to the open conversation, or a
-              clean one) — a different axis from WHICH agent, and one only that
-              surface has. It leads because it is the decision being made; the
-              agent picker below is the standing preference. */}
+          {}
           {menuLeading ? (
             <>
               {menuLeading}
@@ -217,8 +126,6 @@ export function AgentSplitButton({
             </>
           ) : null}
           {showThreadAgents ? (
-            // In-app agent threads lead the menu when any is enabled; an empty
-            // section (all disabled) is hidden entirely.
             <>
               <DropdownMenuGroup aria-label={t`In app`}>
                 <DropdownMenuLabel>
@@ -248,19 +155,11 @@ export function AgentSplitButton({
           {hasOptions ? (
             <>
               {showTerminal ? (
-                // Terminal sits between In app and External apps (the docked
-                // terminal is the first-class of the two external-handoff
-                // routes). Labeled `role="group"` so assistive tech announces the
-                // section the visual header conveys (the label alone is skipped by
-                // arrow-key menu navigation).
                 <DropdownMenuGroup aria-label={t`Terminal`}>
                   <DropdownMenuLabel>
                     <Trans>Terminal</Trans>
                   </DropdownMenuLabel>
-                  {/* The visible text is the bare CLI name while the accessible
-                      name carries "<name> CLI" so AT users can tell it apart
-                      from the same-named external-app row (WCAG 2.5.3 — the
-                      accessible name contains the visible label). */}
+                  {}
                   {cliRows ? (
                     cliRows.map((row) => (
                       <DropdownMenuItem
@@ -269,12 +168,7 @@ export function AgentSplitButton({
                         data-testid={terminalTestId(row.cli)}
                         aria-label={row.ariaLabel}
                       >
-                        {/* Per-CLI brand icon (same source of truth the "Open
-                            with AI" surfaces use via `cliIconTargetId`), so each
-                            row is identifiable at a glance — OpenCode is
-                            terminal-only and would otherwise show no brand mark.
-                            The "Terminal" section header + the "(CLI)" label
-                            already convey that these launch a terminal. */}
+                        {}
                         <TargetIcon
                           id={cliIconTargetId(row.cli)}
                           className="size-4"
@@ -308,11 +202,6 @@ export function AgentSplitButton({
                 </DropdownMenuGroup>
               ) : null}
               {showDesktop ? (
-                // Installed desktop apps follow the Terminal section. Selecting
-                // one hands the work OUT of OK — the section header carries the
-                // external-action arrow the app uses everywhere else for that,
-                // and each row is suffixed "Desktop" so it reads apart from the
-                // same-named Terminal row above it.
                 <>
                   {showTerminal ? <DropdownMenuSeparator /> : null}
                   <DropdownMenuGroup aria-label={t`External apps`}>
@@ -340,14 +229,9 @@ export function AgentSplitButton({
               ) : null}
             </>
           ) : null}
-          {/* Empty state only when nothing at all is enabled (no in-app agents,
-              no terminal, no desktop) — an empty section header never shows. */}
+          {}
           {!showThreadAgents && !hasOptions ? menuEmptyState : null}
-          {/* Settings row — always last. Opens Configure agents so the user
-              manages which agents appear in this menu (replaces the former
-              "Choose another agent" catalog affordance). The separator only
-              renders when a section sits above it — when nothing is enabled the
-              empty state reads with the footer as one unit, no lone rule. */}
+          {}
           {showThreadAgents || hasOptions ? <DropdownMenuSeparator /> : null}
           <DropdownMenuItem onSelect={onOpenSettings} data-testid={testIds.settings}>
             <SlidersHorizontal aria-hidden="true" className="size-4 text-muted-foreground" />

@@ -19,9 +19,6 @@ import {
   parseLossCaptureLines,
 } from './loss-capture.ts';
 
-// The real RotatingAppender writes to disk with raw fs; every test gets its own
-// tmpdir so runs are hermetic and parallel-safe. No mocks — the ring is
-// exercised against the production appender exactly as it runs in the server.
 let projectDir: string;
 
 beforeEach(() => {
@@ -32,7 +29,6 @@ afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
-/** Read + parse whichever generation files exist, oldest generation first. */
 function readAllRetained(): LossCaptureEvent[] {
   const prevPath = lossCapturePreviousPath(projectDir);
   const currentPath = lossCaptureCurrentPath(projectDir);
@@ -82,10 +78,6 @@ describe('LossCaptureRing.record', () => {
   });
 
   it('produces one distinguishable kind per loss-class mechanism', async () => {
-    // The kinds must never alias — a bundle reader distinguishes a deferred
-    // re-derive from a tripped detector/backstop from a written checkpoint from
-    // a tolerated persistence hold from an executed destructive rebuild by this
-    // field alone.
     expect(new Set(LOSS_EVENT_KINDS).size).toBe(6);
 
     const ring = new LossCaptureRing({ projectDir, maxBytes: 1_000_000, now: () => 1 });
@@ -107,8 +99,6 @@ describe('LossCaptureRing.record', () => {
   });
 
   it('keeps the newest events when the file rotates at its cap', async () => {
-    // A small cap forces several rotations. The two-generation ring drops the
-    // OLDEST events; the newest must always survive.
     const ring = new LossCaptureRing({ projectDir, maxBytes: 400, now: () => 7 });
     const total = 24;
     for (let i = 0; i < total; i++) {
@@ -116,12 +106,10 @@ describe('LossCaptureRing.record', () => {
     }
     await ring.drain();
 
-    // Rotation actually happened (a previous generation exists).
     expect(existsSync(lossCapturePreviousPath(projectDir))).toBe(true);
 
     const retained = readAllRetained();
     const seqs = retained.map((e) => e.seq);
-    // Newest event is present; oldest were dropped (footprint bounded).
     expect(Math.max(...seqs)).toBe(total);
     expect(retained.length).toBeLessThan(total);
     expect(retained.length).toBeGreaterThan(0);
@@ -141,13 +129,9 @@ describe('LossCaptureRing.record', () => {
     for (const docName of ['alpha', 'beta']) {
       const seqs = retained.filter((e) => e.docName === docName).map((e) => e.seq);
       expect(seqs.length).toBeGreaterThan(0);
-      // Strictly increasing across the retained window: a reset (restart at 1)
-      // after rotation would show a decrease, so this pins "no reset".
       for (let i = 1; i < seqs.length; i++) {
         expect(seqs[i]).toBeGreaterThan(seqs[i - 1] as number);
       }
-      // The counter counted every event for this doc — it never reset to the
-      // file's contents, so its max equals the number recorded.
       expect(Math.max(...seqs)).toBe(perDoc);
     }
   });
@@ -172,9 +156,6 @@ describe('LossCaptureEventSchema (content-free BY SCHEMA)', () => {
       'witnessAvailable',
       'writerId',
     ]);
-    // Belt-and-suspenders: none of the fields is a content-bearing name. The
-    // exact key set above is the real guard (adding any field fails this test);
-    // this names the class the schema must never carry.
     const contentShaped = [
       'content',
       'body',
@@ -211,9 +192,6 @@ describe('LossCaptureEventSchema (content-free BY SCHEMA)', () => {
   });
 
   it('tolerates a newer-schema row with an unknown kind (forward-compat)', () => {
-    // A reader on schema version N must not choke on a row a future version
-    // wrote: an unrecognized `event` kind is preserved, and an unknown extra
-    // field is dropped rather than rejected.
     const futureRow = JSON.stringify({
       ts: 500,
       schemaVersion: LOSS_CAPTURE_SCHEMA_VERSION + 1,

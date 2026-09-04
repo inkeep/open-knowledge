@@ -1,61 +1,18 @@
-/**
- * Single source of truth for config keys that have been removed from the
- * schema and are no longer read by the engine.
- *
- * OpenKnowledge config is loose at every layer (`ConfigSchema` is a
- * `looseObject`; the published JSON schema is open), so a stale key neither
- * fails Zod validation nor autocompletes-as-invalid. Without an explicit
- * registry a removed key is a silent no-op — the worst failure mode for a
- * config contract, because the user believes it took effect.
- *
- * Readers strip every entry here from the parsed value and surface a
- * source-located `REMOVED_KEY` diagnostic whose `redirect` names the
- * replacement. Stripping a removed key can never change runtime behavior — by
- * contract the engine no longer reads it — so a dead key never invalidates its
- * live siblings. The same table drives the `ok config migrate` codemod, and
- * that command defaults to every config layer, so the bare "run `ok config
- * migrate`" hint in each redirect reaches the key it names wherever it lives —
- * including the project-local layer. Narrowing that default would make the
- * hint false for any key outside the layers it still covers.
- *
- * Severity is uniform — there is no warn tier. The registry records only the
- * fact of the mismatch; whether a given caller warns, blocks, or degrades a
- * dependent feature is caller policy, not a property of the entry.
- */
 import type { Document } from 'yaml';
 import type { ConfigIssueSource, RemovedKeyDiagnostic } from './errors.ts';
 import { locateIssue } from './source-locator.ts';
 
 export interface RemovedKey {
-  /** Dotted-path segments, e.g. `['content', 'include']` or `['folders']`. */
   path: string[];
-  /** Migration directive naming the replacement. Rendered by `humanFormat`. */
   redirect: string;
 }
 
-/**
- * Shared tail appended to every redirect except the bespoke `content.*` ones
- * (those predate the registry and carry their own, test-pinned wording).
- */
-// Names no file on purpose. A removed key can sit in any of three layers
-// (`~/.ok/global.yml`, `.ok/config.yml`, `.ok/local/config.yml`) and the command
-// defaults to all of them, so naming `config.yml` would read as a limit the
-// command does not have.
 const MIGRATE_HINT =
   'Run `ok config migrate` to strip the obsolete key automatically, or remove it by hand.';
 
-/**
- * The removed-key registry. Adding a removal is a one-line entry here — the
- * detector, the loader rejection, the cold-start sideline, and the migrate
- * codemod all read from this table.
- */
 export const REMOVED_KEYS: readonly RemovedKey[] = [
   {
     path: ['content', 'include'],
-    // Bespoke wording (no shared hint) — `content.include` was a positive
-    // whitelist, so copying its patterns straight into exclude-only
-    // `.okignore` would invert intent. Surface `content.dir` as the simpler
-    // subdirectory-scoping alternative for the common include case.
     redirect: [
       'content.include has been removed.',
       'For subdirectory scoping, set content.dir in .ok/config.yml instead.',
@@ -102,10 +59,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
   },
   {
     path: ['server', 'host'],
-    // Rewritten when `server.bind` returned as a live config key — the old
-    // "use --host / HOST" text pointed away from the file at the exact moment
-    // a file key existed again. The `--host` CLI flag no longer exists; the
-    // HOST environment variable is still honored.
     redirect: [
       'Use server.bind in .ok/config.yml instead — a list of bind addresses, e.g. [127.0.0.1]; a non-loopback bind additionally requires server.allowExternal.',
       'The --bind CLI flag and HOST environment variable also remain available.',
@@ -113,9 +66,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // `remote.url` was the former way to declare the public tunnel origin,
-    // superseded by `server.externalUrl`; it was alias-read while the
-    // successor was absent through a deprecation window, now closed.
     path: ['remote', 'url'],
     redirect: [
       'remote.url has been removed. Use server.externalUrl in .ok/config.yml instead (the public origin your tunnel serves).',
@@ -123,8 +73,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // `remote.port` was the former fixed listen port for a tunneled
-    // deployment, superseded by `server.port`.
     path: ['remote', 'port'],
     redirect: [
       'remote.port has been removed. Use server.port in .ok/config.yml instead.',
@@ -132,8 +80,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // `server.publicUrl` was the former name of `server.externalUrl`, kept as
-    // a deprecated alias through a deprecation window, now closed.
     path: ['server', 'publicUrl'],
     redirect: [
       'server.publicUrl has been removed. Use server.externalUrl in .ok/config.yml instead (the same key under its current name).',
@@ -157,9 +103,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     redirect: ['This value is hardcoded in @inkeep/open-knowledge-core.', MIGRATE_HINT].join(' '),
   },
   {
-    // Older name of this result-cap config key; configs untouched since the
-    // key was renamed still carry it. Flag it so users get a signal
-    // regardless of which name their config used.
     path: ['mcp', 'tools', 'search', 'maxResults'],
     redirect: [
       'The search result cap is hardcoded in @inkeep/open-knowledge-core; this config key was removed.',
@@ -174,9 +117,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // Removed: the code-block preview iframe now runs a fixed open network CSP
-    // and is no longer configurable. Flag it loudly — top-level config is loose,
-    // so a stale `preview.scriptSrc` would otherwise be a silent no-op.
     path: ['preview', 'scriptSrc'],
     redirect: [
       'preview.scriptSrc has been removed.',
@@ -185,10 +125,6 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
-    // The "Show all files" sidebar toggle was removed; the tree lists every
-    // file on disk by default. Top-level config is loose, so a residual
-    // `appearance.sidebar.showAllFiles: false` would otherwise be a silent
-    // no-op for users who had scoped their tree to indexed/linked content.
     path: ['appearance', 'sidebar', 'showAllFiles'],
     redirect: [
       'appearance.sidebar.showAllFiles has been removed.',
@@ -202,7 +138,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Whether `value` has the (possibly nested) leaf at `path` set to anything. */
 function hasLeaf(value: unknown, path: readonly string[]): boolean {
   let cursor: unknown = value;
   for (let i = 0; i < path.length - 1; i++) {
@@ -214,22 +149,12 @@ function hasLeaf(value: unknown, path: readonly string[]): boolean {
 }
 
 export interface DetectRemovedKeysInput {
-  /** Parsed config object (the raw YAML projection — pre-merge, pre-schema). */
   value: unknown;
-  /** Absolute file path, for source-located errors. Omit for value-only mode. */
   file?: string | null;
-  /** Raw file source, for source-located errors. */
   source?: string | null;
-  /** yaml@2 Document AST, for source-located errors. */
   doc?: Document | null;
 }
 
-/**
- * Walk a parsed config against `REMOVED_KEYS` and return one `REMOVED_KEY`
- * error per match. A config carrying several dead keys yields all of them in
- * one pass — no two-trip fix cycle. Each error is source-located when `file`,
- * `source`, and `doc` are supplied.
- */
 export function detectRemovedKeys(input: DetectRemovedKeysInput): RemovedKeyDiagnostic[] {
   const { value, file, source, doc } = input;
   if (!isPlainObject(value)) return [];
@@ -250,11 +175,6 @@ export function detectRemovedKeys(input: DetectRemovedKeysInput): RemovedKeyDiag
   return diagnostics;
 }
 
-/**
- * Remove `path`'s leaf from `obj`, cloning only the objects along the path so
- * untouched subtrees are shared by reference. Returns a new object; `obj` is
- * never mutated.
- */
 function removePath(
   obj: Record<string, unknown>,
   path: readonly string[],
@@ -273,15 +193,6 @@ function removePath(
   return clone;
 }
 
-/**
- * Return `value` with every registry key removed. Non-object input is returned
- * unchanged; the input is never mutated. Callers strip the dead keys from the
- * parsed config, then re-validate so schema defaults re-apply cleanly to the
- * cleaned object.
- *
- * Stripping keys from an object yields an object, so the object overload lets
- * a caller that passes a typed record use the result without re-narrowing.
- */
 export function stripRemovedKeys(value: Record<string, unknown>): Record<string, unknown>;
 export function stripRemovedKeys(value: unknown): unknown;
 export function stripRemovedKeys(value: unknown): unknown {

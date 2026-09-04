@@ -11,10 +11,6 @@ function epochOf(view: ReturnType<typeof render>): number {
   return Number(view.getByTestId('epoch').textContent);
 }
 
-/**
- * MutationObserver callbacks are delivered on the microtask queue; a macrotask
- * flush guarantees they have run and any resulting React re-render is committed.
- */
 async function setColorThemeAndFlush(value: string): Promise<void> {
   await act(async () => {
     document.documentElement.setAttribute('data-color-theme', value);
@@ -36,11 +32,6 @@ describe('useColorThemeEpoch', () => {
   });
 
   test('tears the observer down when all subscribers leave and re-creates it on remount', async () => {
-    // A single shared observer backs every subscriber; when the last one
-    // unmounts it must disconnect AND null itself so a later mount re-creates
-    // it. A broken teardown (disconnect without null) would leave a dead
-    // observer that never fires again — the failure that silently stalls
-    // palette-switch propagation for every remounted consumer.
     const first = render(<Probe />);
     await setColorThemeAndFlush('dracula');
     first.unmount();

@@ -1,10 +1,3 @@
-/**
- * Eviction-policy tests for the shared snapshot blob-URL pool: past the
- * cap the oldest ORPHAN is revoked, but a URL still bound to any `<img>`
- * in the document (including `display:none` under a hidden Activity) is
- * requeued, never revoked out from under a displayed image.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __liveSnapshotUrlCount,
@@ -38,8 +31,6 @@ describe('snapshot-url-pool', () => {
   });
 
   test('a DOM-bound URL at the head is requeued, not revoked', () => {
-    // The oldest entry is still shown by an <img> (a hidden Activity keeps
-    // exactly this shape alive: DOM present, effects unmounted).
     const img = document.createElement('img');
     img.src = 'blob:still-shown';
     document.body.append(img);
@@ -50,7 +41,6 @@ describe('snapshot-url-pool', () => {
     }
 
     expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:still-shown');
-    // The orphan behind it was reclaimed instead.
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:orphan-0');
   });
 

@@ -1,22 +1,5 @@
-/**
- * OTEL emission tests for the Electron preflight handler.
- *
- * The desktop package has no direct `@opentelemetry/*` deps and cannot
- * mount an `InMemorySpanExporter`. We use bun's `vi.doMock` to intercept
- * `emitPreflightFailureSpan` at the `@inkeep/open-knowledge-server`
- * boundary — capturing every call without touching the real OTel SDK.
- * Mirrors the precedent set by `onboarding-telemetry.test.ts`.
- *
- * Each typed-error observation MUST produce one emission (initial probe +
- * each retry that still fails). The success path stays silent; the
- * unknown-error path also stays silent (the spec scopes emission to the
- * two typed git-preflight error classes).
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Pull the real server module first so we can re-export everything except
-// `emitPreflightFailureSpan`. Top-level await is supported in bun ESM.
 const actual = await import('@inkeep/open-knowledge-server');
 
 interface EmittedError {
@@ -39,9 +22,6 @@ vi.doMock('@inkeep/open-knowledge-server', () => ({
   },
 }));
 
-// IMPORTANT: import the handler AFTER the module mock so its
-// `import { emitPreflightFailureSpan } from '@inkeep/open-knowledge-server'`
-// resolves to the spy above.
 const { ensureGitAvailable } = await import('./git-preflight-handler.ts');
 const { GitNotAvailableError, GitTooOldError } = actual;
 
@@ -96,7 +76,7 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     const assertGitAvailable = () => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     };
-    const showMessageBox = showMessageBoxSequence([2]); // BUTTON_QUIT
+    const showMessageBox = showMessageBoxSequence([2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -117,10 +97,7 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     const assertGitAvailable = () => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     };
-    const showMessageBox = showMessageBoxSequence([
-      1, // BUTTON_RETRY
-      2, // BUTTON_QUIT
-    ]);
+    const showMessageBox = showMessageBoxSequence([1, 2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -150,7 +127,7 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
         source: 'PATH' as const,
       };
     };
-    const showMessageBox = showMessageBoxSequence([1]); // BUTTON_RETRY
+    const showMessageBox = showMessageBoxSequence([1]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -168,7 +145,7 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     const assertGitAvailable = () => {
       throw new GitTooOldError('darwin', '2.20.0', '2.31.0', '/usr/bin/git', LINUX_GUIDANCE);
     };
-    const showMessageBox = showMessageBoxSequence([2]); // BUTTON_QUIT
+    const showMessageBox = showMessageBoxSequence([2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -202,8 +179,6 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     });
 
     expect(outcome).toBe('aborted');
-    // The unknown branch logs and aborts but does NOT emit the span —
-    // ok.preflight.git.fail is scoped to GitNotAvailableError / GitTooOldError.
     expect(emissions).toHaveLength(0);
   });
 
@@ -211,10 +186,7 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     const assertGitAvailable = () => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     };
-    const showMessageBox = showMessageBoxSequence([
-      0, // BUTTON_OPEN_INSTALL_PAGE
-      2, // BUTTON_QUIT
-    ]);
+    const showMessageBox = showMessageBoxSequence([0, 2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -225,8 +197,6 @@ describe('ensureGitAvailable — FR8 emission per typed-error observation', () =
     });
 
     expect(outcome).toBe('aborted');
-    // Only the initial probe emitted. Open-Install-Page is a UI action, not
-    // a re-probe — it must not double-count toward sizing math.
     expect(emissions).toHaveLength(1);
   });
 });

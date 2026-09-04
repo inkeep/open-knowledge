@@ -1,30 +1,3 @@
-/**
- * Cross-tab exactly-once for the durable replay outbox.
- *
- * The outbox record is keyed `(namespace, branch, docName)` with no tab
- * component, so tabs that resolve the SAME namespace see ONE record — several
- * browser tabs on one `127.0.0.1:PORT` (all null-namespace), or several
- * desktop windows of one project. A browser preview and a desktop window are
- * NOT such a pair: the preview resolves a null namespace and addresses the
- * bare name, while any desktop host resolves a scoped one. That single record
- * is the cross-tab claim token: whichever tab consumes it owns the replay and
- * the others must stand down.
- *
- * These tests run the null-namespace case throughout, which is the shape a
- * web host and every pre-scoping record use.
- *
- * They must stand down because `replayBufferedContent` is not re-entrant. It
- * decides which CRDT surface holds the un-delivered edit by asking which
- * surface still matches the server — so once another tab has landed the
- * recovered content on the server, this tab's surfaces read INVERTED: the
- * surface that "matches base" is now the stale one, and applying anyway
- * splices the pre-recycle bytes back over the content just recovered. The
- * failure mode is not a duplicate, it is a SILENT REVERT of recovered work.
- *
- * Two pools against the process-global `fake-indexeddb` stand in for two tabs;
- * providers point at a dead URL and are driven by synthetic `synced` emits, so
- * the replay path runs exactly as it does in production without a server.
- */
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -39,13 +12,6 @@ function uniqueDocName(): string {
   return `pp-cross-tab-${randomUUID()}`;
 }
 
-/**
- * A pre-recycle state whose un-delivered edit lives in `Y.Text('source')` with
- * an empty fragment — the unacked source-mode shape. Against an empty fresh
- * doc the replay recovers it; against a doc that ALREADY has it, the surface
- * attribution flips and a re-apply would splice the empty fragment body back
- * over the recovered text.
- */
 function buildSourceOnlyState(text: string): { delta: Uint8Array; fullState: Uint8Array } {
   const doc = new Y.Doc();
   doc.getText('source').insert(0, text);
@@ -82,9 +48,6 @@ describe('ProviderPool cross-tab replay claim', () => {
     const marker = `cross-tab-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
 
-    // Tab A: mid-recycle. Its RAM buffer holds the un-delivered edit and the
-    // durable mirror has committed, exactly as `handleServerInstanceMismatch`
-    // leaves things.
     expect(
       await writeReplayOutboxEntry(
         { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
@@ -101,8 +64,6 @@ describe('ProviderPool cross-tab replay claim', () => {
       branch: UNKNOWN_BRANCH_SENTINEL,
     });
 
-    // Tab B opens the same doc with no RAM buffer of its own, reads the shared
-    // record, and recovers the edit.
     const tabB = newPool();
     const entryB = tabB.open(docName);
     if (!entryB) throw new Error('expected entry for tab B');
@@ -119,20 +80,9 @@ describe('ProviderPool cross-tab replay claim', () => {
       }),
     ).toBeNull();
 
-    // The recovered content reaches tab A the ordinary way (server → peers).
     entryA.provider.document.getText('source').insert(0, marker);
 
-    // Now tab A's own replay fires. Its pre-recycle replica has ytext=marker
-    // and an EMPTY fragment; the server now also has `marker`, so the surface
-    // comparison would read the empty fragment as "the base the server
-    // rebuilt" and splice it over the recovery — wiping the doc. The lost
-    // claim is what stops it.
     entryA.provider.emit('synced', { state: true });
-    // `source === marker` is already true from the peer delivery above, so it
-    // cannot be the wait predicate (it would pass before tab A's replay even
-    // fires). Wait on the positive completion signal — tab A's replay running
-    // to completion and standing down, which consumes its RAM buffer — then
-    // assert the replay left the recovery intact rather than splicing over it.
     expect(await waitFor(() => tabA.__test_hasBufferedUpdate(docName) === false)).toBe(true);
     expect(entryA.provider.document.getText('source').toString()).toBe(marker);
   });
@@ -146,8 +96,6 @@ describe('ProviderPool cross-tab replay claim', () => {
       { delta, fullState },
     );
 
-    // Neither tab has a RAM buffer: both are post-crash reopens racing the one
-    // durable record.
     const tabA = newPool();
     const entryA = tabA.open(docName);
     const tabB = newPool();
@@ -158,10 +106,6 @@ describe('ProviderPool cross-tab replay claim', () => {
 
     entryA.provider.emit('synced', { state: true });
     entryB.provider.emit('synced', { state: true });
-    // Exactly one tab claims the single durable record and replays; the other
-    // reads it already-consumed and stands down. The consume is an atomic
-    // single-record claim, so once one tab shows the marker the post-state is
-    // stable — wait for that instead of a fixed sleep.
     expect(
       await waitFor(
         () =>
@@ -173,9 +117,6 @@ describe('ProviderPool cross-tab replay claim', () => {
 
     const textA = entryA.provider.document.getText('source').toString();
     const textB = entryB.provider.document.getText('source').toString();
-    // Exactly one tab replays. The other leaves its doc untouched rather than
-    // inserting a second copy — these docs are not yet peers, so a duplicate
-    // would show up as the marker landing on both.
     expect([textA, textB].filter((t) => t === marker)).toHaveLength(1);
     expect([textA, textB].filter((t) => t === '')).toHaveLength(1);
     expect(
@@ -192,9 +133,6 @@ describe('ProviderPool cross-tab replay claim', () => {
     const marker = `ram-only-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
 
-    // Over-cap docs, failed durable writes, and engines without
-    // `indexedDB.databases()` all leave a buffer with no token. Nothing to
-    // claim must never read as "someone else claimed it".
     const pool = newPool();
     const entry = pool.open(docName);
     if (!entry) throw new Error('expected entry');

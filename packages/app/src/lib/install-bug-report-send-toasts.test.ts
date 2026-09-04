@@ -1,13 +1,3 @@
-/**
- * Unit tests for the bug-report send toast adapter.
- *
- * Sonner is stubbed because it is the host this module talks to and its
- * rendering needs a DOM this tier does not have; the manager underneath is the
- * real one, driven through a stubbed desktop bridge (a genuine process
- * boundary). The adapter's whole contract is *when* it mints, so the
- * assertions are on the sequence of mints, not on their contents.
- */
-
 import type { OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import * as actualSonner from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -28,21 +18,16 @@ const toast = {
   dismiss: vi.fn((_id?: unknown) => {}),
 };
 
-// Spread the real module so unmocked sonner exports stay available in this
-// test's module graph.
 vi.doMock('sonner', () => ({ ...actualSonner, toast }));
 
-/** Ids passed to `toast.custom`, in mint order. */
 function mintedIds(): unknown[] {
   return toast.custom.mock.calls.map((call) => (call[1] as { id?: unknown } | undefined)?.id);
 }
 
-/** The lifetime the nth mint asked sonner for. */
 function durationOf(index: number): number | undefined {
   return (toast.custom.mock.calls[index]?.[1] as { duration?: number } | undefined)?.duration;
 }
 
-/** The action bag the nth mint handed the toast body. */
 function actionsOf(index: number): BugReportSendToastActions {
   const render = toast.custom.mock.calls[index]?.[0];
   if (render === undefined) throw new Error(`no toast minted at index ${index}`);
@@ -50,7 +35,6 @@ function actionsOf(index: number): BugReportSendToastActions {
   return element.props.actions;
 }
 
-/** A bridge whose `send` resolves only when the test says so. */
 function createDeferredBridge() {
   const resolvers: ((result: OkBugReportSendResult) => void)[] = [];
   const calls: unknown[] = [];
@@ -93,11 +77,6 @@ function request(zipPath = ZIP_PATH): BugReportSendRequest {
   };
 }
 
-/**
- * Records which shell method each toast action reached, and with what. The two
- * shell bindings both take a single string, so transposing them type-checks —
- * only asserting the argument at the right method catches it.
- */
 function createShellRecorder() {
   const openedExternal: string[] = [];
   const revealed: string[] = [];
@@ -152,8 +131,6 @@ describe('installBugReportSendToasts', () => {
     const { manager, uninstall } = await setup();
     manager.startBugReportSend(request());
 
-    // Well past several 200ms eased-fill steps, so the operation has published
-    // repeatedly without changing layout.
     await vi.advanceTimersByTimeAsync(2_000);
 
     expect(manager.get(OPERATION_ID)?.status).toBe('sending');
@@ -204,7 +181,6 @@ describe('installBugReportSendToasts', () => {
     actionsOf(0).dismiss();
     expect(toast.dismiss).toHaveBeenCalledWith(OPERATION_ID);
 
-    // What history's Retry does for a row this window is already sending.
     manager.startBugReportSend(request());
 
     expect(mintedIds()).toEqual([OPERATION_ID, OPERATION_ID]);
@@ -222,9 +198,6 @@ describe('installBugReportSendToasts', () => {
       fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=failed' },
     });
 
-    // Both bindings take one string and both live on `bridge.shell`, so a
-    // transposition compiles and every other test in this suite still passes.
-    // Asserting the argument at the specific method is what catches it.
     actionsOf(1).openExternal('mailto:support@inkeep.com?subject=failed');
     actionsOf(1).revealInFileManager(ZIP_PATH);
 
@@ -235,10 +208,6 @@ describe('installBugReportSendToasts', () => {
 
   test('a transport that throws replaces the endless in-flight toast', async () => {
     const { installBugReportSendToasts } = await import('./install-bug-report-send-toasts');
-    // A synchronous throw is the case that would otherwise strand a toast the
-    // reporter cannot dismiss, because the in-flight mint asked for an
-    // infinite lifetime. Driven through a throwing bridge, the way the
-    // manager's own suite drives it.
     const throwing: BugReportSendBridge = {
       send() {
         throw new Error('IPC channel closed');
@@ -257,12 +226,6 @@ describe('installBugReportSendToasts', () => {
   });
 
   test('a cross-window refusal auto-dismisses instead of holding on screen', async () => {
-    // `already-sending` sits beside the two POSITIVE_INFINITY cases in
-    // `durationFor`, and it is the one of the three that must NOT hold:
-    // nothing failed and the reporter has no decision to make, so a toast
-    // waiting for a dismissal would be a permanent fixture announcing a send
-    // that had already finished. A refactor grouping it with its neighbours
-    // would do exactly that, and nothing else in this suite would notice.
     const { manager, settle, uninstall } = await setup();
     manager.startBugReportSend(request());
     await settle({

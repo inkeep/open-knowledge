@@ -1,17 +1,3 @@
-/**
- * The Settings → Link previews nav item is hidden on the packaged file://
- * renderer: a file: page's POST /api/link-preview carries Origin: null, which
- * the route's anti-proxy gate rejects by design
- * (packages/server/src/link-preview/request-gate.ts), so external link
- * previews can never render there. Every other host (web, ok ui, and the DEV
- * desktop renderer on http://localhost — a loopback Origin the gate passes)
- * keeps the item.
- *
- * jsdom's window.location is unforgeable, so the test stubs the
- * `isFileProtocolPage` helper seam instead — the same vi.doMock capability
- * faking the terminal desktop-only test uses for the Electron bridge.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';

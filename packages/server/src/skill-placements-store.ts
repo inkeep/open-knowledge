@@ -1,11 +1,3 @@
-/**
- * Persistence boundary for the machine-local skill placement ledger.
- *
- * Both in-place discovery and copy reconciliation consume this module so the
- * JSON shape, fail-soft parsing, and path containment rules have one owner.
- * It deliberately does not import either consumer.
- */
-
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
@@ -18,10 +10,8 @@ const PLACEMENTS_REL = ['.ok', 'local', 'skill-placements.json'] as const;
 const SCHEMA_VERSION = 1;
 
 export interface SkillPlacement {
-  /** Base-relative bundle dir, e.g. `.windsurf/skills/my-skill`. */
   path: string;
   mode: 'copy' | 'link';
-  /** Bundle hash at record time. Absent placements are never auto-refreshed. */
   hash?: string;
 }
 
@@ -40,10 +30,6 @@ function skillPlacementsPath(base: string): string {
   return join(base, ...PLACEMENTS_REL);
 }
 
-/**
- * Resolve a ledger path only when both its lexical path and deepest existing
- * ancestor stay inside the placement base.
- */
 export function resolveSkillPlacementPath(base: string, relPath: string): string | null {
   if (
     relPath.length === 0 ||
@@ -134,7 +120,6 @@ function parseFolders(base: string, value: unknown): Record<string, FolderExpect
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-/** Read, shape-validate, and containment-filter the ledger. */
 export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
   const path = skillPlacementsPath(base);
   if (!existsSync(path)) return emptyStore();
@@ -168,10 +153,6 @@ export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
       ...(folders ? { folders } : {}),
     };
   } catch (err) {
-    // Present but unparseable. Continuing with an empty ledger is the deliberate
-    // fail-soft, but it silently forgets every recorded placement at once — the
-    // operator gets no other signal, and the next write persists the empty
-    // ledger over the corrupt one. Matches `readSkillsLockFile`'s handling.
     getLogger('skill-placements').warn(
       { err, path },
       'skill-placements.json is unreadable; continuing with an empty ledger (recorded placements for this project are lost)',
@@ -180,20 +161,6 @@ export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
   }
 }
 
-/**
- * Serialized read-modify-write of the placements ledger.
- *
- * The whole ledger is one JSON file, so a mutation is read-all → edit → write-all
- * with an await in the middle. Callers routinely fire several at once — converting
- * every location of a skill sends one request per location — and unserialized they
- * all read the same starting file and then overwrite each other, so only the last
- * writer's edit survives. The folder work still succeeds (separate paths, nothing
- * contends), which makes the loss silent: the ledger then disagrees with the disk
- * and every clobbered location reports itself as "changed outside".
- *
- * Mutations chain per ledger path. A failed mutation does not poison the chain,
- * but it is still raised to its own caller.
- */
 const serializeLedgerWrite = createKeyedSerializer();
 
 export function mutateSkillPlacementsStore(
@@ -215,7 +182,6 @@ async function writeSkillPlacementsStore(base: string, store: SkillPlacementsSto
   });
 }
 
-/** Safe custom roots declared directly or derived from recorded placements. */
 export function readKnownSkillPlacementRoots(base: string): string[] {
   const store = readSkillPlacementsStore(base);
   const roots = new Set(store.roots ?? []);

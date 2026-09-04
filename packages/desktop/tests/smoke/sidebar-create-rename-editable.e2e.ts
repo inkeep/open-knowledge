@@ -1,8 +1,3 @@
-/**
- * Regression smoke for the production-only sidebar create -> inline rename
- * path leaving the selected document without an editable TipTap surface.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -98,8 +93,6 @@ async function createSidebarFileAndType(
   docName: string,
   bodyText: string,
 ): Promise<void> {
-  // `exact` because `name` matches a substring by default, and the empty-state
-  // "or create a new file" button also carries "new file" in its name.
   await page.getByRole('button', { name: 'New file', exact: true }).click();
   const renameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });
   await renameInput.fill(docName);
@@ -124,8 +117,6 @@ async function createSidebarFileAndType(
       () =>
         page.evaluate(() => {
           const active = document.activeElement;
-          // The Ask-AI composer is its own ProseMirror instance and can hold
-          // focus, so the class alone does not mean the document editor.
           return (
             active instanceof HTMLElement &&
             active.classList.contains('ProseMirror') &&
@@ -151,15 +142,6 @@ async function createSidebarFileAndType(
 
 test.describe('Sidebar create and rename editability smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  // Deliberately NOT cross-platform, unlike its un-gated siblings: this spec
-  // drives the PACKAGED app, and `resolveDesktopTarget({requirePackaged:true})`
-  // falls back to the mac-arm64 `.app`. Off-mac the target never exists, so a
-  // `PLATFORM_SUPPORTED` gate here would read as cross-platform coverage while
-  // the spec silently skipped on Windows and Linux — worse than an honest
-  // darwin-only gate. Making it genuinely cross-platform means resolving the
-  // per-OS unpacked path AND packaging before the smoke run rather than after;
-  // the crossbuild job does the reverse, on purpose (a packaging breach must
-  // not skip the smoke signal).
   test.skip(!DARWIN, 'Drives the packaged mac .app; see comment.');
   test.skip(!TARGET.exists, TARGET.missingReason);
 

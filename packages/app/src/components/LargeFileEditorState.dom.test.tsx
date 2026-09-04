@@ -46,10 +46,6 @@ describe('LargeFileEditorState', () => {
     }
   });
 
-  // The heading's ref now travels through EmptyTitle's Slot before it reaches
-  // the h2, so mount-time focus depends on Slot forwarding the child's own ref
-  // when the wrapper supplies none. Nothing else pins that, and a radix bump or
-  // a shadcn re-sync could silently take it away.
   test('heading takes focus on mount when there is no back button', () => {
     render(
       <LargeFileEditorState

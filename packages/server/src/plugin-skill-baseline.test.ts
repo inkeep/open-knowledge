@@ -6,22 +6,17 @@ import { decidePluginBaseline, openPluginBaselines } from './plugin-skill-baseli
 
 describe('decidePluginBaseline', () => {
   it('first sight anchors to the current pair and reads clean', () => {
-    // The synced copy already differs from the plugin's bytes (frontmatter
-    // rewrite, banner) — that pre-existing difference must never flag.
     const r = decidePluginBaseline(undefined, 'local-1', 'plugin-1');
     expect(r).toEqual({ modified: false, next: { local: 'local-1', upstream: 'plugin-1' } });
   });
 
   it('a local change while the upstream stands still is a hand-edit', () => {
-    // The fan-out is deterministic for a fixed upstream, so only a person moves
-    // the local copy while the plugin does not.
     const r = decidePluginBaseline(
       { local: 'local-1', upstream: 'plugin-1' },
       'local-2',
       'plugin-1',
     );
     expect(r.modified).toBe(true);
-    // The ORIGINAL local hash is kept, so reverting the edit reads clean again.
     expect(r.next).toEqual({ local: 'local-1', upstream: 'plugin-1' });
   });
 
@@ -56,9 +51,6 @@ describe('openPluginBaselines', () => {
     expect(pass1.isModified('project', 'analyze', 'local-1', 'plugin-1')).toBe(false);
     pass1.flush();
 
-    // A later pass (or a restarted server) sees the stored anchor, not a fresh
-    // first-sight — which is the difference between a durable Modified flag and
-    // one that vanishes on relaunch.
     const pass2 = openPluginBaselines(dir);
     expect(pass2.isModified('project', 'analyze', 'local-EDITED', 'plugin-1')).toBe(true);
     pass2.flush();
@@ -84,7 +76,6 @@ describe('openPluginBaselines', () => {
     writeFileSync(join(dir, '.ok', 'local', 'plugin-skill-baselines.json'), '{not json');
 
     const b2 = openPluginBaselines(dir);
-    // Re-baselines to current — the same state a fresh machine starts in.
     expect(b2.isModified('project', 'x', 'l2', 'u1')).toBe(false);
   });
 

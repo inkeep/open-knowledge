@@ -23,8 +23,6 @@ function deepDropResolverKeys<T>(value: T): T {
   return value;
 }
 
-/** Comparison-form of a tree with resolver-derived keys dropped inside every
- *  WikiEmbed* subtree (and only there — see `RESOLVER_DERIVED_ATTRS`). */
 function stripResolverDerivedAttrs(node: PmStructuralNode): PmStructuralNode {
   if (
     node.type === 'jsxComponent' &&
@@ -52,9 +50,6 @@ function stripMdastPositions<T>(value: T): T {
   return value;
 }
 
-/** First `jsxComponent` in document order, or undefined. `parse(sourceRaw)` of
- *  a single component's bytes yields a document whose first (and only top-level)
- *  jsxComponent is that component's reconstruction. */
 function firstJsxComponent(root: PmStructuralNode): PmStructuralNode | undefined {
   if (root.type === 'jsxComponent') return root;
   if (root.content) {

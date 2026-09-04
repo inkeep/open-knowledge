@@ -1,11 +1,3 @@
-/**
- * Unit tests for the background bug-report send manager.
- *
- * The stub stands in for the desktop bridge, which is a genuine process
- * boundary — `send` crosses into Electron main over IPC. Everything else here
- * is the real module.
- */
-
 import type { OkBugReportListRow, OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import { propagation, trace } from '@opentelemetry/api';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
@@ -35,10 +27,6 @@ const FAILED_RESULT: OkBugReportSendResult = {
   fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=failed' },
 };
 
-/**
- * A bridge whose `send` resolves only when the test says so, so a test can
- * observe the in-flight operation before its outcome lands.
- */
 function createDeferredBridge() {
   const calls: Parameters<BugReportSendBridge['send']>[0][] = [];
   const resolvers: ((result: OkBugReportSendResult) => void)[] = [];
@@ -53,7 +41,6 @@ function createDeferredBridge() {
   return {
     bridge,
     calls,
-    /** Resolve the nth outstanding send and let the manager's continuation run. */
     async settle(result: OkBugReportSendResult, index = calls.length - 1) {
       resolvers[index]?.(result);
       await vi.advanceTimersByTimeAsync(0);
@@ -169,9 +156,6 @@ describe('bug-report send manager', () => {
       zipPath: ZIP_PATH,
       metadata: { level: 'standard', systemWide: true, projectSlug: null },
     });
-    // `toEqual` treats an explicit `note: undefined` as absent, so the key
-    // itself is asserted separately: a row with no note must not send a
-    // synthesized stand-in, and must not send an empty slot either.
     expect(stub.calls[0]?.metadata).not.toHaveProperty('note');
     await stub.settle(FAILED_RESULT);
   });
@@ -255,8 +239,6 @@ describe('bug-report send manager', () => {
     expect(stub.calls).toHaveLength(1);
     expect(joined.status).toBe('sending');
     expect(joined.operationId).toBe(first.operationId);
-    // The join has to be observable, or a toast the reporter dismissed mid-send
-    // has no event to re-surface on and the retry reads as doing nothing.
     expect(joined.requestSeq).toBe(first.requestSeq + 1);
     expect(manager.getSnapshot()).toHaveLength(1);
   });
@@ -287,7 +269,6 @@ describe('bug-report send manager', () => {
     manager.startBugReportSend(createdReportRequest());
     await stub.settle(FAILED_RESULT);
 
-    // The toast offering "Try again" knows the operation id and nothing else.
     manager.retryBugReportSend(OPERATION_ID);
 
     expect(stub.calls).toHaveLength(2);
@@ -327,8 +308,6 @@ describe('bug-report send manager', () => {
     manager.startBugReportSend(createdReportRequest());
     await vi.advanceTimersByTimeAsync(0);
 
-    // No fallback draft: main composes one as part of its result, and a call
-    // that never returned has none to offer.
     expect(manager.get(OPERATION_ID)).toEqual({
       operationId: OPERATION_ID,
       zipPath: ZIP_PATH,
@@ -360,9 +339,6 @@ describe('bug-report send manager', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sendingFill(manager.get(OPERATION_ID))).toBe(90);
 
-    // Once the curve flattens the operation must stop changing identity, or a
-    // subscribed toast re-renders five times a second for the rest of a long
-    // upload with nothing new to show.
     const saturated = manager.get(OPERATION_ID);
     await vi.advanceTimersByTimeAsync(5_000);
     expect(manager.get(OPERATION_ID)).toBe(saturated);
@@ -447,10 +423,6 @@ describe('bug-report send manager — subscriber isolation', () => {
   });
 
   test('one throwing subscriber does not silence the others', async () => {
-    // Both the toast adapter and React's useSyncExternalStore trigger live in
-    // this list. If the adapter throws first and the loop is unguarded, the
-    // store never re-reads and the toast stays at 'sending' behind an infinite
-    // duration - the exact state this module's contract promises to avoid.
     const stub = createDeferredBridge();
     const manager = createBugReportSendManager(() => stub.bridge);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -473,12 +445,6 @@ describe('bug-report send manager — subscriber isolation', () => {
 });
 
 describe('bug-report send manager — per-attempt tracing', () => {
-  /**
-   * A real SDK, because the claim is about span LIFETIME across a retry and an
-   * inert no-op handle records nothing to check. The manager's other suites run
-   * with no provider registered, which is exactly why this defect survived
-   * them: every span call was a silent no-op there.
-   */
   let exporter: InMemorySpanExporter;
   let provider: BasicTracerProvider;
 
@@ -487,9 +453,6 @@ describe('bug-report send manager — per-attempt tracing', () => {
     exporter = new InMemorySpanExporter();
     provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(exporter)] });
     trace.setGlobalTracerProvider(provider);
-    // Without a propagator `inject` is a no-op and every traceparent comes back
-    // undefined — the encoding under test is the one main parses on the far
-    // side of the IPC boundary, so use the real W3C one.
     propagation.setGlobalPropagator(new W3CTraceContextPropagator());
   });
 
@@ -513,9 +476,6 @@ describe('bug-report send manager — per-attempt tracing', () => {
       .getFinishedSpans()
       .map((sp) => sp.attributes['ok.bug_report.renderer_outcome']);
 
-    // One span per ATTEMPT. Sharing a span across the retry would end it at the
-    // failure and silently drop everything after, so the report that actually
-    // succeeded would read as failed for ever.
     expect(outcomes).toEqual(['failed', 'sent']);
   });
 
@@ -531,8 +491,6 @@ describe('bug-report send manager — per-attempt tracing', () => {
     const sent = stub.calls.map((c) => (c as { traceparent?: string }).traceparent);
     expect(sent[0]).toBeDefined();
     expect(sent[1]).toBeDefined();
-    // A reused span would hand main the SAME header twice, parenting the
-    // retry's transport work under a span that had already ended.
     expect(sent[0]).not.toBe(sent[1]);
   });
 });

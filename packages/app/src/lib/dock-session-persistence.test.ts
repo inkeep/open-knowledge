@@ -1,12 +1,3 @@
-/**
- * The terminal dock and the agents panel persist their tab order independently.
- * Before the split they shared one record, so with two panels live each write
- * would drop the other's keys (each host only ever lists its own kind) and
- * clobber the shared `activeKey`. These tests pin the partition on both
- * backends, since the failure is silent — you only see it after a reload, as a
- * panel that came back empty.
- */
-
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
@@ -16,8 +7,6 @@ import {
   writeDockSessionOrder,
 } from './dock-session-persistence';
 
-/** A desktop bridge exposing just the two dock-state methods, backed by a
- *  per-surface store the way main's windowId-keyed maps are. */
 function makeDesktopBridge(
   initial: Partial<{
     terminal: { order: string[]; activeKey: string | null };
@@ -49,10 +38,6 @@ function makeDesktopBridge(
   return { bridge, store, setDockState };
 }
 
-/** In-memory stand-in for `window.localStorage`. These tests run in the node
- *  environment (no DOM), and the module reads `window.localStorage` directly —
- *  its `typeof window === 'undefined'` guard is what makes stubbing a bare
- *  `window` sufficient. */
 function makeLocalStorage() {
   const data = new Map<string, string>();
   return {
@@ -90,8 +75,6 @@ describe('web backend (localStorage)', () => {
 
   test("one panel's write cannot erase the other's order", () => {
     writeDockSessionOrder(null, 'terminal', { order: ['pty-1'], activeKey: 'pty-1' });
-    // The agents host lists only threadIds. Under one shared record this write
-    // dropped pty-1 and moved the active tab; the terminal came back empty.
     writeDockSessionOrder(null, 'agents', { order: ['thread-a'], activeKey: 'thread-a' });
 
     expect(readWebDockSessionOrder('terminal')).toEqual({ order: ['pty-1'], activeKey: 'pty-1' });
@@ -249,9 +232,6 @@ describe('desktop backend (bridge)', () => {
   });
 
   test('a bridge with no dock-state methods falls back to the web backend', async () => {
-    // A session-only desktop bridge (some E2E hosts) has no `terminal` surface at
-    // all; duck-typing on the method — not on a host flag — is what keeps that
-    // from throwing on mount.
     const sessionOnly = { editor: {} } as unknown as OkDesktopBridge;
     writeDockSessionOrder(sessionOnly, 'terminal', { order: ['pty-1'], activeKey: 'pty-1' });
 

@@ -103,14 +103,6 @@ describe('watchedGitFile', () => {
 });
 
 describe('startHeadWatcher chokidar fallback', () => {
-  // NOTE: we intentionally do NOT assert that a real branch switch fires
-  // `onBatchEnd` here. That requires waiting on a real chokidar/inotify event,
-  // whose attach + delivery latency is environment-dependent and flakes on
-  // loaded CI runners. The chokidar backend's event delivery is the same one
-  // the file-watcher already relies on in production (verified manually that a
-  // branch switch produces `change:HEAD`); this test pins the new code path —
-  // forced-backend selection, clean start, initial-state read, and teardown —
-  // deterministically, without an fs-event race.
   test('selects the chokidar backend, reads initial state, and tears down cleanly', async () => {
     const projectRoot = resolve(tmpDir, 'repo');
     mkdirSync(projectRoot, { recursive: true });
@@ -121,7 +113,7 @@ describe('startHeadWatcher chokidar fallback', () => {
     writeFileSync(resolve(projectRoot, 'a.md'), 'hello\n');
     git('add -A');
     git('commit -qm init');
-    git('branch -M main'); // normalize branch name across git default-branch configs
+    git('branch -M main');
 
     const handle = await startHeadWatcher(
       projectRoot,
@@ -132,10 +124,8 @@ describe('startHeadWatcher chokidar fallback', () => {
       },
     );
     try {
-      // Initial branch state is read synchronously once the backend is active.
       expect(handle.getLastKnownBranch()).toBe('main');
     } finally {
-      // unsubscribe() must resolve — it closes the chokidar watcher.
       await handle.unsubscribe();
     }
   });

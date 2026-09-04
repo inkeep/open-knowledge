@@ -1,15 +1,3 @@
-/**
- * Unified validation audit: a project-validator registry one level above the
- * lint-plugin registry (`LINT_PLUGINS`, untouched). Each validator answers
- * "given the project (or a sub-path), what per-file diagnostics hold?" behind
- * one interface while owning its own execution model — the lint validator
- * walks the content tree via `auditProject`; the links validator reads the
- * derived document index; the OKF project validator walks for the file LIST
- * and judges it as a whole, reading no document. The engine fans out and merges
- * everything into one source-tagged diagnostic plane. Backs `GET /api/audit` +
- * MCP `audit`.
- */
-
 import {
   countDiagnosticsBySource,
   DEFAULT_LINKS_VALIDATION,
@@ -43,11 +31,6 @@ interface ValidationDerivedIndexReader {
     admittedDocuments: Iterable<string>,
     sourceDocumentNames?: readonly string[],
   ): DeadLinksResult | Promise<DeadLinksResult>;
-  /**
-   * Assessed local-target occurrences per source (all sources, or a scoped set).
-   * The links validator projects the unresolved ones — files, images, and
-   * reference-style targets — into the same plane as graph dead-links.
-   */
   getLocalTargetAssessmentsForSources(
     sourceDocumentNames?: readonly string[],
   ): LocalTargetsResult | Promise<LocalTargetsResult>;
@@ -59,7 +42,6 @@ export type ValidationDiagnosticFor<Source extends ValidationSource> = Omit<
 > & { source: Source };
 
 interface FileValidationResult<Source extends ValidationSource = ValidationSource> {
-  /** Path relative to `contentDir`. */
   file: string;
   diagnostics: ValidationDiagnosticFor<Source>[];
 }
@@ -81,17 +63,6 @@ export interface ValidationAuditCountsResult {
   warnings: string[];
 }
 
-/**
- * Tally an audit result into the counts-only plane. A derivation of the
- * enumerated plane, never a second determination — same walk, same predicate
- * (`countDiagnosticsBySource`), only the diagnostic bodies dropped. Callers
- * that keep file-tree tints fresh want the tallies and would discard the
- * bodies immediately; on a large KB those bodies are tens of MB per request.
- *
- * `ran` is dropped for the same reason: the only consumer is the tint refresh,
- * which reads counts and nothing else. Restoring it is additive if a consumer
- * ever needs coverage off this plane.
- */
 export function toValidationCountsPlane(
   result: ValidationAuditResult,
 ): ValidationAuditCountsResult {
@@ -108,44 +79,19 @@ export function toValidationCountsPlane(
 }
 
 export interface ValidationScope {
-  /** contentDir-relative folder or doc-file path; absent audits the whole project. */
   targetPath?: string;
 }
 
 interface ValidatorRunResult<Source extends ValidationSource = ValidationSource> {
   files: FileValidationResult<Source>[];
-  /**
-   * In-scope docs this validator scanned as a full-scan authority; 0 when it
-   * reads an index instead of walking. The engine keeps the max across
-   * validators as the plane's `fileCount`.
-   */
   fileCount: number;
   warnings: string[];
-  /**
-   * The families this run actually selected, when they differ from the
-   * validator's declaration — the lint walk narrows to `[]` on its scope
-   * refusals. Omit it and the declaration stands, so a validator cannot vanish
-   * from reported coverage by forgetting to echo what it already declared.
-   */
   ran?: readonly Source[];
 }
 
 export interface ProjectValidator<Source extends ValidationSource = ValidationSource> {
   readonly id: string;
-  /**
-   * The public source families this validator selects under the current config.
-   * Required, not optional: the engine reports coverage from it, so a new
-   * validator that omitted it would contribute findings whose `source` never
-   * appears in `ran` — with no type error and no runtime signal.
-   */
   readonly sourceFamilies: readonly Source[];
-  /**
-   * The family that owns a TOTAL failure of this validator, when it has one.
-   * A static fact, not a config-derived one: the lint validator spans several
-   * families and its walk can fail for reasons that belong to none of them
-   * (a readdir error, a config-composition throw), so it declares nothing and
-   * a failure reports under its own id.
-   */
   readonly failureSourceFamily?: Source;
   run(scope: ValidationScope): Promise<ValidatorRunResult<Source>>;
 }
@@ -154,12 +100,6 @@ type ValidatorFailureAttribution =
   | { kind: 'validator'; id: string }
   | { kind: 'source-family'; sourceFamily: ValidationSource };
 
-/**
- * Attribute a validator failure in the vocabulary exposed by `ran` whenever a
- * single source family owns it. MCP `capAuditWarnings` recognizes these
- * prefixes, so producer wording and cap priority must change together.
- * Callers that still return findings use `formatValidatorDegradationWarning`.
- */
 export function formatValidatorFailureWarning(
   attribution: ValidatorFailureAttribution,
   message: string,
@@ -169,14 +109,6 @@ export function formatValidatorFailureWarning(
     : `source family "${attribution.sourceFamily}" validation failed: ${message}`;
 }
 
-/**
- * Attribute a partial degradation when a family produced findings but could
- * not complete every projection. MCP `capAuditWarnings` recognizes the source
- * family prefix, while `AUDIT_WARNINGS_DESCRIPTION` quotes the `validation
- * degraded` suffix; producer wording, cap priority, and field guidance must
- * change together. This stays cap-safe without claiming the family's whole
- * contribution is missing.
- */
 export function formatValidatorDegradationWarning(
   sourceFamily: ValidationSource,
   message: string,
@@ -188,43 +120,23 @@ export interface ValidationAuditDeps {
   projectDir: string;
   contentDir: string;
   baseConfig: LinterConfig;
-  /** Live CRDT source overlay for loaded docs (see `AuditOptions.liveSourceFor`). */
   liveSourceFor?: (docRelPath: string) => string | null;
-  /** Null when the server booted without a derived index; links findings degrade to a warning. */
   derivedDocumentIndex: ValidationDerivedIndexReader | null;
-  /**
-   * Project posture for broken links (`validation.links`): 'off' silences the
-   * links validator entirely, 'warning' (default) / 'error' set the severity.
-   */
   linksValidation?: LinksValidationSetting;
-  /** Every docName that currently exists — the dead-link existence oracle. */
   admittedDocNames: () => Iterable<string> | Promise<Iterable<string>>;
-  /** docName → on-disk contentDir-relative path, null when no file exists yet. */
   docFilePathFor: (docName: string) => string | null;
-  /** Shared across audits so an unchanged-config re-walk does no lint work. */
   cache?: AuditCache;
-  /** Lint config + active branch, as one equality token (see `AuditOptions.auditGeneration`). */
   auditGeneration?: () => string;
 }
 
-/**
- * The registered project validators. Admitting a new validator means appending
- * one factory here — the engine body never changes.
- */
 export function createProjectValidators(deps: ValidationAuditDeps): ProjectValidator[] {
   return [createLintValidator(deps), createLinksValidator(deps), createOkfProjectValidator(deps)];
 }
 
-/** Fan out to every validator, then merge into one per-file diagnostic plane. */
 export async function runValidationAudit(
   validators: readonly ProjectValidator[],
   scope: ValidationScope = {},
 ): Promise<ValidationAuditResult> {
-  // Isolate validators: a throw degrades to a warning in the shared plane
-  // instead of collapsing the whole audit (and discarding the validators that
-  // succeeded) into an opaque 500. Extends the links validator's existing
-  // null-index -> warning degradation to any unexpected throw, including from a
-  // future validator.
   const results = await Promise.all(
     validators.map(async (validator) => {
       const declared = validator.sourceFamilies;
@@ -232,12 +144,7 @@ export async function runValidationAudit(
         const result = await validator.run(scope);
         return { ...result, ran: result.ran ?? declared };
       } catch (error) {
-        // Supersession is not a validator failure — it invalidates the WHOLE
-        // plane, so degrading it to a warning would publish the surviving
-        // validators' findings as if they were a complete answer.
         if (error instanceof AuditSupersededError) throw error;
-        // The plane's warning carries only `.message`; the stack goes to the
-        // server log or a deep validator throw is undebuggable in production.
         getLogger('validation-audit').error(
           { err: error, validatorId: validator.id },
           '[audit] validator threw; degrading to a plane warning',
@@ -253,8 +160,6 @@ export async function runValidationAudit(
           files: [],
           fileCount: 0,
           warnings: [failureWarning],
-          // Selected-and-attempted stays in `ran`; the warning beside it says
-          // the attempt could not finish.
           ran: declared,
         } satisfies ValidatorRunResult;
       }
@@ -320,8 +225,6 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator<LintPl
         files: audit.files,
         fileCount: audit.fileCount,
         warnings: audit.warnings,
-        // The one validator that must echo: the walk narrows to `[]` on its
-        // scope refusals, and no family was selected for execution there.
         ran: audit.ran,
       };
     },
@@ -330,8 +233,6 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator<LintPl
 
 function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'links'> {
   const setting = deps.linksValidation ?? DEFAULT_LINKS_VALIDATION;
-  // Extract this validator's contribution from the whole-plane roster rather
-  // than independently recomputing whether the family was selected.
   const sourceFamilies = deriveValidationRunSources(deps.baseConfig, {
     mode: 'audit',
     linksValidation: setting,
@@ -341,8 +242,6 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
     sourceFamilies,
     failureSourceFamily: 'links',
     async run(scope) {
-      // 'off' is a clean empty contribution, not a degradation warning — the
-      // project chose to silence link validation.
       if (setting === 'off') {
         return { files: [], fileCount: 0, warnings: [] };
       }
@@ -367,9 +266,6 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
       };
       const admitted = [...(await deps.admittedDocNames())];
       const sourceFilter = scopedSourceDocNames(admitted, scope.targetPath);
-      // `getDeadLinks` reads an empty source filter as "no filter" — a scope
-      // matching zero docs must short-circuit here or it would silently widen
-      // back to the whole project.
       if (sourceFilter !== undefined && sourceFilter.length === 0) {
         assertCurrent();
         return { files: [], fileCount: 0, warnings: [] };
@@ -383,14 +279,6 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
         byFile.set(file, diagnostics);
       };
 
-      // The canonical classification comes from the assessment plane, so it is
-      // computed FIRST and the graph plane fills only what it does not cover.
-      // Both planes see the same occurrence; whichever reports it must be the
-      // one every consumer reads, and the assessment row is a strict superset —
-      // same message, plus the `localTarget` evidence (definition pointer,
-      // resolution method, fallback target) and the same create-page
-      // `linkTarget`. Reconciling by source form, as this once did, is a
-      // hand-maintained rule that drifts the moment either plane learns a form.
       const localTargetDiagnostics: Array<{
         file: string;
         diagnostic: ValidationDiagnosticFor<'links'>;
@@ -412,11 +300,6 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
               documentTargetsFromAssessment.add(`${source}\0${assessment.resolvedTarget}`);
             }
           }
-          // A target the canonical classifier proved EXISTS is not a dead link,
-          // whatever the graph concluded. `assets/NOTICE` is the case: an
-          // extension-less href naming a real ordinary file, which the graph
-          // reads as a document. Suppressing here keeps Problems correct even
-          // if the graph was built before the file inventory had seeded.
           for (const assessment of assessments) {
             if (assessment.status === 'exact' && assessment.resolvedTarget !== null) {
               resolvedTargetsFromAssessment.add(`${source}\0${assessment.resolvedTarget}`);
@@ -442,19 +325,13 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
         for (const occurrence of sources) {
           if (isProblemsPlaneExcludedDoc(occurrence.source)) continue;
           const key = `${occurrence.source}\0${target}`;
-          // Already reported with richer evidence by the canonical classifier,
-          // or proven by it to exist and therefore not a dead link at all.
           if (
             occurrence.sourceForm !== 'wiki' &&
             (documentTargetsFromAssessment.has(key) || resolvedTargetsFromAssessment.has(key))
           ) {
             continue;
           }
-          // A source indexed from a live CRDT doc may not be on disk yet — fall
-          // back to the default extension so the finding still names a file.
           const file = deps.docFilePathFor(occurrence.source) ?? `${occurrence.source}.md`;
-          // Entries deserialized from a pre-position cache carry no position;
-          // degrade to the start of the doc rather than dropping the finding.
           const line = occurrence.line ?? 0;
           const character = occurrence.column ?? 0;
           push(file, {
@@ -463,8 +340,6 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
             source: 'links',
             code: 'dead-link',
             message: `Link target "${target}" does not resolve to an existing document.`,
-            // The unresolved target, verbatim, so the Problems panel's
-            // create-the-missing-page affordance never parses the message.
             linkTarget: target,
           });
         }
@@ -483,12 +358,8 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
   };
 }
 
-/** Human-readable message for a local-target finding, by reason, kind, and role. */
 function localTargetMessage(assessment: LocalTargetAssessment, shown: string): string {
   const isImage = assessment.occurrence.role === 'image';
-  // An unresolvable target never resolved to any identity (root escape, empty,
-  // unsupported form) — distinct wording from a resolved-but-absent target. A
-  // 'unknown' kind only ever arrives with this reason.
   if (assessment.reason === 'unresolvable') {
     return isImage
       ? `Image target "${shown}" could not be resolved to a project-local file.`
@@ -502,31 +373,13 @@ function localTargetMessage(assessment: LocalTargetAssessment, shown: string): s
   return `Link target "${shown}" does not resolve to an existing document.`;
 }
 
-/**
- * Project one local-target assessment onto a validation diagnostic, or null when
- * it is not a finding. Exact targets are dropped (not a problem), and so are
- * forms with no local-target wire spelling — `buildLocalTargetEvidence` owns
- * that decision.
- *
- * Cross-plane de-duplication is NOT decided here. The caller runs this plane
- * first and suppresses the graph plane for any document target it already
- * reported, so one occurrence yields one finding without either plane guessing
- * at the other's coverage.
- */
 function toLocalTargetDiagnostic(
   assessment: LocalTargetAssessment,
   severity: 'error' | 'warning',
 ): ValidationDiagnosticFor<'links'> | null {
-  // `reason` is null exactly when the target is `exact`, so this both drops
-  // resolved targets and narrows `reason` to a concrete failure below.
   if (assessment.reason === null) return null;
   const { occurrence, targetKind } = assessment;
 
-  // Wiki forms are classified but do not project onto the local-target wire
-  // surfaces: a wiki document link is a graph edge, and a file-shaped wiki embed
-  // resolves by vault-wide basename under its own contract.
-  // `buildLocalTargetEvidence` owns that decision, so reading its null is the
-  // single check rather than a second form predicate here that could drift.
   const localTarget = buildLocalTargetEvidence(assessment, assessment.reason);
   if (localTarget === null) return null;
 
@@ -541,9 +394,6 @@ function toLocalTargetDiagnostic(
     message: localTargetMessage(assessment, shown),
     localTarget,
   };
-  // Create page is document-only: only a missing document carries `linkTarget`,
-  // and a document target always has a resolved docName. Files, images, and
-  // unresolvable targets never offer it.
   if (
     targetKind === 'document' &&
     assessment.status === 'missing' &&
@@ -554,15 +404,6 @@ function toLocalTargetDiagnostic(
   return diagnostic;
 }
 
-/**
- * Translate a path scope into the dead-link source filter: a doc-file path
- * narrows to that one doc, anything else is a folder prefix over the admitted
- * set. This parallels the lint walk's scope intent but classifies by suffix
- * over the in-memory admitted set, not the on-disk `statSync` `resolveScope`
- * uses — so an admitted-but-unpersisted doc can scope differently across the
- * two validators. The filter is always a subset of the admitted set, so doc
- * scope stays a provable restriction of the project-wide dead-link predicate.
- */
 function scopedSourceDocNames(
   admitted: readonly string[],
   targetPath: string | undefined,

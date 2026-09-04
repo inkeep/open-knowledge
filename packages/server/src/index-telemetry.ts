@@ -1,25 +1,12 @@
-/**
- * Telemetry primitives for derived-index rebuilds (backlink + tag).
- *
- * Lazy-init meter so registration runs against a real provider post-
- * `initTelemetry` (not the pre-init no-op). Same pattern as
- * `frontmatter-telemetry.ts`. One span name + one metric family with a
- * bounded `index.name` / `index.mode` label pair keeps Tempo/Prometheus
- * cardinality flat regardless of corpus size — NEVER add per-doc labels.
- */
 import type { Attributes, Counter, Histogram } from '@opentelemetry/api';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 
-/** Bounded label set — extend only for a NEW derived index, never per-doc. */
 export type IndexName = 'backlink' | 'tag' | 'local-target';
 
-/** `full` = whole-corpus re-parse; `reconcile` = mtime-gated incremental pass. */
 export type IndexRebuildMode = 'full' | 'reconcile';
 
-/** Incremental mutation class. Bounded: never derive this value from a path or event name. */
 export type IndexUpdateMode = 'source' | 'document-target' | 'file-target';
 
-/** Bounded publication path for generation-lag observations. */
 export type IndexPublicationMode = 'signal' | 'baseline';
 
 let _rebuildCounter: Counter | null = null;
@@ -95,7 +82,6 @@ function recordBoundedMeasurements(attrs: Attributes, labels: Attributes): void 
   }
 }
 
-/** Record real publication lag, never a per-operation placeholder. */
 export function recordIndexGenerationLag(
   name: IndexName,
   publication: IndexPublicationMode,
@@ -104,16 +90,6 @@ export function recordIndexGenerationLag(
   generationLagHist().record(lag, { 'index.name': name, 'index.publication': publication });
 }
 
-/**
- * Run a rebuild/reconcile pass inside an `ok.index.rebuild` span and record
- * the counter + duration histogram. The duration lands even when `fn` throws
- * (the span records the exception via `withSpan`). `resultAttrs` maps the
- * result onto extra span attributes — bounded numbers only (counts, not
- * doc names).
- *
- * Zero overhead when OTel is disabled: the no-op tracer/meter make the span
- * and instruments free beyond a function-call indirection.
- */
 export async function instrumentIndexRebuild<T>(
   name: IndexName,
   mode: IndexRebuildMode,
@@ -142,10 +118,6 @@ export async function instrumentIndexRebuild<T>(
   );
 }
 
-/**
- * Instrument one synchronous incremental update. Result attributes are numeric,
- * bounded measurements only; callers must never attach paths, hrefs, or content.
- */
 export function instrumentIndexUpdate<T>(
   name: IndexName,
   mode: IndexUpdateMode,
@@ -168,12 +140,6 @@ export function instrumentIndexUpdate<T>(
   });
 }
 
-/**
- * Drop the cached lazy-init instruments so the next call rebinds against the
- * currently-registered global MeterProvider. Test-only — production code
- * never needs this because the global provider is set once via
- * `initTelemetry()`.
- */
 export function __resetIndexTelemetryForTests(): void {
   _rebuildCounter = null;
   _rebuildDurationHist = null;

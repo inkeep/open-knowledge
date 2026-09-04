@@ -31,14 +31,6 @@ describe('WYSIWYG STOP rule — ProseMirror clipboard hooks', () => {
   });
 
   test('wires copy/cut ONLY to the comment-carriage intercept; dragstart stays PM-native', () => {
-    // Narrowed STOP rule (precedent #19(b)): PM's clipboard hooks remain the
-    // payload producers, and dragstart must stay PM-native so `view.dragging`
-    // keeps the internal DnD fast path. The single sanctioned DOM-level
-    // exception is the copy/cut comment-carriage intercept (handle-copy.ts):
-    // PM's hook API exposes no clipboardData, so the private OK flavor that
-    // lets comments travel OK→OK cannot exist via hooks alone. The intercept
-    // DELEGATES payload production to view.serializeForClipboard (PM hooks
-    // included) and declines every slice without clipboard-omitted content.
     const props = buildWysiwygEditorProps();
     const handleDOMEvents = props.handleDOMEvents ?? {};
 

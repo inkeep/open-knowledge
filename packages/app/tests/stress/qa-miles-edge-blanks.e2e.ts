@@ -1,14 +1,3 @@
-/**
- * Browser-rung QA probes for the doc-edge blank-run class (#3132 audit).
- *
- * FWD-11: real Enter keypresses at the very top and bottom of the WYSIWYG
- * reach the source bytes and survive a mode toggle + reload (the forward
- * fix at user fidelity, edges instead of the shipped interior case).
- *
- * INV-11: blank lines typed at the document tail in real CodeMirror source
- * mode appear as blank paragraphs when toggling to the visual editor (the
- * inverse direction at user fidelity).
- */
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -53,13 +42,6 @@ test.describe('doc-edge blank runs at browser fidelity', () => {
   test('FWD-11: Enters at the very top and bottom reach the source bytes and survive toggle + reload', async ({
     page,
   }) => {
-    // Deterministic caret placement via the exposed editor handle (the
-    // grip-click suite's pattern) — keyboard-only navigation proved unable to
-    // reach the document edges under automation. The focus() commit is
-    // asynchronous relative to the evaluate's return, so each placement
-    // waits for the view to actually hold focus before any key is pressed —
-    // a press racing the focus commit lands outside the editor and reads as
-    // a minted-nothing keymap defect that does not exist.
     await page.evaluate(() => {
       const editor = window.__activeEditor;
       if (!editor) throw new Error('window.__activeEditor not set');

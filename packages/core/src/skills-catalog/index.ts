@@ -1,12 +1,3 @@
-/**
- * Node-only subpath barrel: `@inkeep/open-knowledge-core/skills-catalog`.
- *
- * The enumerator reads the filesystem (node:fs/os/path), so it is kept OUT of
- * the browser-safe root `index.ts` barrel and consumed via this subpath by the
- * server + CLI — mirroring `@inkeep/open-knowledge-core/server`. The pure
- * skill/Pack schemas stay in the root barrel (browser-safe, zod only).
- */
-
 export {
   ALLOWED_GIT_TRANSPORTS,
   type Fetched,

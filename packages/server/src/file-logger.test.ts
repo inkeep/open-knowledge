@@ -68,7 +68,6 @@ describe('file logger', () => {
     writeFileSync(filePath, content);
     expect(statSync(filePath).size).toBeGreaterThan(MAX_FILE_SIZE);
 
-    // Import and test rotateIfNeeded via createFileLogger side effect
     createFileLogger({ name: 'big', filePath });
 
     const files = readdirSync(TEST_DIR).filter((f: string) => f.startsWith('big.log'));
@@ -80,13 +79,6 @@ describe('file logger', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'sync-open.log');
     const logger = createFileLogger({ name: 'sync-open', filePath });
-    // pino registers an exit hook that calls flushSync() on the destination.
-    // With an async open (sync: false), the fs.open callback that assigns the
-    // fd cannot have run yet in the same tick, so a command that constructs
-    // the logger and process.exit()s synchronously (e.g. `ok start` before
-    // `ok init`) makes that hook throw "sonic boom is not ready yet" and dump
-    // the minified bundle to the terminal. Replicate the hook: flushSync in
-    // the construction tick must find an open fd.
     const stream = (logger as unknown as Record<symbol, { fd: number; flushSync: () => void }>)[
       pino.symbols.streamSym
     ];
@@ -98,8 +90,6 @@ describe('file logger', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     let unrefCalls = 0;
     let scheduledMs: number | undefined;
-    // Fake scheduler: records the unref() call (the load-bearing contract) and
-    // the delay, and never actually schedules, so no real 5s prune fires here.
     const fakeSetTimeout = ((_cb: () => void, ms?: number) => {
       scheduledMs = ms;
       return {
@@ -120,8 +110,6 @@ describe('file logger', () => {
     expect(scheduledMs).toBe(5000);
   });
 
-  // The credential helper logs then immediately exits; the async (sync:false)
-  // destination would otherwise drop that record. flushFileLogger must land it.
   test('flushFileLogger persists a record logged immediately before exit', async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'flush.log');
@@ -144,12 +132,6 @@ describe('file logger', () => {
     await expect(flushFileLogger(undefined)).resolves.toBeUndefined();
   });
 
-  // --- flushFileLogger branch coverage (fd-not-open → ready wait, + timeout) ---
-  //
-  // flushFileLogger reaches the underlying SonicBoom stream via pino's
-  // streamSym. A minimal fake logger that carries a fake stream on that symbol
-  // exercises the two non-fd-open branches deterministically without real I/O.
-
   function makeFakeLogger(stream: unknown): PinoLoggerInstance {
     return { [pino.symbols.streamSym]: stream } as unknown as PinoLoggerInstance;
   }
@@ -157,8 +139,6 @@ describe('file logger', () => {
   test("flushFileLogger waits for 'ready' when the fd is not open yet, then flushes", async () => {
     let flushed = false;
     let readyCb: (() => void) | undefined;
-    // fd negative (not open) → flushFileLogger must register a 'ready' listener
-    // and flush only once it fires.
     const stream = {
       fd: -1,
       flushSync: () => {
@@ -170,7 +150,6 @@ describe('file logger', () => {
     };
 
     const p = flushFileLogger(makeFakeLogger(stream), 5000);
-    // Not flushed yet — still waiting for 'ready'.
     expect(flushed).toBe(false);
     expect(typeof readyCb).toBe('function');
 
@@ -181,22 +160,17 @@ describe('file logger', () => {
 
   test('flushFileLogger resolves within the bound when the stream never becomes ready', async () => {
     let flushed = false;
-    // fd never opens and 'ready' never fires; the timeout path must still
-    // resolve the promise within the (tiny) bound.
     const stream = {
       fd: -1,
       flushSync: () => {
         flushed = true;
       },
-      once: (_event: string, _cb: () => void) => {
-        /* never fires */
-      },
+      once: (_event: string, _cb: () => void) => {},
     };
 
     const start = Date.now();
     await flushFileLogger(makeFakeLogger(stream), 30);
     const elapsed = Date.now() - start;
-    // Resolved via the timeout, not via a flush.
     expect(flushed).toBe(false);
     expect(elapsed).toBeLessThan(1000);
   });

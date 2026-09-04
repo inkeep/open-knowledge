@@ -1,17 +1,7 @@
 import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
 
-// Skip-on-CI gate (oven-sh/bun#11892): subprocess or git child spawns; Bun fails to reap children on ubuntu-latest GHA runners (oven-sh/bun#11892).
-// Tests run normally locally; follow-up will narrow the leak surface.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
-// Runs even on CI. The exposure-consent interlock and multi-address bind are
-// 7879's core exposure-safety behavior — shipping them with zero CI regression
-// protection is a real gap, and the skip's stale Bun-reaping rationale does not
-// apply under Node/vitest (these boot in-process; they only git-init in setup).
-// Guardrail: GHA is a different env and these boot tests are load-flaky locally
-// — treat the first CI run as the verdict. If they flake on GHA, move them back
-// under `describe` and cover them in a focused follow-up rather than let flake
-// block the security PR.
 const describeEvenOnCI = _bunDescribe;
 
 import { execFile } from 'node:child_process';
@@ -36,12 +26,6 @@ import { getLogger } from './logger.ts';
 import { parseKeepaliveConnectionId } from './mcp-mount.ts';
 import { shutdownTelemetry } from './telemetry.ts';
 
-/**
- * `bootServer`'s pre-listen check refuses when `<projectDir>/.ok/config.yml`
- * is absent. Tests that don't exercise that codepath need a stub on disk so
- * boot can reach `createServer`. `.ok/.gitignore` is included so the State C
- * one-time hygiene warning doesn't pollute test stderr.
- */
 function seedOkScaffold(projectDir: string): void {
   const okDir = resolve(projectDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
@@ -59,9 +43,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  // A just-destroyed server can still flush telemetry/log files into the
-  // tmpdir for a beat, and rm's readdir-then-unlink walk races it into
-  // ENOTEMPTY under parallel-suite load. Retries absorb the tail writes.
   await rm(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -69,7 +50,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   test('rejects with kind=okdir when .ok/ directory is absent (State A)', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'state-a-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
-    // No seedOkScaffold — entire .ok/ is absent.
 
     let caught: unknown;
     try {
@@ -92,7 +72,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
     expect(e.projectDir).toBe(contentDir);
     expect(e.message).toContain('OpenKnowledge config not found at .ok/config.yml');
     expect(e.message).toContain('Run ok init');
-    // No shadow dir created (no partial state on fail-fast).
     expect(existsSync(resolve(contentDir, '.git/ok'))).toBe(false);
   });
 
@@ -100,7 +79,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'state-b-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     const okDir = resolve(contentDir, '.ok');
-    // Create .ok/ but NOT config.yml.
     writeFileSync(resolve(contentDir, 'placeholder'), '');
     await execFileAsync('mkdir', [okDir]);
 
@@ -127,16 +105,11 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   });
 
   test('preflight checks projectDir/.ok/config.yml when projectDir != contentDir', async () => {
-    // Regression: prior to fix, the preflight resolved against `contentDir`,
-    // so a project with `content.dir: docs` would be rejected with State A
-    // even though config.yml lives at <projectDir>/.ok/config.yml. Seed the
-    // scaffold at projectDir only and confirm boot succeeds.
     const projectDir = mkdtempSync(resolve(tmpDir, 'projectdir-preflight-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     seedOkScaffold(projectDir);
     const contentDir = resolve(projectDir, 'docs');
     mkdirSync(contentDir, { recursive: true });
-    // Deliberately do NOT seed contentDir/.ok — proves the check is on projectDir.
     expect(existsSync(resolve(contentDir, '.ok', 'config.yml'))).toBe(false);
 
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
@@ -158,15 +131,11 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
   });
 
   test('rejects when projectDir/.ok/config.yml is missing even though contentDir/.ok/config.yml exists', async () => {
-    // Inverse regression: prior to fix, seeding `<contentDir>/.ok/config.yml`
-    // would cause the preflight to (incorrectly) succeed. After fix, the
-    // preflight is anchored to `projectDir`, so a config-shaped scaffold under
-    // contentDir does NOT satisfy it.
     const projectDir = mkdtempSync(resolve(tmpDir, 'projectdir-only-content-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     const contentDir = resolve(projectDir, 'docs');
     mkdirSync(contentDir, { recursive: true });
-    seedOkScaffold(contentDir); // wrong place: config under contentDir, not projectDir
+    seedOkScaffold(contentDir);
 
     let caught: unknown;
     try {
@@ -196,7 +165,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
     const okDir = resolve(contentDir, '.ok');
     await execFileAsync('mkdir', [okDir]);
     writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
-    // Note: NO .gitignore.
 
     const warnSpy = vi.spyOn(getLogger('boot'), 'warn');
     let booted: Awaited<ReturnType<typeof bootServer>> | null = null;
@@ -224,15 +192,6 @@ describe('bootServer — MissingOkConfigError pre-listen check', () => {
 });
 
 describe('bootServer — runtime state lives at projectDir, not contentDir', () => {
-  // When `content.dir` points at a sub-folder of the project (e.g.
-  // `~/agents-cookbook` with `content.dir: template-projects`), per-project
-  // runtime state — server lock, principal, server-instance state-manifest,
-  // AND the default-on log + telemetry file-sinks — must live at
-  // `<projectDir>/.ok/local/`, not `<contentDir>/.ok/local/`.
-  // Otherwise the project ends up with TWO `.ok/` directories: one at the
-  // project root (committed config) and one inside the content sub-folder
-  // (per-machine runtime). Dev tooling, backups, sync, and visual inspection
-  // all see two directories where the user expects one.
   test('boot writes server.lock, principal.json, state.json under projectDir, not contentDir', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
@@ -251,19 +210,11 @@ describe('bootServer — runtime state lives at projectDir, not contentDir', () 
       idleShutdownMs: null,
     });
     try {
-      // Wait for async init (loadPrincipal, state-manifest write) to settle.
       await booted.ready;
 
-      // What the user reported: NO `.ok/` directory inside the content
-      // sub-folder. Pre-fix this directory was created by `loadPrincipal`,
-      // `acquireServerLock`, the state-manifest writer, AND the log/telemetry
-      // file-sinks — all routing through a `contentDir`-anchored `.ok/local/`.
-      // A single absence check covers every one of those writers: any sink or
-      // runtime file landing under contentDir would materialize this dir.
       const contentLocalDir = resolve(contentDir, '.ok');
       expect(existsSync(contentLocalDir)).toBe(false);
 
-      // Per-project runtime state lives under projectDir.
       const projectLocalDir = resolve(projectDir, '.ok', 'local');
       expect(existsSync(resolve(projectLocalDir, 'server.lock'))).toBe(true);
       expect(existsSync(resolve(projectLocalDir, 'principal.json'))).toBe(true);
@@ -275,11 +226,6 @@ describe('bootServer — runtime state lives at projectDir, not contentDir', () 
 });
 
 describe('bootServer — tolerance-telemetry writer wired through the real boot path', () => {
-  // OK_BRIDGE_TOLERANCE_TELEMETRY=1 is an advertised operator flag (the
-  // aggregator CLI reads the file it produces). The writer self-gates on the
-  // env var and is wired in bootServer alongside initTelemetry; destroy
-  // drains the appender. This smoke pins flag -> hook -> JSONL on disk so
-  // the flag can never regress to a documented no-op again.
   test('flag=1 boot produces tolerance-telemetry.jsonl from an emitToleranceFire', async () => {
     const prevFlag = process.env.OK_BRIDGE_TOLERANCE_TELEMETRY;
     process.env.OK_BRIDGE_TOLERANCE_TELEMETRY = '1';
@@ -298,11 +244,8 @@ describe('bootServer — tolerance-telemetry writer wired through the real boot 
     });
     try {
       await booted.ready;
-      // The hook is the process-global core singleton boot just registered —
-      // fire through the same entry the watchdog uses in production.
       emitToleranceFire(['crlf'], 'a\r\n', 'a\n', 'smoke-doc');
     } finally {
-      // destroy() runs teardownToleranceTelemetry, draining the appender.
       await booted.destroy();
       if (prevFlag === undefined) delete process.env.OK_BRIDGE_TOLERANCE_TELEMETRY;
       else process.env.OK_BRIDGE_TOLERANCE_TELEMETRY = prevFlag;
@@ -318,13 +261,6 @@ describe('bootServer — tolerance-telemetry writer wired through the real boot 
 });
 
 describe('bootServer — idle-shutdown runs full destroy', () => {
-  // Regression: prior to fix, idle-shutdown's onShutdown only awaited
-  // destroyHocuspocus(), so when the timer fired the http.Server LISTEN
-  // socket stayed bound and the process never exited. Combined with
-  // `attachIdleShutdown`'s `fired=true` latch, every fired-but-not-exited
-  // server became a permanent zombie listener. This test boots with a 50ms
-  // threshold, waits for the timer to fire, and asserts the listener
-  // actually closes.
   test('after idle-shutdown fires with zero WS clients, httpServer is no longer listening', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'idle-full-destroy-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
@@ -343,26 +279,18 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
     try {
       expect(booted.httpServer.listening).toBe(true);
 
-      // Poll until the listener closes or we hit a deadline well past the
-      // 50ms threshold. Idle-shutdown's onShutdown is async (it awaits the
-      // full destroy chain) so we can't synchronously read the result.
       const deadline = Date.now() + 3_000;
       while (booted.httpServer.listening && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 25));
       }
       expect(booted.httpServer.listening).toBe(false);
     } finally {
-      // destroy() is idempotent — safe to call even after idle-shutdown ran.
       await booted.destroy();
     }
   });
 });
 
 describe('bootServer — reactShellDistDir + server.lock ui advertisement', () => {
-  // Single-listener topology: a server serving the React shell advertises it by
-  // stamping the `ui` capability into its own `server.lock` — there is no
-  // separate `ui.lock`. preview-URL consumers key off that capability.
-
   test('server.lock advertises the ui capability when --react-shell-dist-dir is set', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
@@ -390,7 +318,6 @@ describe('bootServer — reactShellDistDir + server.lock ui advertisement', () =
       expect(parsed.capabilities).toContain('ui');
       expect(parsed.port).toBe(booted.port);
       expect(parsed.pid).toBe(process.pid);
-      // No separate ui.lock is written in single-listener topology.
       expect(existsSync(resolve(projectDir, '.ok', 'local', 'ui.lock'))).toBe(false);
     } finally {
       await booted.destroy();
@@ -425,19 +352,11 @@ describe('bootServer — reactShellDistDir + server.lock ui advertisement', () =
 });
 
 describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
-  // End-to-end: boot the real server with
-  // reactShellDistDir + serveContentAssets, exercise every surface
-  // (SPA shell, bundled asset, content asset, /api/*) over real HTTP
-  // and verify each lands the right way. The earlier mcp-mount unit
-  // tests cover the dispatcher logic against fakes; this verifies the
-  // composed boot path that Electron utility wires up.
-
   test('serves the React shell, bundled assets, content assets, and API on one port', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'shell-e2e-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     seedOkScaffold(projectDir);
 
-    // Create a minimal bundled-React-app dist tree.
     const shellDistDir = mkdtempSync(resolve(tmpDir, 'shell-e2e-dist-'));
     writeFileSync(
       resolve(shellDistDir, 'index.html'),
@@ -450,25 +369,13 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
       'console.log("bundle");',
       'utf-8',
     );
-    // A bundled font under /assets/ — `.woff2` IS in ASSET_EXTENSIONS, so the
-    // content middleware fail-closes (404 without next()) on a content-dir
-    // miss. Without the `/assets/`-tries-shell-first branch in mcp-mount this
-    // 404s even though the file lives in the SPA dist (the original bug:
-    // fonts/images 404 under `ok start` / Electron HTTP exposure while js/css
-    // — not asset extensions — served fine).
     const fontBytes = Buffer.from('woff2-bundle-bytes', 'utf-8');
     writeFileSync(resolve(shellDistDir, 'assets', 'inter-cafebabe.woff2'), fontBytes);
 
-    // Drop a user-content asset under contentDir so contentAsset priority
-    // can be exercised against a real upload.
     mkdirSync(resolve(projectDir, 'docs'), { recursive: true });
     const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     writeFileSync(resolve(projectDir, 'docs', 'image.png'), pngBytes);
 
-    // A user upload under <contentDir>/assets/ — doc-referenced media
-    // normalizes to a server-absolute `/assets/...` URL. The `/assets/`-first
-    // branch must still let this fall through to the content middleware when
-    // the SPA dist has no such file, so uploads keep serving.
     mkdirSync(resolve(projectDir, 'assets'), { recursive: true });
     const uploadBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x11, 0x22, 0x33, 0x44]);
     writeFileSync(resolve(projectDir, 'assets', 'upload.png'), uploadBytes);
@@ -489,56 +396,38 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
       await booted.ready;
       const base = `http://127.0.0.1:${booted.port}`;
 
-      // 1. Root → SPA shell index.html.
       const rootRes = await fetch(`${base}/`);
       expect(rootRes.status).toBe(200);
       const rootBody = await rootRes.text();
       expect(rootBody).toContain('data-test="shell"');
 
-      // 2. Unknown deep-link route → SPA fallback (single: true).
       const deepRes = await fetch(`${base}/some/unknown/route`);
       expect(deepRes.status).toBe(200);
       expect(await deepRes.text()).toContain('data-test="shell"');
 
-      // 3. Bundled SPA asset under /assets/<hash>.js served from dist.
       const bundleRes = await fetch(`${base}/assets/app-deadbeef.js`);
       expect(bundleRes.status).toBe(200);
       expect(await bundleRes.text()).toContain('console.log');
 
-      // 3b. Bundled SPA FONT under /assets/<hash>.woff2 — regression guard.
-      // `.woff2` is an asset extension, so the content middleware would
-      // fail-close 404 before the shell was tried (content-first ordering).
       const fontRes = await fetch(`${base}/assets/inter-cafebabe.woff2`);
       expect(fontRes.status).toBe(200);
       expect(Buffer.from(await fontRes.arrayBuffer()).equals(fontBytes)).toBe(true);
 
-      // 3c. A user upload under /assets/ with no matching SPA-dist file still
-      // serves via the content middleware (shell-first falls through on miss).
       const uploadRes = await fetch(`${base}/assets/upload.png`);
       expect(uploadRes.status).toBe(200);
       expect(uploadRes.headers.get('content-disposition')).toBe('inline');
       expect(Buffer.from(await uploadRes.arrayBuffer()).equals(uploadBytes)).toBe(true);
 
-      // 4. User-uploaded content asset takes priority over the SPA dist.
-      // (contentAssetMiddleware runs before reactShellMiddleware.)
       const imageRes = await fetch(`${base}/docs/image.png`);
       expect(imageRes.status).toBe(200);
       expect(imageRes.headers.get('content-disposition')).toBe('inline');
       const imageGot = Buffer.from(await imageRes.arrayBuffer());
       expect(imageGot.equals(pngBytes)).toBe(true);
 
-      // 5. /api/* is NOT shadowed by the SPA — unknown endpoint returns
-      // problem+json 404, NOT index.html.
       const apiRes = await fetch(`${base}/api/nonexistent-endpoint`);
       expect(apiRes.status).toBe(404);
       expect(apiRes.headers.get('content-type')).toBe('application/problem+json');
 
-      // 6. server.lock advertises the bound port + the `ui` capability —
-      // agent-harness preview-browser flows read this file to find a clickable
-      // URL. Lock-write happens AFTER listen() resolves, so the port stored is
-      // the actual port the server is reachable on (no port=0 sentinel leaking
-      // to consumers). Single-listener: the shell is served by this process, so
-      // its own server.lock is the advertisement — no separate ui.lock.
       const serverLockPath = resolve(projectDir, '.ok', 'local', 'server.lock');
       expect(existsSync(serverLockPath)).toBe(true);
       const lockRaw = await import('node:fs/promises').then((m) =>
@@ -554,18 +443,6 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
 });
 
 describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public externalUrl', () => {
-  // Regression: behind an authenticating reverse proxy, `ok start
-  // --external-url https://<public>` set the MCP tools' `serverUrl` to the
-  // public origin, so the document-write self-call (`POST /api/agent-write-md`)
-  // hairpinned out through the edge and hit the auth gate — HTTP 401 with an
-  // HTML login body. `getServerUrl` must stay loopback regardless of
-  // `externalUrl`; the write must land against the local listener.
-  //
-  // We can't stand up a real proxy in-process, so we point `externalUrl` at an
-  // unreachable `.invalid` host (RFC 6761 — guaranteed non-resolvable). With
-  // the old wiring the self-call dials that host and fails ("Server
-  // unreachable"); with the fix it dials loopback and succeeds. Same fault, one
-  // hop earlier — a deterministic proxy-free proxy.
   const MCP_PROTOCOL_VERSION = '2025-06-18';
   const UNREACHABLE_EXTERNAL_URL = 'https://prd-8062-unreachable.invalid';
 
@@ -588,8 +465,6 @@ describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public 
     const config = ConfigSchema.parse({
       server: { externalUrl: UNREACHABLE_EXTERNAL_URL, allowExternal: true },
     });
-    // Sanity-pin the setup: the runtime really does carry the public origin, so
-    // a passing write proves the self-call ignored it (not that it was absent).
     expect(resolveServerRuntimeConfig(config).externalUrl).toBe(UNREACHABLE_EXTERNAL_URL);
 
     const booted = await bootServer({
@@ -606,7 +481,6 @@ describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public 
       await booted.ready;
       const port = booted.port;
 
-      // Handshake over loopback (always ingress-admitted).
       const init = await mcpFetch(
         port,
         {},
@@ -653,9 +527,6 @@ describeEvenOnCI('bootServer — MCP internal RPC stays loopback under a public 
         error?: unknown;
       };
       expect(body.error).toBeUndefined();
-      // The load-bearing assertion: the write self-call landed on loopback, not
-      // the public externalUrl. A regressed wiring surfaces here as isError with
-      // a "Server unreachable" / 401 body.
       const text = body.result?.content?.map((c) => c.text ?? '').join('') ?? '';
       expect(body.result?.isError ?? false, `write returned an error: ${text}`).toBe(false);
     } finally {
@@ -673,11 +544,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     trace.disable();
     metrics.disable();
     context.disable();
-    // Suppress bootServer's local-sink file pipeline so it doesn't override
-    // the test's manually-installed InMemorySpanExporter via initTelemetry's
-    // `trace.setGlobalTracerProvider` call. This test only cares about the
-    // computed span attributes — the file SpanExporter has its own coverage
-    // in telemetry-file-sink.test.ts and telemetry.test.ts.
     savedDisableLocalSink = process.env.OK_DISABLE_LOCAL_SINK;
     process.env.OK_DISABLE_LOCAL_SINK = '1';
     exporter = new InMemorySpanExporter();
@@ -721,10 +587,7 @@ describe('bootServer — ok.boot OTel span attributes', () => {
       const bootSpan = spans.find((s) => s.name === 'ok.boot');
       expect(bootSpan).toBeDefined();
       expect(bootSpan?.attributes['ok.worktree.kind']).toBe('main');
-      // gitdir is present for main worktrees (resolveGitDir returns the .git path)
       expect(typeof bootSpan?.attributes['ok.worktree.gitdir']).toBe('string');
-      // Cardinality discipline: normalized path is at most last-two-segments
-      // form (`.../<dir>/<file>`) — should NOT contain user-home segments.
       const gitdirAttr = bootSpan?.attributes['ok.worktree.gitdir'] as string;
       expect(gitdirAttr.split('/').filter(Boolean).length).toBeLessThanOrEqual(3);
     } finally {
@@ -733,7 +596,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   });
 
   test('linked worktree: ok.boot span has worktree.kind=linked', async () => {
-    // Build a real worktree: parent repo with one commit, then `git worktree add` a sibling.
     const repoRoot = mkdtempSync(resolve(tmpDir, 'span-linked-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', repoRoot]);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
@@ -743,7 +605,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     await execFileAsync('git', ['-C', repoRoot, 'commit', '-m', 'init']);
 
     const wtPath = mkdtempSync(resolve(tmpDir, 'span-linked-wt-'));
-    // git worktree add wants the path to NOT pre-exist
     await rm(wtPath, { recursive: true, force: true });
     await execFileAsync('git', [
       '-C',
@@ -781,7 +642,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   test('boot failure (MissingOkConfigError): span still records the worktree kind', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'span-fail-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
-    // No seedOkScaffold — boot will throw MissingOkConfigError.
 
     let caught: unknown;
     try {
@@ -802,18 +662,10 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     const bootSpan = spans.find((s) => s.name === 'ok.boot');
     expect(bootSpan).toBeDefined();
     expect(bootSpan?.attributes['ok.worktree.kind']).toBe('main');
-    // Span status is ERROR because withSpan records exceptions
-    expect(bootSpan?.status.code).toBe(2); // SpanStatusCode.ERROR
+    expect(bootSpan?.status.code).toBe(2);
   });
 
   test('cross-invocation: main first, linked second — kinds flip correctly with no state leakage', async () => {
-    // Single test, single tracer provider — proves there's no per-invocation
-    // state leakage in computeWorktreeAttributes between sequential boots.
-    // (Sibling tests reset the exporter in beforeEach, so each runs against
-    // a fresh provider; this test deliberately does not, to exercise the
-    // span-attribute computation against the same captured stream.)
-
-    // Boot 1: main worktree.
     const mainDir = mkdtempSync(resolve(tmpDir, 'flip-main-'));
     await execFileAsync('git', ['init', '--initial-branch=main', mainDir]);
     seedOkScaffold(mainDir);
@@ -828,7 +680,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     });
     await bootedMain.destroy();
 
-    // Boot 2: linked worktree (real `git worktree add`).
     const repoRoot = mkdtempSync(resolve(tmpDir, 'flip-linked-repo-'));
     await execFileAsync('git', ['init', '--initial-branch=main', repoRoot]);
     await execFileAsync('git', ['-C', repoRoot, 'config', 'user.email', 'test@example.com']);
@@ -859,30 +710,20 @@ describe('bootServer — ok.boot OTel span attributes', () => {
     });
     await bootedLinked.destroy();
 
-    // Both ok.boot spans should be present in the same exporter, in order.
     const spans = exporter?.getFinishedSpans() ?? [];
     const bootSpans = spans.filter((s) => s.name === 'ok.boot');
     expect(bootSpans.length).toBe(2);
     expect(bootSpans[0]?.attributes['ok.worktree.kind']).toBe('main');
     expect(bootSpans[1]?.attributes['ok.worktree.kind']).toBe('linked');
-    // Sanity — gitdir attribute differs between the two boots (proves the
-    // computation isn't returning a memoized value from the previous run).
     expect(bootSpans[0]?.attributes['ok.worktree.gitdir']).not.toBe(
       bootSpans[1]?.attributes['ok.worktree.gitdir'],
     );
   });
 
   test('OK_STARTUP_TRACEPARENT (valid): ok.boot joins the desktop-main launch trace', async () => {
-    // A well-formed W3C traceparent, as the Electron main process injects into
-    // the spawned server's env. Running `ok.boot` inside the extracted context
-    // must parent it to that trace, so main → server show as one trace.
     const parentTraceId = '0af7651916cd43dd8448eb211c80319c';
     const prev = process.env.OK_STARTUP_TRACEPARENT;
     process.env.OK_STARTUP_TRACEPARENT = `00-${parentTraceId}-b7ad6b7169203331-01`;
-    // The harness runs telemetry in spans-only mode (initTelemetry no-ops with
-    // the local sink disabled + push off), so opt this one case into real W3C
-    // propagation to exercise the actual join, not just no-throw. afterEach's
-    // context.disable() tears the manager back down.
     context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
     propagation.setGlobalPropagator(new W3CTraceContextPropagator());
     const contentDir = mkdtempSync(resolve(tmpDir, 'traceparent-valid-'));
@@ -911,9 +752,6 @@ describe('bootServer — ok.boot OTel span attributes', () => {
   });
 
   test('OK_STARTUP_TRACEPARENT (malformed): boot still completes; ok.boot is a fresh root', async () => {
-    // The meaningful failure mode: a garbage env value must never break boot.
-    // The W3C propagator degrades to an unparented context, so `ok.boot` gets a
-    // fresh trace-id rather than throwing.
     const prev = process.env.OK_STARTUP_TRACEPARENT;
     process.env.OK_STARTUP_TRACEPARENT = 'not-a-valid-traceparent';
     const contentDir = mkdtempSync(resolve(tmpDir, 'traceparent-malformed-'));
@@ -948,7 +786,6 @@ describe('bootServer — boot timings recorded end-to-end', () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'boot-timings-e2e-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     seedOkScaffold(projectDir);
-    // One markdown file so fileCount is a meaningful non-zero count.
     writeFileSync(resolve(projectDir, 'note.md'), '# note\n', 'utf-8');
 
     const booted = await bootServer({
@@ -963,10 +800,6 @@ describe('bootServer — boot timings recorded end-to-end', () => {
     });
     try {
       await booted.ready;
-      // startBootTimings ran at the top of bootServer; the phases are recorded
-      // across boot.ts (httpListen) and initAsync (seedWalk/indexes/ready +
-      // fileCount, the last two via the always-run finally). Assert the whole
-      // pipeline landed rather than any single site.
       const timings = getBootTimings();
       expect(timings).toBeDefined();
       expect(typeof timings?.startedAt).toBe('string');
@@ -1006,21 +839,12 @@ describe('parseKeepaliveConnectionId', () => {
   });
 
   test('rejects percent-encoded connectionId values that decode to invalid chars', () => {
-    // `user%2Fagent%3D1%262` decodes to `user/agent=1&2` which fails the
-    // AGENT_ID_RE character class (`/`, `=`, `&` are disallowed). Pre-fix
-    // the function would have returned the decoded string and the close
-    // handler would have called `clearPresence('user/agent=1&2')`,
-    // potentially colliding with other agents' map keys. Post-fix the
-    // value is rejected outright → TTL-only cleanup.
     expect(
       parseKeepaliveConnectionId('/collab/keepalive?connectionId=user%2Fagent%3D1%262'),
     ).toBeNull();
   });
 
   test('rejects connectionId containing CR/LF (log-injection defense)', () => {
-    // `abc%0D%0Aadmin` decodes to `abc\r\nadmin`; returning the raw value
-    // would let an attacker inject a newline into structured log lines.
-    // Rejected by the shared AGENT_ID_RE.
     expect(parseKeepaliveConnectionId('/collab/keepalive?connectionId=abc%0D%0Aadmin')).toBeNull();
   });
 
@@ -1037,22 +861,17 @@ describe('parseKeepaliveConnectionId', () => {
   });
 
   test('does not throw on a blatantly malformed URL', () => {
-    // Leading `?` with no path is still parseable; the method must not throw.
     expect(() => parseKeepaliveConnectionId('?connectionId=foo')).not.toThrow();
     expect(parseKeepaliveConnectionId('?connectionId=foo')).toBe('foo');
   });
 
   test('never throws on garbage input', () => {
     expect(() => parseKeepaliveConnectionId('not a url at all')).not.toThrow();
-    // '/collab' path with no query → no connectionId
     expect(parseKeepaliveConnectionId('/collab/keepalive')).toBeNull();
   });
 });
 
 describeEvenOnCI('bootServer — exposure consent interlock', () => {
-  // `passServerRuntime` mirrors the CLI path (an explicit, scope-correctly
-  // resolved runtime). When false (the desktop / embedder path), only the
-  // committed `config` is passed and bootServer's fallback forces consent off.
   async function tryBoot(
     server: Record<string, unknown>,
     passServerRuntime = false,
@@ -1090,31 +909,21 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
   });
 
   test('a committed externalUrl under a loopback bind is inert — boots, no lockout (CLI path)', async () => {
-    // externalUrl is project-scoped (committed, shared); a team commits their VPS
-    // origin. Under a loopback bind it must NOT trip the interlock, or every
-    // teammate cloning that repo and opening it locally would be locked out.
     const err = await tryBoot({ externalUrl: 'https://notes.example.com' }, true);
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
   test('a committed externalUrl under a loopback bind is inert — boots on the desktop / embedder path too', async () => {
-    // Same, with NO explicit serverRuntime (the desktop utility path). A repo
-    // committing externalUrl for its VPS deploy opens fine in desktop.
     const err = await tryBoot({ externalUrl: 'https://notes.example.com' });
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
   test('a loopback-only server with no externalUrl never trips the interlock', async () => {
-    // Reaches past the interlock and boots; success is the absence of an
-    // ExposureConsentError (any later failure would be a different class).
     const err = await tryBoot({});
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
   test('an externalUrl + consent on a loopback bind boots outright', async () => {
-    // A tunneled deployment sets server.externalUrl + server.allowExternal on a
-    // loopback bind (the tunnel is the only ingress). This shape must boot
-    // without tripping the exposure interlock — the consent is explicit.
     const err = await tryBoot(
       { externalUrl: 'https://myproject.ngrok.app', allowExternal: true },
       true,
@@ -1123,31 +932,17 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
   });
 
   test('an explicit (scope-correct) serverRuntime with consent admits a non-loopback bind', async () => {
-    // The CLI path: consent resolved over all three layers and passed as an
-    // explicit serverRuntime. Only this path can arm exposure for a
-    // non-loopback bind.
     const err = await tryBoot({ bind: ['127.0.0.1', '100.64.0.7'], allowExternal: true }, true);
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
   test('config-derived allowExternal does NOT satisfy the interlock (desktop / embedder path)', async () => {
-    // The clone-leak guard at the boot chokepoint: an embedder that passes
-    // only a committed `config` (no explicit serverRuntime) — e.g. the desktop
-    // utility building Config from the project .ok/config.yml alone — must not
-    // arm consent from a committed `allowExternal: true`. bootServer forces
-    // config-derived consent off, so a committed non-loopback bind trips the
-    // interlock and refuses rather than exposing a cloner's machine.
     const err = await tryBoot({ bind: ['0.0.0.0'], allowExternal: true });
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).constructor.name).toBe('ExposureConsentError');
   });
 
   test('a non-loopback host with no bind/serverRuntime still trips the interlock (single-file shape)', async () => {
-    // `HOST=0.0.0.0 ok note.md` boots ephemeral single-file mode with only
-    // `host` set — no bind, no serverRuntime — so serverRuntime.bind resolves to
-    // the loopback default. The interlock must validate the EFFECTIVE bind
-    // (opts.host, what the listener actually binds), not just serverRuntime.bind,
-    // or the server binds every interface with no consent recorded.
     const contentDir = mkdtempSync(resolve(tmpDir, 'interlock-host-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
@@ -1177,8 +972,6 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
     seedOkScaffold(contentDir);
-    // IPv4 + IPv6 loopback: both bindable on any CI runner, and loopback-only
-    // so the consent interlock stays out of this test's way.
     const booted = await bootServer({
       host: '127.0.0.1',
       bind: ['127.0.0.1', '::1'],
@@ -1198,17 +991,10 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
     } finally {
       await booted.destroy();
     }
-    // Both listeners are gone after destroy.
     await expect(fetch(`http://[::1]:${booted.port}/healthz`)).rejects.toThrow();
     await expect(fetch(`http://127.0.0.1:${booted.port}/healthz`)).rejects.toThrow();
   });
 
-  // The lock advertises a port; nothing else recorded that a server actually
-  // bound one. Those are different claims — the lock outlives the process that
-  // wrote it — and with only the lock, a reader cannot tell a live listener
-  // from a stale advertisement, nor which pid owns a port when two servers have
-  // run for one directory. This pins the record AND pins that it agrees with
-  // the lock, since a record that disagreed would be worse than none.
   test('the listen record names the bound port, pid and every address, and agrees with the lock', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'listenlog-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
@@ -1248,8 +1034,6 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
       expect(typeof fields.url).toBe('string');
       expect(String(fields.url)).toContain(String(booted.port));
 
-      // The corroboration that makes the record worth having: it must name the
-      // same port the lock advertises, from a different source.
       const lock = JSON.parse(
         readFileSync(resolve(contentDir, OK_DIR, 'local', 'server.lock'), 'utf-8'),
       ) as { port: number };

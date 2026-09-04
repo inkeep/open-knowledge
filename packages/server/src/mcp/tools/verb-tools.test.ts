@@ -1,12 +1,3 @@
-/**
- * CRUD-verb surface tests — the load-bearing teaching-error mitigation (
- * the `target` discriminator the JSON Schema can't fully gate), the
- * server-required contract for folder + template mutations (server-routed for
- * attribution; the full round-trips move to the integration
- * suite), and the migration meta-test that fails if the shipped skill
- * surface still teaches a retired tool name.
- */
-
 import {
   existsSync,
   mkdirSync,
@@ -66,7 +57,7 @@ describe('write — exactly-one-target teaching error (D8/D9 mitigation)', () =>
     const r = await write({});
     expect(r.isError).toBe(true);
     expect(textOf(r)).toContain('Name exactly one of');
-    expect(textOf(r)).toContain('document'); // the corrective example names the targets
+    expect(textOf(r)).toContain('document');
   });
 
   test('two targets returns a "name exactly ONE" error', async () => {
@@ -114,11 +105,6 @@ describe('delete — exactly-one-target teaching error', () => {
 });
 
 describe('edit({ folder }) frontmatter — server-routed for attribution (PRD-6933 P2)', () => {
-  // Folder frontmatter writes route through PUT /api/folder-config so they are
-  // attributed in the folder timeline; they therefore require a running server.
-  // The full round-trip (set → merge-patch → clear, on-disk shape, no `match`
-  // fossil) + attribution is verified against a real server in the integration
-  // suite — these unit tests pin only the server-required contract.
   test('requires a running server (attribution lives server-side)', async () => {
     const edit = capture(registerEdit, newProject());
     const r = await edit({
@@ -130,12 +116,6 @@ describe('edit({ folder }) frontmatter — server-routed for attribution (PRD-69
 });
 
 describe('write/edit/delete({ template }) — server-routed for attribution (PRD-6933 P2)', () => {
-  // Template mutations route through PUT/DELETE /api/template so they are
-  // attributed in the folder timeline; they therefore require a running server.
-  // The full create → body edit → frontmatter patch → delete round-trip +
-  // attribution is verified against a real server in the integration suite;
-  // these unit tests pin only the server-required contract + name grammar
-  // (which is rejected pre-server).
   test('mutations require a running server (attribution lives server-side)', async () => {
     const cwd = newProject();
     const write = capture(registerWrite, cwd);
@@ -161,9 +141,6 @@ describe('write/edit/delete({ template }) — server-routed for attribution (PRD
   test('invalid template name is rejected by the name grammar', async () => {
     const cwd = newProject();
     const write = capture(registerWrite, cwd);
-    // The final segment is the template name; a dot violates /^[A-Za-z0-9_-]+$/.
-    // `resolveTemplatePath` returns a teaching error (not a throw), so the
-    // handler responds with `isError: true` and the file is never created.
     const r = await write({
       template: { path: 'x/a.b', content: 'ok', frontmatter: { title: 'A' } },
     });
@@ -174,12 +151,6 @@ describe('write/edit/delete({ template }) — server-routed for attribution (PRD
 });
 
 describe('edit({ template }) — fence trailing whitespace (fm-delimiter hazard)', () => {
-  // A body edit reads the template's frontmatter from disk and writes it
-  // back through PUT /api/template. When the stored fences carry trailing
-  // whitespace (`--- ` is one in-tolerance keystroke from `---`), the
-  // read-back must still see the frontmatter — otherwise the edit silently
-  // rewrites the template with `title: ''` and the FM lines leak into the
-  // body. The PUT payload is the tool's observable contract with the server.
   test('a body edit preserves frontmatter stored under trailing-whitespace fences', async () => {
     const cwd = newProject();
     mkdirSync(join(cwd, 'fishing-log', '.ok', 'templates'), { recursive: true });
@@ -231,10 +202,6 @@ describe('edit({ template }) — fence trailing whitespace (fm-delimiter hazard)
 });
 
 describe('write({ document }) — template-availability nudge on create', () => {
-  // Templates only get used if the agent knows they exist; it may write from
-  // memory without an `exec ls` first. So a create into a folder that ships a
-  // template, with no `template` passed, surfaces the folder's menu — without
-  // blocking the write that already landed.
   async function withWriteStub(cwd: string, run: (handler: Handler) => Promise<void>) {
     const stub = await startFetchTestServer({
       port: 0,
@@ -323,11 +290,6 @@ describe('D13 migration meta-test — no retired tool name survives in the skill
     'delete_template',
     'rename_document',
     'rename_folder',
-    // merges/splits + get_ prefix drops. Only snake_case names that can't
-    // collide with prose are listed here — `ingest` / `research` / `consolidate` /
-    // `discover` / `workflow` and `version` (now split into the standalone
-    // `checkpoint` + `restore_version` tools) are ordinary English words; all are
-    // guarded by the registry test, not this bare-substring scan.
     'get_history',
     'get_config',
     'get_preview_url',

@@ -31,9 +31,6 @@ import { DiscordIcon } from './icons/discord';
 import { GithubIcon } from './icons/github';
 import { XTwitterIcon } from './icons/x-twitter';
 
-// Proper-noun labels (Discord, X, GitHub) stay plain strings — not translated;
-// the common-noun labels are lazy MessageDescriptors resolved per-render via
-// useLingui()'s t.
 interface ResourceLink {
   label: string | MessageDescriptor;
   href: string;
@@ -66,8 +63,6 @@ const sections: ResourceSection[] = [
   },
 ];
 
-// "What's new" lives in the Product-updates section next to the Subscribe
-// action, so it's rendered out of the `sections` loop below.
 const WHATS_NEW_HREF = `${GITHUB_REPO_URL}/releases`;
 
 const rowClassName =
@@ -115,8 +110,6 @@ const ResourceLinkRow: FC<{ link: ResourceLink; trailing?: ReactNode }> = ({ lin
   );
 };
 
-// Action row: opens an in-app dialog rather than navigating out, so it renders
-// as a button styled to match the external-link rows.
 const ActionRow: FC<{
   icon: FC<ComponentProps<'svg'>>;
   onSelect: () => void;
@@ -146,15 +139,8 @@ export const HelpPopover: FC = () => {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [starCount, setStarCount] = useState<number | null>(null);
 
-  // The Report-a-bug flow (bundle create + upload) lives entirely behind the
-  // Electron bridge, so the action row and its dialog only exist on desktop;
-  // in the web/CLI host `window.okDesktop` is undefined and the row is omitted.
   const hasDesktopBridge = typeof window !== 'undefined' && window.okDesktop != null;
 
-  // Fetch the repo's star count the first time the menu opens (GitHub's public
-  // API sends `Access-Control-Allow-Origin: *`, so the cross-origin GET works
-  // from the renderer). Best-effort: getGitHubStars collapses every failure to
-  // null, so a hidden count is the only failure surface.
   useEffect(() => {
     if (!popoverOpen || starCount !== null) return;
     const controller = new AbortController();
@@ -170,8 +156,6 @@ export const HelpPopover: FC = () => {
         open={popoverOpen}
         onOpenChange={(open) => {
           setPopoverOpen(open);
-          // Reset the nested Subscribe popover when the menu closes, so it
-          // doesn't re-appear already-open on the next menu open.
           if (!open) setSubscribeOpen(false);
         }}
       >
@@ -211,13 +195,10 @@ export const HelpPopover: FC = () => {
                       }
                     />
                   ))}
-                  {/* In-app dialog actions: they open a dialog rather than
-                      navigating out, so they live outside the section's link
-                      data and render at the end of the Resources list. */}
+                  {}
                   {section.key === 'resources' && (
                     <>
-                      {/* Report-a-bug is desktop-only — its bundle create +
-                          upload flow lives behind the Electron bridge. */}
+                      {}
                       {hasDesktopBridge && (
                         <ActionRow
                           icon={Bug}
@@ -265,17 +246,12 @@ export const HelpPopover: FC = () => {
                         <Trans>Subscribe</Trans>
                       </Button>
                     </PopoverTrigger>
-                    {/* Open to the left of the whole dropdown: the row is inset
-                      by the dropdown's p-3, so sideOffset clears that padding
-                      plus a gap rather than overlapping the menu. */}
+                    {}
                     <PopoverContent side="left" align="center" sideOffset={20} className="w-80">
                       <SubscribeForm
                         source="resources_menu"
                         autoFocus
                         onDismiss={() => setSubscribeOpen(false)}
-                        // Subscribing here also satisfies the returning-user
-                        // subscribe card's suppression flag — one subscribe, from
-                        // any surface, stops the nudge.
                         onSuccess={() => subscribeCardStore.markSubscribed()}
                       />
                     </PopoverContent>
@@ -286,18 +262,13 @@ export const HelpPopover: FC = () => {
           </div>
         </PopoverContent>
       </Popover>
-      {/* Siblings to the Popover so the dialogs survive the menu closing on
-          select. Report-a-bug is desktop-only — gated on the same bridge as
-          its trigger row. */}
+      {}
       {hasDesktopBridge && (
         <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} launcherBorne />
       )}
       <FeedbackFormDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}
-        // Feedback given here also satisfies the proactive card's suppression
-        // flag — one round of feedback, from any surface, stops the nudge.
-        // Same contract as the subscribe card above.
         onSuccess={() => feedbackNudgeStore.dismiss()}
       />
     </>

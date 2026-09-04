@@ -1,15 +1,8 @@
-/**
- * DOM tests for SettingsSectionHeader — the single header every settings
- * section renders. Pins the page/block cascade (rank + size) so a section can't
- * drift back to titling itself at its own weight.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
-// Radix Tooltip reaches for globals jsdom's preload doesn't expose.
 type GlobalWithShims = typeof globalThis & { ResizeObserver?: unknown };
 const g = globalThis as GlobalWithShims;
 if (g.ResizeObserver === undefined) {
@@ -81,16 +74,11 @@ describe('SettingsSectionHeader', () => {
     });
     const adornment = screen.getByTestId('header-adornment');
     const badge = screen.getByTestId('settings-scope-badge-project');
-    // Seated between the title and the badges — the adornment precedes the badge
-    // in DOM order within the shared title row.
     expect(
       adornment.compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  // `beta` is live in production (the Slidev panel passes it), and it shares the
-  // title row with the scope badge, so the pairing is what needs pinning: a
-  // refactor that transposes the two would be invisible to every other test.
   test('a beta header renders the maturity tag before the scope badge', () => {
     renderHeader({ titleId: 'settings-beta-title', title: 'Slidev', scope: 'user', beta: true });
 
@@ -106,8 +94,6 @@ describe('SettingsSectionHeader', () => {
   });
 
   test('a ReactNode title falls back to a generic docs-link label', () => {
-    // A string title interpolates its name ("Learn more about X"); a ReactNode
-    // title can't be interpolated, so the link uses the bare "Learn more".
     renderHeader({
       titleId: 'settings-node-title',
       title: <span>Slidev</span>,

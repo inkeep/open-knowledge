@@ -8,9 +8,6 @@ import {
 
 const STORAGE_KEY = 'ok-properties-collapsed-v1';
 
-/** Minimal in-memory `localStorage` so the persistence path runs without jsdom —
- *  the store reads `window.localStorage` behind a `typeof window` guard, so a
- *  stub on `globalThis.window` exercises it (mirrors composer-draft-store.test). */
 function makeLocalStorage(): Storage {
   const store = new Map<string, string>();
   return {
@@ -52,8 +49,6 @@ describe('properties-collapsed-store', () => {
     expect(getPropertiesCollapsed()).toBe(true);
     expect(storage.getItem(STORAGE_KEY)).toBe('true');
 
-    // Simulate a new session / fresh mount: drop the in-memory snapshot so the
-    // next read re-loads from the (still-populated) storage.
     __resetPropertiesCollapsedForTests();
     expect(getPropertiesCollapsed()).toBe(true);
   });
@@ -77,7 +72,6 @@ describe('properties-collapsed-store', () => {
     setPropertiesCollapsed(true);
     expect(listener).toHaveBeenCalledTimes(1);
 
-    // No-op write (same value) neither notifies nor overwrites storage.
     storage.setItem(STORAGE_KEY, 'sentinel');
     setPropertiesCollapsed(true);
     expect(listener).toHaveBeenCalledTimes(1);

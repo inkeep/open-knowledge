@@ -1,25 +1,13 @@
-/**
- * Where a comment marker lands on the rail.
- *
- * The bug this replaces: markers were positioned by document FRACTION
- * (`range.from / doc.size`) against the scroll container's box. That container
- * also holds the cover and the frontmatter table, which ProseMirror knows
- * nothing about — so on a doc with a tall properties block every marker floated
- * hundreds of pixels above the text it pointed at. Positions now come from the
- * text's own viewport coords; these cover what the layout does with them.
- */
-
 import { describe, expect, test } from 'vitest';
 import { layoutMarkers, railBand, railLeft } from './CommentMarginRail';
 
 const RAIL_TOP = 100;
-const RAIL_HEIGHT = 600; // visible band: 100 → 700
+const RAIL_HEIGHT = 600;
 const ICON_H = 30;
 
 describe('layoutMarkers', () => {
   test('centers a marker on the line it belongs to', () => {
     const [marker] = layoutMarkers([{ id: 'a', y: 400 }], RAIL_TOP, RAIL_HEIGHT);
-    // Centered, not hanging below the baseline.
     expect(marker.top).toBe(400 - ICON_H / 2);
     expect(marker.offscreen).toBe(false);
   });
@@ -37,7 +25,6 @@ describe('layoutMarkers', () => {
     for (let i = 1; i < out.length; i += 1) {
       expect(out[i].top).toBeGreaterThanOrEqual(out[i - 1].top + ICON_H);
     }
-    // The first still sits where its line is; only the crowded ones move.
     expect(out[0].top).toBe(400 - ICON_H / 2);
   });
 
@@ -56,7 +43,6 @@ describe('layoutMarkers', () => {
   test('clamps a line scrolled above the viewport to the top edge, flagged', () => {
     const [marker] = layoutMarkers([{ id: 'a', y: -250 }], RAIL_TOP, RAIL_HEIGHT);
     expect(marker.top).toBe(RAIL_TOP);
-    // Flagged so the UI can dim it — parked at the edge, not pointing at a line.
     expect(marker.offscreen).toBe(true);
   });
 
@@ -79,12 +65,6 @@ describe('layoutMarkers', () => {
   });
 });
 
-/**
- * The second bug: the rail ran the full height of the scrollport, but the
- * scrollport reaches up under the editor toolbar, whose buttons are flush
- * against the same right edge. Anything clamped to the top — every comment
- * scrolled above the viewport — piled onto those buttons.
- */
 describe('railBand', () => {
   const scrollport = { top: 100, height: 600 };
   const TOOLBAR = 56;
@@ -102,7 +82,6 @@ describe('railBand', () => {
 
   test('a line hidden behind the toolbar counts as offscreen, not as placed there', () => {
     const band = railBand(scrollport, TOOLBAR);
-    // 130 is inside the scrollport's box but under the toolbar.
     const [marker] = layoutMarkers([{ id: 'a', y: 130 }], band.top, band.height);
     expect(marker.top).toBe(band.top);
     expect(marker.offscreen).toBe(true);
@@ -117,14 +96,6 @@ describe('railBand', () => {
   });
 });
 
-/**
- * Keeping the rail inside the pane.
- *
- * It is a fixed portal on `document.body`, so nothing clips it — the `left` it
- * computes is where it paints. Taking that straight from the scroll container's
- * right edge sent it over the neighbouring panel whenever the container
- * outgrew the pane clipping it.
- */
 describe('railLeft', () => {
   const RAIL_WIDTH = 34;
 
@@ -133,8 +104,6 @@ describe('railLeft', () => {
   });
 
   test('follows the clipping edge when the container overflows the pane', () => {
-    // The container still measures 800 wide; only 500 of it is visible. The rail
-    // belongs at the visible edge, not the measured one.
     expect(railLeft({ left: 0, right: 800 }, 500)).toBe(500 - RAIL_WIDTH);
   });
 
@@ -143,8 +112,6 @@ describe('railLeft', () => {
   });
 
   test('measures the visible width, not the measured one, when deciding', () => {
-    // Wide by its own reckoning, narrow on screen — the second is what a reader
-    // sees, so it is what the threshold reads.
     expect(railLeft({ left: 0, right: 900 }, 200)).toBeNull();
   });
 

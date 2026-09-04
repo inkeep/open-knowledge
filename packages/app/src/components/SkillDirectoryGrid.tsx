@@ -4,22 +4,8 @@ import { SkillDirectoryResult } from '@/components/SkillDirectoryResult';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSkillDirectory } from '@/hooks/use-skill-directory';
 
-// Stable keys for the skeleton set (no array-index keys). Sized to the largest
-// grid any caller asks for and sliced down per call.
 const SKELETON_KEYS = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
 
-/**
- * A grid of skills.sh-shaped discovery results, with its optional section label
- * and its loading state. Every surface that lists results renders through this —
- * the Explore modal's search / popular / Open Knowledge grids and the Skills
- * home's shelf — so card behavior, column count, and skeleton height stay in
- * lockstep instead of being re-typed per surface.
- *
- * Owns {@link useSkillDirectory}, so a caller supplies the list and the two
- * coordinates a click needs (`scope`, `onNavigate`) and nothing else. `h-18`
- * skeletons match a real row's resting height, so the grid doesn't jump when
- * results land.
- */
 export function SkillDirectoryGrid({
   results,
   pending = false,
@@ -34,11 +20,8 @@ export function SkillDirectoryGrid({
   readonly results: readonly SkillSearchResult[];
   readonly pending?: boolean;
   readonly skeletonCount?: number;
-  /** Section heading; omitted for an unlabeled grid (search results). */
   readonly label?: ReactNode;
-  /** Trailing control on the label's row (e.g. "Browse all"). */
   readonly action?: ReactNode;
-  /** Screen-reader announcement while `pending` — say what is loading. */
   readonly loadingLabel: string;
   readonly scope?: SkillScope;
   readonly onNavigate?: () => void;
@@ -69,8 +52,6 @@ export function SkillDirectoryGrid({
         <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {results.map((r) => (
             <SkillDirectoryResult
-              // skills.sh rows carry an `id`; anything synthesized (degraded
-              // fallback, tests) may not — source+name is the same identity.
               key={r.id ?? `${r.source}/${r.name}`}
               result={r}
               imported={importedEntry(r)}

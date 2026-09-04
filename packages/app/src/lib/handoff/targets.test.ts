@@ -54,7 +54,6 @@ describe('KNOWN_TARGETS', () => {
     const byId = new Map(KNOWN_TARGETS.map((t) => [t.id, t.displayName]));
     expect(byId.get('claude-cowork')).toBe('Claude Cowork');
     expect(byId.get('claude-code')).toBe('Claude');
-    // 'ChatGPT' since OpenAI's July-2026 app merge — SPEC 7.2 carries the corrigendum.
     expect(byId.get('codex')).toBe('ChatGPT');
     expect(byId.get('cursor')).toBe('Cursor');
     expect(byId.get('copilot')).toBe('GitHub Copilot');
@@ -67,19 +66,12 @@ describe('KNOWN_TARGETS', () => {
 });
 
 describe('VISIBLE_TARGETS (UI render allow-list)', () => {
-  // VISIBLE_TARGETS is what every Open-in-Agent render surface iterates
-  // (header dropdown, FileTree context submenu, command palette agent group,
-  // empty-state "Create with <agent>" composer). Dispatch by ID still routes through
-  // KNOWN_TARGETS so power users / deep links retain every target —
-  // VISIBLE_TARGETS only governs what the UI exposes.
   test('hides claude-cowork from the UI', () => {
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
     expect(ids.has('claude-cowork')).toBe(false);
   });
 
   test('hides every terminal-only target (copilot/opencode/pi/antigravity/openclaw/hermes) from the GUI deep-link list', () => {
-    // These surface as terminal-CLI launch rows (TERMINAL_CLI_IDS), not GUI
-    // deep-link targets, so they must not appear in VISIBLE_TARGETS.
     const ids = new Set(VISIBLE_TARGETS.map((t) => t.id));
     for (const id of ['copilot', 'opencode', 'pi', 'antigravity', 'openclaw', 'hermes'] as const) {
       expect(ids.has(id)).toBe(false);

@@ -30,7 +30,5 @@ export function writeTerminalPlacement(
   try {
     const target = storage ?? localStorage;
     target.setItem(TERMINAL_PLACEMENT_KEY, placement);
-  } catch {
-    // Browser storage can reject access; the in-memory placement remains usable for the session.
-  }
+  } catch {}
 }

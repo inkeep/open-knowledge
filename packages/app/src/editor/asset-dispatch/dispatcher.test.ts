@@ -95,9 +95,6 @@ describe('dispatchAssetClick', () => {
   });
 
   test('extension-blocked refusal reveals the asset in the file manager (no web fallback)', async () => {
-    // A blocked extension (html, svg, sh, ...) exists on disk but OK won't hand
-    // it to `shell.openPath`. The file is real, so reveal it rather than failing
-    // silently.
     const openAsset = vi.fn(
       async (_: string) => ({ ok: false, reason: 'extension-blocked' }) as const,
     );

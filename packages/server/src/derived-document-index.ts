@@ -108,16 +108,9 @@ export interface DerivedDocumentIndexApiPort {
     admittedDocuments: Iterable<string>,
     sourceDocumentNames?: readonly string[],
   ): Promise<DeadLinkEntry[]>;
-  /**
-   * Assessed local-target occurrences per source, optionally scoped to a source
-   * set — the project/folder-scope enumeration the links validator projects into
-   * the unified validation plane. Exposed on the API port (a query, not a raw
-   * index handle) so the validator reads assessment truth without owning the index.
-   */
   getLocalTargetAssessmentsForSources(
     sourceDocumentNames?: readonly string[],
   ): Promise<LocalTargetSourceAssessments[]>;
-  /** Synchronous equality token for request coalescing/supersession. */
   readLocalTargetGeneration?(): string | number;
   getIndexedDocNames(): Promise<string[]>;
   getAllTags(): Promise<TagSummaryEntry[]>;
@@ -130,7 +123,6 @@ export interface DerivedDocumentIndexOptions {
   contentFilter: ContentFilter;
   getGlobalSkillRoots: () => string[];
   signalChannel: (channel: DerivedDocumentRelationChannel) => void;
-  /** Late-bound watcher inventory. Null means unavailable, not authoritatively empty. */
   getLocalTargetInventory?: () => WatcherLocalTargetInventory | null;
   onRecoveredFileTarget?: (relativePath: string, exists: boolean) => void;
 }
@@ -197,15 +189,9 @@ export class DerivedDocumentIndex
   private localTargetRebuildRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly localTargetFileExistenceTimer: ReturnType<typeof setInterval>;
   private localTargetRebuildRetryAttempt = 0;
-  /** Identity of the watcher `fileTargets` array the graph oracle was built from. */
   private graphFileTargetsSource: readonly string[] | null = null;
   private graphFileTargets: Set<string> | null = null;
-  /** Branch the startup graph pass ran against, for the file-inventory reconcile. */
   private startupBranch: string | null = null;
-  /**
-   * Whether any graph extraction ran while the watcher inventory was still
-   * unavailable, and therefore read every extension-less href as a document.
-   */
   private graphBuiltWithoutFileOracle = false;
   private saveTagsOnNextDebounce = false;
   private branchTransition: BranchTransition | null = null;
@@ -221,12 +207,6 @@ export class DerivedDocumentIndex
       projectDir: options.projectDir,
       contentDir: options.contentDir,
       contentFilter: options.contentFilter,
-      // Sourced from the WATCHER inventory, not from `localTargetIndex`. The
-      // local-target rebuild consumes `backlinkIndex.getIndexedDocNames()`, so
-      // taking the oracle from that index would make the two indexes mutually
-      // dependent and the graph would build against an empty file set. The
-      // watcher is the actual source of truth for which files exist, and both
-      // indexes read it, so there is no cycle and no ordering to get wrong.
       getFileOracle: () => this.graphFileOracle(),
     });
     this.tagIndex = new TagIndex({
@@ -309,9 +289,6 @@ export class DerivedDocumentIndex
           tagIndexDegraded = true;
         }
         if (await this.rebuildLocalTargets('startup')) this.syncLocalTargetBaseline();
-        // The startup graph pass ran before the watcher existed, so it had no
-        // way to tell an extension-less file target from a document. The
-        // inventory is available now.
         if (this.startupBranch !== null) {
           await this.reconcileGraphWithFileInventory(this.startupBranch);
         }
@@ -453,13 +430,6 @@ export class DerivedDocumentIndex
     });
   }
 
-  /**
-   * An ordinary (non-markdown) file target appeared or its content changed.
-   * Only its reverse-dependent sources reassess, and the local-targets signal
-   * fires only if one actually healed — an unreferenced file create is silent.
-   * Ordinary-file renames arrive as delete + upsert (the watcher has no rename
-   * variant for them), settling to the union of both identities' dependents.
-   */
   recordFileTargetUpsert(relativePath: string): Promise<void> {
     return this.runCommand(async () => {
       const inventory = this.reconcileLocalTargetInventory();
@@ -470,7 +440,6 @@ export class DerivedDocumentIndex
     });
   }
 
-  /** An ordinary file target was removed; its reverse dependents break. */
   recordFileTargetDelete(relativePath: string): Promise<void> {
     return this.runCommand(async () => {
       const inventory = this.reconcileLocalTargetInventory();
@@ -549,16 +518,6 @@ export class DerivedDocumentIndex
   refreshContentScope(): Promise<void> {
     return this.runCommand(async () => {
       const branch = this.backlinkIndex.getActiveBranch();
-      // Incremental, not the full rebuild: this runs after every content-filter
-      // rebuild, and each skill op schedules one of those — so on a
-      // monorepo-sized root the full variant re-parsed the whole corpus
-      // (~20-30s of CPU) minutes after every skill op, pegging the single
-      // server thread and freezing whatever op landed during it. A scope
-      // change only adds/removes a handful of files, which is exactly what
-      // the mtime-witnessed reconcile covers: both walks apply the LIVE
-      // filter, so newly admitted files parse as new, newly excluded ones
-      // prune, and an empty witness map (first pass on a branch) degrades to
-      // the full scan on its own.
       const scopeDiff = await this.backlinkIndex.reconcileWithDisk(branch);
       let globalIngestFailed = false;
       let globalIngestFailure: unknown;
@@ -568,17 +527,7 @@ export class DerivedDocumentIndex
         globalIngestFailed = true;
         globalIngestFailure = err;
       }
-      // Same incremental treatment: `init()` is the tag index's own full-corpus
-      // parse, doubling the storm the backlink swap above removes.
       await this.tagIndex.reconcileWithDisk();
-      // The local-target leg was the LAST full-corpus parse on this path
-      // (`rebuildLocalTargets` -> `populateFromDisk` reads and assesses every
-      // doc; profiled at ~10s on a monorepo root, pegging the server during
-      // whatever op triggered the refresh). Targets reconcile from the watcher
-      // inventory as before; SOURCE assessments update for exactly the docs
-      // the backlink reconcile re-parsed, plus removals for the ones it
-      // dropped. A read that fails downgrades to removal - matching the live
-      // update path's admission-flip behavior.
       this.reconcileLocalTargetInventory();
       for (const { docName, filePath } of scopeDiff.changedDocs) {
         try {
@@ -591,15 +540,12 @@ export class DerivedDocumentIndex
         this.localTargetIndex.removeSource(docName);
       }
       await this.saveBothLogOnly('content-filter', branch);
-      // Content scope changed wholesale; signalAllRelations() -> maybeSignalLocalTargets
-      // emits `local-targets` off the rebuild's generation jump (no baseline sync).
       this.signalAllRelations();
       if (globalIngestFailed) throw globalIngestFailure;
     });
   }
 
   announceReadyViews(): void {
-    // The server factory calls this only after startup settlement has resolved.
     this.assertOpen();
     this.signalAllRelations();
   }
@@ -652,10 +598,6 @@ export class DerivedDocumentIndex
         admittedDocuments,
         sourceDocumentNames,
         undefined,
-        // The watcher folder inventory rides along so empty and asset-only
-        // folders — navigable in the editor, absent from every doc-ancestor
-        // derivation — are not reported dead. Null (watcher unavailable)
-        // degrades to the doc-ancestor oracle inside getDeadLinks.
         this.getLocalTargetInventory()?.folderTargets,
       ),
     );
@@ -673,22 +615,10 @@ export class DerivedDocumentIndex
     return this.runQuery(() => this.tagIndex.getDocsForTagWithMatches(tag));
   }
 
-  /**
-   * Assessed local-target occurrences for one source. Gated behind the ready
-   * barrier like every query, so it never returns a falsely clean empty result
-   * against a half-seeded inventory. The occurrence range travels on each
-   * assessment for positioned diagnostics.
-   */
   getLocalTargetAssessments(documentName: string): Promise<readonly LocalTargetAssessment[]> {
     return this.runLocalTargetQuery(() => this.localTargetIndex.getAssessments(documentName));
   }
 
-  /**
-   * Assessed local-target occurrences per source (all sources, or a scoped set),
-   * for project/folder-scope validation enumeration. Gated behind the ready
-   * barrier like every query, so it never publishes a falsely clean empty result
-   * against a half-seeded inventory.
-   */
   getLocalTargetAssessmentsForSources(
     sourceDocumentNames?: readonly string[],
   ): Promise<LocalTargetSourceAssessments[]> {
@@ -697,29 +627,24 @@ export class DerivedDocumentIndex
     );
   }
 
-  /** Monotonic generation of the local-target index — consumers diff it to detect staleness. */
   getLocalTargetGeneration(): Promise<number> {
     return this.runLocalTargetQuery(() => this.localTargetIndex.generation);
   }
 
-  /** Read-only freshness token; unlike assessment queries it never publishes index contents. */
   readLocalTargetGeneration(): string {
     return this.localTargetIndex.freshnessToken;
   }
 
-  /** Bounded-cardinality counts for the local-target index (no paths). */
   getLocalTargetStats(): Promise<LocalTargetIndexStats> {
     return this.runLocalTargetQuery(() => this.localTargetIndex.getStats());
   }
 
-  /** Sources whose local-target assessment depends on a document identity's existence. */
   getLocalTargetDocumentDependents(documentName: string): Promise<string[]> {
     return this.runLocalTargetQuery(() =>
       this.localTargetIndex.getDocumentDependents(documentName),
     );
   }
 
-  /** Sources whose local-target assessment depends on an ordinary-file identity's existence. */
   getLocalTargetFileDependents(relativePath: string): Promise<string[]> {
     return this.runLocalTargetQuery(() => this.localTargetIndex.getFileDependents(relativePath));
   }
@@ -768,10 +693,6 @@ export class DerivedDocumentIndex
   private async initializeBacklinks(branch: string): Promise<DerivedIndexStartupBacklinksResult> {
     try {
       let deletedDocNames: readonly string[] = [];
-      // Startup graph extraction runs before the watcher inventory exists.
-      // Even a warm cache must be checked after watcher seed: ordinary files
-      // can appear or disappear while the app is offline without changing a
-      // Markdown mtime, which can change an extension-less target's identity.
       this.graphFileOracle();
       if (await this.backlinkIndex.loadFromDisk(branch)) {
         const diff = await this.backlinkIndex.reconcileWithDisk(branch);
@@ -869,15 +790,6 @@ export class DerivedDocumentIndex
     this.signalChannel('tags');
   }
 
-  /**
-   * Emit `local-targets` only when an assessment actually moved since the last
-   * emission — a wiki-only or occurrence-free edit leaves the generation
-   * untouched and stays silent, so document/backlink surfaces don't refetch the
-   * local-target projection for nothing. The baseline is re-synced after the
-   * startup and branch reconciles (whose wholesale generation jump is covered by
-   * mount-driven load and the `branch-switched` channel), so it is not mistaken
-   * for a delta on the next ordinary command.
-   */
   private maybeSignalLocalTargets(): void {
     const generation = this.localTargetIndex.generation;
     const lag = generation - this.lastSignaledLocalTargetGeneration;
@@ -887,20 +799,9 @@ export class DerivedDocumentIndex
     this.signalChannel('local-targets');
   }
 
-  /**
-   * File-existence oracle handed to the document graph, memoized against the
-   * watcher's own `fileTargets` array so a whole-document link scan does not
-   * rebuild the set per link. The watcher hands back a fresh array whenever the
-   * inventory changes, so identity is a sound cache key.
-   */
   private graphFileOracle(): { hasFile(path: string): boolean } | undefined {
     const inventory = this.getLocalTargetInventory();
     if (!inventory) {
-      // The watcher is not up during the startup graph build, so this is the
-      // normal first-boot path, not an error. Remember it: every extension-less
-      // href in that pass was read as a document, and the graph has to be
-      // re-derived once the inventory exists or `assets/NOTICE` keeps its
-      // dead-document edge until the file happens to change.
       this.graphBuiltWithoutFileOracle = true;
       return undefined;
     }
@@ -912,20 +813,9 @@ export class DerivedDocumentIndex
     return files ? { hasFile: (path) => files.has(path) } : undefined;
   }
 
-  /**
-   * Re-derive the graph once the file inventory first becomes available, so the
-   * document/file disambiguation the startup pass could not make is applied.
-   *
-   * Bounded: the flag clears on the first successful pass, so this is at most
-   * one extra rebuild per boot, and only when a graph pass actually ran without
-   * the oracle.
-   */
   private async reconcileGraphWithFileInventory(branch: string): Promise<void> {
     if (!this.graphBuiltWithoutFileOracle) return;
     if (!this.graphFileOracle()) return;
-    // Cleared before the rebuild rather than after, so the rebuild itself can
-    // legitimately re-set it: the oracle is polled per extraction, and a pass
-    // that loses the inventory mid-rebuild has again built without it.
     this.graphBuiltWithoutFileOracle = false;
     try {
       await this.backlinkIndex.rebuildFromDisk(branch);
@@ -933,10 +823,6 @@ export class DerivedDocumentIndex
       this.signalChannel('backlinks');
       this.signalChannel('graph');
     } catch (err) {
-      // The reconcile did not land, so the flag must keep saying the graph was
-      // built without the oracle. Nothing retries it this boot — the one call
-      // site runs once, at startup settlement — and the audit plane still
-      // suppresses a dead-link claim the canonical classifier contradicts.
       this.graphBuiltWithoutFileOracle = true;
       log.warn(
         { err, branch },

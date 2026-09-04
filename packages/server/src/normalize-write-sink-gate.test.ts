@@ -31,7 +31,6 @@ const SCAN_ROOTS = [
   join(packagesDir, 'core', 'src'),
 ];
 
-/** Functions that write bytes to disk or to the body CRDTs. */
 const SINK_FUNCTIONS = new Set<string>([
   'tracedWriteFile',
   'tracedWriteFileSync',
@@ -41,7 +40,6 @@ const SINK_FUNCTIONS = new Set<string>([
   'replaceRawBody',
 ]);
 
-/** Content-bearing CRDT mutation methods (a normalized value as an arg = a write). */
 const SINK_METHODS = new Set<string>(['insert', 'splice', 'applyDelta', 'push', 'unshift']);
 
 const NORMALIZE_FN = 'normalizeBridge';
@@ -60,7 +58,6 @@ function calleeName(call: Node): string | null {
   return null;
 }
 
-/** True when `node` is or contains a `normalizeBridge(...)` call. */
 function containsNormalize(node: Node): boolean {
   if (Node.isCallExpression(node) && calleeName(node) === NORMALIZE_FN) return true;
   return node
@@ -68,7 +65,6 @@ function containsNormalize(node: Node): boolean {
     .some((c) => calleeName(c) === NORMALIZE_FN);
 }
 
-/** Local var names whose initializer is derived from `normalizeBridge`. */
 function taintedConstNames(sf: SourceFile): Set<string> {
   const names = new Set<string>();
   for (const decl of sf.getDescendantsOfKind(SyntaxKind.VariableDeclaration)) {

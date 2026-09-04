@@ -1,10 +1,3 @@
-/**
- * `UserText` marks a string as the user's own so it resolves its own writing
- * direction. jsdom has no bidi engine, so what is checkable here is the markup
- * contract; that the direction actually resolves per string in a real engine is
- * `tests/stress/user-text-direction.e2e.ts`.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { UserText } from './UserText';
@@ -31,9 +24,6 @@ describe('UserText', () => {
   });
 
   test('isolates markup-bearing content as one string', () => {
-    // Search hits arrive as a highlighted fragment tree rather than a bare
-    // string; the isolate has to sit around the whole value, since the
-    // fragments are one thing the user wrote.
     render(
       <UserText data-testid="subject">
         <mark>quarterly</mark>-report.md

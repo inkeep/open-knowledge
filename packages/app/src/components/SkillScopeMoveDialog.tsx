@@ -20,14 +20,6 @@ export interface SkillScopeMoveTarget {
   toScope: SkillScope;
 }
 
-/**
- * The confirm-before-move dialog for a skill scope change (project ↔ global),
- * shared by the toolbar level control (`useSkillScopeMove`) and the sidebar
- * three-dot menu (§9.5). Target-driven so it can be mounted by a stable parent
- * (`useSkillActions.dialogs`) independent of any menu that unmounts on select.
- * Moving relocates files on disk + re-installs into your editors, so it never
- * commits on open — only on the explicit Move button.
- */
 export function SkillScopeMoveDialog({
   target,
   onOpenChange,

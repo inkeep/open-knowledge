@@ -107,11 +107,6 @@ describe('installDeepLinkListener (M4 US-007)', () => {
   });
 
   test('URL-encodes nested doc names (round-trips via docNameFromHash)', () => {
-    // Nested docNames are the common MCP producer shape. The deep-link parser
-    // hands us `docs/a` after URL-decoding the query param; we encode the
-    // WHOLE string with encodeURIComponent so that `/` becomes `%2F`. The
-    // consumer `docNameFromHash` (packages/app/src/lib/doc-hash.ts) splits on
-    // `/` then decodes each segment, reconstructing `docs/a` cleanly.
     const bridge = makeBridge();
     const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
@@ -163,9 +158,6 @@ describe('installDeepLinkListener (M4 US-007)', () => {
   });
 
   test('legacy doc-only payload (no branch key) still works unchanged', () => {
-    // Asserts the back-compat guarantee: an old emitter that doesn't set
-    // `branch` at all (the field is genuinely missing, not just undefined)
-    // must produce the unchanged `#/<doc>` hash.
     const bridge = makeBridge();
     const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
@@ -228,8 +220,6 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
     const setHash = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash });
     bridge.fireDeepLink({ doc: 'notes/plan', branch: 'feature' });
-    // Path is the resolver's normalized form so it matches the missing
-    // target's `.target` when navigation lands.
     expect(pendingReceiveNavStore.getSnapshot()).toEqual({
       kind: 'doc',
       path: normalizeTargetPath('notes/plan').normalizedTarget,
@@ -254,10 +244,6 @@ describe('installDeepLinkListener — share-receive miss guard arming', () => {
     expect(pendingReceiveNavStore.getSnapshot()?.kind).toBe('folder');
   });
 
-  // The existing-project leg: main's stat probe already found the target
-  // missing on the receiver's branch. Arm the miss DIALOG and do NOT navigate —
-  // the honest verdict shows as a modal, so no phantom tab opens at the dead
-  // path. The in-tab pendingReceiveNav panel is not armed on this leg.
   test('arms the miss dialog without navigating when main flags the target missing', () => {
     const bridge = makeBridge();
     const setHash = vi.fn(() => {});
@@ -393,9 +379,6 @@ describe('installDeepLinkListener — FR9 toast emission', () => {
     const setHash = vi.fn(() => {});
     const emitToast = vi.fn(() => {});
     installDeepLinkListener({ bridge, setHash, emitToast });
-    // multiCandidate would normally emit "Opened on branch X"; a missing target
-    // shows the verdict dialog without navigating, so the confirmation is
-    // suppressed rather than misleadingly claiming the share opened.
     bridge.fireDeepLink({
       doc: 'docs/x.md',
       branch: 'feat-bar',

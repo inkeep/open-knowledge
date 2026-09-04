@@ -1,8 +1,3 @@
-/**
- * `bun` check tests — DI'd via the `probe` dep so tests don't depend on
- * the host PATH.
- */
-
 import { describe, expect, test } from 'vitest';
 import { makeBunCheck } from './bun.ts';
 

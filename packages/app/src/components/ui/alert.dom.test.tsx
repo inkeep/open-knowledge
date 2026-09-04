@@ -1,16 +1,3 @@
-/**
- * DOM-substrate tests for Alert. The contract that matters to call sites is the
- * live-region default and its escape hatch: this primitive announces
- * assertively unless a caller opts out, and a passive notice that mounts with
- * the surface around it must opt out or it interrupts the screen reader with
- * content nobody asked for.
- *
- * The layout assertions are class-token checks because the icon column is
- * expressed purely in CSS that jsdom does not execute; the slot assertions are
- * real DOM queries, and the destructive variant depends on the description slot
- * attribute being present to tint through.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
@@ -26,8 +13,6 @@ describe('Alert', () => {
   });
 
   test('a caller-supplied role replaces the assertive default', () => {
-    // Passive notice boxes arrive with the surface they belong to rather than
-    // in response to the user, so they opt out of the live region entirely.
     render(<Alert role="note">Part of a plugin</Alert>);
 
     expect(screen.queryByRole('alert')).toBeNull();
@@ -65,8 +50,6 @@ describe('Alert', () => {
   });
 
   test('gives an icon child its own column so the text block stays aligned', () => {
-    // Call sites lead with a lucide glyph; without the icon column the title and
-    // description wrap underneath it instead of beside it.
     render(
       <Alert>
         <svg aria-hidden="true" />
@@ -94,8 +77,6 @@ describe('Alert', () => {
 
     const className = screen.getByRole('alert').getAttribute('class');
     expectVisualClassTokens(className, ['grid', 'rounded-lg', 'my-3', 'bg-muted/40']);
-    // The default variant's own background loses to the caller's, rather than
-    // both landing and leaving the winner to source order.
     expect(className).not.toContain('bg-card');
   });
 });

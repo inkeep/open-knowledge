@@ -57,9 +57,6 @@ describe('parseFrontmatterRecord', () => {
   });
 
   test('tolerates a trailing space on the opening fence', () => {
-    // micromark-extension-frontmatter tolerates spaces/tabs after the fence
-    // sequence; recognition here must agree with `FRONTMATTER_RE`, or a
-    // stray fence keystroke makes the whole block invisible.
     const content = '--- \ntitle: Hello\ndescription: World\n---\n\nBody text.';
     expect(parseFrontmatterRecord(content)).toEqual({ title: 'Hello', description: 'World' });
   });
@@ -74,23 +71,15 @@ describe('parseFrontmatterRecord', () => {
   });
 
   test('keeps values verbatim: a bare key stays null', () => {
-    // Contrast with `parseFrontmatterYaml`, whose map schema coerces a
-    // bare-key null to '' — open-shape readers must see what the file said.
     expect(parseFrontmatterRecord('---\nbare:\n---\n\nBody.')).toEqual({ bare: null });
   });
 
   test('keeps values verbatim: mixed scalar arrays keep their types', () => {
-    // Contrast with `parseFrontmatterYaml`, which stringifies scalar array
-    // elements (['travel', '2026']).
     const content = '---\ntags: [travel, 2026]\n---\n\nBody.';
     expect(parseFrontmatterRecord(content)).toEqual({ tags: ['travel', 2026] });
   });
 
   test('returns null when toJS throws despite an error-free parse (unresolved alias)', () => {
-    // Pins the catch guard: `parseDocument('foo: *nope')` reports zero
-    // `doc.errors`, but `toJS()` throws "Unresolved alias". Circular anchors
-    // do NOT throw (they yield a circular object), so this is the minimal
-    // real input that reaches the catch.
     expect(parseFrontmatterRecord('---\nfoo: *nope\n---\n\nBody.')).toBeNull();
   });
 

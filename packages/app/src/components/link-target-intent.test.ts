@@ -104,10 +104,6 @@ describe('resolveLinkTargetIntent', () => {
   });
 
   test('navigates a skill-bundle reference to its editable doc, not create-page', () => {
-    // A skill's `references/*` shows in Outgoing as a real, openable target — it
-    // must NOT render as "Missing page — click to create" (which would create a
-    // phantom page). Global skill references are editable managed-artifact docs,
-    // so the link opens the editable doc (not the read-only skill-file viewer).
     expect(
       resolveLinkTargetIntent('__skill__/global/test/references/notes', {
         pages: new Set<string>(),

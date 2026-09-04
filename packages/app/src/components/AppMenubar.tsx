@@ -1,26 +1,3 @@
-/**
- * Custom-drawn Windows/Linux menu bar (the windows-linux-port renderer-menubar decision).
- *
- * macOS keeps the native menu bar; on Windows/Linux the window is frameless
- * (`titleBarStyle: 'hidden'` + window-controls overlay), so the menu bar is
- * drawn here, VS Code-style, inside the chrome row. Every click routes to
- * the main process over the single `bridge.menu.dispatch` channel — menu
- * SEMANTICS stay main-side and single-sourced with the native template
- * (`menu.ts`); this component only renders.
- *
- * Keyboard accelerators are NOT bound here: the hidden native application
- * menu keeps them registered OS-side, so shortcuts work without the DOM
- * menubar focused. The `MenubarShortcut` strings are display-only hints.
- *
- * Enable/check state comes from the `query` dispatch — the same aggregated
- * snapshot (active target + view-menu state + recents + capability flags)
- * that drives the native menu's rendering — refreshed each time a menu
- * opens, so it is at most one open stale.
- *
- * Terminal controls stay capability-gated so hosts without a usable PTY never
- * render actions that can only fail.
- */
-
 import { useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
@@ -53,11 +30,7 @@ export function AppMenubar() {
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
 
   const dispatch = (request: OkMenuDispatchRequest): void => {
-    void menu.dispatch(request).catch(() => {
-      // A torn-down window (or a main older than this renderer) has no
-      // handler — the click degrades to a no-op, matching the native
-      // menu's behavior when a dep is unwired.
-    });
+    void menu.dispatch(request).catch(() => {});
   };
 
   const refreshSnapshot = (): void => {
@@ -74,8 +47,6 @@ export function AppMenubar() {
   return (
     <Menubar
       data-testid="app-menubar"
-      // Chrome-row treatment: borderless and compact (the shadcn default is
-      // a bordered island), and clickable inside the drag region.
       className="h-auto rounded-none border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]"
       onValueChange={(value) => {
         if (value) refreshSnapshot();

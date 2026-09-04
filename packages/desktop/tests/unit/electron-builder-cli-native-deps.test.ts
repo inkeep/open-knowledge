@@ -4,62 +4,16 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 
-/**
- * Regression guard: every native addon that tsdown keeps EXTERNAL
- * (`neverBundle` in packages/cli/tsdown.config.ts) must be shipped onto the
- * bundled CLI's own module-resolution path — i.e. copied into
- * `cli/node_modules/<pkg>` by an electron-builder `extraResources` rule.
- *
- * Why: the desktop ships the CLI as a standalone tree at
- * `<App>/Contents/Resources/cli/dist/cli.mjs`. Node's ESM resolver from there
- * walks `cli/dist -> cli -> Resources -> ...` and never reaches
- * `app.asar.unpacked/node_modules/`, where the app's own copy of the native
- * lives. A `neverBundle` native with no `cli/node_modules` copy therefore
- * fails `import('<pkg>')` with ERR_MODULE_NOT_FOUND inside every CLI-spawned
- * process. For `@napi-rs/keyring` that silently downgraded auth storage to a
- * plaintext file (~/.ok/auth.yml); the fix ships it onto the CLI's path.
- *
- * Symptom signature: `[auth] token storage: file (~/.ok/auth.yml)` emitted by
- * the bundled `ok` CLI even on a machine whose keychain is available, because
- * `createTokenStore`'s `import('@napi-rs/keyring')` cannot resolve.
- */
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
 const builderYml = resolve(desktopRoot, 'electron-builder.yml');
 const tsdownConfig = resolve(desktopRoot, '..', 'cli', 'tsdown.config.ts');
 const okRoot = resolve(desktopRoot, '..', '..');
 
-/**
- * Externals intentionally NOT shipped into cli/node_modules, each with its
- * reason. Every entry asserts "we considered this and decided the bundled-CLI
- * path doesn't need it." Keep this set as small as possible — empty is ideal.
- *
- * `@parcel/watcher` used to live here (absence degraded to chokidar). It is now
- * staged onto the CLI path via the `build/parcel-watcher-staging/node_modules →
- * cli/node_modules` rule (see `stage-parcel-watcher.mjs`), so it is covered
- * below through `shippedViaParcelStaging`, not allowlisted.
- */
 const KNOWN_UNCOVERED: Record<string, string> = {
-  // External ONLY in the CLI package's library build (dist/index.mjs), which
-  // nothing under resources/cli ever executes — the wrapper bins and every
-  // desktop spawn run dist/cli.mjs (+ parse-worker.mjs), whose build keeps
-  // yjs inlined precisely because resources/cli has no node_modules. The
-  // library entry's consumer is the desktop main/utility import of
-  // '@inkeep/open-knowledge' from app.asar, where yjs ships as a regular
-  // collected dependency (the same mechanism -server's external yjs already
-  // relies on).
   yjs: 'library-entry-only external; cli.mjs inlines yjs and is the only entry resources/cli runs',
 };
 
-/**
- * @parcel/watcher ships as a whole staged tree copied to `cli/node_modules`
- * (wrapper + runtime deps + per-arch binary), so its coverage is the presence
- * of that one staging rule rather than a `cli/node_modules/@parcel/watcher`
- * target. Recognizing it here means this test also fails loudly if the staging
- * rule is ever dropped — defense in depth alongside
- * electron-builder-parcel-watcher-deps.test.ts.
- */
 function shippedViaParcelStaging(pkg: string): boolean {
   if (pkg !== '@parcel/watcher') return false;
   return readExtraResources().some(
@@ -67,32 +21,12 @@ function shippedViaParcelStaging(pkg: string): boolean {
   );
 }
 
-/**
- * Native addons tsdown is known to keep external. Anchors the regex below
- * against silent partial parses: a `neverBundle` array reformatted across
- * lines, or rewritten to build its entries from a variable, can still match
- * the regex while yielding a SHORTER list — dropping packages from the loop
- * below with no test turning red. A plain length check can't catch that; naming
- * the entries can.
- *
- * Removing an entry here is legitimate when the package genuinely stops being
- * external — but it must be a deliberate edit, not a parser accident.
- */
 const EXPECTED_NEVER_BUNDLE = [
   '@parcel/watcher',
   '@napi-rs/keyring',
   '@inkeep/open-knowledge-native-config',
 ] as const;
 
-/**
- * Parse tsdown's `neverBundle` array out of the CLI's config source.
- *
- * Fails LOUD on every unparseable shape. The previous
- * `catch { return [] }` turned a moved/renamed config, an unreadable file, or a
- * reformatted array into an empty list — which downgrades this whole suite to
- * a single premise assertion and stops generating the per-package checks that
- * are its actual value.
- */
 function readNeverBundle(): string[] {
   if (!existsSync(tsdownConfig)) {
     throw new Error(
@@ -101,12 +35,6 @@ function readNeverBundle(): string[] {
     );
   }
   const src = readFileSync(tsdownConfig, 'utf8');
-  // The config declares the native-addon externals once as a shared
-  // `nativeAddonNeverBundle` const and composes each build's `neverBundle`
-  // from it (bare reference for the standalone build, spread + extras for the
-  // library build). Parse the const literal, then union in any extra quoted
-  // entries from the per-build `neverBundle:` lists so a build-specific
-  // external (e.g. the library entry's 'yjs') still surfaces here.
   const constMatch = /const nativeAddonNeverBundle\s*=\s*\[([^\]]*)\]/.exec(src);
   if (!constMatch) {
     throw new Error(
@@ -142,11 +70,6 @@ type BuilderConfig = {
   linux?: { extraResources?: ExtraResourceRule[] };
 };
 
-/**
- * Platform-specific `extraResources` merge with the top-level list at build
- * time (electron-builder semantics), so coverage here reads them merged the
- * same way. `platform` narrows to one platform's effective rule set.
- */
 function readExtraResources(platform?: 'mac' | 'win' | 'linux'): ExtraResourceRule[] {
   try {
     const cfg = parse(readFileSync(builderYml, 'utf8')) as BuilderConfig;
@@ -186,9 +109,6 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
   test('neverBundle list + electron-builder.yml parsed (premise check)', () => {
     expect(existsSync(builderYml)).toBe(true);
     expect(existsSync(tsdownConfig)).toBe(true);
-    // Named, not just counted — see EXPECTED_NEVER_BUNDLE. A parse that
-    // silently drops entries keeps `length > 0` while skipping the per-package
-    // checks for whatever it lost.
     expect(neverBundle).toEqual(expect.arrayContaining([...EXPECTED_NEVER_BUNDLE]));
   });
 
@@ -208,12 +128,6 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
   }
 
   test("'@napi-rs/keyring' ships the wrapper AND a platform binary on every platform", () => {
-    // The wrapper (@napi-rs/keyring) requires its sibling platform package at
-    // runtime; both must be on the CLI's resolution path. The wrapper is
-    // platform-neutral JS and ships from the top-level list; each platform
-    // block ships its own binary package(s): darwin arm64-only (matches the
-    // arm64-only DMG, see `mac.target`), win/linux both arches (per-arch
-    // installers share one static extraResources list).
     expect(targets).toContain('cli/node_modules/@napi-rs/keyring');
     const expectedPerPlatform: Record<'mac' | 'win' | 'linux', string[]> = {
       mac: ['keyring-darwin-arm64'],
@@ -233,17 +147,7 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
   });
 
   test('keyring copy sources exist at the hoisted root node_modules', () => {
-    // The extraResources `from` paths point at the workspace-root node_modules,
-    // where `.npmrc`'s `public-hoist-pattern[]=@napi-rs/keyring*` places the
-    // wrapper + per-arch binary (pnpm isolates under `.pnpm/` otherwise). If the
-    // hoist pattern is dropped, the copy silently ships nothing, so fail loudly
-    // here. The wrapper is a plain dependency (no os/cpu constraint) and is
-    // present on every platform.
     expect(existsSync(resolve(okRoot, 'node_modules', '@napi-rs', 'keyring'))).toBe(true);
-    // The platform binary is an optionalDependency the package manager installs
-    // only on its matching os/cpu. The DMG builds on darwin-arm64, so assert the
-    // source is present there; skip on other hosts (the CI `test` tier runs on
-    // Linux, where the darwin-arm64 package is legitimately absent).
     if (process.platform === 'darwin' && process.arch === 'arm64') {
       expect(existsSync(resolve(okRoot, 'node_modules', '@napi-rs', 'keyring-darwin-arm64'))).toBe(
         true,
@@ -252,12 +156,6 @@ describe('bundled CLI can resolve tsdown neverBundle native addons', () => {
   });
 });
 
-/**
- * Every platform must ship an `ok` CLI wrapper into `cli/bin/` — it is the
- * PATH-install target (mac symlinks, deb /usr/bin symlink, NSIS user-PATH
- * dir) and the path MCP clients hold in their configs. The wrapper file
- * differs per platform (bundle layouts differ), the destination does not.
- */
 describe('per-platform ok CLI wrapper ships to cli/bin', () => {
   test('mac + linux ship a cli/bin/ok.sh; win ships ok.cmd + ok.ps1', () => {
     expect(readExtraResourceTargets('mac')).toContain('cli/bin/ok.sh');
@@ -278,17 +176,6 @@ describe('per-platform ok CLI wrapper ships to cli/bin', () => {
   });
 });
 
-/**
- * `@inkeep/open-knowledge-native-config` is the toml_edit addon. It differs from
- * `@napi-rs/keyring` in two ways that need their own guards: it is a workspace
- * package (not a published one with a separate per-arch binary package), so its
- * napi loader AND its `.node` live in one directory and must ship together; and
- * the desktop MAIN process loads it in-process (the MCP repair sweep's Codex TOML
- * write), so it must be unpacked from app.asar as well as copied onto the bundled
- * CLI's path. If the binary fails to ship, the TOML write falls back to a
- * non-destructive decline rather than corrupting a config — but that silently
- * removes Codex registration, so keep these shipping.
- */
 describe('@inkeep/open-knowledge-native-config ships its napi loader + platform binary', () => {
   const NATIVE_CONFIG = '@inkeep/open-knowledge-native-config';
   const nativeConfigDir = resolve(desktopRoot, '..', 'native-config');
@@ -303,9 +190,6 @@ describe('@inkeep/open-knowledge-native-config ships its napi loader + platform 
     ).toBeDefined();
     const filter = asFilterList(rule?.filter);
     expect(filter).toContain('index.js');
-    // The decisive difference from keyring: one workspace package whose `.node`
-    // sits beside its loader, so the filter must ship the binary too. A loader
-    // copied without the binary resolves, then throws on require('./<x>.node').
     expect(
       filter.includes('*.node'),
       `The ${NATIVE_CONFIG} extraResources filter must include '*.node' — without the ` +
@@ -314,25 +198,15 @@ describe('@inkeep/open-knowledge-native-config ships its napi loader + platform 
   });
 
   test('asarUnpack unpacks the addon for the in-process desktop main consumer', () => {
-    // The generic `**/*.node` rule unpacks the binary; this package glob keeps the
-    // napi loader co-located with the binary it requires, the path the desktop
-    // main process resolves.
     expect(readAsarUnpack()).toContain(`**/${NATIVE_CONFIG}/**`);
   });
 
   test('the addon source dir exists at the extraResources `from` path', () => {
-    // `from: ../native-config` resolves to packages/native-config. Its Rust
-    // sources + package.json are git-tracked, so this is present on every host and
-    // CI tier regardless of whether the napi binary has been built yet.
     expect(existsSync(nativeConfigDir)).toBe(true);
     expect(existsSync(resolve(nativeConfigDir, 'package.json'))).toBe(true);
   });
 
   test('the napi-built loader + a platform binary exist after a build', () => {
-    // index.js + the .node are napi build artifacts (gitignored, regenerated by
-    // `napi build`). `pnpm check` builds native-config upstream of cli →
-    // desktop, so they are present in the gate. On an isolated no-build run, warn
-    // loudly and return rather than false-fail on a missing build artifact.
     const loader = resolve(nativeConfigDir, 'index.js');
     const nodeBinaries = existsSync(nativeConfigDir)
       ? readdirSync(nativeConfigDir).filter((f) => f.endsWith('.node'))
@@ -347,24 +221,11 @@ describe('@inkeep/open-knowledge-native-config ships its napi loader + platform 
     }
     expect(nodeBinaries.length).toBeGreaterThan(0);
     if (process.platform === 'darwin' && process.arch === 'arm64') {
-      // The arm64-only DMG ships exactly this binary (see mac.target).
       expect(nodeBinaries).toContain('native-config.darwin-arm64.node');
     }
   });
 });
 
-/**
- * The primary distribution path is now the prebuilt binaries bundled INTO the
- * CLI at `cli/dist/native/`
- * The CLI build copies the
- * napi loader + every present `.node` there; the runtime resolver
- * (`toml-config-engine.ts` / `symlink-resolve.ts`) tries that dist-relative
- * bundle first. The desktop ships `cli/dist` wholesale via an extraResources
- * rule, so the bundle reaches the packaged app's spawned `ok` subprocess for
- * free — these tests pin that the cli/dist rule does not filter the bundle out.
- * The per-package `cli/node_modules` copy + asarUnpack (above) remain for the
- * desktop MAIN process's in-process load.
- */
 describe('@inkeep/open-knowledge-native-config ships bundled in cli/dist/native', () => {
   const cliDist = resolve(desktopRoot, '..', 'cli', 'dist');
 
@@ -377,8 +238,6 @@ describe('@inkeep/open-knowledge-native-config ships bundled in cli/dist/native'
     ).toBeDefined();
     const filter = asFilterList(rule?.filter);
     expect(filter).toContain('**/*');
-    // The runtime bundle is index.js + package.json + *.node — none of these
-    // may be excluded, or the dist-relative resolver finds no loader/binary.
     for (const excluded of ['!**/*.node', '!**/*.js', '!**/package.json', '!**/native/**']) {
       expect(
         filter.includes(excluded),
@@ -388,9 +247,6 @@ describe('@inkeep/open-knowledge-native-config ships bundled in cli/dist/native'
   });
 
   test('the bundled loader + platform binary exist in cli/dist/native after a build', () => {
-    // build:native copies the loader + package.json + present .node into
-    // cli/dist/native/. Gitignored build artifacts → skip-if-not-built with a
-    // loud warn, like the per-package check above.
     const nativeBundle = resolve(cliDist, 'native');
     const loader = resolve(nativeBundle, 'index.js');
     const pkgJson = resolve(nativeBundle, 'package.json');
@@ -404,9 +260,6 @@ describe('@inkeep/open-knowledge-native-config ships bundled in cli/dist/native'
       );
       return;
     }
-    // package.json is load-bearing: cli/dist's package.json declares
-    // "type":"module", so the CJS napi loader needs its own CommonJS package.json
-    // beside it or Node mis-parses index.js as ESM and `require('./*.node')` fails.
     expect(existsSync(pkgJson)).toBe(true);
     expect(nodeBinaries.length).toBeGreaterThan(0);
   });

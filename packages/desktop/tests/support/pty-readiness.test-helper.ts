@@ -1,28 +1,3 @@
-/**
- * Host probe + wait primitives shared by the real-shell PTY harness and its
- * contract tests.
- *
- * `createPtyHostProbe` wraps `setupPtyHost` in a recording `parentPort` and
- * exposes one `PtyStream` per PTY id, so a waiter can see both what the shell
- * has emitted and whether it failed.
- *
- * A PTY carries no "the shell is ready to read input" event. The first bytes a
- * terminal emits are its own setup paint, and on ConPTY that lands well before
- * the shell has attached a console input reader; anything written into that
- * window is dropped rather than buffered the way a POSIX tty's line discipline
- * would. So "some byte arrived" is spawn liveness, not readiness, and a caller
- * that treats it as readiness types into a shell that is not listening.
- * POSIX `waitForShellReady` therefore takes readiness to be "the stream
- * produced output and then stopped changing". The real Windows harness starts
- * each input-driven scenario with a structured launch marker instead: seeing
- * that marker proves PowerShell executed its startup command without injecting
- * an edit or control event into a line editor that may not exist yet.
- *
- * Every wait also watches the stream's failure channel, so a shell that dies or
- * never spawns aborts with its own reason instead of expiring as an anonymous
- * timeout that names only the condition nobody reached.
- */
-
 import {
   type PtyHostIncomingMessage,
   type PtyHostOutgoingMessage,
@@ -30,11 +5,8 @@ import {
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
 
-/** One PTY's observable surface: its bytes, and its failure channel. */
 export interface PtyStream {
-  /** Everything this PTY has emitted so far. */
   read(): string;
-  /** A description of a spawn failure or exit, once one has occurred. */
   failure(): string | null;
 }
 
@@ -100,32 +72,23 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
 }
 
 export interface WaitOptions {
-  /** Budget before the awaited condition is declared unreachable. */
   timeoutMs?: number;
-  /** Gap between samples. */
   intervalMs?: number;
 }
 
 export interface ShellReadyOptions extends WaitOptions {
-  /** Consecutive unchanged samples required to call startup finished. */
   quietSamples?: number;
 }
 
 const DEFAULT_INTERVAL_MS = 15;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_READY_INTERVAL_MS = 50;
-/** 20 samples x 50ms: a quiet window wide enough to span a cold shell's
- *  intra-startup stalls (profile load, module JIT) without reading one as the
- *  prompt. */
 const DEFAULT_QUIET_SAMPLES = 20;
 const DEFAULT_READY_TIMEOUT_MS = 12_000;
 const RECEIVED_TAIL_CHARS = 400;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** The tail of what a PTY emitted, so a timeout says what it saw instead of
- *  discarding the only evidence that separates a dropped write from a dead
- *  shell. */
 function describeReceived(text: string): string {
   if (text.length === 0) return 'nothing';
   const tail = text.length > RECEIVED_TAIL_CHARS ? text.slice(-RECEIVED_TAIL_CHARS) : text;
@@ -141,8 +104,6 @@ export async function waitForCondition(
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   for (;;) {
-    // Predicate before failure: a scenario that awaits an exit is satisfied by
-    // the very event the failure channel reports, and must read it as success.
     if (predicate()) return;
     const failure = stream.failure();
     if (failure !== null) {
@@ -181,8 +142,6 @@ export async function waitForShellReady(
   );
 }
 
-/** Build a command whose relative file read proves the shell accepted the
- * requested cwd without relying on Windows path spelling or casing. */
 export function buildCwdFileProofCommand(platform: NodeJS.Platform, fileName: string): string {
   if (!/^[A-Za-z0-9._-]+$/u.test(fileName) || fileName === '.' || fileName === '..') {
     throw new Error(`invalid cwd proof file name: ${fileName}`);

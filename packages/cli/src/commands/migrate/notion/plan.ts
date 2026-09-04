@@ -1,14 +1,3 @@
-/**
- * Planner + applier for `ok migrate notion`.
- *
- * `buildPlan` reads the export and computes every change WITHOUT writing (this is
- * what the dry-run prints). `applyPlan` performs the writes and deletions.
- * Per-file transforms run images -> callouts -> frontmatter -> links; the link
- * pass goes last so it sees the content the other transforms produced. Databases
- * are handled in a dedicated pass so every database gets a table page even when
- * Notion exported no stub for it. Everything is filesystem-only and idempotent.
- */
-
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { asideToCallout } from './aside-callout.ts';
@@ -35,13 +24,10 @@ export interface Report {
   isNotionExport: boolean;
   transforms: Record<TransformId, number>;
   assetsExtracted: number;
-  /** New database pages created for CSVs that had no stub. */
   stubsCreated: number;
-  /** `_all.csv` files scheduled for deletion (only with removeCsv). */
   csvsRemoved: number;
   wideTables: string[];
   ambiguousTitleLinks: number;
-  /** Files skipped because they could not be read (deleted mid-run, EACCES, …). */
   unreadable: string[];
   filesChanged: number;
 }
@@ -56,7 +42,6 @@ export interface Plan {
 export interface PlanOptions {
   selected?: ReadonlySet<TransformId>;
   stripBase64?: boolean;
-  /** Delete each `_all.csv` once its table page exists (destructive). */
   removeCsv?: boolean;
   force?: boolean;
 }
@@ -102,17 +87,14 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
   const assets: Plan['assets'] = [];
   const deletions: string[] = [];
 
-  // --- Per-file transforms (images, callouts, frontmatter, links) ---
   for (const file of files) {
     if (!MD.test(file)) continue;
-    // Existing database stubs are (re)generated in the database pass below.
     if (doTables && existingStubs.has(file)) continue;
 
     let original: string;
     try {
       original = readFileSync(file, 'utf8');
     } catch {
-      // Deleted or unreadable since the walk (TOCTOU) — skip, don't crash the run.
       report.unreadable.push(file);
       continue;
     }
@@ -155,7 +137,6 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
     if (content !== original) changes.push({ path: file, content });
   }
 
-  // --- Database pass: every database gets a table page ---
   if (doTables) {
     for (const db of databases) {
       const rendered = renderCsvTable(db.csvText, {
@@ -165,7 +146,7 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
           return res.path ? relative(dirname(db.stubTargetPath), res.path) : null;
         },
       });
-      if (rendered.columns === 0) continue; // empty/unreadable CSV — leave it alone
+      if (rendered.columns === 0) continue;
 
       const writePath = db.stubPath ?? db.stubTargetPath;
       let existing: string | null = null;
@@ -173,7 +154,6 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
         try {
           existing = readFileSync(db.stubPath, 'utf8');
         } catch {
-          // Never overwrite a stub we couldn't read — skip this database.
           report.unreadable.push(db.stubPath);
           continue;
         }
@@ -193,7 +173,6 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
         report.transforms.tables += 1;
       }
 
-      // The table now holds the CSV's data, so the CSV is redundant.
       if (opts.removeCsv) {
         deletions.push(db.csvPath);
         report.csvsRemoved += 1;
@@ -205,7 +184,6 @@ export function buildPlan(dir: string, opts: PlanOptions = {}): Plan {
   return { changes, assets, deletions, report };
 }
 
-/** Write every change and asset, then remove scheduled files. */
 export function applyPlan(plan: Plan): void {
   for (const asset of plan.assets) {
     mkdirSync(dirname(asset.path), { recursive: true });
@@ -219,8 +197,6 @@ export function applyPlan(plan: Plan): void {
     try {
       unlinkSync(path);
     } catch (err) {
-      // A file already gone is fine; any other error (EACCES/EPERM/EBUSY) is real
-      // and must surface rather than being silently swallowed.
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
   }

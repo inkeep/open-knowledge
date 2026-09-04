@@ -1,17 +1,3 @@
-/**
- * A blank create must never name itself against a list it does not have.
- *
- * `PUT /api/skill` is an upsert — verified against a live server, a second PUT
- * for an existing name returns `created: false` and replaces that skill's body
- * and description with whatever was sent. So the auto-name loop deciding
- * `new-skill` is free is not a cosmetic guess: paired with the upsert it
- * destroys a real skill's contents, under a toast that says "created".
- *
- * The loop used to read the hook's skills list and treat "not ready yet" as
- * "nothing is taken", which is exactly the state right after the app opens —
- * the moment someone clicks New skill.
- */
-
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -54,7 +40,6 @@ vi.mock('@/lib/skills-api', () => ({
 
 const { useCreateBlankSkill } = await import('./use-create-blank-skill');
 
-/** Minimal entry shape — only `scope`/`name` feed `skillNameSetsByScope`. */
 const entry = (name: string, scope = 'project') => ({
   name,
   scope,
@@ -83,8 +68,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 test('an unresolved list is resolved before naming, not assumed empty', async () => {
-  // The regression: `new-skill` and `new-skill-2` exist, but the hook's list has
-  // not landed. Guessing here overwrites `new-skill`.
   skillsState = { status: 'loading' };
   listResult = { ok: true, skills: [entry('new-skill'), entry('new-skill-2')] };
   render(<Harness />);
@@ -110,8 +93,6 @@ test('a ready list is trusted without a second round trip', async () => {
 });
 
 test('a list that cannot be read refuses to create rather than guessing a name', async () => {
-  // There is no name we can prove is free, and the write would be destructive —
-  // so not creating is the only safe direction.
   skillsState = { status: 'loading' };
   listResult = { ok: false, error: 'offline' };
   render(<Harness />);
@@ -126,7 +107,6 @@ test('a list that cannot be read refuses to create rather than guessing a name',
 });
 
 test('the created skill is opened', async () => {
-  // Reported twice at the bug bash ("it should auto open the skill file").
   render(<Harness />);
   await act(async () => {
     await createBlank('project');
@@ -135,8 +115,6 @@ test('the created skill is opened', async () => {
 });
 
 test('the scope being created for is the scope that gets listed', async () => {
-  // A global create naming itself against the project's taken set would collide
-  // on the other side.
   skillsState = { status: 'loading' };
   listResult = { ok: true, skills: [entry('new-skill', 'global')] };
   render(<Harness />);
@@ -150,9 +128,6 @@ test('the scope being created for is the scope that gets listed', async () => {
 });
 
 test('a failed save never opens a tab for the skill that was not created', async () => {
-  // The early return after toast.error is what keeps a failed write from firing
-  // the success path — remove it and the user sees "created" in green, then an
-  // empty tab for a file that does not exist.
   saveResult = { ok: false, error: 'disk full' };
   render(<Harness />);
 

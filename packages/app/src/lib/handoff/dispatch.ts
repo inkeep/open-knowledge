@@ -1,22 +1,3 @@
-/**
- * Single outbound-dispatch entry point for the Open-in-Agent dropdown.
- *
- * Renderer-side responsibilities are minimal:
- *   1. Build the target's URL via the per-target builder
- *      (`buildClaudeUrl`, `buildCodexUrl`, `buildCursorUrl`).
- *   2. POST the URL (plus `workspacePath` for Cursor) to `/api/handoff`.
- *
- * The server owns the entire recipe — quit, spawn `open -a` / `cursor`,
- * settle, fire URL. One source of truth (`handoff-dispatch-api.ts`) covers
- * both web-host and Electron-host renderers because the renderer's `fetch`
- * works identically against the embedded server in either mode.
- *
- * Adding a 5th target is a 3-step change:
- *   (1) Append the recipe to `RECIPES` in `handoff-dispatch-api.ts`.
- *   (2) Add a URL builder under `packages/core/src/handoff/`.
- *   (3) Add the switch case below.
- */
-
 import {
   buildClaudeUrl,
   buildCodexUrl,
@@ -27,14 +8,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 
 interface DispatchHandoffDeps {
-  /** Test seam — defaults to `globalThis.fetch`. */
   readonly fetch?: typeof globalThis.fetch;
 }
 
 interface HandoffRequestBody {
   readonly target: HandoffTarget;
   readonly url: string;
-  /** Cursor only — passed to `cursor <path>` step 1. */
   readonly workspacePath?: string;
 }
 
@@ -57,9 +36,6 @@ async function postHandoff(
     return { ok: true };
   }
   if (res.status === 404) {
-    // Older OK server without /api/handoff registered — surface as
-    // not-installed so the dispatch UX matches "this transport doesn't
-    // exist here yet" rather than a generic dispatch failure.
     return { ok: false, reason: 'not-installed', detail: 'POST /api/handoff returned 404' };
   }
   if (res.status === 422) {
@@ -76,7 +52,6 @@ async function postHandoff(
   };
 }
 
-/** Route a `HandoffPayload` to its per-target dispatch primitive. */
 export async function dispatchHandoff(
   payload: HandoffPayload,
   deps: DispatchHandoffDeps = {},
@@ -117,46 +92,36 @@ export async function dispatchHandoff(
         fetchImpl,
       );
     case 'copilot':
-      // Terminal-only target: Copilot has no desktop URL transport and is
-      // launched through `requestTerminalLaunch`, never this deep-link path.
       return {
         ok: false,
         reason: 'invalid-payload',
         detail: 'copilot is terminal-only; launch via requestTerminalLaunch',
       };
     case 'opencode':
-      // Terminal-only target: OpenCode has no URL scheme and is launched via
-      // `requestTerminalLaunch` (the terminal-CLI path), never the deep-link
-      // dispatch here. Defensive — no production caller routes opencode through
-      // `dispatchHandoff` (it is excluded from `VISIBLE_TARGETS`).
       return {
         ok: false,
         reason: 'invalid-payload',
         detail: 'opencode is terminal-only; launch via requestTerminalLaunch',
       };
     case 'pi':
-      // Terminal-only target, same carve-out as opencode above.
       return {
         ok: false,
         reason: 'invalid-payload',
         detail: 'pi is terminal-only; launch via requestTerminalLaunch',
       };
     case 'antigravity':
-      // Terminal-only target (`agy` CLI), same carve-out as opencode/pi above.
       return {
         ok: false,
         reason: 'invalid-payload',
         detail: 'antigravity is terminal-only; launch via requestTerminalLaunch',
       };
     case 'openclaw':
-      // Terminal-only target (`openclaw chat` CLI), same carve-out as above.
       return {
         ok: false,
         reason: 'invalid-payload',
         detail: 'openclaw is terminal-only; launch via requestTerminalLaunch',
       };
     case 'hermes':
-      // Terminal-only target (`hermes chat` CLI), same carve-out as above.
       return {
         ok: false,
         reason: 'invalid-payload',

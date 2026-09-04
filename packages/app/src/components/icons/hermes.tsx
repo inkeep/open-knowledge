@@ -1,8 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Hermes Agent brand mark (Nous Research), flattened to a single `currentColor`
-// silhouette so it tracks the sidebar text color and brightens on hover like
-// every other brand icon. viewBox 0 0 24 24 to match Lucide sizing.
 export function HermesIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

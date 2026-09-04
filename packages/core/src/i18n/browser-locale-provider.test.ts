@@ -27,8 +27,6 @@ describe('reading the browser language signal', () => {
     expect(readBrowserLanguages({ language: 'es-MX' })).toEqual(['es-MX']);
   });
 
-  // Privacy modes and embedded webviews do report an empty list alongside a set
-  // singular value, which would otherwise read as "this user has no language".
   test('falls back to the singular language when the list is empty', () => {
     expect(readBrowserLanguages({ languages: [], language: 'es-MX' })).toEqual(['es-MX']);
   });
@@ -49,10 +47,6 @@ describe('the ambient browser', () => {
     expect(readBrowserLanguages()).toEqual([]);
   });
 
-  // The root barrel this ships from is imported by Node consumers too, so a
-  // runtime with no browser has to report nothing rather than throw. Removing
-  // the binding is what reproduces that runtime — stubbing it to `undefined`
-  // would be tolerated by a plain property read and prove nothing.
   test('reports no signal in a runtime where navigator is not declared at all', () => {
     const declared = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
     try {

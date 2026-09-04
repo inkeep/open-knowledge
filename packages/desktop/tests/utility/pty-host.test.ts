@@ -19,12 +19,6 @@ import {
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
 
-/**
- * Unit tests for the PTY host message-routing contract. node-pty is injected
- * as a controllable fake — the real-shell-I/O path runs under Node via
- * `pty-host.real-io-harness.ts` in an isolated Node subprocess.
- */
-
 interface FakePty extends PtyProcessLike {
   writes: string[];
   resizes: Array<[number, number]>;
@@ -249,9 +243,6 @@ describe('setupPtyHost — create', () => {
   });
 
   test('bakes a launch command into a non-history `-c` spawn with an interactive exec tail', () => {
-    // "Open in <Agent>": the command rides on `-c` (never typed through the line
-    // editor → never written to the user's shell history), and the `exec` tail
-    // hands the tab back to a fresh interactive shell after the agent exits.
     const h = makeHarness({ env: { SHELL: '/bin/zsh', PATH: '/usr/bin' } });
     h.fire(CREATE({ launchCommand: "claude 'do the thing'" }));
     expect(h.spawnCalls[0]?.file).toBe('/bin/zsh');
@@ -292,8 +283,6 @@ describe('setupPtyHost — create', () => {
   });
 
   test('marks the shell as the OK Desktop terminal (OK_DESKTOP_TERMINAL=1)', () => {
-    // Positive identity the project skill keys off to pick `ok open` over a
-    // preview URL. Set even when the parent tries to clear it.
     const h = makeHarness({ env: { SHELL: '/bin/zsh', [OK_DESKTOP_TERMINAL_ENV]: '' } });
     h.fire(CREATE());
     const env = h.spawnCalls[0]?.options.env ?? {};
@@ -301,9 +290,6 @@ describe('setupPtyHost — create', () => {
   });
 
   test('prepends ~/.ok/bin to the child PATH so `ok` resolves regardless of rc consent', () => {
-    // OK spawns this shell itself — injecting the OK-owned bin dir touches
-    // no file OK doesn't own, so the built-in terminal works even when the
-    // user declined the shell-PATH rc edit.
     const h = makeHarness({
       env: { SHELL: '/bin/zsh', PATH: '/usr/bin:/bin', HOME: '/Users/alice' },
     });
@@ -372,8 +358,6 @@ describe('setupPtyHost — streaming', () => {
 
   test('logs a reap-failed warning when kill throws a non-ESRCH error', () => {
     const pty = makeFakePty();
-    // EPERM (not ESRCH) means the kill reaped nothing — the shell may be
-    // orphaned, so the host emits a diagnostic instead of swallowing it.
     pty.kill = () => {
       throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
     };
@@ -531,11 +515,6 @@ describe('setupPtyHost — containment (AC5: host survives a PTY failure)', () =
   });
 
   test('a non-Error spawn throw still surfaces a string spawn-error message', () => {
-    // node-pty's native binding can reject with a non-Error value. `(err as
-    // Error).message` would then be `undefined`, which the main-side
-    // `asHostMessage` requires to be a string and silently drops — stranding the
-    // panel in 'starting' with no exit ever routed. Coerce so the message is
-    // always a string the contract can carry.
     const spawn: SpawnPty = () => {
       throw 'EMFILE: too many open files';
     };
@@ -606,14 +585,11 @@ describe('setupPtyHost — addressing', () => {
     const spawn: SpawnPty = () => ptys[n++] ?? makeFakePty();
     const h = makeHarness({ spawn });
 
-    // ptyIds are minted fresh per create, so a duplicate id is a contract skew;
-    // the stale shell under that id is reaped rather than orphaned.
     h.fire(CREATE({ ptyId: 'dup' }));
     expect(first.killCount).toBe(0);
     h.fire(CREATE({ ptyId: 'dup' }));
     expect(first.killCount).toBe(1);
 
-    // The replacement is the live one under that id; the stale one's output dies.
     second.emitData('alive');
     expect(h.posted).toContainEqual({ type: 'data', ptyId: 'dup', data: 'alive' });
     const before = h.posted.length;
@@ -635,10 +611,8 @@ describe('setupPtyHost — concurrent sessions', () => {
     const h = makeMultiHarness([a, b]);
     h.fire(CREATE({ ptyId: 'a' }));
     h.fire(CREATE({ ptyId: 'b' }));
-    // Neither shell is reaped — the second create added rather than superseded.
     expect(a.killCount).toBe(0);
     expect(b.killCount).toBe(0);
-    // The first session is still live: its output continues to flow.
     a.emitData('a-still-here');
     expect(h.posted).toContainEqual({ type: 'data', ptyId: 'a', data: 'a-still-here' });
   });
@@ -690,14 +664,12 @@ describe('setupPtyHost — concurrent sessions', () => {
     a.emitExit({ exitCode: 0 });
     expect(h.posted).toContainEqual({ type: 'exit', ptyId: 'a', exitCode: 0, signal: null });
 
-    // 'a' is gone: its late bytes are suppressed; 'b' keeps streaming.
     const before = h.posted.length;
     a.emitData('straggler');
     expect(h.posted.length).toBe(before);
     b.emitData('still-alive');
     expect(h.posted).toContainEqual({ type: 'data', ptyId: 'b', data: 'still-alive' });
 
-    // Input still routes to the surviving session.
     h.fire({ type: 'input', ptyId: 'b', data: 'x' });
     expect(b.writes).toEqual(['x']);
   });
@@ -716,7 +688,6 @@ describe('setupPtyHost — concurrent sessions', () => {
     expect(b.killCount).toBe(1);
     expect(c.killCount).toBe(1);
 
-    // Idempotent across repeated teardown.
     h.handle.killActive();
     expect(a.killCount).toBe(1);
     expect(b.killCount).toBe(1);
@@ -972,10 +943,6 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
     expect(logger.warnings.length).toBeGreaterThan(0);
   });
 
-  // The guard's accepted set is built from the same vocabulary tuple the union
-  // derives from, so a reason added to that vocabulary survives this hop
-  // without a second edit here. A hand-mirrored literal chain would drop the
-  // whole create instead, killing the spawn rather than just the notice.
   test.each([
     ...TERMINAL_SHELL_NOTICE_REASONS,
   ])('accepts a create carrying the shared reason %s and relays it verbatim', (reason) => {
@@ -1075,8 +1042,6 @@ describe('buildShellEnv', () => {
       GDK_THEME: 'Adwaita',
       MAYBE: undefined,
     });
-    // `~/.ok/bin` rides in front of the inherited PATH — OK's own spawned
-    // shell resolves `ok` regardless of the rc-consent decision.
     expect(env).toEqual({
       PATH: '/Users/x/.ok/bin:/usr/bin',
       HOME: '/Users/x',
@@ -1672,13 +1637,6 @@ describe('node-pty import failure', () => {
   });
 });
 
-/**
- * The host's self-reaping wiring (the no-orphan mechanism). Real lifecycle
- * events are emitted through the public installer against a fake process+handle
- * — a behavioral pin via real input, no mocking inside the unit. The real
- * process proof that a SIGTERM'd host actually reaps a live shell runs under
- * Node in `pty-host.reap-harness.ts` (gated by `pty-host-reap.test.ts`).
- */
 class FakeReapProcess implements HostReapProcess {
   exitCodes: number[] = [];
   private readonly listeners = new Map<string, Array<() => void>>();
@@ -1734,7 +1692,6 @@ describe('installHostReaping', () => {
     installHostReaping(handle, proc);
     proc.emit('exit');
     expect(killCount()).toBe(1);
-    // The 'exit' backstop must not call proc.exit (it IS the exit path).
     expect(proc.exitCodes).toEqual([]);
   });
 
@@ -1745,7 +1702,6 @@ describe('installHostReaping', () => {
     proc.emit('SIGTERM');
     proc.emit('exit');
     proc.emit('SIGINT');
-    // The shell is killed exactly once; a second signal still exits the host.
     expect(killCount()).toBe(1);
     expect(proc.exitCodes).toEqual([0, 0]);
   });

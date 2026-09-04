@@ -7,15 +7,6 @@ export interface HostHeaderResponse {
   text(): Promise<string>;
 }
 
-/**
- * Issue an HTTP request that carries an explicit (forged) `Host` header via
- * node:http, returning a minimal fetch-`Response`-shaped object.
- *
- * The global `fetch` (undici) silently drops a caller-set `Host` header and
- * sends the real target authority, so it cannot exercise the server's
- * host-not-allowed / DNS-rebinding guard — the request always looks loopback.
- * node:http honors the header verbatim, which is what these guard tests need.
- */
 export function fetchWithHostHeader(
   url: string,
   host: string,

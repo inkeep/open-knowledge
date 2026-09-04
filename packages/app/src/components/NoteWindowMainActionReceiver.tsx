@@ -53,10 +53,6 @@ export function dispatchNoteWindowMainAction(
   }
 }
 
-/**
- * Receives actions that a popped-out note handed to this owning project
- * window, then re-enters the same renderer-local buses as a direct click.
- */
 export function NoteWindowMainActionReceiver() {
   useEffect(() => {
     if (isNoteWindow()) return;

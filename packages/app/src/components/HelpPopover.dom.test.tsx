@@ -18,9 +18,6 @@ vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
 }));
 
-// The popover is a Radix popper that closes on select, so the report it opens
-// must declare itself launcher-borne. Stubbing the dialog keeps that assertion
-// off the real capture gate, which has its own tests.
 const reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
 vi.doMock('@/components/ReportBugDialog', () => ({
   ReportBugDialog: (props: { open: boolean; launcherBorne?: boolean }) => {
@@ -57,8 +54,6 @@ const originalFetch = globalThis.fetch;
 
 describe('HelpPopover runtime behavior', () => {
   beforeEach(() => {
-    // Stub the GitHub star-count fetch so the count is deterministic and no
-    // real network call fires during the test.
     globalThis.fetch = vi.fn(
       async () =>
         new Response(JSON.stringify({ stargazers_count: 1234 }), {
@@ -100,8 +95,6 @@ describe('HelpPopover runtime behavior', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
     const links = within(nav).getAllByRole('link');
-    // Download points at the OS-aware picker rather than a platform-specific
-    // asset. Issue-reporting and feedback render as in-app actions, not links.
     expect(links.map(linkShape)).toEqual([
       {
         label: 'Docs',
@@ -125,8 +118,6 @@ describe('HelpPopover runtime behavior', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Community' });
     const links = within(nav).getAllByRole('link');
-    // GitHub leads: it is the repo the project actually lives in, and it is the
-    // row that carries the star count.
     expect(links.map(linkShape)).toEqual([
       {
         label: 'GitHub',
@@ -155,9 +146,6 @@ describe('HelpPopover runtime behavior', () => {
   test('does not advertise the hidden game', async () => {
     await renderOpenHelpPopover();
 
-    // Blob Run stays an easter egg. The mascot gesture, the command palette,
-    // and the connecting banner's mascot button reach it; the Resources menu
-    // does not.
     const nav = screen.getByRole('navigation', { name: 'Resources' });
     expect(within(nav).queryByRole('button', { name: 'Blob Run' })).toBeNull();
   });
@@ -187,10 +175,6 @@ describe('HelpPopover runtime behavior', () => {
 
 describe('HelpPopover with the desktop bridge present', () => {
   beforeEach(() => {
-    // The Report-a-bug row and dialog are gated on `window.okDesktop`; a
-    // minimal stub is enough since the dialog only reaches into the bridge on
-    // Create, not on mount. Cast through unknown — the row's presence check is
-    // structural, so the stub needn't satisfy the full bridge contract.
     (window as unknown as { okDesktop?: unknown }).okDesktop = {};
   });
 
@@ -207,8 +191,6 @@ describe('HelpPopover with the desktop bridge present', () => {
     const reportBug = within(nav).getByRole('button', { name: 'Report a bug' });
     const sendFeedback = within(nav).getByRole('button', { name: 'Send feedback' });
 
-    // Both in-app actions follow the Docs link (DOCUMENT_POSITION_FOLLOWING === 4);
-    // report-bug is desktop-only, so it only appears with the bridge present.
     expect(docs.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(docs.compareDocumentPosition(sendFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
@@ -223,8 +205,6 @@ describe('HelpPopover with the desktop bridge present', () => {
     await waitFor(() => {
       expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
     });
-    // The row closes the popover as it opens the dialog, so the popper is still
-    // animating out and would land in a shot taken on the next frame.
     expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
   });
 

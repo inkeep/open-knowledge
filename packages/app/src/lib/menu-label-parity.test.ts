@@ -9,23 +9,6 @@ import {
 } from '@/components/command-palette-commands';
 import { i18n } from '@/lib/i18n';
 
-/**
- * Parity guard for the labels that appear in BOTH the native Electron menu and
- * the in-app renderer (the Cmd+K palette).
- *
- * The native menu (`packages/desktop/src/main/menu.ts`) reads `MENU_LABELS`
- * directly (via each command's registry `labelKey`). The palette maps the SAME
- * `labelKey` to a Lingui `msg` descriptor in `PALETTE_COMMAND_LABELS` — the
- * macro requires a string literal, so the renderer can't import the constants —
- * and those descriptors compile into this catalog. This file asserts three
- * things, so a drift the native menu can't observe at runtime (it has no i18n)
- * turns the suite red:
- *   1. every `MENU_LABELS` value is in the compiled catalog (the original guard);
- *   2. every registry command's palette `labelKey` (and Show/Hide toggle keys)
- *      has a descriptor in `PALETTE_COMMAND_LABELS` (completeness);
- *   3. every palette descriptor resolves to a string that is in the catalog and,
- *      where the key is also a `MENU_LABELS` key, equals the menu string.
- */
 function collectStrings(node: unknown, out: Set<string>): void {
   if (typeof node === 'string') {
     out.add(node);
@@ -38,14 +21,7 @@ function collectStrings(node: unknown, out: Set<string>): void {
 
 const catalogStrings = new Set<string>();
 
-// Read the compiled catalog in a hook (not module scope) so a missing/unparseable
-// catalog surfaces as a clear hook failure rather than an opaque module-load error
-// that masks the per-label assertions.
 beforeAll(() => {
-  // Pin the comparison locale explicitly. The third assertion family below
-  // compares `i18n._(descriptor)` byte-for-byte against the English constants,
-  // so it only holds while the singleton is on `en` — and since the app
-  // bootstrap became locale-aware, that is no longer something to assume.
   i18n.activate('en');
   const catalog = JSON.parse(
     readFileSync(join(import.meta.dir, '..', 'locales', 'en', 'messages.json'), 'utf8'),

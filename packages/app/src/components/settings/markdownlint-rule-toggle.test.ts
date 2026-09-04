@@ -1,11 +1,3 @@
-/**
- * Unit contract for the markdownlint rule value model behind the rule browser:
- * the on/off toggle and the option-edit composition that preserve keys they
- * don't edit, plus the row-state derivation (governing value, modified marker,
- * severity chip, search match). The DOM test covers rendering; this pins the
- * value computation.
- */
-
 import { MARKDOWNLINT_RULE_CATALOG } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {

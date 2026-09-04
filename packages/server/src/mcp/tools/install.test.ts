@@ -1,12 +1,3 @@
-/**
- * Contract tests for the `install` MCP wrapper — the most destructive tool on
- * the skills surface, and the one that had no test file at all.
- *
- * These assert the exact request bodies the tool sends, because that is where
- * its two historic defects lived: `mode` forwarded alongside `add` (which the
- * endpoint applies to the WHOLE resulting location set, converting siblings the
- * caller never named), and a bare call reaching the endpoint's set-exact branch.
- */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerInstall } from './install.ts';
@@ -37,9 +28,6 @@ function captureInstall(serverUrl: string): Handler {
   return handler;
 }
 
-/** The `inputSchema` the tool registers — what the MCP SDK validates a caller's
- *  args against before the handler ever runs. `captureInstall` keeps only the
- *  handler, so schema-level contracts have to be read from here. */
 function registeredInstallInputSchema(): Record<
   string,
   { safeParse: (v: unknown) => { success: boolean } }
@@ -87,10 +75,6 @@ afterEach(() => {
 
 describe('install MCP tool', () => {
   test('`mode` shapes ONLY the added locations, via per-location convert', async () => {
-    // Forwarding `mode` with `add` would convert every existing location too:
-    // the endpoint's `mode` applies to the whole resulting set, so a skill
-    // symlinked into claude and codex would have both turned into copies by a
-    // call that only asked for cursor.
     stubOk();
     const r = await captureInstall('http://localhost:4321')({
       name: 'trip-log',
@@ -103,7 +87,6 @@ describe('install MCP tool', () => {
       { name: 'trip-log', add: ['cursor'] },
       { name: 'trip-log', convert: { target: 'cursor', mode: 'copy' } },
     ]);
-    // The membership request must NOT carry `mode`.
     expect(calls[0]?.body).not.toHaveProperty('mode');
   });
 
@@ -140,8 +123,6 @@ describe('install MCP tool', () => {
   });
 
   test('a failed shaping reports what already landed', async () => {
-    // The `add` is durable on disk by then, so reporting a bare error would tell
-    // the caller nothing happened when the membership change did.
     globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       calls.push({ url: String(_url), body });
@@ -171,8 +152,6 @@ describe('install MCP tool', () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toContain('Added cursor');
     expect(text(r)).toContain('hand-edited');
-    // The server puts the remedy in `detail`; printing only `title` would hand
-    // the agent the diagnosis without the fix.
     expect(text(r)).toContain('Remove .cursor/skills/trip-log manually');
   });
 });
@@ -197,8 +176,6 @@ describe('skillFolders — folder topology, moved off the read-only `config` too
     });
   });
 
-  // `link` is the only action with a required `target`; nothing exercised that
-  // parameter path, so a bug forwarding it would have gone unnoticed.
   test('forwards root AND target for a link verb', async () => {
     stubOk({ folder: { moved: ['a', 'b'], dropped: ['c'], linked: ['.cursor/skills'] } });
     const install = captureInstall('http://localhost:1234');
@@ -215,12 +192,6 @@ describe('skillFolders — folder topology, moved off the read-only `config` too
     expect(text(res)).toContain('dropped 1 duplicate(s)');
   });
 
-  // The HTTP surface takes `preview` to classify a merge without running it.
-  // This surface summarizes from the response's `folder`, which a preview
-  // never carries — so accepting the flag would print a completed-link receipt
-  // for an operation that never ran. Asserted against the schema the tool
-  // REGISTERS (what the SDK validates against before the handler is reached),
-  // not the handler, which the harness below calls directly.
   test('the registered skillFolders schema refuses a link carrying preview', () => {
     const schema = registeredInstallInputSchema().skillFolders;
     const link = { action: 'link', scope: 'project', root: '.cursor/skills', target: '.a/skills' };

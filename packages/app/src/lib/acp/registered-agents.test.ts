@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Plain `bun test` has no localStorage — install a minimal stub BEFORE the
-// module under test first touches it (reads are lazy, so import order is
-// safe either way).
 const backing = new Map<string, string>();
 if (typeof globalThis.localStorage === 'undefined') {
   (globalThis as { localStorage?: unknown }).localStorage = {
@@ -79,9 +76,8 @@ describe('registered-agents store', () => {
   });
 
   test('makeDefault:false registers for visibility without changing the default', () => {
-    registerAgent(claude); // claude is the default
-    registerAgent(codex, { makeDefault: false }); // enable-in-Settings path
-    // Default unchanged, codex appended (not prepended), both present.
+    registerAgent(claude);
+    registerAgent(codex, { makeDefault: false });
     expect(getDefaultRegisteredAgent()?.id).toBe('claude-acp');
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
     expect(persisted.agents.map((a: RegisteredAgent) => a.id)).toEqual(['claude-acp', 'codex-acp']);
@@ -89,18 +85,16 @@ describe('registered-agents store', () => {
 
   test('makeDefault:false updates an existing agent in place without reordering or re-defaulting', () => {
     registerAgent(claude);
-    registerAgent(codex); // codex now default, order [codex, claude]
+    registerAgent(codex);
     const stampBefore = storedAgents().find((a) => a.id === 'claude-acp')?.lastUsedAt;
     expect(typeof stampBefore).toBe('number');
     registerAgent({ ...claude, name: 'Claude Renamed' }, { makeDefault: false });
-    // Default stays codex; claude keeps its position; metadata refreshed.
     expect(getDefaultRegisteredAgent()?.id).toBe('codex-acp');
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
     expect(persisted.agents.map((a: RegisteredAgent) => a.id)).toEqual(['codex-acp', 'claude-acp']);
     expect(persisted.agents.find((a: RegisteredAgent) => a.id === 'claude-acp')?.name).toBe(
       'Claude Renamed',
     );
-    // A visibility refresh must not erase pick recency — the sort runs on it.
     expect(persisted.agents.find((a: RegisteredAgent) => a.id === 'claude-acp')?.lastUsedAt).toBe(
       stampBefore,
     );
@@ -158,8 +152,6 @@ describe('registered-agents store', () => {
     nowSpy.mockReturnValue(2_000);
     registerAgent(claude);
     nowSpy.mockRestore();
-    // Never-picked agents (Settings toggles, detected suggestions) trail the
-    // stamped ones alphabetically.
     registerAgent({ source: 'registry', id: 'gemini', name: 'Gemini CLI' }, { makeDefault: false });
     setDetectedRegisteredAgentSuggestions([cursor]);
     expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual([
@@ -171,8 +163,6 @@ describe('registered-agents store', () => {
   });
 
   test('presented order: featured agents lead the never-picked tail', () => {
-    // No picks at all — the whole list is the tail. Featured (catalog
-    // shortlist) beats alphabetical; alphabetical breaks ties within a tier.
     registerAgent({ source: 'registry', id: 'auggie', name: 'Auggie CLI' }, { makeDefault: false });
     registerAgent(
       { source: 'registry', id: 'gemini', name: 'Gemini CLI', featured: true },
@@ -183,7 +173,6 @@ describe('registered-agents store', () => {
       { makeDefault: false },
     );
     expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual(['cursor', 'gemini', 'auggie']);
-    // An explicit pick still beats featured: recency is the top sort key.
     registerAgent({ source: 'registry', id: 'auggie', name: 'Auggie CLI' });
     expect(getRegisteredAgentOptions().map((a) => a.id)).toEqual(['auggie', 'cursor', 'gemini']);
   });
@@ -196,7 +185,6 @@ describe('hydrateRegisteredAgentMeta', () => {
   });
 
   test('updates name/icon in place without changing the default or order', () => {
-    // Claude first + default; the rest appended in order.
     registerAgent(claude, { makeDefault: true });
     registerAgent(codex, { makeDefault: false });
     registerAgent({ source: 'registry', id: 'cursor', name: 'Cursor' }, { makeDefault: false });
@@ -209,7 +197,6 @@ describe('hydrateRegisteredAgentMeta', () => {
     expect(agents.map((a) => a.id)).toEqual(['claude-acp', 'codex-acp', 'cursor', 'gemini']);
     expect(agents.find((a) => a.id === 'codex-acp')?.iconUrl).toBe('https://x/codex.svg');
     expect(agents.find((a) => a.id === 'gemini')?.name).toBe('Gemini CLI');
-    // Default is unchanged by hydration.
     expect(getDefaultRegisteredAgent()?.id).toBe('claude-acp');
   });
 
@@ -240,7 +227,6 @@ describe('pickEffectiveDefaultAgent', () => {
   });
 
   test('falls back to the first enabled agent when the default is disabled', () => {
-    // claude is the default but not in the enabled list → lead with codex.
     expect(pickEffectiveDefaultAgent([codex], claude)).toBe(codex);
   });
 
@@ -261,13 +247,11 @@ describe('reassignDefaultIfDisabled', () => {
   });
 
   test('moves the default to the next still-enabled agent when the default is disabled', () => {
-    registerAgent(codex); // order [codex]
-    registerAgent(claude); // order [claude, codex], claude is default
+    registerAgent(codex);
+    registerAgent(claude);
     expect(getDefaultRegisteredAgent()?.id).toBe('claude-acp');
-    // Disable claude (the default); codex is still enabled.
     reassignDefaultIfDisabled('registry:claude-acp', (a) => a.id === 'codex-acp');
     expect(getDefaultRegisteredAgent()?.id).toBe('codex-acp');
-    // Order is preserved — only the default moved.
     expect(storedAgents().map((a) => a.id)).toEqual(['claude-acp', 'codex-acp']);
   });
 
@@ -278,9 +262,8 @@ describe('reassignDefaultIfDisabled', () => {
   });
 
   test('no-op when the disabled agent was not the default', () => {
-    registerAgent(codex); // default
-    registerAgent(claude); // now default is claude
-    // Disable codex, which is NOT the default → default stays claude.
+    registerAgent(codex);
+    registerAgent(claude);
     reassignDefaultIfDisabled('registry:codex-acp', () => true);
     expect(getDefaultRegisteredAgent()?.id).toBe('claude-acp');
   });

@@ -35,8 +35,6 @@ describe('condition 1 — consecutive non-pass verdicts', () => {
   });
 
   test('stays silent at exactly one below the threshold', () => {
-    // Two non-passes then a pass — bad luck, not a broken gate. A passing cut
-    // in the window also clears condition 2.
     const r = run([cut({ at: daysAgo(1) }), cut({ at: daysAgo(2) }), passing({ at: daysAgo(3) })]);
     expect(r.alarm).toBe(false);
   });
@@ -52,7 +50,6 @@ describe('condition 1 — consecutive non-pass verdicts', () => {
   });
 
   test('non-qualifying cuts do not break the streak', () => {
-    // A quiet tick between two bad cuts is not evidence the gate recovered.
     const r = run([
       cut({ at: daysAgo(1) }),
       notQualified({ at: daysAgo(2) }),
@@ -100,8 +97,6 @@ describe('a disarmed fast tier is not a broken one', () => {
   });
 
   test('empty history — the shipped default — is silent', () => {
-    // With the fast tier unarmed the smoke job never runs, so history is empty
-    // and this evaluator must say nothing at all.
     expect(run([])).toEqual({ alarm: false, reasons: [] });
   });
 
@@ -111,18 +106,11 @@ describe('a disarmed fast tier is not a broken one', () => {
   });
 
   test('qualified-but-never-promoted stays silent when the switch is off', () => {
-    // The shape that actually paged. `qualified` tracks whether the fast-tier
-    // smoke job RAN, and that job is gated on a candidate existing rather than
-    // on the arming switch — so a disarmed tier still produces qualified cuts,
-    // while `promoted` can never become true because the selector forces
-    // soak_tier=standard. Condition 2 is therefore structurally guaranteed the
-    // moment any cut qualifies, and it fired hourly into a public channel.
     const history = [cut({ at: daysAgo(1) }), cut({ at: daysAgo(4) })];
     expect(evaluateAlarm({ history, nowMs: NOW, armed: false })).toEqual({
       alarm: false,
       reasons: [],
     });
-    // Same history, tier armed: this IS a finding and must still fire.
     expect(evaluateAlarm({ history, nowMs: NOW, armed: true }).alarm).toBe(true);
   });
 
@@ -161,9 +149,6 @@ describe('buildHistory', () => {
   });
 
   test('a cancelled smoke job is a superseded tick, not an unanswered gate', () => {
-    // Workflow concurrency killed the run before the gate answered; no refusal
-    // fired and no dispatch could have happened. Counting it as qualified
-    // latched the armed-and-reaching-nothing alarm for the whole window.
     const jobs = [
       { name: "Smoke the fast-tier candidate's DMG", conclusion: 'cancelled', steps: [] },
     ];
@@ -209,8 +194,6 @@ describe('buildHistory', () => {
   });
 
   test('the job and step names it keys on exist verbatim in the workflow', () => {
-    // These strings are a cross-file contract with select-beta-to-promote.yml;
-    // renaming the job there would silently zero out the history.
     const wf = readFileSync(
       join(
         dirname(fileURLToPath(import.meta.url)),
@@ -225,11 +208,6 @@ describe('buildHistory', () => {
   });
 
   test('the alarm pages Slack and never Discord', () => {
-    // Same rule as the per-cut blocked-release alert in desktop-release.yml
-    // (see build-smoke-alert-payload.mjs's module docstring for why): Discord
-    // carries shipped releases, not gate health. Without this the aggregate
-    // alarm is the one remaining path that could quietly re-acquire a Discord
-    // leg.
     const wf = readFileSync(
       join(
         dirname(fileURLToPath(import.meta.url)),
@@ -239,24 +217,16 @@ describe('buildHistory', () => {
       ),
       'utf8',
     );
-    // Bounded and guarded: an unguarded indexOf yields -1 and slice(-1) is one
-    // character, which the two negative assertions below would pass against.
     const pageStart = wf.indexOf('- name: Page the release channel');
     expect(pageStart, 'no "Page the release channel" step').toBeGreaterThan(-1);
     const step = wf.slice(pageStart);
     expect(step).toContain('SLACK_WEBHOOK_URL');
     expect(step).not.toContain('DISCORD_WEBHOOK_URL');
-    // Scoped to a `post … Discord` leg, not to the word: the step's comments
-    // explain why Discord is absent, and a ratchet that bans naming the thing
-    // it rules out would be paid for in workarounds.
     expect(step).not.toMatch(/^\s*post\s+.*Discord\s*$/m);
   });
 });
 
 describe('classifyHistoryFailure', () => {
-  // A permanently-broken history reader would otherwise print the same
-  // reassuring notice every tick forever, leaving a dead alarm looking healthy
-  // — the exact silent-failure shape this evaluator exists to detect.
   test.each([
     'request timed out',
     'API rate limit exceeded',
@@ -288,8 +258,6 @@ describe('classifyHistoryFailure', () => {
 
 describe('buildHistory run-id fallback', () => {
   test('falls back to run.id when databaseId is absent', () => {
-    // `gh run list --json databaseId` supplies databaseId; the REST shape uses
-    // `id`. The fallback keeps both readable — pinned so it is not tidied away.
     const seen = [];
     buildHistory({
       runs: [{ id: 42, createdAt: daysAgo(1) }],

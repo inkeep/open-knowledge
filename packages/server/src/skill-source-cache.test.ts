@@ -29,11 +29,6 @@ function skillMd(f: SkillFixture): string {
   ].join('\n');
 }
 
-/**
- * Build a REAL local git repo holding the given skill dirs. `fetchSource` clones
- * a bare local path with no transport scheme, so this exercises the actual git
- * clone path (clone, HEAD rev-parse, temp dir, cleanup) with no network.
- */
 function makeGitRepo(skills: SkillFixture[]): string {
   const repo = mkdtempSync(join(tmpdir(), 'ok-source-cache-repo-'));
   for (const s of skills) {
@@ -79,9 +74,7 @@ describe('fetchCachedSource', () => {
     ]);
     const first = await fetchCachedSource(gitSpec(src));
     const second = await fetchCachedSource(gitSpec(src));
-    // A second clone would mkdtemp a fresh dir; the same dir proves one clone.
     expect(second.dir).toBe(first.dir);
-    // The cloned dir is exactly what the preview handler reads next.
     expect(skillNames(first.dir)).toEqual(['alpha', 'beta']);
   });
 
@@ -110,7 +103,6 @@ describe('fetchCachedSource', () => {
     expect(fetched.ref).toMatch(/^[0-9a-f]{40}$/);
     const clonedDir = fetched.dir;
     expect(existsSync(clonedDir)).toBe(true);
-    // The caller's own cleanup is a no-op — the cache owns removal on clear.
     fetched.cleanup();
     expect(existsSync(clonedDir)).toBe(true);
     await clearSourceCache();
@@ -123,9 +115,6 @@ describe('fetchCachedSource', () => {
     const clonedDir = first.dir;
     expect(existsSync(clonedDir)).toBe(true);
 
-    // Fake ONLY Date: the clone path shells out to git, and faking the timer
-    // wholesale would stall that I/O. The sweep reads Date.now(), so moving the
-    // clock past the 30s window is the whole trigger.
     vi.useFakeTimers({ toFake: ['Date'] });
     let second: Awaited<ReturnType<typeof fetchCachedSource>>;
     try {
@@ -135,10 +124,8 @@ describe('fetchCachedSource', () => {
       vi.useRealTimers();
     }
 
-    // A fresh mkdtemp dir proves the expired entry was evicted, not served.
     expect(second.dir).not.toBe(clonedDir);
     expect(skillNames(second.dir)).toEqual(['alpha']);
-    // Sweep-time cleanup is fire-and-forget, so the removal lands a tick later.
     await vi.waitFor(() => expect(existsSync(clonedDir)).toBe(false));
   });
 
@@ -155,7 +142,6 @@ describe('fetchCachedSource', () => {
   test('a failed clone rejects without wedging the cache for other sources', async () => {
     const missing = join(tmpdir(), 'ok-source-cache-nonexistent-xyz');
     await expect(fetchCachedSource(gitSpec(missing))).rejects.toThrow();
-    // A good source still resolves afterward — one failure didn't stick.
     const src = repo([{ dir: 'alpha', name: 'alpha', description: 'A' }]);
     const ok = await fetchCachedSource(gitSpec(src));
     expect(skillNames(ok.dir)).toEqual(['alpha']);

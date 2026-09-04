@@ -82,8 +82,6 @@ vi.doMock('@/editor/DocumentContext', () => ({
     promoteAllPreviewTabs: promoteAllPreviewTabsMock,
     syncOpenTabsWithKnownTargets: syncOpenTabsWithKnownTargetsMock,
     tabSessionLoaded,
-    // The skill-tab reconciler reads these at render (no open skill tab here,
-    // so it issues no `/api/skills` fetch); the real context always supplies them.
     openTabs,
     closeDocument: () => {},
   }),
@@ -106,8 +104,6 @@ vi.doMock('@/components/PageListContext', () => ({
     pagesBySlug,
     pagesByBasename,
   }),
-  // ValidationFreshness (mounted in the App body) reads the doc count through the
-  // optional variant to budget its on-open audit.
   useOptionalPageList: () => ({
     assetPaths,
     filePaths,
@@ -132,14 +128,9 @@ vi.doMock('@/lib/config-provider', () => ({
   ConfigProvider: ({ children }: { children: ReactNode }) => (
     <div data-testid="config-provider">{children}</div>
   ),
-  // ValidationFreshness (mounted in the App body) gates on the merged config;
-  // null merged reads as every default (indicators on).
   useConfigContext: () => ({ merged: mergedConfig }),
 }));
 
-// AppBody reads `merged.appearance.preview.autoOpen` to compose the
-// "Open in terminal" launch prompt; the ConfigProvider above is a passthrough
-// so the real context is never set. Stub the hook to the cold-start shape.
 vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: mergedConfig }),
 }));
@@ -156,9 +147,6 @@ vi.doMock('@/lib/api-config', () => ({
   fetchApiConfig: (...args: Parameters<typeof fetchApiConfigMock>) => fetchApiConfigMock(...args),
 }));
 
-// ConfigProviderHost mounts the app-lifetime server keepalive; stub it so this
-// chrome-focused test doesn't open a real WebSocket. Behavior is covered by
-// use-server-keepalive.dom.test.tsx.
 vi.doMock('@/lib/use-server-keepalive', () => ({
   useServerKeepalive: () => {},
 }));
@@ -178,11 +166,6 @@ vi.doMock('@/components/SystemDocSubscriber', () => ({
   SystemDocSubscriber: () => <div data-testid="system-doc-subscriber" />,
 }));
 
-// Side-effect-only lifecycle reporters that mount null and drive the provider
-// pool / desktop bridge (flush-on-hide; background-throttle). This chrome-focused
-// test doesn't exercise them and its DocumentContext mock omits `getPool`, so
-// stub them like the other side surfaces above — their behavior is covered by
-// their own suites (install-editor-lifecycle-flush, install-background-throttle-reporter).
 vi.doMock('@/editor/EditorLifecycleFlush', () => ({
   EditorLifecycleFlush: () => null,
 }));
@@ -288,9 +271,6 @@ function createBridge({ ptyAvailable = true }: { ptyAvailable?: boolean } = {}) 
     editor: {
       notifyActiveTargetChanged: vi.fn(() => {}),
     },
-    // The real preload always exposes `config`; App reads `config.ptyAvailable`
-    // to gate the terminal-launch provider. Mirror that shape so
-    // the gate resolves instead of dereferencing undefined.
     config: {
       mode: 'editor' as const,
       ptyAvailable,
@@ -298,7 +278,6 @@ function createBridge({ ptyAvailable = true }: { ptyAvailable?: boolean } = {}) 
   };
 }
 
-/** A popped-out note window: same bridge shape, `note` mode. */
 function createNoteWindowBridge() {
   return { ...createBridge(), config: { mode: 'note' as const, ptyAvailable: true } };
 }
@@ -376,8 +355,6 @@ describe('App runtime wiring', () => {
 
       expect(screen.queryByTestId('file-sidebar')).toBeNull();
       expect(screen.queryByTestId('command-palette')).toBeNull();
-      // SystemDocSubscriber retargets the window to whatever doc an agent is
-      // writing — right for the workspace window, wrong for a parked pop-out.
       expect(screen.queryByTestId('system-doc-subscriber')).toBeNull();
     });
 
@@ -506,9 +483,6 @@ describe('App runtime wiring', () => {
   });
 
   test('hash navigation defers an unresolvable folder hash instead of opening a tab', async () => {
-    // Re-resolution fires on every page-list change, so a folder hash the
-    // resolver cannot place must leave the folder view the click already opened
-    // untouched — opening or clearing here would stomp it.
     resolveNavigationTargetMock = vi.fn((docName: string) => ({
       kind: 'missing' as const,
       target: docName.replace(/\/+$/, ''),
@@ -546,19 +520,11 @@ describe('App runtime wiring', () => {
       docName: '# 2 - Tokens',
     };
     resolveNavigationTargetMock = vi.fn(() => target);
-    // Built, then round-tripped through the same URL normalization the browser
-    // applies on assignment. `#` is not in the fragment percent-encode set, so
-    // an unescaped one survives into `location.hash` and reads as the start of
-    // the anchor: the document resolves to nothing and the app clears the
-    // target, which opens a New Tab over the document the user asked for.
     setHash(hashFromDocName('# 2 - Tokens'));
 
     renderApp();
 
     await waitFor(() => {
-      // Assert the docName the hash PARSED to, not just that something opened:
-      // the resolver mock answers unconditionally, so without this a fix that
-      // resolved the user to a different document would still pass.
       expect(resolveNavigationTargetMock).toHaveBeenCalledWith('# 2 - Tokens', expect.anything());
       expect(openTargetTransitionMock).toHaveBeenCalledWith(target, {
         disposition: 'permanent',
@@ -666,13 +632,6 @@ describe('App runtime wiring', () => {
   });
 
   test('history traversal reuses the preview slot instead of opening a permanent tab', async () => {
-    // A replay must not raise the disposition a target held when its history
-    // entry was recorded: a doc the sidebar opened as a provisional preview has
-    // to come back from Back as a preview, not as a durable tab. The option bag
-    // is read through `objectContaining` so a field added later does not break
-    // this, with both fields the handler promises today spelled out. What the
-    // disposition then does to the tab strip is pinned against the real reducer
-    // in App.history-traversal.dom.test.tsx.
     setHash('#/page-a');
     renderApp();
 
@@ -690,8 +649,6 @@ describe('App runtime wiring', () => {
       );
     });
 
-    // File-tree navigation opens in the active tab and records the URL with
-    // pushState, so NavigationHandler sees only the later history traversal.
     pushHashWithoutNavigation('#/page-b');
     pushHashWithoutNavigation('#/page-c');
     openTargetTransitionMock.mockClear();
@@ -867,17 +824,9 @@ describe('App runtime wiring', () => {
     expect(screen.queryByTestId('share-receive-dialog')).toBeNull();
   });
 
-  // A repeat app-shell crash arms the tab-session restore suppression latch.
-  // The suppressed recovery mount must not renavigate into the crashing
-  // document through the URL hash either: the active tab is mirrored into the
-  // hash, so an unguarded mount-time hash resolution reopens the very document
-  // the recovery just dropped and re-enters the crash loop. Ordinary hash
-  // navigation must resume immediately after that one mount.
   describe('repeat-crash recovery hash suppression', () => {
     afterEach(() => {
       resetTabSessionRestoreSuppression();
-      // A failed assertion can leave the navigation latch armed (a mounted App
-      // normally consumes it); drain it so a failure doesn't cascade.
       consumeHashNavigationSuppression();
     });
 
@@ -946,10 +895,6 @@ describe('App runtime wiring', () => {
     });
 
     test('an overlay-dialog hash survives the suppressed mount and still consumes the latch', async () => {
-      // The suppression deliberately exempts overlay-dialog hashes: they portal
-      // over the editor and cannot reopen a document, so clearing one would
-      // dismiss a dialog the user has open. Every other test here uses a
-      // document hash, which leaves that exemption asserted only in prose.
       recordAppShellCrashTrip(new Error('same shell crash'));
       recordAppShellCrashTrip(new Error('same shell crash'));
       setHash('#settings');
@@ -959,8 +904,6 @@ describe('App runtime wiring', () => {
       await Promise.resolve();
       expect(window.location.hash).toBe('#settings');
 
-      // The latch is one-shot regardless of which branch ran, so the next mount
-      // must navigate normally rather than inheriting an unconsumed suppression.
       cleanup();
       setHash('#/kept-doc');
       renderApp();

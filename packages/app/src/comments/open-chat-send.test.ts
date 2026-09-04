@@ -1,12 +1,3 @@
-/**
- * The channel between the Comments panel, the sessions host, and the one thread
- * that sends the batch.
- *
- * Two hops rather than one, and the second one is keyed. Every ThreadView stays
- * mounted, so a broadcast carrying no thread id would fire the batch from every
- * open conversation at once.
- */
-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   requestSendToOpenChat,
@@ -34,8 +25,6 @@ describe('the send request', () => {
     requestSendToOpenChat();
 
     expect(onRequest).toHaveBeenCalledTimes(1);
-    // An unscoped send means the whole checked queue, which is what
-    // `dispatchComments` assumes when told nothing.
     expect(onRequest).toHaveBeenCalledWith({ threadIds: undefined });
   });
 
@@ -45,9 +34,6 @@ describe('the send request', () => {
 
     requestSendToOpenChat(['t1', 't2']);
 
-    // The This-doc footer counts one document's comments. Dropping the ids here
-    // would land at the thread as "no batch specified" and send every checked
-    // comment in the project, from a button that had just promised two.
     expect(onRequest).toHaveBeenCalledWith({ threadIds: ['t1', 't2'] });
   });
 
@@ -68,8 +54,6 @@ describe('the send-in-thread answer', () => {
 
     sendQueuedCommentsInThread('thread-a');
 
-    // The subscriber filters on its own id; what matters here is that the id
-    // travels at all, since without it every mounted thread would send.
     expect(sentFrom).toEqual(['thread-a']);
   });
 
@@ -88,8 +72,6 @@ describe('the send-in-thread answer', () => {
 
     sendQueuedCommentsInThread('thread-a');
 
-    // `undefined`, never `[]`: an empty array is a batch of nothing, which
-    // `dispatchComments` would treat as a no-op instead of the whole queue.
     expect(calls).toEqual([undefined]);
   });
 

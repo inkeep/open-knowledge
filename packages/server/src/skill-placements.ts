@@ -1,15 +1,3 @@
-/**
- * Machine-local record of CUSTOM skill placements — copies/symlinks the user
- * placed at arbitrary project-relative dirs via the install menu's custom-path
- * action. Lives in `.ok/local/` (per-machine runtime state, gitignored — the
- * spec's copy-tracking registry split: canonical bindings are derivable, copy
- * paths are machine-local and never committed).
- *
- * Read is pruning: entries whose path no longer exists on disk drop out, so
- * the disclosure surfaces never list a deleted placement. Fail-soft
- * throughout — a corrupt file reads as empty.
- */
-
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { LEGACY_SKILL_STORE_ROOT } from '@inkeep/open-knowledge-core';
@@ -30,22 +18,11 @@ export {
   type SkillPlacement,
 } from './skill-placements-store.ts';
 
-/**
- * Whether a placement root is OK's own state area and therefore refused.
- *
- * `.ok/` holds OK's own state (config, local runtime data, the shadow repo),
- * so a skill may not be placed inside it — with one exception that is not a
- * special case so much as history: `.ok/skills` is the retired store, and
- * projects that predate the retirement still have real skills sitting there.
- * Refusing it would strand them, so it stays placeable at BOTH scopes; a
- * placement there is an ordinary custom root like any other.
- */
 export function isRefusedOkPlacementRoot(rootRel: string): boolean {
   const underOk = rootRel === '.ok' || rootRel.startsWith('.ok/');
   return underOk && rootRel !== LEGACY_SKILL_STORE_ROOT;
 }
 
-/** Record the user-chosen SOURCE host for a skill (sticky relocation). */
 export async function recordSkillSourceHost(
   projectDir: string,
   name: string,
@@ -56,7 +33,6 @@ export async function recordSkillSourceHost(
   });
 }
 
-/** Record the expected form of a skills-root FOLDER after a folder verb. */
 export async function recordFolderExpectation(
   projectDir: string,
   root: string,
@@ -67,12 +43,10 @@ export async function recordFolderExpectation(
   });
 }
 
-/** All recorded folder expectations for a base (empty map when none). */
 export function readFolderExpectations(projectDir: string): Record<string, FolderExpectation> {
   return readSkillPlacementsStore(projectDir).folders ?? {};
 }
 
-/** Record a USER-declared known skill root (idempotent). */
 export async function recordKnownSkillRoot(projectDir: string, root: string): Promise<void> {
   await mutateSkillPlacementsStore(projectDir, (file) => {
     const roots = new Set(file.roots ?? []);
@@ -82,16 +56,6 @@ export async function recordKnownSkillRoot(projectDir: string, root: string): Pr
   });
 }
 
-/**
- * The raw preference, `undefined` when unset (for default-chaining).
- *
- * Read-only now: nothing writes this any more. A skill-wide mode was only ever
- * settable over MCP, where it applied as a side effect of installing and then
- * outranked the derived default forever — invisible in the app, which has no
- * such control and picks a new location's form from the ones the skill already
- * uses. Ledgers written before that changed still carry the key, so it is still
- * honored for them rather than silently flipping their behavior.
- */
 export function readSkillInstallModeRaw(
   projectDir: string,
   name: string,
@@ -100,7 +64,6 @@ export function readSkillInstallModeRaw(
   return pref === 'link' || pref === 'copy' ? pref : undefined;
 }
 
-/** Read + prune: placements whose bundle dir vanished are dropped (not saved). */
 export function readSkillPlacements(projectDir: string): Record<string, SkillPlacement[]> {
   const out: Record<string, SkillPlacement[]> = {};
   for (const [name, list] of Object.entries(readSkillPlacementsStore(projectDir).skills)) {
@@ -113,7 +76,6 @@ export function readSkillPlacements(projectDir: string): Record<string, SkillPla
   return out;
 }
 
-/** Drop one recorded placement (the ledger half of unplace). */
 export async function removeSkillPlacement(
   projectDir: string,
   name: string,
@@ -127,16 +89,6 @@ export async function removeSkillPlacement(
   });
 }
 
-/**
- * Drop EVERY recorded placement for a skill.
- *
- * The ledger is keyed by skill NAME and outlives a cross-scope move, so records
- * written before the move describe locations that no longer exist in that form.
- * Coming back, the re-projection re-creates them as copies while the ledger
- * still claims links — and the list then reports drift ("changed outside"),
- * blaming another tool for a shape OK itself produced. A move clears the source
- * scope's records instead of leaving them to be re-read as evidence.
- */
 export async function clearSkillPlacements(projectDir: string, name: string): Promise<void> {
   await mutateSkillPlacementsStore(projectDir, (file) => {
     if (file.skills[name] === undefined) return;
@@ -145,7 +97,6 @@ export async function clearSkillPlacements(projectDir: string, name: string): Pr
   });
 }
 
-/** Record (or refresh) one placement for a skill. */
 export async function recordSkillPlacement(
   projectDir: string,
   name: string,
@@ -159,26 +110,13 @@ export async function recordSkillPlacement(
   });
 }
 
-/**
- * Forward re-sync ("copy + re-sync", the LOSSLESS half): refresh
- * recorded copies from a changed canonical. Strictly hash-gated — a copy is
- * refreshed ONLY when its current bytes still equal the hash recorded when OK
- * made it (i.e. nobody hand-edited the copy). A hand-edited copy is left
- * alone and surfaces as a fork; copy→SOURCE reconcile is a separate,
- * deliberately-unbuilt design (data-loss class). Returns the refresh count.
- */
 export async function resyncRecordedSkillCopies(
   projectDir: string,
   contentDir: string,
-  /** Scan override (the GLOBAL tier passes `scanGlobalInPlaceSkills(home)`). */
   skillsOverride?: InPlaceSkill[],
 ): Promise<number> {
   const placements = readSkillPlacements(projectDir);
   const skills = skillsOverride ?? scanInPlaceSkills(contentDir);
-  // Auto-pair: observing two dirs BYTE-IDENTICAL is proof of a copy
-  // relationship — record it (with the shared hash) so a later canonical edit
-  // can lossless-refresh the unedited side instead of forking it. Idempotent:
-  // recorded paths are skipped.
   for (const skill of skills) {
     const recorded = new Set((placements[skill.name] ?? []).map((p) => p.path));
     for (const dir of skill.copyDirs) {
@@ -202,23 +140,17 @@ export async function resyncRecordedSkillCopies(
       if (copyAbs === null) continue;
       if (copyAbs === canonicalAbs) continue;
       const current = parseSkillDir(copyAbs)?.contentHash;
-      if (current === undefined) continue; // vanished — the pruning read drops it
+      if (current === undefined) continue;
       if (current === skill.contentHash) {
-        // Already in sync; keep the record's hash current for the next edit.
         if (p.hash !== current) {
           await recordSkillPlacement(projectDir, skill.name, { ...p, hash: current });
         }
         continue;
       }
-      if (current !== p.hash) continue; // hand-edited copy — NEVER clobbered
-      // Revalidate immediately before destructive work. This closes the gap
-      // between reading a persisted ledger and the rm/cp pair below.
+      if (current !== p.hash) continue;
       copyAbs = resolveSkillPlacementPath(projectDir, p.path);
       if (copyAbs === null) continue;
       tracedRmSync(copyAbs, { recursive: true, force: true });
-      // Same reason as the projection copy: a canonical that is itself a symlink
-      // (the `source` verb points it elsewhere) must be materialized, or this
-      // refresh replaces a real copy with a pointer to the source.
       tracedCpSync(canonicalAbs, copyAbs, { recursive: true, dereference: true });
       await recordSkillPlacement(projectDir, skill.name, { ...p, hash: skill.contentHash });
       refreshed += 1;

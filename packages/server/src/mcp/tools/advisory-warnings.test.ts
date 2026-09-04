@@ -1,9 +1,3 @@
-/**
- * Relay coverage for the unified advisory channel: wire parsing (tolerant of
- * absent / malformed / unrecognized payloads) and the `⚠` text lines that
- * make every advisory family visible to text-only MCP consumers.
- */
-
 import type {
   AdvisoryWarning,
   BrokenLink,
@@ -134,8 +128,6 @@ describe('render-family bounds phrasing', () => {
   });
 });
 
-// ── brokenLinks relay (write-time link validation) ──────────────────────
-
 const noSuchDoc: BrokenLink = {
   href: './wiki/x',
   resolvedTo: 'wiki/wiki/x',
@@ -195,8 +187,8 @@ describe('parseBrokenLinks', () => {
   test('drops malformed entries but keeps valid ones', () => {
     const mixed = [
       noSuchDoc,
-      { href: 'x', resolvedTo: null, reason: 'broken-anchor' }, // invalid reason
-      { href: 42 }, // wrong types
+      { href: 'x', resolvedTo: null, reason: 'broken-anchor' },
+      { href: 42 },
       unresolvable,
     ];
     expect(parseBrokenLinks(mixed)).toEqual([noSuchDoc, unresolvable]);
@@ -321,8 +313,6 @@ describe('content-rule (lint) violations', () => {
 });
 
 describe('unrecognized-kind fallback', () => {
-  // A kind added to AdvisoryWarningSchema before this relay learns its
-  // family — the closed union requires the cast.
   const future = { kind: 'future-advisory-kind', detail: 42 } as unknown as AdvisoryWarning;
 
   test('formatAdvisoryLines emits a generic line instead of dropping the entry', () => {

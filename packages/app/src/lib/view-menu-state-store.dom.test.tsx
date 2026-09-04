@@ -36,8 +36,6 @@ describe('view-menu-state store', () => {
     act(() => setViewMenuState({ sidebarVisible: true }));
     const afterWrite = result.current;
     rerender();
-    // No write between renders → same snapshot reference (useSyncExternalStore
-    // relies on this to skip re-renders).
     expect(result.current).toBe(afterWrite);
 
     act(() => setViewMenuState({ sidebarVisible: false }));

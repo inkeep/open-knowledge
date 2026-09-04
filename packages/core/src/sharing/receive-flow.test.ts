@@ -96,14 +96,12 @@ describe('findRecentProjectsForRepo', () => {
   });
 
   test('a same-owner/repo clone on a different host does NOT match (no cross-host collision)', () => {
-    // A GHES acme/kb share must never resolve to a github.com acme/kb clone.
     const githubClone = recent({
       path: '/gh',
       gitRemoteUrl: 'https://github.com/acme/kb.git',
     });
     const ghesExpected = { host: 'ghes.acme.test', owner: 'acme', repo: 'kb' };
     expect(findRecentProjectsForRepo([githubClone], ghesExpected)).toEqual([]);
-    // ...and the GHES clone matches the GHES share.
     const ghesClone = recent({
       path: '/ghes',
       gitRemoteUrl: 'https://ghes.acme.test/acme/kb.git',
@@ -141,12 +139,6 @@ describe('findRecentProjectsForRepo', () => {
   });
 
   test('SSH-form stored URL misses match — falls through to clone / locate', () => {
-    // Pre-condition: the open-time backfill (readCanonicalGitHubRemoteUrl)
-    // canonicalizes to the https form, so a properly-backfilled
-    // RecentProject never reaches this state. But the gap exists if a
-    // RecentProject was persisted BEFORE backfill — the URL is the raw
-    // SSH form (`git@github.com:owner/repo.git`) and the canonical https
-    // compare misses. Pin the silent fall-through behavior.
     const r = recent({
       path: '/x',
       gitRemoteUrl: 'git@github.com:inkeep/open-knowledge.git',

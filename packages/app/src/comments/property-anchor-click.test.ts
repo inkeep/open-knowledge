@@ -1,12 +1,3 @@
-/**
- * Which thread a caret in a property value lands on.
- *
- * The body answers this with ProseMirror positions; a `<textarea>` has only an
- * offset into its own string, so the matching is done here and this is where it
- * is pinned. Same two rules the body's `handleClick` follows: a hit has to be
- * inside the range, and the narrowest covering thread wins.
- */
-
 import { describe, expect, test } from 'vitest';
 import { placeValueThreads, threadAtValueOffset } from './property-anchor-click';
 import type { CommentThread } from './types';
@@ -58,9 +49,7 @@ describe('threadAtValueOffset', () => {
 
   test('the narrowest covering thread wins', () => {
     const threads = [thread({ id: 'whole', anchor: null }), thread({ id: 'passage' })];
-    // Inside the passage: the specific thread, not the field-wide one.
     expect(threadAtValueOffset(threads, 'cuisine', VALUE, 8)).toBe('passage');
-    // Outside it: only the field-wide one is left.
     expect(threadAtValueOffset(threads, 'cuisine', VALUE, 1)).toBe('whole');
   });
 
@@ -77,8 +66,6 @@ describe('threadAtValueOffset', () => {
 
 describe('placeValueThreads', () => {
   test('stale offsets fall back to searching the value', () => {
-    // The reader edited ahead of the passage, so the stored offsets no longer
-    // point at it — the same "position is a hint" rule the reveal path follows.
     const shifted = thread({
       anchor: { quote: 'American', prefix: '', suffix: '', start: 99, end: 107 },
     });
@@ -96,8 +83,6 @@ describe('placeValueThreads', () => {
   });
 
   test('two rows sharing a key are separated by their values', () => {
-    // `revealPropertyValueRange` walks candidate rows and lets the value settle
-    // which one it meant; this is the same rule read from the other direction.
     const onName = thread({
       id: 'onName',
       target: { kind: 'property', key: 'author', path: ['name'] },

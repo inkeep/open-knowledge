@@ -760,7 +760,7 @@ jobs:
             # marker unwritten so the next tick tries again.
             if ! payload="$(node .github/scripts/bug-lane-refusal-payload.mjs --input "$INPUT")"; then
               echo "::warning::bug-lane: could not compose the refusal page; falling back to a plain message."
-              payload="$(jq -nc --arg t "⛔ Bug lane refused ${FIX_REFS} (${VERDICT}) over ${STABLE}. ${RUN_URL}" '{text: $t}')"
+              payload="$(jq -nc --arg t "Bug lane: ${FIX_REFS} did not ship in the fast lane (${VERDICT}) over ${STABLE}. ${RUN_URL}" '{text: $t}')"
             fi
             if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
               delivered=true

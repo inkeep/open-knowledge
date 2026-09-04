@@ -3,12 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-/**
- * The descendant-project gate memoizes its answer per directory. A probe that
- * THREW did not answer — caching it as "not a project" would admit a real
- * descendant project's content into this project's index for the life of the
- * filter, and nothing retries.
- */
 const probe = vi.hoisted(() => ({ throwFor: null as string | null }));
 
 vi.mock('./fs/find-project-root.ts', async (importOriginal) => {
@@ -48,8 +42,6 @@ describe('descendant-project probe failures', () => {
     probe.throwFor = nested;
     expect(filter.isDirExcluded('nested')).toBe(false);
 
-    // The probe answers on the next call: the descendant is recognized without
-    // an ignore rebuild or a fresh filter.
     expect(filter.isDirExcluded('nested')).toBe(true);
     expect(filter.isExcluded('nested/inside.md')).toBe(true);
   });

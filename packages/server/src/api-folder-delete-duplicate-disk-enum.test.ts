@@ -1,24 +1,3 @@
-/**
- * Folder delete and duplicate conflict pre-checks must enumerate descendant
- * docs from disk, NOT the in-memory file index (same root cause as
- * the folder-rename bug). The chokidar watcher populates the
- * index asynchronously, so right after a `write_document` create it lags
- * on-disk truth. Reading it in these handlers caused:
- *
- *   - delete-path (folder): an empty `deletedDocNames` → `captureAndCloseDocuments`
- *     and the `recentlyRemovedDocs` population were skipped while `rmSync` still
- *     removed the directory — orphaning the in-memory Y.Docs (silent data loss).
- *   - duplicate-path (folder): the conflict gate was silently bypassed for
- *     freshly-created children, so a conflicted child could be copied with its
- *     `<<<<<<<` marker bytes intact.
- *
- * These tests force the bug state deterministically with `getFileIndex: () =>
- * new Map()` (a permanently-empty index) while the docs exist on disk, then
- * assert the DOWNSTREAM side effects — not merely that enumeration found the
- * docs. Asserting enumeration alone would pass even if the cleanup / gate were
- * skipped; the bug is precisely those skipped side effects.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -125,7 +104,6 @@ describe('folder delete enumerates descendant docs from disk', () => {
         },
       } as unknown as Options['sessionManager'],
       contentDir,
-      // The crux: a permanently-empty file index reproduces the watcher lag.
       getFileIndex: () => new Map(),
       recentlyRemovedDocs,
     });
@@ -137,18 +115,13 @@ describe('folder delete enumerates descendant docs from disk', () => {
 
     expect(status).toBe(200);
 
-    // Enumeration found every descendant (extension-stripped, sorted).
     expect((structured.deletedDocNames as string[]).slice().sort()).toEqual([
       'del-folder/deep/leaf',
       'del-folder/note',
     ]);
 
-    // Directory physically removed.
     expect(existsSync(join(contentDir, 'del-folder'))).toBe(false);
 
-    // DOWNSTREAM side effects fired — the actual data-loss mechanism. With the
-    // lagging-index bug `deletedDocNames` was empty, so these were skipped
-    // while the directory still vanished, orphaning the in-memory Y.Docs.
     expect(closedDocs.slice().sort()).toEqual(['del-folder/deep/leaf', 'del-folder/note']);
     expect(recentlyRemovedDocs.has('del-folder/note')).toBe(true);
     expect(recentlyRemovedDocs.get('del-folder/note')?.kind).toBe('deleted');
@@ -167,11 +140,6 @@ describe('folder delete enumerates descendant docs from disk', () => {
       '>>>>>>> branch',
       '',
     ].join('\n');
-    // A `.mdx` child specifically: the disk walk's `registerDocExtension` side
-    // effect must run for the conflict gate to reconstruct `page.mdx` (not the
-    // `.md` default) and match the ConflictStore entry. Without it the gate
-    // would silently let the conflicted child be deleted, discarding in-flight
-    // resolution state.
     seed(contentDir, 'del-folder/page.mdx', conflictBody);
 
     const closedDocs: string[] = [];
@@ -199,8 +167,6 @@ describe('folder delete enumerates descendant docs from disk', () => {
     expect(status).toBe(409);
     expect(structured.type).toBe('urn:ok:error:doc-in-conflict');
 
-    // The gate fired BEFORE any capture/close or the disk delete — the
-    // directory and its in-flight resolution state are untouched.
     expect(existsSync(join(contentDir, 'del-folder/page.mdx'))).toBe(true);
     expect(closedDocs).toEqual([]);
   });
@@ -229,12 +195,7 @@ describe('folder duplicate conflict gate enumerates from disk', () => {
         closeAllForDoc: async () => {},
       } as unknown as Options['sessionManager'],
       contentDir,
-      // The crux: a permanently-empty file index reproduces the watcher lag.
       getFileIndex: () => new Map(),
-      // The conflict lives in the ConflictStore (the dual-source fallback for
-      // docs evicted from / never loaded into memory) keyed by the on-disk
-      // file path. The disk walk both enumerates the child AND registers its
-      // `.md` extension so the gate reconstructs the matching `child.md` path.
       getSyncEngine: (() => ({
         getConflicts: () => [{ file: 'dup-folder/child.md' }],
       })) as unknown as Options['getSyncEngine'],
@@ -248,8 +209,6 @@ describe('folder duplicate conflict gate enumerates from disk', () => {
     expect(status).toBe(409);
     expect(structured.type).toBe('urn:ok:error:doc-in-conflict');
 
-    // The gate fired BEFORE the copy — no duplicate folder was written, so the
-    // conflict marker bytes were never propagated to a new file.
     expect(countDocFiles(contentDir)).toBe(1);
   });
 
@@ -264,10 +223,6 @@ describe('folder duplicate conflict gate enumerates from disk', () => {
       '>>>>>>> branch',
       '',
     ].join('\n');
-    // The conflict store keys by the on-disk `page.mdx`. The gate only matches
-    // it if the disk walk's `registerDocExtension` ran — otherwise
-    // `getDocExtension` returns the `.md` default and the `has()` check misses,
-    // silently copying the conflicted `.mdx` child.
     seed(contentDir, 'dup-mdx/page.mdx', conflictBody);
 
     expect(countDocFiles(contentDir)).toBe(1);

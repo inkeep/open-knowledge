@@ -1,9 +1,5 @@
 import type { HandoffPayload } from './types.ts';
 
-/**
- * Path-separator-agnostic basename — core is "no Node APIs" so
- * `path.basename` is unavailable. Returns input unchanged if no separator.
- */
 function basename(p: string): string {
   const idx = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
   return idx < 0 ? p : p.substring(idx + 1);

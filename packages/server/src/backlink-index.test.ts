@@ -23,15 +23,6 @@ import {
 } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 
-// `docExtensionByName` is process-global module state in `doc-extensions.ts`,
-// populated by the file watcher's initial scan. Boot order calls
-// `BacklinkIndex.rebuildFromDisk()` BEFORE `startWatcher()`, so the registry
-// is empty at the moment we want to pin. Earlier tests in this file (380+ lines) may have registered
-// extensions for docNames the rebuild test re-uses — without an explicit
-// reset, the OLD buggy `rebuildFromDisk` (which used `getDocExtension`)
-// would have happily resolved via the leaked registry, and the RED test
-// would pass without the fix. Reset between every test for RED-by-
-// construction guarantees.
 beforeEach(() => {
   _resetDocExtensionsForTests();
 });
@@ -105,8 +96,6 @@ describe('extractWikiLinksFromMarkdown', () => {
   });
 
   test('fence-length matching: longer closing fence ends a shorter opening fence', () => {
-    // CommonMark: a closing fence must be at least as long as the opening fence.
-    // A longer closing fence is valid. A shorter closing fence does NOT close the block.
     const markdown = [
       'Before [[alpha]].',
       '````ts',
@@ -175,8 +164,6 @@ describe('extractWikiLinksFromMarkdown', () => {
   });
 
   test('backslash-escaped opening bracket suppresses wiki-link', () => {
-    // \[ escapes the first bracket; the second [ is a standalone char, so [[page]]
-    // appears as literal text in the snippet and is not extracted as a link.
     const markdown = 'Not a link: \\[[page]] but [[real]] is.\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
@@ -191,8 +178,6 @@ describe('extractWikiLinksFromMarkdown', () => {
   });
 
   test('inline code with multi-backtick delimiter: shorter run does not close span', () => {
-    // CommonMark §6.1: closing backtick string must be exactly the same length.
-    // `` `foo``bar` `` — the '``' inside does NOT close the single-backtick span.
     const markdown = 'See `foo``bar` and [[target]].\n';
 
     expect(extractWikiLinksFromMarkdown(markdown)).toEqual([
@@ -207,11 +192,6 @@ describe('extractWikiLinksFromMarkdown', () => {
   });
 
   test('long unclosed backtick run does not trigger quadratic scan', () => {
-    // Pre-fix: each opening-position retry re-scanned the rest of the line,
-    // giving O(N²) work on long unclosed runs. A 100k-char prefix in front
-    // of the backticks ensures the line is not detected as a fenced-code
-    // opener. Wall-time bound generously sized so CI variance can't flake;
-    // the unfixed implementation took >5 s for 50k backticks on the dev box.
     const prefix = 'prefix ';
     const backticks = '`'.repeat(50_000);
     const markdown = `${prefix}${backticks}\n\nSee [[target]].\n`;
@@ -286,20 +266,16 @@ describe('BacklinkIndex', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // A doc links to a skill + a template by their on-disk file paths.
       index.updateDocumentFromMarkdown(
         'work-log',
         'Touched [the skill](.ok/skills/my-skill/SKILL.md) and [the tpl](notes/.ok/templates/daily.md).\n',
       );
-      // Both are content docs now: a link resolves to the content doc name, NOT a
-      // dead `__skill__/project/<name>` or `__template__/<folder>/<name>`.
       expect(index.getBacklinks('.ok/skills/my-skill/SKILL')).toEqual([
         expect.objectContaining({ source: 'work-log' }),
       ]);
       expect(index.getBacklinks('notes/.ok/templates/daily')).toEqual([
         expect.objectContaining({ source: 'work-log' }),
       ]);
-      // The phantom synthetic paths are NOT targets.
       expect(index.getBacklinks('__skill__/project/my-skill')).toEqual([]);
       expect(index.getBacklinks('__template__/notes/daily')).toEqual([]);
     } finally {
@@ -313,8 +289,6 @@ describe('BacklinkIndex', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // A skill referencing a doc — previously skipped by the reserved-tree
-      // guard; now indexed so the skill participates in the link graph.
       index.updateDocumentFromMarkdown('__skill__/project/my-skill', 'See [[architecture]].\n');
       expect(index.getForwardLinks('__skill__/project/my-skill')).toEqual(['architecture']);
       expect(index.getBacklinks('architecture')).toEqual([
@@ -435,11 +409,6 @@ describe('BacklinkIndex', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'guides', 'deep'), { recursive: true });
     try {
-      // 'guides' and 'guides/deep' exist purely as ancestors of docs — no
-      // index doc, no page named 'guides'. Every navigating surface opens
-      // them as the folder view, so the audit must not call them dead. The
-      // sibling wiki AND markdown forms are both exempt; 'missing-folder'
-      // names no doc and no folder and stays reported.
       writeFileSync(
         join(contentDir, 'alpha.md'),
         '# Alpha\n\nSee [[guides]] and [markdown-form](./guides/deep) plus [[missing-folder]].\n',
@@ -466,8 +435,6 @@ describe('BacklinkIndex', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
-      // `assets` is asset-only: no doc beneath it, so the doc-ancestor
-      // derivation cannot see it — only the injected watcher inventory can.
       writeFileSync(join(contentDir, 'alpha.md'), '# Alpha\n\nSee [[assets]].\n', 'utf-8');
 
       const index = new BacklinkIndex({ projectDir, contentDir });
@@ -498,30 +465,19 @@ describe('BacklinkIndex', () => {
   });
 
   test('getDeadLinks does not flag a freshly-indexed target missing from the admitted set', () => {
-    // An in-session write registers the new doc as a live
-    // forward node (and its backlink edge) synchronously, but the file-watcher
-    // hasn't yet added it to the admitted set. The graph must not call a node it
-    // already holds a backlink for a dead link.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-links-fresh-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // Source links to the new target.
       index.updateDocument('report', [
         { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
       ]);
-      // The new target itself is indexed (its body parsed → a forward node),
-      // exactly as `onStoreDocument` does on the in-session write.
       index.updateDocument('evidence/new-target', []);
 
-      // Backlink edge is registered…
       expect(index.getBacklinkCount('evidence/new-target')).toBe(1);
-      // …and the admitted set (file-watcher view) lags behind, listing only the
-      // source. The new target must still NOT be reported dead.
       expect(index.getDeadLinks(['report'])).toEqual([]);
 
-      // A genuinely-missing target (referenced, never indexed) is still dead.
       index.updateDocument('report', [
         { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
         { target: 'evidence/ghost', anchor: null, snippet: 'see ghost' },
@@ -535,10 +491,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a wikilink to a dotted-filename document is recorded and is not reported dead', async () => {
-    // `acp.daemon` reads as a file named `acp` with extension `daemon` to the
-    // syntactic classifier, so index-time classification cannot tell it from an
-    // asset. The raw target is recorded regardless and the corpus decides at
-    // query time.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dotted-doc-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'notes'), { recursive: true });
@@ -557,11 +509,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('an undecided raw target stays undecided across a cache save/load', async () => {
-    // The raw flag is what keeps an asset embed out of the dead-link report,
-    // and it is carried in the snapshot rather than recomputed. If it were
-    // dropped on the way to disk the report would look right until the first
-    // restart, then fill with false positives on every vault that embeds an
-    // asset — a failure that unit-level checks of the live index cannot see.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-raw-roundtrip-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'notes'), { recursive: true });
@@ -586,10 +533,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a bare wikilink the editor reaches by basename is not reported dead', async () => {
-    // The dotted case above is decided by the raw-target filter. This is the
-    // undotted one, which classifies as a document at index time and so is
-    // never flagged raw — the audit has to resolve it through the same chain
-    // the editor uses, or it reports a link the reader can click and reach.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-bare-basename-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'research'), { recursive: true });
@@ -607,9 +550,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a bare wikilink naming no document is still reported dead', async () => {
-    // The guard rail for the test above: leniency comes from membership, so a
-    // target the corpus cannot resolve stays reported. A relaxation that
-    // silenced this would trade a false positive for a silent broken link.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-bare-missing-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'research'), { recursive: true });
@@ -629,10 +569,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('the neighborhood view admits the same documents as the whole graph', async () => {
-    // Recording wiki targets verbatim puts asset embeds in the forward index,
-    // so every reader of it has to apply the same admission or the two graph
-    // views disagree about which documents exist — the neighborhood drawing a
-    // node for `diagram.png` that the whole graph omits.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-neighborhood-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'notes'), { recursive: true });
@@ -650,10 +586,8 @@ describe('BacklinkIndex', () => {
       const neighborhood = index.getLinkGraphNeighborhood('index', 2).nodes.map((n) => n.id);
       const whole = index.getLinkGraph().nodes.map((n) => n.id);
 
-      // The embed is a document in neither view.
       expect(neighborhood).not.toContain('diagram.png');
       expect(whole).not.toContain('diagram.png');
-      // The dotted document is present in both.
       expect(neighborhood).toContain('acp.daemon');
       expect(whole).toContain('acp.daemon');
     } finally {
@@ -662,9 +596,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a markdown href is not basename-resolved by the dead-link audit', async () => {
-    // Only wiki targets get the chain. A markdown href is a path, so a wrong
-    // one must stay reported even when some other folder holds that basename —
-    // otherwise the leniency above would start hiding real mistakes.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-md-exact-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(join(contentDir, 'research'), { recursive: true });
@@ -684,9 +615,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a wiki asset embed is neither reported dead nor minted as a graph node', async () => {
-    // Recording every wiki target verbatim puts asset embeds into the graph for
-    // the first time. Without suppression every vault that embeds an asset
-    // would fill with dead links and phantom documents.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-asset-embed-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -711,8 +639,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('a dotted target becomes a graph node once its document is indexed', () => {
-    // The lookup query-time resolution reads is cached against the graph's
-    // epoch; a stale cache would leave this target suppressed forever.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dotted-late-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -733,10 +659,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('getIndexedDocNames returns one entry per indexed doc and never a referenced-but-missing target', () => {
-    // The additive existence oracle unions into `collectAdmittedDocNames`.
-    // A doc whose body was indexed is a forward node (even with zero links); a
-    // target only referenced (never indexed) lives in `state.backward` alone and
-    // must NOT appear here — otherwise the union would report a ghost as existing.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-indexed-names-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -746,8 +668,6 @@ describe('BacklinkIndex', () => {
         { target: 'evidence/new-target', anchor: null, snippet: 'see new target' },
         { target: 'evidence/ghost', anchor: null, snippet: 'see ghost' },
       ]);
-      // `report` (has links) and `evidence/new-target` (zero links) are indexed;
-      // `evidence/ghost` is only referenced.
       index.updateDocument('evidence/new-target', []);
 
       expect(new Set(index.getIndexedDocNames())).toEqual(
@@ -755,7 +675,6 @@ describe('BacklinkIndex', () => {
       );
       expect(index.getIndexedDocNames()).not.toContain('evidence/ghost');
 
-      // After delete the forward node is gone, so the name drops out.
       index.deleteDocument('evidence/new-target');
       expect(index.getIndexedDocNames()).toEqual(['report']);
     } finally {
@@ -764,10 +683,6 @@ describe('BacklinkIndex', () => {
   });
 
   test('getDeadLinks reports a target as dead again after deleteDocument removes its forward node', () => {
-    // The inverse of the freshness guard: once `deleteDocument` drops the doc
-    // from `state.forward`, the forward-check must stop suppressing the dead-link
-    // report (otherwise a deleted doc would silently swallow a real dead link —
-    // the very inversion of the bug being fixed).
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dead-after-delete-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -794,20 +709,18 @@ describe('BacklinkIndex', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // Frontmatter and the fenced decoy shift the body: a body-relative or
-      // fence-blind line count would land on the wrong line.
       const markdown = [
-        '---', // line 0
-        'title: Alpha', // line 1
-        '---', // line 2
-        '# Alpha', // line 3
-        '', // line 4
-        '```ts', // line 5
-        'const decoy = "[[ghost-wiki]] and [gone](./ghost-md.md)";', // line 6
-        '```', // line 7
-        '', // line 8
-        'See [[ghost-wiki]].', // line 9
-        'And [also gone](./ghost-md.md).', // line 10
+        '---',
+        'title: Alpha',
+        '---',
+        '# Alpha',
+        '',
+        '```ts',
+        'const decoy = "[[ghost-wiki]] and [gone](./ghost-md.md)";',
+        '```',
+        '',
+        'See [[ghost-wiki]].',
+        'And [also gone](./ghost-md.md).',
         '',
       ].join('\n');
       index.updateDocumentFromMarkdown('alpha', markdown);
@@ -819,7 +732,6 @@ describe('BacklinkIndex', () => {
       const wikiSource = deadLinks[1]?.sources[0];
       expect(wikiSource).toEqual(expect.objectContaining({ source: 'alpha', line: 9 }));
       expect(mdSource).toEqual(expect.objectContaining({ source: 'alpha', line: 10 }));
-      // Column is approximate by contract (flat-text offset) — assert presence only.
       expect(typeof wikiSource?.column).toBe('number');
       expect(typeof mdSource?.column).toBe('number');
     } finally {
@@ -871,8 +783,6 @@ describe('BacklinkIndex', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
-      // A hand-edited or corrupt cache at the CURRENT version: backward entries
-      // may omit positions or carry garbage ones.
       const cacheDir = join(projectDir, '.ok', LOCAL_DIR, 'cache', 'main');
       mkdirSync(cacheDir, { recursive: true });
       writeFileSync(
@@ -881,9 +791,6 @@ describe('BacklinkIndex', () => {
           version: 3,
           backward: {
             ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
-            // Invalid positions (hand-edited or corrupt cache) must degrade to
-            // "position unknown", not leak through to consumers — including
-            // negative and fractional numbers, which pass a bare typeof check.
             wraith: [
               { source: 'alpha', anchor: null, snippet: 'See wraith.', line: '7', column: -2 },
             ],
@@ -915,7 +822,6 @@ describe('BacklinkIndex', () => {
         ?.sources[0];
       expect(fractionalSource?.line).toBeUndefined();
 
-      // Re-indexing the source doc upgrades its entry with a position.
       index.updateDocumentFromMarkdown('alpha', 'See [[ghost]].\n');
       expect(index.getDeadLinks(['alpha'])[0]?.sources[0]).toEqual(
         expect.objectContaining({ source: 'alpha', line: 0 }),
@@ -930,11 +836,6 @@ describe('BacklinkIndex', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
-      // `skillRefs` was added to the cache as an optional field without bumping
-      // the version, so a v1 cache loaded fine and deserialized it to empty.
-      // With mtimes matching disk the reconcile re-parses nothing, so
-      // `recordSkillRefs` never runs and every `/skill-name` edge a project
-      // skill authors stays missing for the life of the cache.
       const analyze = '.agents/skills/analyze/SKILL';
       const research = '.agents/skills/research/SKILL';
       mkdirSync(join(contentDir, '.agents', 'skills', 'analyze'), { recursive: true });
@@ -954,8 +855,6 @@ describe('BacklinkIndex', () => {
           backward: {},
           forward: { [analyze]: [], [research]: [] },
           externalForward: {},
-          // No skillRefs key — exactly what a pre-skillRefs cache looks like.
-          // mtimes are filled in below so the reconcile would skip both files.
           mtimes: {},
         }),
         'utf-8',
@@ -964,8 +863,6 @@ describe('BacklinkIndex', () => {
       const index = new BacklinkIndex({ projectDir, contentDir });
       expect(await index.loadFromDisk()).toBe(false);
 
-      // The caller's fallback on a rejected load: a cold rebuild re-parses both
-      // files, so the ref edge is present.
       await index.rebuildFromDisk();
       expect(index.getForwardLinks(analyze)).toEqual([research]);
       expect(index.getBacklinks(research)).toEqual([
@@ -981,12 +878,6 @@ describe('BacklinkIndex', () => {
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
     try {
-      // The exact hazard SNAPSHOT_VERSION exists for: a cache written before
-      // the version field existed, keying a doc→template edge under the
-      // retired `__template__/…` namespace. Served as-is, that key satisfies
-      // neither the admitted set nor `state.forward`, so it would surface as a
-      // false dead link while the real template doc reads as a false orphan —
-      // and the mtime reconcile never heals it while the source is untouched.
       const templateDoc = 'notes/.ok/templates/daily';
       mkdirSync(join(contentDir, 'notes', '.ok', 'templates'), { recursive: true });
       writeFileSync(
@@ -1005,8 +896,6 @@ describe('BacklinkIndex', () => {
           },
           forward: { alpha: ['__template__/notes/daily'] },
           externalForward: {},
-          // An mtime snapshot matching disk would make the reconcile a no-op —
-          // the exact condition under which the stale key would persist.
           mtimes: {},
         }),
         'utf-8',
@@ -1015,8 +904,6 @@ describe('BacklinkIndex', () => {
       const index = new BacklinkIndex({ projectDir, contentDir });
       expect(await index.loadFromDisk()).toBe(false);
 
-      // The caller's fallback on a rejected load: a clean cold rebuild keys the
-      // edge under the live content name, with no residue of the retired one.
       await index.rebuildFromDisk();
       expect(index.getBacklinks(templateDoc)).toEqual([
         expect.objectContaining({ source: 'alpha' }),
@@ -1107,11 +994,6 @@ describe('BacklinkIndex', () => {
     }
   });
 
-  // Boot order: server-factory.ts calls `backlinkIndex.rebuildFromDisk()` BEFORE
-  // `startWatcher()`, so the file-watcher's `docExtensionByName` registry is empty.
-  // `getDocExtension` defaults to `.md` for unregistered docNames, which would
-  // ENOENT every `.mdx` file. This test pins the cold-start behavior: rebuild
-  // must walk paths directly and use the observed extension, not the registry.
   test('rebuildFromDisk indexes .mdx files at cold-start (empty extension registry)', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-rebuild-mdx-'));
     const contentDir = join(projectDir, 'content');
@@ -1134,20 +1016,12 @@ describe('BacklinkIndex', () => {
     }
   });
 
-  // Pins the dedup filter in `rebuildFromDisk` (the `seen` Set that filters
-  // `rawDocs`). When both `foo.md` and `foo.mdx` exist on disk,
-  // `stripDocExtension` maps both to docName `"foo"`. Without dedup,
-  // `rebuildFromDisk` would index the same docName twice, with the second
-  // pass overwriting the first's links. The sibling `reconcileWithDisk` path
-  // does the same first-wins dedup — this test pins the
-  // matching contract for `rebuildFromDisk`.
   test('rebuildFromDisk first-wins dedup when both .md and .mdx exist for the same docName', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-dedup-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
 
     try {
-      // Two files map to docName "alpha" with different link targets.
       writeFileSync(join(contentDir, 'alpha.md'), '# Alpha\n\nSee [[beta]].\n', 'utf-8');
       writeFileSync(join(contentDir, 'alpha.mdx'), '# Alpha\n\nSee [[gamma]].\n', 'utf-8');
       writeFileSync(join(contentDir, 'beta.md'), '# Beta\n', 'utf-8');
@@ -1156,13 +1030,8 @@ describe('BacklinkIndex', () => {
       const index = new BacklinkIndex({ projectDir, contentDir });
       await index.rebuildFromDisk();
 
-      // Exactly one of the two `alpha` files is indexed (first walked wins).
-      // Forward-link target set has length 1 — without the dedup filter, both
-      // would be processed and the count would be 2 (or contain duplicates).
       const fwd = index.getForwardLinks('alpha');
       expect(fwd).toHaveLength(1);
-      // The winning file links to either `beta` or `gamma` — both are valid
-      // outcomes (walk order is filesystem-dependent), but exactly one wins.
       expect(['beta', 'gamma']).toContain(fwd[0]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -1285,16 +1154,11 @@ describe('BacklinkIndex', () => {
   });
 });
 
-// ── structural skill-bundle edges ──────────────────────────────────────────────
-
 describe('BacklinkIndex structural skill-bundle edges', () => {
   const SKILL = '.ok/skills/demo/SKILL';
   const REF = '.ok/skills/demo/references/notes';
 
   test('IN-PLACE bundles (editor-dir shapes) draw the same structural edges', () => {
-    // The store-retirement regression pin: after skills moved in place, the
-    // pairing minted the retired `.ok/skills/<name>/SKILL` shape and every
-    // in-place bundle silently lost its edges. Pairing is same-root now.
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-backlinks-skill-inplace-'));
     const contentDir = join(projectDir, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -1306,8 +1170,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
       index.updateDocumentFromMarkdown(ref, '# Notes\n\nNo links.\n');
       expect(index.getForwardLinks(skill)).toEqual([ref]);
       expect(index.getBacklinks(ref)).toEqual([{ source: skill, anchor: null, snippet: null }]);
-      // Roots never cross: a same-name bundle in ANOTHER editor dir is a
-      // different physical bundle and draws no edge to this one.
       const otherRef = '.claude/skills/demo/references/other';
       index.updateDocumentFromMarkdown(otherRef, 'Standalone.\n');
       expect(index.getForwardLinks(skill)).toEqual([ref]);
@@ -1326,23 +1188,17 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
       const analyze = '.agents/skills/analyze/SKILL';
       const research = '.agents/skills/research/SKILL';
       index.updateDocumentFromMarkdown(analyze, 'For reports use `/research` or /research.\n');
-      // Referenced skill not indexed yet → no edge (no dead-ref graph noise).
       expect(index.getForwardLinks(analyze)).toEqual([]);
-      // The moment the referenced skill is indexed, the edge appears — read-time
-      // resolution, no re-parse of the referencing doc.
       index.updateDocumentFromMarkdown(research, '# Research skill\n');
       expect(index.getForwardLinks(analyze)).toEqual([research]);
       expect(index.getBacklinks(research)).toEqual([
         { source: analyze, anchor: null, snippet: null },
       ]);
-      // Stop-listed roots and plain prose never fabricate edges.
       index.updateDocumentFromMarkdown(analyze, 'Files under /tmp and half/way.\n');
       expect(index.getForwardLinks(analyze)).toEqual([]);
-      // SAME-SCOPE ONLY: a project ref never resolves to a global bundle node.
       index.registerGlobalSkillBundleNode('__skill__/global/deploy/SKILL');
       index.updateDocumentFromMarkdown(analyze, 'Use /deploy.\n');
       expect(index.getForwardLinks(analyze)).toEqual([]);
-      // Deleting the referenced skill removes the edge again.
       index.updateDocumentFromMarkdown(analyze, 'Use /research.\n');
       expect(index.getForwardLinks(analyze)).toEqual([research]);
       index.deleteDocument(research);
@@ -1358,26 +1214,20 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // SKILL body mentions the reference only as a backticked path (not a link);
-      // the reference body has no link back. Authored edges would be zero.
       index.updateDocumentFromMarkdown(SKILL, 'See `references/notes.md` for detail.\n');
       index.updateDocumentFromMarkdown(REF, '# Notes\n\nStandalone body, no links.\n');
 
-      // Backlinks both directions via the structural edge.
       expect(index.getBacklinks(REF)).toEqual([{ source: SKILL, anchor: null, snippet: null }]);
       expect(index.getBacklinks(SKILL)).toEqual([{ source: REF, anchor: null, snippet: null }]);
-      // Forward links surface the undirected partner both ways.
       expect(index.getForwardLinks(SKILL)).toEqual([REF]);
       expect(index.getForwardLinks(REF)).toEqual([SKILL]);
       expect(index.getBacklinkCount(REF)).toBe(1);
 
-      // Graph neighborhood connects them.
       const neighborhood = index.getLinkGraphNeighborhood(SKILL, 1);
       expect(new Set(neighborhood.nodes.map((n) => n.id))).toEqual(new Set([REF, SKILL]));
       expect(neighborhood.links).toContainEqual({ source: SKILL, target: REF });
       expect(neighborhood.links).toHaveLength(1);
 
-      // Reference is NOT orphaned despite having no authored links.
       expect(index.getOrphans([SKILL, REF])).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -1390,8 +1240,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // Bundle-relative wiki-link resolves to the ref doc (authored edge) AND
-      // the structural edge points at the same ref — must not double-count.
       index.updateDocumentFromMarkdown(SKILL, 'See [[references/notes]].\n');
       index.updateDocumentFromMarkdown(REF, '# Notes\n');
 
@@ -1399,7 +1247,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
       const backlinks = index.getBacklinks(REF);
       expect(backlinks).toHaveLength(1);
       expect(backlinks[0]?.source).toBe(SKILL);
-      // The authored wiki-link's snippet wins over the structural null.
       expect(backlinks[0]?.snippet).toBe('See references/notes.');
 
       const neighborhood = index.getLinkGraphNeighborhood(SKILL, 1);
@@ -1415,8 +1262,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
     mkdirSync(contentDir, { recursive: true });
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
-      // Two ordinary docs in the same folder, plus a doc that imitates the
-      // references shape but is NOT under `.ok/skills/<name>/`.
       index.updateDocumentFromMarkdown('notes/alpha', '# Alpha\n');
       index.updateDocumentFromMarkdown('notes/beta', '# Beta\n');
       index.updateDocumentFromMarkdown('notes/references/x', '# X\n');
@@ -1424,7 +1269,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
       expect(index.getBacklinks('notes/beta')).toEqual([]);
       expect(index.getForwardLinks('notes/alpha')).toEqual([]);
       expect(index.getBacklinks('notes/references/x')).toEqual([]);
-      // All three are orphans — co-membership in a normal folder draws no edge.
       expect(index.getOrphans(['notes/alpha', 'notes/beta', 'notes/references/x'])).toEqual([
         'notes/alpha',
         'notes/beta',
@@ -1444,9 +1288,7 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
     try {
       const index = new BacklinkIndex({ projectDir, contentDir });
       index.updateDocumentFromMarkdown(SKILL, '# Demo\n');
-      // A script bundle file is not a content graph node — no structural edge.
       index.updateDocumentFromMarkdown('.ok/skills/demo/scripts/run', '# run\n');
-      // A reference under a DIFFERENT skill must not connect to demo's SKILL.
       index.updateDocumentFromMarkdown('.ok/skills/other/references/notes', '# other\n');
 
       expect(index.getForwardLinks(SKILL)).toEqual([]);
@@ -1468,7 +1310,6 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
       expect(index.getForwardLinks(SKILL)).toEqual([REF]);
 
       index.deleteDocument(REF);
-      // The reference is no longer an indexed node, so the SKILL has no partner.
       expect(index.getForwardLinks(SKILL)).toEqual([]);
       expect(index.getBacklinks(SKILL)).toEqual([]);
     } finally {
@@ -1497,11 +1338,7 @@ describe('BacklinkIndex structural skill-bundle edges', () => {
   });
 });
 
-// ── GLOBAL structural skill-bundle edges ────────────────────────────────────────
-
 describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
-  // Global skills live at `<home>/.ok/skills/<name>/`, OUTSIDE contentDir; their
-  // bundle docs keep the managed-artifact namespace.
   const G_SKILL = '__skill__/global/demo';
   const G_REF = '__skill__/global/demo/references/notes';
 
@@ -1540,20 +1377,13 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
   test('NEGATIVE CONTROL: a global reference body NEVER links into the project KB', () => {
     const { index, projectDir } = makeIndex();
     try {
-      // A real project doc the global reference body "links" to.
       index.updateDocumentFromMarkdown('architecture', '# Architecture\n');
       index.registerGlobalSkillBundleNode(G_SKILL);
-      // The reference flows through the body-parsing entry point — the within-
-      // bundle guard must drop its authored `[[architecture]]` edge entirely.
       index.updateDocumentFromMarkdown(G_REF, 'See [[architecture]] and [[notes2]].\n');
 
-      // No cross-boundary edge: the project doc gains no backlink from the global
-      // reference, and the global reference forwards ONLY to its own SKILL.
       expect(index.getBacklinks('architecture')).toEqual([]);
       expect(index.getForwardLinks(G_REF)).toEqual([G_SKILL]);
-      // The phantom KB-wide `notes2` target was never created.
       expect(index.getBacklinks('notes2')).toEqual([]);
-      // And the SKILL likewise stays within its own bundle.
       index.updateDocumentFromMarkdown(G_SKILL, 'Body links [[architecture]].\n');
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
       expect(index.getBacklinks('architecture')).toEqual([]);
@@ -1571,8 +1401,6 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
 
       index.renameDocument(G_REF, G_REF2, '# Notes\n');
-      // renameDocument body-parses the new name, but the within-bundle guard keeps
-      // it node-only, so only the structural edge moves.
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF2]);
       expect(index.getBacklinks(G_REF)).toEqual([]);
 
@@ -1592,12 +1420,10 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
       index.registerGlobalSkillBundleNode(G_SKILL);
       index.registerGlobalSkillBundleNode(G_REF);
 
-      // Each SKILL connects ONLY to its own-scope reference.
       expect(index.getForwardLinks('.ok/skills/demo/SKILL')).toEqual([
         '.ok/skills/demo/references/notes',
       ]);
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
-      // The global reference never reports the project SKILL as a partner.
       expect(index.getBacklinks(G_REF)).toEqual([{ source: G_SKILL, anchor: null, snippet: null }]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -1612,7 +1438,6 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
     writeFileSync(join(demoDir, 'SKILL.md'), '---\nname: demo\n---\n# Demo\n');
     writeFileSync(join(demoDir, 'references', 'notes.md'), '# Notes\n');
     writeFileSync(join(demoDir, 'references', 'sub', 'deep.md'), '# Deep\n');
-    // scripts/** are never graph nodes.
     mkdirSync(join(demoDir, 'scripts'), { recursive: true });
     writeFileSync(join(demoDir, 'scripts', 'run.sh'), '#!/bin/sh\n');
     try {
@@ -1621,14 +1446,11 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
       const G_REF_DEEP = '__skill__/global/demo/references/sub/deep';
       expect(new Set(index.getForwardLinks(G_SKILL))).toEqual(new Set([G_REF, G_REF_DEEP]));
       expect(index.getBacklinks(G_REF)).toEqual([{ source: G_SKILL, anchor: null, snippet: null }]);
-      // The script produced no node.
       expect(index.getBacklinks('__skill__/global/demo/scripts/run')).toEqual([]);
 
-      // Idempotent: re-running yields the same graph.
       await index.ingestGlobalSkillBundles([homeSkills]);
       expect(new Set(index.getForwardLinks(G_SKILL))).toEqual(new Set([G_REF, G_REF_DEEP]));
 
-      // Pruning: a deleted reference disappears on the next ingest.
       rmSync(join(demoDir, 'references', 'notes.md'));
       await index.ingestGlobalSkillBundles([homeSkills]);
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF_DEEP]);
@@ -1653,14 +1475,11 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
       index.registerGlobalSkillBundleNode(G_REF);
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
 
-      // A full content rebuild replaces state and drops the out-of-contentDir
-      // global nodes — they are restored by the paired re-ingest.
       await index.rebuildFromDisk();
       expect(index.getForwardLinks(G_SKILL)).toEqual([]);
       await index.ingestGlobalSkillBundles([homeSkills]);
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
 
-      // reconcileWithDisk must NOT delete global nodes as "missing from content".
       await index.reconcileWithDisk();
       expect(index.getForwardLinks(G_SKILL)).toEqual([G_REF]);
     } finally {
@@ -1668,8 +1487,6 @@ describe('BacklinkIndex GLOBAL structural skill-bundle edges', () => {
     }
   });
 });
-
-// ── resolveMarkdownHref ────────────────────────────────────────────────────────
 
 describe('resolveMarkdownHref', () => {
   test('resolves same-directory relative link', () => {
@@ -1722,8 +1539,6 @@ describe('resolveMarkdownHref', () => {
     expect(resolveMarkdownHref('../../../way-out.md', 'deep/a/b')).toBeNull();
   });
 });
-
-// ── extractMarkdownLinksFromMarkdown ──────────────────────────────────────────
 
 describe('extractMarkdownLinksFromMarkdown', () => {
   test('extracts relative inline markdown links', () => {
@@ -1834,7 +1649,6 @@ describe('extractMarkdownLinksFromMarkdown', () => {
   });
 
   test('does not double-count wiki-links that precede markdown links', () => {
-    // [[wiki]] and [md](./other.md) in same line — wiki link is processed first
     const md = '[[wiki]] links to [markdown](./other.md).';
     const mdLinks = extractMarkdownLinksFromMarkdown(md, 'notes');
     expect(mdLinks.map((l) => l.target)).toEqual(['other']);
@@ -1851,8 +1665,6 @@ describe('extractMarkdownLinksFromMarkdown', () => {
     ]);
   });
 });
-
-// ── BacklinkIndex: markdown link integration ───────────────────────────────────
 
 describe('BacklinkIndex with markdown links', () => {
   test('updateDocumentFromMarkdown indexes markdown links alongside wiki links', () => {
@@ -1928,11 +1740,9 @@ describe('BacklinkIndex with markdown links', () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'backlinks-dedup-'));
     try {
       const index = new BacklinkIndex({ projectDir: tmpDir, contentDir: tmpDir });
-      // Both [[target]] and [text](./target.md) point to "target"
       const md = '[[target]] and [text](./target.md).';
       index.updateDocumentFromMarkdown('source', md);
       const backlinks = index.getBacklinks('target');
-      // Only one backlink entry for "source" (no duplicate)
       expect(backlinks.filter((b) => b.source === 'source')).toHaveLength(1);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -1999,7 +1809,6 @@ describe('reconcileWithDisk', () => {
       await index.rebuildFromDisk();
       await index.saveToDisk();
 
-      // Load the cache into a fresh index and reconcile — no files changed.
       const reloaded = new BacklinkIndex({ projectDir, contentDir });
       expect(await reloaded.loadFromDisk()).toBe(true);
       const diff = await reloaded.reconcileWithDisk();
@@ -2011,7 +1820,6 @@ describe('reconcileWithDisk', () => {
         changedDocs: [],
       });
 
-      // Backlinks should still be intact after a no-op reconcile.
       expect(reloaded.getBacklinks('beta')).toEqual([
         { source: 'alpha', anchor: null, snippet: 'Links to beta.' },
       ]);
@@ -2032,11 +1840,6 @@ describe('reconcileWithDisk', () => {
       await index.rebuildFromDisk();
       await index.saveToDisk();
 
-      // Simulate an offline edit. reconcileWithDisk detects changes by exact
-      // mtime comparison, so the rewrite must land at a distinct mtime. A fixed
-      // sleep is racy: when filesystem mtime resolution is coarser than the
-      // interval, cached and on-disk mtimes stay equal and reconcile skips the
-      // file. Force a deterministically-later mtime instead.
       const alphaPath = join(contentDir, 'alpha.md');
       writeFileSync(alphaPath, 'Links to [[gamma]].');
       const bumped = new Date(statSync(alphaPath).mtimeMs + 2000);
@@ -2051,7 +1854,6 @@ describe('reconcileWithDisk', () => {
       expect(reloaded.getBacklinks('gamma')).toEqual([
         { source: 'alpha', anchor: null, snippet: 'Links to gamma.' },
       ]);
-      // Old link should be gone
       expect(reloaded.getBacklinks('beta')).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -2070,7 +1872,6 @@ describe('reconcileWithDisk', () => {
       await index.rebuildFromDisk();
       await index.saveToDisk();
 
-      // Offline: add a new file and delete beta
       writeFileSync(join(contentDir, 'gamma.md'), 'Links to [[alpha]].');
       rmSync(join(contentDir, 'beta.md'));
 
@@ -2079,15 +1880,11 @@ describe('reconcileWithDisk', () => {
       const diff = await reloaded.reconcileWithDisk();
       expect(diff.added).toBe(1);
       expect(diff.deleted).toBe(1);
-      // The deleted-while-down doc is surfaced by name so boot can arm the
-      // removal guard against stale-client resurrection.
       expect(diff.deletedDocNames).toEqual(['beta']);
 
-      // gamma was indexed and links to alpha
       expect(reloaded.getBacklinks('alpha')).toEqual([
         { source: 'gamma', anchor: null, snippet: 'Links to alpha.' },
       ]);
-      // beta's own forward-link entry was removed
       expect(reloaded.getForwardLinks('beta')).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
@@ -2114,8 +1911,6 @@ describe('reconcileWithDisk', () => {
   });
 });
 
-// ── computeBrokenOutboundLinks (write-time link validation) ───────────────
-
 describe('computeBrokenOutboundLinks', () => {
   test('returns [] when every outbound link resolves (AC2.1)', () => {
     const md = 'See [sibling](./real.md) and [root](/docs/guide.md) and [[Existing]].';
@@ -2124,10 +1919,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('a folder oracle exempts wiki and markdown links to existing folders', () => {
-    // `assets` holds no docs (asset-only), so it is invisible to `admitted`;
-    // only the injected watcher-backed oracle can prove it exists. Both link
-    // forms navigate to the folder view, so neither is broken. A folder the
-    // oracle does not know stays reported.
     const md = 'See [[assets]] and [dir](./assets) and [[missing-folder]].';
     const folderExists = (folderPath: string) => folderPath === 'assets';
     expect(computeBrokenOutboundLinks(md, 'notes', new Set(), undefined, folderExists)).toEqual<
@@ -2137,7 +1928,6 @@ describe('computeBrokenOutboundLinks', () => {
 
   test('flags the `./`-onto-content-root doubling footgun as no-such-doc (AC2.2)', () => {
     const md = 'See [tasks](./wiki/modules/tasks).';
-    // Authored from inside `wiki/`, so `./wiki/...` doubles to `wiki/wiki/...`.
     expect(computeBrokenOutboundLinks(md, 'wiki/OVERVIEW', new Set())).toEqual<
       BrokenOutboundLink[]
     >([
@@ -2164,10 +1954,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('an empty-href markdown construct `[x]()` is not a link (mirrors the indexer)', () => {
-    // `MD_LINK_RE` requires a non-empty href, so `[x]()` is literal text, not a
-    // link — and the dead-link graph never tracks it. brokenLinks stays
-    // consistent with that model rather than inventing a link the rest of the
-    // system doesn't see.
     expect(computeBrokenOutboundLinks('See [x]() here.', 'notes/a', new Set())).toEqual([]);
   });
 
@@ -2187,11 +1973,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('resolves a path-qualified wiki-link (`[[folder/slug|Alias]]`) vault-root, not source-dir-relative', () => {
-    // The entity-vault / GBrain dossier form. The `|Alias` and any `#anchor`
-    // are stripped to the target `folder/slug`, which resolves against the
-    // content root (NOT the source doc's dir) — so a dossier link from a
-    // subfolder note resolves correctly. A markdown `[x](folder/slug.md)` from
-    // the same note would resolve source-dir-relative instead.
     const md = 'Met [[people/alice-chen|Alice Chen]]; stub [[people/bob-jones|Bob]].';
     const admitted = new Set(['people/alice-chen']);
     expect(computeBrokenOutboundLinks(md, 'meetings/2026-01-01', admitted)).toEqual<
@@ -2200,10 +1981,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('a bare-name wiki-link resolving to a subfolder doc is not broken; an unresolvable one is', () => {
-    // The editor navigates `[[analysis]]` to `research/analysis` by basename,
-    // so reporting it broken on write contradicts what the reader sees. The
-    // ghost in the same body is the control: leniency must not silence a name
-    // that resolves to nothing.
     const md = 'See [[analysis]] and [[nowhere]].';
     const admitted = new Set(['research/analysis', 'notes/a']);
     expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual<BrokenOutboundLink[]>([
@@ -2212,10 +1989,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('a dotted-filename document target is not reported broken', () => {
-    // `acp.daemon` reads as extension `daemon` to the classifier, so the strict
-    // check never saw it. Now it promotes to a doc on membership — and the
-    // existence question has to be asked of the resolution chain, not of the
-    // raw key: `notes/acp.daemon` is what exists, `acp.daemon` is what's written.
     const md = 'See [[acp.daemon]] here.';
     const admitted = new Set(['notes/acp.daemon', 'notes/a']);
     expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual([]);
@@ -2226,17 +1999,11 @@ describe('computeBrokenOutboundLinks', () => {
       'Embed ![[diagram.png]] and ![[chart.v2.png]].',
       'Link [[meeting.pdf]] and [[report.v3.xlsx]].',
     ].join('\n');
-    // `meeting.pdf` is the docName a `meeting.pdf.md` file produces, so it
-    // promotes and resolves; the other three name nothing. Neither class may
-    // enter the response — minting a broken link for an embed that resolves to
-    // nothing would fire on every vault that embeds assets.
     const admitted = new Set(['meeting.pdf', 'notes/a']);
     expect(computeBrokenOutboundLinks(md, 'notes/a', admitted)).toEqual([]);
   });
 
   test('resolving many wiki links scans the corpus a bounded number of times', () => {
-    // The slug and basename maps are corpus-wide. Building them per link would
-    // be correct and quadratic, and every other test here would still pass.
     class ScanCountingSet extends Set<string> {
       scans = 0;
       [Symbol.iterator](): SetIterator<string> {
@@ -2263,10 +2030,6 @@ describe('computeBrokenOutboundLinks', () => {
       'Image embed ![[missing.png]].',
       'Anchor [top](#section).',
     ].join('\n');
-    // No `fileExists` oracle → the `[pdf](./missing.pdf)` file link is not
-    // validated (callers without a filesystem stay pure). External URLs,
-    // markdown images (`![…]`), wiki image embeds, and anchors are always
-    // skipped regardless of the oracle.
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set())).toEqual([]);
   });
 
@@ -2294,11 +2057,6 @@ describe('computeBrokenOutboundLinks', () => {
   });
 
   test('the markdown and JSX planes of one href each keep their own resolution', () => {
-    // Identical bytes, different resolvers: the markdown link resolves
-    // doc-relative to `notes/api-spec`, the bare-doc-name Mirror src IS
-    // `api-spec` verbatim. Dedupe keyed on href alone would keep one plane's
-    // resolvedTo for the other's occurrence and point the author at the
-    // wrong file to repair.
     const md = ['See [x](api-spec).', '<Mirror src="api-spec" anchor="dep" />', ''].join('\n');
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set())).toEqual<BrokenOutboundLink[]>([
       { href: 'api-spec', resolvedTo: 'notes/api-spec', reason: 'no-such-doc' },
@@ -2308,15 +2066,8 @@ describe('computeBrokenOutboundLinks', () => {
 
   test('treats a self-link to the admitted source doc as valid', () => {
     const md = 'See [self](./a.md).';
-    // The write handler adds the just-written doc to the admitted set so a
-    // valid self-link is never falsely flagged.
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set(['notes/a']))).toEqual([]);
   });
-
-  // ── file links (assets + source files) validated against the fileExists oracle ──
-  // These mirror the real-world codebase-wiki break: a `[code](../../../src/x.py)`
-  // with one extra `../` overshoots the content root and 404s silently, invisible
-  // to both the editor red-underline and the `.md`-only link graph.
 
   const fileOracle = (existing: string[]) => {
     const set = new Set(existing);
@@ -2342,8 +2093,6 @@ describe('computeBrokenOutboundLinks', () => {
         md,
         'wiki/modules/entk',
         new Set(),
-        // Even if the file exists at the CORRECT path, the over-deep href
-        // escapes the content root, so it can never reach it.
         fileOracle(['microreservoir/entk/jacobian.py']),
       ),
     ).toEqual<BrokenOutboundLink[]>([
@@ -2453,14 +2202,7 @@ describe('extractJsxSrcRefsFromMarkdown', () => {
   });
 
   test('a >-free line of repeated tag prefixes completes within the complexity budget', () => {
-    // '<Mirror ' repeated with no closing '>' drove the earlier unanchored
-    // per-'<' scan super-linear: a fresh RegExp compile plus an O(n) slice per
-    // candidate, with '[^>]*' backtracking across the whole remainder. The
-    // shared readJsxSrcRefTagAt reader bounds the attribute window first, so
-    // this completes far inside the (deliberately generous) wall-clock
-    // budget; a failure means the scanner regressed to super-linear, not
-    // that the runner was slow.
-    const line = '<Mirror '.repeat(6400); // ~50 KB, no '>' anywhere
+    const line = '<Mirror '.repeat(6400);
     const startedAt = performance.now();
     expect(extractJsxSrcRefsFromMarkdown(line, 'notes/index')).toEqual([]);
     expect(computeBrokenOutboundLinks(line, 'notes/index', new Set())).toEqual([]);
@@ -2468,12 +2210,7 @@ describe('extractJsxSrcRefsFromMarkdown', () => {
   });
 
   test('a line whose only > is distant and unmatched completes within the complexity budget', () => {
-    // The single trailing '>' is not preceded by '/', so every '<' candidate
-    // must reject on the probe alone — without letting '[^>]*' consume, then
-    // backtrack across, the whole remainder up to that distant '>'. This is
-    // the residual super-linear shape a mere "a '>' exists somewhere" probe
-    // lets through.
-    const line = `${'<Mirror '.repeat(6400)}>`; // ~50 KB, one unmatched '>' at the end
+    const line = `${'<Mirror '.repeat(6400)}>`;
     const startedAt = performance.now();
     expect(extractJsxSrcRefsFromMarkdown(line, 'notes/index')).toEqual([]);
     expect(computeBrokenOutboundLinks(line, 'notes/index', new Set())).toEqual([]);
@@ -2525,8 +2262,6 @@ describe('BacklinkIndex with JSX src refs', () => {
       expect.objectContaining({ target: 'notes/board.excalidraw' }),
     ]);
 
-    // Oracle unavailable (file inventory not seeded) — silent, never a false
-    // dead-link report for a board the inventory simply hasn't seen yet.
     expect(makeIndex(false).getDeadLinks(['notes/embeds-only'])).toEqual([]);
   });
 
@@ -2582,9 +2317,6 @@ describe('computeBrokenOutboundLinks — JSX src refs', () => {
   });
 
   test('contentDir-escaping and scheme-valued srcs report unresolvable; empty stays silent', () => {
-    // A scheme-valued src records no graph edge (a rename can never track
-    // it), so silence here would leave the reference to go stale with zero
-    // signal — it must surface as an advisory instead.
     const md = [
       '<Excalidraw src="../../escape.excalidraw" />',
       '<Excalidraw src="https://example.com/b.excalidraw" />',

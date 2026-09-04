@@ -17,8 +17,6 @@ import {
   THEME_PLUGINS,
 } from './theme-plugins.ts';
 
-// Themes without a static, fully-authored scheme: `default` (no overlay) and
-// `custom` (built at runtime from the user's scheme).
 const NON_STATIC = new Set(['default', 'custom']);
 
 describe('THEME_PLUGINS registry', () => {
@@ -32,11 +30,9 @@ describe('THEME_PLUGINS registry', () => {
   test('every static theme carries a full base16 scheme + a toTokens behavior', () => {
     for (const theme of THEME_PLUGINS) {
       if (NON_STATIC.has(theme.id)) continue;
-      // Every static built-in forces the mode its scheme declares.
       expect(['dark', 'light']).toContain(theme.kind);
       expect(theme.kind, theme.id).toBe(theme.scheme?.variant);
       expect(theme.scheme).toBeDefined();
-      // The descriptor owns its behavior (the analog of LintPlugin.lint).
       expect(typeof theme.toTokens).toBe('function');
       const palette = theme.scheme?.palette;
       expect(Object.keys(palette ?? {}).sort()).toEqual([...BASE16_SLOTS].sort());
@@ -52,8 +48,6 @@ describe('THEME_PLUGINS registry', () => {
   });
 
   test('no built-in id begins with the reserved saved-theme prefix', () => {
-    // Guards the shadowing contract: built-ins are an authored set and a
-    // collision here would silently let a saved theme redefine a built-in name.
     for (const theme of THEME_PLUGINS) {
       expect(theme.id.startsWith(SAVED_THEME_ID_PREFIX), theme.id).toBe(false);
     }
@@ -107,16 +101,12 @@ describe('deriveSavedThemeId', () => {
   test('prefixes the stem and stays inside the theme-id grammar', () => {
     const result = deriveSavedThemeId('midnight');
     expect(result).toEqual({ ok: true, id: 'saved-midnight' });
-    // The derived id must be admissible to the same grammar the config fields
-    // and the pre-paint script validate against — no separate namespace form.
     if (result.ok) expect(THEME_ID_PATTERN.test(result.id)).toBe(true);
   });
 
   test('refuses an over-length stem with a distinct code rather than truncating', () => {
-    // `saved-` (6) leaves 26 for the stem; 27 overflows the 32-char id budget.
     const stem = 'a'.repeat(27);
     expect(deriveSavedThemeId(stem)).toEqual({ ok: false, code: 'too-long' });
-    // The 26-char boundary is the last accepted length.
     expect(deriveSavedThemeId('a'.repeat(26))).toEqual({ ok: true, id: `saved-${'a'.repeat(26)}` });
   });
 
@@ -184,7 +174,6 @@ describe('resolveThemePlugin / isDarkTheme', () => {
   test('colorThemeMode forces a palette mode and defers for system themes', () => {
     expect(colorThemeMode('catppuccin-frappe')).toBe('dark');
     expect(colorThemeMode('catppuccin-latte')).toBe('light');
-    // system-kind themes (default/custom) and unknown ids defer to appearance.theme.
     expect(colorThemeMode('default')).toBeUndefined();
     expect(colorThemeMode('custom')).toBeUndefined();
     expect(colorThemeMode(undefined)).toBeUndefined();
@@ -277,8 +266,6 @@ describe('resolveColorThemeSelection', () => {
   });
 
   test('any palette is admissible in either slot', () => {
-    // A dark scheme as the light-mode palette is a supported choice — the
-    // picker offers both icons on every tile.
     expect(
       resolveColorThemeSelection({
         colorThemeLight: 'dracula',

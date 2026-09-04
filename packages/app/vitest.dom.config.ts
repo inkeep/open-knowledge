@@ -23,6 +23,19 @@ const jsdomSetupPath = fileURLToPath(new URL('./tests/dom/jsdom-preload.ts', imp
 
 export const appDomVitestConfig = {
   ...appVitestConfig,
+  resolve: {
+    ...appVitestConfig.resolve,
+    alias: [
+      ...appVitestConfig.resolve.alias,
+      // Excalidraw's dev bundle imports `roughjs/bin/rough` without the
+      // extension, which Vite's Node resolver rejects. The browser build
+      // resolves it through bundling, so this only bites the one tier that
+      // imports the real package rather than stubbing it
+      // (`excalidraw-scene.roundtrip.dom.test.ts`). Drop this alias if a
+      // future Excalidraw ships the extension.
+      { find: /^roughjs\/bin\/rough$/, replacement: 'roughjs/bin/rough.js' },
+    ],
+  },
   test: {
     ...appVitestConfig.test,
     environment: 'jsdom',
@@ -43,6 +56,11 @@ export const appDomVitestConfig = {
     testTimeout: 30_000,
     hookTimeout: 30_000,
     isolate: true,
+    // Route the real Excalidraw through Vite's transform rather than Node's
+    // resolver, so the `roughjs/bin/rough` alias above is honoured. Only the
+    // round-trip suite imports the package for real; every other Excalidraw
+    // test stubs it via `vi.doMock`, which intercepts ahead of resolution.
+    server: { deps: { inline: [/@excalidraw[/\\]excalidraw/] } },
   },
 } satisfies ViteUserConfig;
 

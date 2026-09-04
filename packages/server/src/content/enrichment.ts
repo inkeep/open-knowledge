@@ -1,17 +1,3 @@
-/**
- * Shared `enrichPath()` — single source of truth for per-path metadata
- * assembly used by `exec` and `search`.
- *
- * Returns a **single unified `EnrichedMeta` shape** with nullable fields.
- * Multi-path callers (ls/grep/find enrichment) pass
- * `{ includeRichFields: false }` and get `backlinkCount`, `history`, and
- * `historySource` as `null` to avoid N-amplification. Single-path callers
- * (cat) pass `{ includeRichFields: true }` and get all fields populated.
- *
- * `catalogCategory` is intentionally not surfaced (folder INDEX.md
- * frontmatter is deprecated across OK; catalog is an on-demand view, not
- * a stored artifact).
- */
 import type { Dirent } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, relative, resolve } from 'node:path';
@@ -31,10 +17,8 @@ import { type GitCommit, type ProjectHistorySource, readProjectGitLog } from './
 import { type HistorySource, readShadowLog, type ShadowCommit } from './shadow-log.ts';
 import { resolveTemplatesAvailable, type TemplateEntry } from './templates-resolver.ts';
 
-/** Bound on recursive directory scan when computing `DirectoryMeta`. */
 const DIRECTORY_SCAN_CAP = 1000;
 
-/** Dirs skipped when computing DirectoryMeta (same policy as mtime-scan). */
 const DIR_SKIP: ReadonlySet<string> = new Set([
   '.git',
   OK_DIR,
@@ -48,32 +32,17 @@ const DIR_SKIP: ReadonlySet<string> = new Set([
 
 const WIKI_EXT_RE = /\.(md|mdx)$/i;
 
-/** Full backlink entry surfaced in rich enrichment. */
 interface BacklinkEntry {
-  /** docName of the source that links to this path. */
   source: string;
   title?: string;
-  /** Short excerpt from the source around the link, when the server provides one. */
   snippet?: string | null;
 }
 
-/**
- * One unresolved comment thread on a doc, as rich enrichment surfaces it.
- *
- * `orphaned` says the quoted passage is gone, so the reader re-locates rather
- * than trusting the quote. `queued` says the human staged this to send but has
- * not sent it — sending auto-resolves a thread (`completeDispatch` writes
- * `{ queued: false, state: 'resolved' }`) and resolved threads never reach this
- * shape, so a queued comment is one nobody has been handed yet.
- */
 interface CommentSummary {
   threadId: string;
-  /** What the reviewer asked for. */
   body: string;
-  /** The anchored passage — content-addressed, never an offset. */
   quote: string;
   state: 'anchored' | 'orphaned';
-  /** Staged in the dispatch queue, not yet sent to anyone. */
   queued: boolean;
 }
 
@@ -93,226 +62,56 @@ interface ExternalForwardLinkEntry {
 
 type ForwardLinkEntry = DocumentForwardLinkEntry | ExternalForwardLinkEntry;
 
-/**
- * Directory-level enrichment — what a folder contains. Returned for
- * directory entries in `ls` output so agents get a real folder summary
- * without opening anything.
- *
- * On-demand view of what folder catalogs surface: recursive file count, child
- * dirs, most recent wiki file as a content hint. Computed per call; no
- * storage layer.
- */
 export interface DirectoryMeta {
-  /** Project-root-relative path to the directory (no trailing slash). */
   path: string;
   type: 'directory';
-  /**
-   * Folder title from this folder's own `.ok/frontmatter.yml` (self-only — no
-   * cascade). Absent when the folder sets none.
-   */
   title?: string;
-  /** Folder description from this folder's own `.ok/frontmatter.yml`. Absent when none. */
   description?: string;
-  /**
-   * Folder tags from this folder's own `.ok/frontmatter.yml` (self-only).
-   * Absent when the folder sets none.
-   *
-   * Note the type divergence from `EnrichedMeta.tags` (which is always
-   * `string[]`, defaulting to `[]`): on `DirectoryMeta`, tags is optional so
-   * that folders without a matching rule have no `tags` key at all — matching
-   * the behavior of `title` and `description` on this type. EnrichedMeta.tags
-   * stays always-present because every file has frontmatter state (even if
-   * empty). Consumers of `EnrichedEntry` must handle both cases:
-   *   file.tags.length       // always safe — array or []
-   *   directory.tags?.length // optional — may be undefined
-   */
   tags?: string[];
-  /** Number of wiki (.md/.mdx) files directly in this dir (not recursive). */
   directMdCount: number;
-  /** Number of wiki (.md/.mdx) files in this dir and all descendants (bounded). */
   recursiveMdCount: number;
-  /** Subdirectories directly in this dir (excluding .git, node_modules, etc.). */
   childDirCount: number;
-  /** Most recently modified wiki file under this dir — a content hint without opening. */
   mostRecentMd?: {
     path: string;
     title?: string;
-    /** ISO mtime. */
     updatedAt: string;
   };
-  /** `true` when the recursive scan hit `DIRECTORY_SCAN_CAP`. */
   truncated: boolean;
-  /**
-   * Unresolved comment threads anywhere under this folder — recursive, like
-   * `recursiveMdCount`, so a folder row answers "is there review waiting in
-   * here" without opening anything.
-   *
-   * Absent (not `0`) when there is no server to ask or the folder is clean:
-   * `DirectoryMeta` omits keys it has nothing to say about, matching `title` /
-   * `description` / `tags`. Unbounded by `DIRECTORY_SCAN_CAP` — it comes from
-   * the comment index, not the directory walk, so a truncated scan still
-   * reports the true count.
-   */
   commentCount?: number;
-  /**
-   * Which docs the count came from, most-commented first, capped — enough to
-   * navigate straight to the file that needs attention instead of re-listing
-   * the folder. Absent whenever `commentCount` is.
-   */
   commentedDocs?: { docName: string; count: number }[];
-  /**
-   * Templates available when creating a new doc inside this folder. Aggregated
-   * leaf → root walk-up (closest-wins on filename collision). Empty array
-   * when no nested `.ok/templates/` exists at this level or any ancestor.
-   *
-   * Each entry carries `name` + optional `title`/`description` (soft contract)
-   * + `scope` (`local` | `inherited`) so the agent can pick intelligently.
-   * Descendant templates surface only inside `subfolders[].templates_available`
-   * and are not addressable from the parent folder's writes.
-   *
-   * Templates are the single mechanism for "what new docs in this folder
-   * start with" — folder frontmatter no longer cascades values into children.
-   */
   templates_available?: TemplateEntry[];
-  /**
-   * Frontmatter schema files that could govern docs in this folder (resolved
-   * server-side from the enabled frontmatter plugin's `appliesTo` mappings —
-   * the agent never evaluates a glob). Covers the new-file gap: a read of the
-   * folder advertises the contract before the first write.
-   */
   schemas_applicable?: string[];
-  /**
-   * Recursive subfolder enrichment. Populated when a caller (e.g.
-   * an `exec` recursive listing) asks for subtree visibility — each entry
-   * carries its own `title`/`description`/`tags` + `templates_available` so
-   * agents can plan navigation without a follow-up call. `depth: 1` (default)
-   * leaves this absent.
-   */
   subfolders?: DirectoryMeta[];
 }
 
-/**
- * Unified enrichment shape. Fields are nullable when unavailable or
- * deliberately omitted (multi-path avoidance of N-amplification).
- */
 export interface EnrichedMeta {
-  /** Project-root-relative path. */
   path: string;
-  /**
-   * Well-known typed fields for backward compat with consumers that pre-date
-   * arbitrary-key support (search highlighting, sidebar, exec).
-   *
-   * `description` and `tags` mirror the same scalars that appear in
-   * `frontmatter` below. `title` does NOT: it is the resolved title, so a doc
-   * with no usable `title:` reports its first `# heading` instead, and a
-   * `title:` that is present reports trimmed. It stays `undefined` when there
-   * is neither, so a caller can apply its own last rung (`exec` uses the path).
-   * Read `frontmatter.title` for what the file literally declared.
-   */
   title?: string;
   description?: string;
   tags: string[];
-  /**
-   * The doc's OWN frontmatter — exactly the keys in the file's `---` YAML
-   * region, unmodified by any ancestor folder. A doc's effective frontmatter
-   * equals its on-disk frontmatter (no read-time value cascade). Open shape:
-   * any key authored in the file's YAML region appears here.
-   *
-   * Empty `{}` when the file has no frontmatter.
-   */
   frontmatter: Record<string, unknown>;
-  /**
-   * Backlink count. Null on multi-path output or when Hocuspocus is
-   * unreachable. Populated on single-path rich enrichment.
-   */
   backlinkCount: number | null;
-  /**
-   * Full backlink list. Null on multi-path output (avoids N-amplification)
-   * or when Hocuspocus is unreachable. Populated on single-path rich.
-   */
   backlinks: BacklinkEntry[] | null;
-  /**
-   * Forward-link count. Null on multi-path output or when Hocuspocus is
-   * unreachable. Populated on single-path rich enrichment.
-   */
   forwardLinkCount: number | null;
-  /**
-   * Full forward-link list. Null on multi-path output or when Hocuspocus is
-   * unreachable. Populated on single-path rich enrichment.
-   */
   forwardLinks: ForwardLinkEntry[] | null;
-  /**
-   * Recent OK-edit activity on this path, merged across shadow-repo's
-   * per-writer refs. Null on multi-path output. `[]` when shadow repo is
-   * present but has no edits touching the path.
-   */
   history: ShadowCommit[] | null;
-  /**
-   *   - `'shadow-repo'`         — history comes from a live shadow repo (may be `[]`)
-   *   - `'shadow-repo-absent'`  — no shadow repo exists for this project
-   *   - `null`                  — history field is `null` (multi-path output)
-   */
   historySource: HistorySource | null;
-  /**
-   * Project-git commit history for this path — durable authored commits
-   * from the project's own `.git/` (not the shadow repo). Null on
-   * multi-path output.
-   */
   projectHistory: GitCommit[] | null;
-  /**
-   *   - `'git'`         — project is a git repo (history may be `[]` for new files)
-   *   - `'git-absent'`  — project has no `.git/`
-   *   - `null`          — field not populated (multi-path output)
-   */
   projectHistorySource: ProjectHistorySource | null;
-  /**
-   * Coarse graph role from link counts: `orphan` (no links), `hub` (many
-   * inbound), `connector` (links in and out), `leaf` (otherwise). Null on
-   * multi-path output, where the counts are not fully resolved.
-   */
   graphRole: GraphRole | null;
-  /**
-   * Unresolved comment threads on this doc — review requests a human left that
-   * nobody has acted on. Null when Hocuspocus is unreachable (unknown), `0`
-   * when the doc is genuinely clean.
-   *
-   * Populated on both slim and rich enrichment: knowing a file you are about to
-   * edit carries an outstanding request matters as much in a listing as in a
-   * read, and the count comes from one batched call for the whole listing.
-   */
   commentCount: number | null;
-  /**
-   * The threads themselves. Null on multi-path output (a 200-file listing must
-   * not carry 200 comment bodies) or when Hocuspocus is unreachable; populated
-   * on single-path rich enrichment, where the agent is about to act on the doc.
-   */
   comments: CommentSummary[] | null;
-  /**
-   * Frontmatter schema files governing this doc, resolved server-side via the
-   * enabled frontmatter plugin's `appliesTo` mappings. Absent when the plugin
-   * is off, no mapping matches, or the doc sits outside the content root.
-   */
   schemas_applicable?: string[];
 }
 
-/** Coarse classification of a document by its link counts. */
 export type GraphRole = 'hub' | 'connector' | 'leaf' | 'orphan';
 
-// Absolute inbound floor for "hub". A relative top-K threshold is the eventual
-// refinement; an absolute floor keeps this first cut self-contained.
 const HUB_MIN_INBOUND = 5;
 
-/**
- * Classify a doc from its in/out link counts. Null when either count is unknown
- * (multi-path enrichment or a failed fetch), so callers skip the role rather
- * than guess on partial data.
- */
 export function computeGraphRole(
   backlinkCount: number | null,
   forwardLinkCount: number | null,
 ): GraphRole | null {
-  // Classify only on complete data: a null count means the fetch failed or was
-  // skipped (multi-path), and coalescing unknown to zero would mislabel a doc.
   if (backlinkCount === null || forwardLinkCount === null) return null;
   const inbound = backlinkCount;
   const outbound = forwardLinkCount;
@@ -325,34 +124,11 @@ export function computeGraphRole(
 interface EnrichPathDeps {
   projectDir: string;
   serverUrl?: string | undefined;
-  /** History depth for rich mode; defaults to 5. */
   historyDepth?: number;
-  /**
-   * Content root (`resolve(projectDir, content.dir)`) — `appliesTo` globs
-   * match content-relative doc paths, while enrichment paths are
-   * project-relative. Defaults to `projectDir` when omitted.
-   */
   contentDir?: string;
-  /**
-   * The enabled frontmatter plugin's schema mappings. When present, doc and
-   * folder enrichment advertise which schema files govern each path
-   * (`schemas_applicable`) — the read-time serving surface that lets an agent
-   * learn a doc's contract without parsing config or evaluating globs itself.
-   */
   frontmatterSchemas?: FrontmatterSchemaMapping[];
 }
 
-/**
- * Schema files whose `appliesTo` matches this doc (project-relative path is
- * rebased to content-relative before matching). Unique, mapping order.
- *
- * Applies the same selection triad as `selectApplicableFrontmatterSchemas` in
- * core — skip disabled, match `appliesTo`, dedup — but over the PERSISTED
- * mappings rather than resolved entries, because enrichment advertises which
- * files govern a doc without loading their content. Keep the two in step: a
- * change to what "governs" means belongs in both, and only the core one is
- * covered by the validator's own tests.
- */
 function schemasApplicableToDoc(
   deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
   relPath: string,
@@ -371,33 +147,16 @@ function schemasApplicableToDoc(
   return files;
 }
 
-/**
- * Schema files that could govern docs created in this folder: an entry is
- * advertised when its globs match a placeholder direct child of the folder.
- * A prefix-feasibility check — entries whose positive globs only match
- * specific literal names (an index/log alternation) or deeper descendants are
- * not advertised at the folder level; they still advertise on the docs
- * themselves. (The obvious glob example can't appear here: a globstar
- * followed by a slash inside a block comment would close the comment.)
- */
 function schemasApplicableToFolder(
   deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas'>,
   relPath: string,
 ): string[] {
-  // U+2042 asterism as the placeholder child name — matched by wildcard
-  // segments, never by a literal doc name.
   const placeholder = '⁂';
   const probe = relPath === '' ? placeholder : `${relPath}/${placeholder}`;
   return schemasApplicableToDoc(deps, probe);
 }
 
 interface EnrichPathOptions {
-  /**
-   * When `true`, populate `backlinkCount` + `history` + `historySource`
-   * (rich mode). When `false` (default), those three fields are `null`
-   * regardless of data availability — used on multi-path enrichment to
-   * avoid N-amplification of backlink HTTP calls and shadow-log reads.
-   */
   includeRichFields?: boolean;
 }
 
@@ -405,19 +164,8 @@ export function pathToDocName(relPath: string): string {
   return relPath.replace(/\.md$/, '').replace(/\.mdx$/, '');
 }
 
-/**
- * Per-process dedup of operator-facing warnings on EMFILE / EACCES /
- * EISDIR / ENOTDIR — every `enrichPath()` call hits this site, so without
- * dedup a single bad file would spam the terminal once per `cat` / `ls`.
- */
 const fmReadWarnedPaths = new Set<string>();
 
-/**
- * Frontmatter plus the body's first `# heading`, read in one pass. The heading
- * is the title fallback for the many files that carry no `title:` — vaults,
- * imported notes, plain logs. Same ladder `extractPageTitle` gives `/api/pages`
- * and workspace search, so one document reads the same everywhere.
- */
 interface FileHead {
   frontmatter: Record<string, unknown>;
   firstHeading: string | undefined;
@@ -426,19 +174,12 @@ interface FileHead {
 async function readFrontmatter(absPath: string): Promise<FileHead | null> {
   try {
     const content = await readFile(absPath, 'utf-8');
-    // Raw record on purpose (not `parseFrontmatterYaml`): the open-shape
-    // merge must see every key/value the file declared, verbatim.
     const fm = parseFrontmatterRecord(content);
     return {
       frontmatter: fm ?? {},
       firstHeading: extractFirstHeading(stripFrontmatter(content).body),
     };
   } catch (err) {
-    // ENOENT is expected (caller is enriching paths from a stale listing or a
-    // dir that contains non-md children). All other read errors — EMFILE
-    // (fd exhaustion), EACCES (permission), EISDIR / ENOTDIR (path race) —
-    // are operator-actionable and would otherwise surface as silent
-    // "frontmatter looks empty" gaps. Warn once per path and degrade.
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
     if (code !== 'ENOENT' && !fmReadWarnedPaths.has(absPath)) {
       fmReadWarnedPaths.add(absPath);
@@ -452,11 +193,6 @@ async function readFrontmatter(absPath: string): Promise<FileHead | null> {
   }
 }
 
-/**
- * Fetch the full backlinks list from the Hocuspocus server. Returns `null`
- * when no serverUrl is configured or the request fails — callers treat
- * null as "degrade gracefully".
- */
 async function fetchBacklinks(
   serverUrl: string | undefined,
   docName: string,
@@ -488,14 +224,6 @@ async function fetchBacklinks(
   return entries;
 }
 
-/**
- * Unresolved comment threads on one doc (rich enrichment). Null when there is
- * no server to ask or the request fails — `[]` is the positive "nobody has an
- * outstanding request on this doc" answer, so the two must stay distinct.
- *
- * Resolved threads are filtered server-side; the `state` filter here is the
- * belt-and-braces half, since a stale build could serve them.
- */
 async function fetchComments(
   serverUrl: string | undefined,
   docName: string,
@@ -506,15 +234,6 @@ async function fetchComments(
   return parseCommentThreads(result.threads);
 }
 
-/**
- * `CommentThreadMeta` wire rows → the summary shape enrichment surfaces.
- * Tolerant per element like the link parsers: one malformed thread must not
- * blank a doc's whole comment signal.
- *
- * Resolved threads drop out here as well as server-side — this parser is the
- * boundary the read surfaces trust, and a stale peer serving them must not put
- * settled work back in front of an agent.
- */
 export function parseCommentThreads(raw: unknown): CommentSummary[] {
   if (!Array.isArray(raw)) return [];
   const entries: CommentSummary[] = [];
@@ -537,24 +256,8 @@ export function parseCommentThreads(raw: unknown): CommentSummary[] {
   return entries;
 }
 
-/**
- * Chunk size for bulk backlink-count fetches. Keeps each URL comfortably
- * under typical 8KB HTTP URL limits even with long docNames (e.g. 100 x
- * ~70-char paths ≈ 7KB after comma-joining and percent-encoding).
- */
 const BACKLINK_COUNT_CHUNK = 100;
 
-/**
- * Bulk backlink-count fetch for slim-enrichment callers (multi-path ls/grep/
- * find/multi-cat). Batches into chunks of ${BACKLINK_COUNT_CHUNK} to keep
- * each request URL well under the 8KB limit; chunks fire in parallel so
- * latency stays close to a single round-trip. Returns `null` when no
- * serverUrl or every chunk fails; otherwise returns a `Map<docName, number>`
- * with entries from all successful chunks (partial chunks are merged —
- * missing docNames ⇒ not in the map).
- *
- * See `/api/backlink-counts` in `api-extension.ts`.
- */
 export async function fetchBacklinkCountsBatch(
   serverUrl: string | undefined,
   docNames: string[],
@@ -585,15 +288,6 @@ export async function fetchBacklinkCountsBatch(
   return anySuccess ? out : null;
 }
 
-/**
- * Bulk unresolved-comment-count fetch — the listing counterpart to
- * {@link fetchComments}' single-doc read. Shares
- * `fetchBacklinkCountsBatch`'s chunking and partial-merge contract; see there
- * for the URL-length rationale.
- *
- * Unlike backlink counts this is also used for the slim path of a MULTI-file
- * `cat`, so a two-file read still reports outstanding requests on both.
- */
 export async function fetchCommentCountsBatch(
   serverUrl: string | undefined,
   docNames: string[],
@@ -615,11 +309,6 @@ export async function fetchCommentCountsBatch(
   return mergeCountChunks(results);
 }
 
-/**
- * Unresolved-comment counts for every doc under a folder, in one request — the
- * `ls` rollup. Returns the per-doc map rather than a total so the caller can
- * both sum it and name the docs; empty map means a clean subtree.
- */
 async function fetchCommentCountsUnderPrefix(
   serverUrl: string | undefined,
   prefix: string,
@@ -633,7 +322,6 @@ async function fetchCommentCountsUnderPrefix(
   return mergeCountChunks([(result.counts ?? {}) as Record<string, unknown>]);
 }
 
-/** Merge count chunks, dropping non-numeric values. Null when every chunk failed. */
 function mergeCountChunks(chunks: (Record<string, unknown> | null)[]): Map<string, number> | null {
   const out = new Map<string, number>();
   let anySuccess = false;
@@ -684,23 +372,6 @@ async function fetchForwardLinks(
   return entries;
 }
 
-/**
- * The frontmatter-title-then-first-heading rungs of the title ladder, matching
- * `extractPageTitle`'s scalar semantics so one document reads the same on every
- * surface. A `title:` is trimmed, and a blank or whitespace-only one is not a
- * title at all: it falls through to the heading, exactly as
- * `extractFrontmatterScalar`'s `value || null` does for `/api/pages` and search.
- * Without the trim these two ladders disagree on `title: "  Foo  "`, and without
- * the blank check they disagree on `title: ""` — the same cross-surface split
- * the heading fallback exists to close, just for a narrower input class.
- *
- * Quotes need no unwrapping here (unlike the raw-line reader): this `fm` came
- * from `parseFrontmatterRecord`, so YAML already resolved the scalar.
- *
- * Callers append their own last rung — the path for a document, the basename
- * for a directory's most-recent entry — so the precedence above it is decided
- * once.
- */
 function ownTitle(
   fm: Record<string, unknown> | null | undefined,
   firstHeading: string | undefined,
@@ -711,16 +382,6 @@ function ownTitle(
   return trimmed === '' ? firstHeading : trimmed;
 }
 
-/**
- * Lift the typed well-known fields from a doc's OWN frontmatter. A doc's
- * effective frontmatter equals its on-disk YAML — there is no folder-cascade
- * overlay. Open shape: every key the file authored flows through unchanged.
- *
- * Returns:
- *   - `frontmatter` — the file's own frontmatter Record, open to any key
- *   - `title` / `description` / `tags` — typed lifts of the well-known three
- *     for backward-compat consumers (search, sidebar, exec)
- */
 function liftOwnFrontmatter(
   fileFm: Record<string, unknown> | null,
   firstHeading?: string,
@@ -739,20 +400,11 @@ function liftOwnFrontmatter(
   return { title, description, tags, frontmatter: fm };
 }
 
-/**
- * Assemble enrichment for a single wiki path. See `EnrichedMeta` for the
- * unified shape and the convention for nullable fields on multi-path output.
- */
 export async function enrichPath(
   relPathInput: string,
   deps: EnrichPathDeps,
   options: EnrichPathOptions = {},
 ): Promise<EnrichedMeta> {
-  // Containment is a hard precondition — `enrichPath` reads via `node:fs`
-  // and bypasses the bash sandbox, so a `..`-prefixed `relPathInput`
-  // would otherwise read frontmatter from arbitrary host paths. Tool
-  // surfaces (exec / search) filter callers' inputs
-  // upstream; this throw is the defense-in-depth backstop.
   const contained = resolveWithinRoot(deps.projectDir, relPathInput);
   if (!contained.ok) {
     throw new Error(`enrichPath: ${contained.reason}`);
@@ -785,16 +437,12 @@ export async function enrichPath(
       projectHistory: null,
       projectHistorySource: null,
       graphRole: null,
-      // Slim callers backfill this from one batched request for the whole
-      // listing (see `fetchCommentCountsBatch`) — per-path here would be the
-      // N-amplification the slim mode exists to avoid.
       commentCount: null,
       comments: null,
       ...schemasField,
     };
   }
 
-  // Rich mode — fan out all six data sources in parallel.
   const [head, backlinks, forwardLinks, shadow, project, comments] = await Promise.all([
     fmPromise,
     fetchBacklinks(deps.serverUrl, pathToDocName(relPath)).catch(() => null),
@@ -832,7 +480,6 @@ export async function enrichPath(
   };
 }
 
-/** Union type surfaced to callers that enrich a mixed list of files and dirs. */
 export type EnrichedEntry = EnrichedMeta | DirectoryMeta;
 
 interface DirScanResult {
@@ -886,8 +533,6 @@ async function scanDirectory(absDir: string, projectDir: string): Promise<DirSca
           const st = await stat(absFile);
           if (!result.mostRecent || st.mtimeMs > result.mostRecent.mtimeMs) {
             const rel = relative(projectDir, absFile);
-            // Normalize to forward-slashes — project-root-relative paths in
-            // EnrichedMeta are always POSIX-form (agents and bash consume them).
             const relPath = rel.split(/[\\/]/).filter(Boolean).join('/');
             result.mostRecent = { absPath: absFile, relPath, mtimeMs: st.mtimeMs };
           }
@@ -898,22 +543,10 @@ async function scanDirectory(absDir: string, projectDir: string): Promise<DirSca
   return result;
 }
 
-/**
- * Assemble enrichment for a directory path. Returns folder-shape metadata
- * (counts + most-recent wiki file hint) — the on-demand equivalent of the
- * persisted INDEX.md catalogs.
- *
- * A folder's own frontmatter (open-shape, like a doc's) comes from its
- * `.ok/frontmatter.yml` (self-only — no inheritance from ancestors).
- * `scanDirectory` semantics (recursive/direct/childDirCount) are unaffected
- * — counts remain raw-count.
- */
 export async function enrichDirectory(
   relPathInput: string,
   deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas' | 'serverUrl'>,
 ): Promise<DirectoryMeta> {
-  // See `enrichPath` for the rationale — same `..`/absolute-path escape
-  // class via `node:fs`-direct readdir / stat.
   const contained = resolveWithinRoot(deps.projectDir, relPathInput);
   if (!contained.ok) {
     throw new Error(`enrichDirectory: ${contained.reason}`);
@@ -927,7 +560,6 @@ export async function enrichDirectory(
     const head = await readFrontmatter(scan.mostRecent.absPath);
     mostRecentMd = {
       path: scan.mostRecent.relPath,
-      // Same ladder as a document's own title; only the last rung differs.
       title: ownTitle(head?.frontmatter, head?.firstHeading) ?? basename(scan.mostRecent.relPath),
       updatedAt: new Date(scan.mostRecent.mtimeMs).toISOString(),
     };
@@ -943,28 +575,17 @@ export async function enrichDirectory(
     truncated: scan.truncated,
   };
 
-  // Folder frontmatter is SELF-ONLY — read this folder's own
-  // `.ok/frontmatter.yml`, with no inheritance from ancestor folders.
-  // Folder frontmatter is open-shape, but only the well-known keys are lifted
-  // onto the typed `DirectoryMeta` surface that `exec ls` returns; any other
-  // keys are stored on disk and served by `GET /api/folder-config`
-  // (`frontmatter_local`), not promoted to the listing entry.
   const own = readFolderFrontmatter(deps.projectDir, relPath);
   if (own.title !== undefined) result.title = own.title;
   if (own.description !== undefined) result.description = own.description;
   if ((own.tags?.length ?? 0) > 0) result.tags = own.tags;
 
-  // Templates available for creating a new doc in this folder.
-  // Default depth=1 — local + walk-up ancestors only. Callers wanting
-  // descendant visibility pass depth via the `exec` ls enrichment.
   const templates = resolveTemplatesAvailable(deps.projectDir, relPath);
   if (templates.length > 0) result.templates_available = templates;
 
   const folderSchemas = schemasApplicableToFolder(deps, relPath);
   if (folderSchemas.length > 0) result.schemas_applicable = folderSchemas;
 
-  // One prefix query for the whole subtree, not one per file — the count is
-  // read off the in-memory comment index, so depth costs nothing here.
   const commentCounts = await fetchCommentCountsUnderPrefix(deps.serverUrl, relPath).catch(
     () => null,
   );
@@ -981,23 +602,8 @@ export async function enrichDirectory(
   return result;
 }
 
-/**
- * Cap on `commentedDocs`. The field is a pointer to where to look, not a
- * report — `commentCount` already carries the true total, and an `ls` row that
- * lists forty filenames stops being a row.
- */
 const FOLDER_COMMENTED_DOCS_CAP = 5;
 
-/**
- * Recursively enrich a directory + its subfolders up to `depth` levels.
- *
- * Mirrors `find -maxdepth N` semantics: `depth=1` is just the target
- * folder (equivalent to `enrichDirectory`); `depth=2` adds direct children's
- * folder metadata; `depth=Infinity` walks the full subtree. Honors the same
- * `BUILTIN_SKIP_DIRS`-style skip list that `templates-resolver.ts` uses to
- * keep listings clean (no node_modules, no `.git`, no `.ok` directory entries
- * — `.ok/` contents are surfaced as structured fields, not as children).
- */
 export async function enrichDirectoryRecursive(
   relPathInput: string,
   depth: number,
@@ -1019,10 +625,6 @@ export async function enrichDirectoryRecursive(
   const subfolders: DirectoryMeta[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    // Skip named build/vendor dirs AND any dot-prefixed dir, matching
-    // `scanDirectory`'s policy. Without the dot-prefix guard, `.foo`
-    // surfaced here but not from the leaf-folder scan, leaving the UI
-    // showing children that vanish when you navigate into them.
     if (RECURSIVE_LISTING_SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
     const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
     const child = await enrichDirectoryRecursive(childRel, depth - 1, deps);
@@ -1033,11 +635,6 @@ export async function enrichDirectoryRecursive(
   return top;
 }
 
-/**
- * Skip dirs for the recursive listing surface. Mirrors content-filter's
- * BUILTIN_SKIP_DIRS spirit + adds `.ok` (its contents are structured
- * fields, not directory entries).
- */
 const RECURSIVE_LISTING_SKIP_DIRS = new Set<string>([
   '.git',
   '.ok',

@@ -1,15 +1,3 @@
-/**
- * EnableSyncConfirmDialog — guards every off → on transition of the git sync
- * toggle (the SyncStatusBadge popover Switch + the SettingsDialog Sync section)
- * and the full → follow downgrade.
- *
- * Off → on is the dangerous direction (push to remote, pull may overwrite
- * local). On → off is safe and skips this dialog. `variant` selects the copy:
- * 'full' (default) keeps today's bidirectional warning; 'follow' explains
- * one-directional sync. When switching an already-synced project down to
- * follow leaves unpushed local commits behind, `strandedCommitCount` drives
- * the one-sentence disclosure that those changes stay local.
- */
 import { Plural, Trans } from '@lingui/react/macro';
 import {
   AutoSyncEnableDialogIntro,
@@ -31,7 +19,6 @@ interface EnableSyncConfirmDialogProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   variant?: AutoSyncOnboardingVariant;
-  /** Unpushed local commits that switching to follow will strand locally. */
   strandedCommitCount?: number;
 }
 

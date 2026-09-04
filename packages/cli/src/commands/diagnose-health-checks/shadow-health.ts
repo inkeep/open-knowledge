@@ -1,18 +1,3 @@
-/**
- * `shadow-health` check — surfaces shadow-repo degradation that
- * makes history queries slow: loose-object accumulation, an unpacked repo, a
- * wide version journal (many WIP refs — a read-latency signal), unfolded dead
- * agent chains (the strict maintenance-health signal, distinct from width: near
- * zero when auto-consolidation keeps up, even under heavy live load), a gc.log
- * latch (auto-packing disabled), and how recently the journal was packed / its
- * dead chains folded.
- *
- * `warn` (not `fail`): a degraded repo still serves bounded results — it is a
- * performance signal an operator can act on, not a broken state. Reads repo
- * facts directly so it works with telemetry disabled. Strings stay in operator
- * terms (git internals), never KB-owner-facing copy.
- */
-
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseCheckpoint, resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -25,43 +10,23 @@ import {
 import simpleGit from 'simple-git';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
-/** Loose objects above this without packing is a clear degradation signal (gc.auto is 512). */
 const LOOSE_WARN = 2000;
-/** WIP ref width above this is a read-latency signal (one git process per ref). */
 const WIDTH_WARN = 20;
-/**
- * Stale dead-agent-chain count above this means auto-consolidation is not
- * keeping up. The trigger fires at 5 dead agent chains and folds them, deleting
- * their refs, so a healthy repo sits near zero; more than this many agent chains
- * still unfolded past the staleness window is the maintenance-failure signal.
- */
 const DEAD_CHAIN_WARN = 5;
-/**
- * An `agent-*` ref whose tip has not advanced in this long is treated as a dead
- * chain. Comfortably past the 10 min consolidation spacing so a live but
- * briefly-idle agent session is never miscounted.
- */
 const DEAD_CHAIN_STALE_MS = 30 * 60 * 1000;
 
 export interface ShadowHealthFacts {
   looseObjects: number;
   packfiles: number;
   wipWidth: number;
-  /** Dead `agent-*` chains unfolded past the staleness window — the strict
-   *  auto-consolidation-health signal (near zero when the fast path keeps up,
-   *  unlike raw width which counts live sessions too). `principal-*` chains are
-   *  excluded: they fold on the 30-day TTL, not this fast path. */
   deadChains: number;
   gcLogLatch: boolean;
-  /** ms since epoch of the last time the repo was packed (commit-graph mtime), or null. */
   lastPackedAtMs: number | null;
-  /** ms since epoch of the newest auto-consolidation checkpoint, or null if none. */
   lastConsolidationAtMs: number | null;
 }
 
 export interface ShadowHealthCheckDeps {
   resolveDir?: (projectRoot: string) => string;
-  /** Replaceable so tests exercise the degraded/healthy decision without a real repo. */
   readFacts?: (shadowDir: string, cwd: string) => Promise<ShadowHealthFacts>;
 }
 
@@ -72,22 +37,16 @@ async function defaultReadFacts(shadowDir: string, cwd: string): Promise<ShadowH
   const deadChains = await countStaleAgentWipRefs(handle, Date.now() - DEAD_CHAIN_STALE_MS);
   const gcLogLatch = hasGcLogLatch(handle);
 
-  // Last-packed proxy: gc writes the commit-graph (gc.writeCommitGraph), so its
-  // mtime tracks the last pack. Absent → never packed.
   let lastPackedAtMs: number | null = null;
   for (const rel of ['objects/info/commit-graph', 'objects/info/commit-graphs']) {
     const p = resolve(shadowDir, rel);
     if (existsSync(p)) {
       try {
         lastPackedAtMs = Math.max(lastPackedAtMs ?? 0, statSync(p).mtimeMs);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 
-  // Newest auto-consolidation checkpoint date — bounded scan of the most-recent
-  // checkpoints (auto refs are bounded to newest-2 by kind-aware GC).
   let lastConsolidationAtMs: number | null = null;
   try {
     const sg = simpleGit({ baseDir: cwd, timeout: { block: 4000 } }).env({ GIT_DIR: shadowDir });
@@ -112,12 +71,10 @@ async function defaultReadFacts(shadowDir: string, cwd: string): Promise<ShadowH
       if (parseCheckpoint(body)?.kind === 'auto-consolidation') {
         const ms = Date.parse(iso);
         if (Number.isFinite(ms)) lastConsolidationAtMs = ms;
-        break; // sorted newest-first
+        break;
       }
     }
-  } catch {
-    // No checkpoints / git unavailable — leave null.
-  }
+  } catch {}
 
   return {
     looseObjects: objects.looseObjects,

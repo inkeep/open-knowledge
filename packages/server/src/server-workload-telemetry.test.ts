@@ -160,7 +160,6 @@ describe('server workload telemetry — registered meter', () => {
     expect(activePoints[0].value).toBe(2);
     expect(limitPoints[0].value).toBe(256);
 
-    // A cap stall surfaces as active pinned at limit.
     active = 256;
     activePoints = await collect(SESSIONS_ACTIVE_METRIC);
     limitPoints = await collect(SESSIONS_LIMIT_METRIC);

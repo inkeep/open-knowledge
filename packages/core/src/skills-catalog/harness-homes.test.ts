@@ -28,10 +28,6 @@ describe('userGlobalSkillRoots', () => {
     const roots = userGlobalSkillRoots(home);
 
     for (const { dir } of harnessHomes(home)) expect(roots).toContain(dir);
-    // The loop above shrinks with the production function, so it would pass
-    // vacuously if a root were dropped. These spell out the whole expected set
-    // independently — one per source: the store, an editor dir, the vendor-
-    // neutral hub, and the plugin-provider cache.
     expect(roots).toContain(join(home, '.ok', 'skills'));
     expect(roots).toContain(join(home, '.claude', 'skills'));
     expect(roots).toContain(join(home, '.agents', 'skills'));
@@ -41,8 +37,6 @@ describe('userGlobalSkillRoots', () => {
   test('stays under the given home — it is a containment allowlist, not a home pass', () => {
     const home = '/Users/tester';
     for (const root of userGlobalSkillRoots(home)) {
-      // `sep`, not a literal '/': the function builds paths with `join`, so a
-      // POSIX-only assertion would be false on win32 (a shipping desktop target).
       expect(root.startsWith(`${home}${sep}`)).toBe(true);
       expect(root).not.toBe(home);
     }

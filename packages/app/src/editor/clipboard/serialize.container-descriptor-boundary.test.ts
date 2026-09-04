@@ -1,46 +1,3 @@
-/**
- * Container-descriptor boundary contract: a leaf reached THROUGH a container
- * NodeView's content area (`[data-node-view-content]`, emitted by
- * `@tiptap/react`'s `NodeViewContent`) must resolve to its OWN descriptor
- * root and its OWN ProseMirror range, never the enclosing container's.
- *
- * A container descriptor (a `jsxComponent` with children, e.g. `Callout`,
- * `Accordion`) renders its children into a `[data-node-view-content]` hole.
- * When a descriptor-rendered leaf (e.g. a `CommonMarkImage` `jsxComponent`)
- * lives inside that hole, the production DOM is
- * (`JsxComponentView.tsx` Branch 2 + `NodeViewContent`):
- *
- *   .ProseMirror
- *     .react-renderer.node-jsxComponent            (Callout outer wrapper)
- *       [data-node-view-wrapper data-jsx-component] (Callout NodeViewWrapper)
- *         .jsx-component-chrome
- *         <Callout> …
- *           [data-node-view-content]               (Callout children hole)
- *             .react-renderer.node-jsxComponent    (image outer wrapper)
- *               [data-node-view-wrapper data-jsx-component]
- *                 img                              (leaf)
- *
- * The `[data-node-view-content]` element belongs to the container, but
- * everything the container HOSTS inside it is a different, enclosed PM node.
- * A descriptor climb that records the outermost matching wrapper without
- * stopping at that boundary adopts the CONTAINER's wrapper as the leaf's
- * descriptor root, so `posAtDOM → nodeAt → slice` covers the whole container
- * and the cross-app `text/html` source-fallback emits the entire component's
- * markdown at the leaf's slot.
- *
- * These tests pin the invariant at two tiers:
- *   1. `findDescriptorRoot` (the single choke point) resolves the leaf's own
- *      descriptor across one and across two nested contentDOM boundaries.
- *   2. `serializeElementMarkdown` (the real consumer) emits the leaf's own
- *      markdown bytes, not the whole container component's source.
- *
- * Harness mirrors `serialize.inline-image-range.test.ts`: `buildWalkerEnv`
- * is private, so the walker entry point is stubbed via `vi.doMock` to
- * capture the env, and the env is driven through the same public wiring
- * production uses. The mock DELEGATES to the real implementation outside an
- * explicit capture window so it stays behavior-transparent to the worker.
- */
-
 import type { JSONContent } from '@tiptap/core';
 import type { Fragment } from '@tiptap/pm/model';
 import { Schema } from '@tiptap/pm/model';
@@ -66,16 +23,7 @@ vi.doMock('./clipboard-walker.ts', () => ({
   },
 }));
 
-// Imported AFTER the module mock so `serializeFragment`'s walker tier hits
-// the delegating mock above.
 const { createClipboardHtmlSerializer, findDescriptorRoot } = await import('./serialize.ts');
-
-// ---------------------------------------------------------------------------
-// Fake live-DOM elements — cover exactly the surface the code under test
-// touches (`classList.contains`, `hasAttribute`, `parentElement`,
-// `childNodes`) with STABLE object identity so `parentElement ===` and
-// `childNodes.indexOf(...)` work.
-// ---------------------------------------------------------------------------
 
 interface FakeEl {
   classes: Set<string>;
@@ -105,17 +53,12 @@ function chain(...els: FakeEl[]): void {
   }
 }
 
-/**
- * Container (Callout `jsxComponent`) holding an inline image, both real
- * `jsxComponent` NodeViews, with the image nested inside the container's
- * `[data-node-view-content]` hole.
- */
 function buildContainerWithImageTopology() {
   const proseMirror = el({ classes: ['ProseMirror'] });
   const calloutRenderer = el({ classes: ['react-renderer', 'node-jsxComponent'] });
   const calloutWrapper = el({ attrs: ['data-node-view-wrapper', 'data-jsx-component'] });
-  const calloutBody = el(); // rendered <Callout> element
-  const contentDom = el({ attrs: ['data-node-view-content'] }); // NodeViewContent hole
+  const calloutBody = el();
+  const contentDom = el({ attrs: ['data-node-view-content'] });
   const imageRenderer = el({ classes: ['react-renderer', 'node-jsxComponent'] });
   const imageWrapper = el({ attrs: ['data-node-view-wrapper', 'data-jsx-component'] });
   const img = el();
@@ -129,18 +72,11 @@ function buildContainerWithImageTopology() {
     imageWrapper,
     img,
   );
-  // Wire the childNodes the descriptor-parent branch indexes through.
   proseMirror.childNodes = [calloutRenderer];
   contentDom.childNodes = [imageRenderer];
   return { proseMirror, calloutRenderer, contentDom, imageRenderer, img };
 }
 
-/**
- * Doubly-nested container: an outer container whose content hole hosts an
- * inner container whose content hole hosts the image leaf. Pins that the
- * leaf resolves to its OWN descriptor across TWO contentDOM boundaries, not
- * either enclosing container's.
- */
 function buildNestedContainerTopology() {
   const proseMirror = el({ classes: ['ProseMirror'] });
   const outerRenderer = el({ classes: ['react-renderer', 'node-jsxComponent'] });
@@ -167,10 +103,6 @@ function buildNestedContainerTopology() {
   return { proseMirror, outerRenderer, innerRenderer, imageRenderer, img };
 }
 
-// ---------------------------------------------------------------------------
-// PM document mirroring a container holding a single image descriptor.
-// ---------------------------------------------------------------------------
-
 const containerSchema = new Schema({
   nodes: {
     doc: { content: 'block+' },
@@ -187,8 +119,6 @@ const containerSchema = new Schema({
       toDOM: (node) => ['img', { src: node.attrs.src, alt: node.attrs.alt }],
       parseDOM: [{ tag: 'img' }],
     },
-    // Required by prosemirror-model (every schema needs a text type) even
-    // though the container's block-only content never holds text here.
     text: { group: 'inline' },
   },
 });
@@ -201,21 +131,8 @@ function buildDoc() {
   ]);
 }
 
-// Doc content starts at 0: the container node opens at 0 (the over-climb
-// slices from here), its content starts at 1, and the image atom sits at
-// position 1 (the leaf's own range).
 const IMAGE_POS = 1;
 
-/**
- * posAtDOM faithful to ProseMirror's contract: the offset counts CHILDNODES
- * of the PM node the passed DOM element maps to.
- *   - `.ProseMirror` maps to the doc — offset 0 → position 0 (the container).
- *   - the container's `[data-node-view-content]` maps to the container's
- *     content region — offset 0 → position 1 (the image atom).
- * The correct climb resolves `descriptorRoot = imageRenderer` (parent =
- * contentDom → image); the over-climb resolves `descriptorRoot =
- * calloutRenderer` (parent = .ProseMirror → whole container).
- */
 function fakePosAtDOM(
   topology: ReturnType<typeof buildContainerWithImageTopology>,
   doc: ReturnType<typeof buildDoc>,
@@ -238,12 +155,6 @@ function fakePosAtDOM(
   };
 }
 
-/**
- * Markdown manager double that discriminates WHICH PM node reached
- * serialization: an image emits its markdown source, a container wraps its
- * serialized children in a marker so the over-climb (whole-component source)
- * surfaces as distinct bytes, never a false green.
- */
 function discriminatingMdManager() {
   const serializeJson = (json: JSONContent): string => {
     if (json.type === 'image') {
@@ -306,10 +217,7 @@ describe('container-descriptor boundary — leaf resolves to its own descriptor 
   test('findDescriptorRoot: a leaf inside a container NodeViewContent resolves to its OWN descriptor, not the enclosing container', () => {
     const { calloutRenderer, imageRenderer, img } = buildContainerWithImageTopology();
     const resolved = findDescriptorRoot(img as unknown as Element);
-    // Positive: the image's own outer `.react-renderer` is the descriptor root.
     expect(resolved).toBe(imageRenderer as unknown as Element);
-    // Negative: the enclosing container's wrapper must NOT be adopted — the
-    // `[data-node-view-content]` boundary belongs to a different PM node.
     expect(resolved).not.toBe(calloutRenderer as unknown as Element);
   });
 
@@ -329,8 +237,6 @@ describe('container-descriptor boundary — leaf resolves to its own descriptor 
     ) as SerializeResult;
     expect(result.kind).toBe('ok');
     if (result.kind === 'ok') {
-      // The leaf's own range — NOT `<callout>![shot](./shot.png)</callout>`,
-      // which is what the over-climb slices and serializes.
       expect(result.markdown).toBe('![shot](./shot.png)');
     }
   });

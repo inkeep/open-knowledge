@@ -1,11 +1,3 @@
-/**
- * Containment-primitive tests. The module is platform-parameterized (explicit
- * `path/posix` / `path/win32`) precisely so the Windows semantics — drive
- * roots, UNC shares, `\\?\` / `\\.\` device namespaces — can be exercised on
- * the POSIX runners that build and test the desktop app today. Explicit
- * platform injection keeps both branches covered regardless of the test host.
- */
-
 import { isPathWithinDir } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { isPathWithinProject, validateSpawnPath } from './path-containment.ts';
@@ -79,9 +71,6 @@ describe('isPathWithinProject — win32', () => {
   });
 
   test('rejects a drive-letter mismatch', () => {
-    // Without the canonical-root check, `path.win32.relative` returns the
-    // absolute "to" path for cross-drive inputs and the `..`-shape probes
-    // never fire — this is the case the root comparison exists for.
     expect(isPathWithinProject('D:\\proj\\file.zip', 'C:\\proj', 'win32')).toBe(false);
   });
 
@@ -102,34 +91,23 @@ describe('isPathWithinProject — win32', () => {
   });
 
   test('rejects device-namespace paths against a drive-letter root', () => {
-    // `\\?\C:\proj\...` names the same file as `C:\proj\...` but carries a
-    // distinct canonical root (`\\?\C:\`), so it must not read as contained.
     expect(isPathWithinProject('\\\\?\\C:\\proj\\file.zip', 'C:\\proj', 'win32')).toBe(false);
     expect(isPathWithinProject('\\\\.\\pipe\\ok-pipe', 'C:\\proj', 'win32')).toBe(false);
   });
 });
 
 describe('isPathWithinProject — parity with the server isPathWithinDir', () => {
-  // The two functions implement one security contract from independent copies
-  // (see the shared implementation's trust-boundary note). This matrix pins them to
-  // identical verdicts so a fix or hardening applied to only one of them
-  // fails here instead of drifting silently. Lexical, symlink-free vectors
-  // only — neither implementation resolves symlinks.
   const PARITY_VECTORS: Array<[userPath: string, root: string, platform: NodeJS.Platform]> = [
-    // POSIX: root itself, nested children, dot-dot escapes, sibling prefix.
     ['/proj', '/proj', 'darwin'],
     ['/proj/file.zip', '/proj', 'darwin'],
     ['/proj/a/b/file.zip', '/proj', 'linux'],
     ['/proj/../etc/passwd', '/proj', 'darwin'],
     ['/proj/a/../../etc', '/proj', 'linux'],
     ['/proj-evil/file.zip', '/proj', 'darwin'],
-    // Malformed inputs: relative on either side, empty, NUL byte.
     ['file.zip', '/proj', 'darwin'],
     ['/proj/file.zip', 'proj', 'darwin'],
     ['', '/proj', 'darwin'],
     ['/proj/fi\0le.zip', '/proj', 'darwin'],
-    // Windows: drive letters (either separator, case-insensitive roots),
-    // dot-dot escapes, cross-drive, UNC shares, device namespaces.
     ['C:\\proj', 'C:\\proj', 'win32'],
     ['C:\\proj\\file.zip', 'C:\\proj', 'win32'],
     ['C:/proj/sub/file.zip', 'C:\\proj', 'win32'],

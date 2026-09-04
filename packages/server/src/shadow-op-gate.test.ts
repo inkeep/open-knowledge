@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { releaseShadowOpGate, ShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 
-/** A promise whose settle order we can observe alongside manual triggers. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => {
@@ -47,7 +46,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
       gcRan = true;
     });
     await tick();
-    // Mutator still holds — gc must not have started.
     expect(gcRan).toBe(false);
     expect(gate.isExclusiveHeld).toBe(false);
     hold.resolve();
@@ -67,7 +65,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
       mutatorRan = true;
     });
     await tick();
-    // gc still holds — the mutator must be queued, not running.
     expect(mutatorRan).toBe(false);
     gcHold.resolve();
     await gc;
@@ -85,13 +82,12 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
       gcRan = true;
     });
     await tick();
-    expect(gate.isExclusiveHeld).toBe(false); // gc is waiting, not holding
+    expect(gate.isExclusiveHeld).toBe(false);
     let newMutatorRan = false;
     const newMutator = gate.withMutator(async () => {
       newMutatorRan = true;
     });
     await tick();
-    // No barging: the new top-level mutator must NOT queue behind the waiting gc.
     expect(newMutatorRan).toBe(true);
     mutatorHold.resolve();
     await Promise.all([firstMutator, newMutator, gc]);
@@ -104,8 +100,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     let innerRan = false;
     const outer = gate.withMutator(async () => {
       await outerHold.promise;
-      // Nested acquisition while an exclusive is WAITING (not holding): must be
-      // granted immediately — a pending exclusive does not block new mutators.
       await gate.withMutator(async () => {
         innerRan = true;
       });
@@ -116,7 +110,7 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
       gcRan = true;
     });
     await tick();
-    expect(gcRan).toBe(false); // waiting for the outer mutator to drain
+    expect(gcRan).toBe(false);
     outerHold.resolve();
     await outer;
     expect(innerRan).toBe(true);
@@ -151,7 +145,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     const order: string[] = [];
     const mutator = gate.withMutator(() => mutatorHold.promise);
     await tick();
-    // Both exclusives now wait on the SAME drain event.
     const first = gate.withExclusive(async () => {
       order.push('first-start');
       await firstHold.promise;
@@ -165,7 +158,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     mutatorHold.resolve();
     await mutator;
     await tick();
-    // Exactly one exclusive acquired; the other re-queued behind it.
     expect(order).toEqual(['first-start']);
     firstHold.resolve();
     await Promise.all([first, second]);
@@ -229,7 +221,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     a.resolve();
     await pa;
     await tick();
-    // One mutator still holds the gate, so the drain must not have fired.
     expect(drained).toBe(false);
     expect(gate.activeMutators).toBe(1);
 
@@ -251,7 +242,6 @@ describe('ShadowOpGate (forced interleavings, deterministic)', () => {
     await first;
     await drain;
 
-    // Nothing was acquired, so the gate is plain-idle rather than held.
     expect(gate.isExclusiveHeld).toBe(false);
     let ran = false;
     await gate.withMutator(async () => {

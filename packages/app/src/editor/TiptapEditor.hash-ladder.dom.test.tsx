@@ -1,18 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Deep-link hash-ladder mode gate.
- *
- * The WYSIWYG editor stays mounted while source mode is active (the flip is a
- * CSS swap, not an unmount), so the anchor-scroll ladder — which retries on a
- * timer and re-runs on every editor transaction — has to stand down in source
- * mode or it drives a hidden view. This renders the real component and observes
- * the ladder's only user-visible act: `scrollIntoView` on the anchor element.
- *
- * The editor construction path (V2 cache + mount promise) is replaced by a real
- * TipTap editor built here, so the component's own effects run unchanged
- * against a genuine ProseMirror view; the surrounding chrome is stubbed to
- * markers.
- */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { act, cleanup, render } from '@testing-library/react';
@@ -61,8 +47,6 @@ vi.doMock('@tiptap/react', () => ({ EditorContent: () => <div data-testid="edito
 
 const { TiptapEditor } = await import('./TiptapEditor');
 
-// jsdom ships no `CSS` object; the ladder escapes the anchor before querying
-// for it. Backfilling the one method used keeps the production path intact.
 if (typeof globalThis.CSS === 'undefined') {
   Object.defineProperty(globalThis, 'CSS', {
     value: { escape: (value: string) => value.replace(/[^\w-]/g, (c) => `\\${c}`) },
@@ -112,8 +96,6 @@ describe('TiptapEditor deep-link hash ladder', () => {
     });
     editorEntry = { editor, ydoc, ytext, provider: makeProvider(ydoc) };
 
-    // jsdom implements neither scroll nor layout; the ladder's only observable
-    // act is this call on the resolved anchor element.
     scrollIntoView = vi.fn();
     originalScrollIntoView = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -159,8 +141,6 @@ describe('TiptapEditor deep-link hash ladder', () => {
     isSourceMode: boolean,
   ): Promise<ReturnType<typeof render> | undefined> {
     let result: ReturnType<typeof render> | undefined;
-    // The editor arrives through a suspended promise, so the commit that runs
-    // the effects happens after it resolves — inside this awaited act scope.
     await act(async () => {
       result = render(tree(isSourceMode));
     });
@@ -182,8 +162,6 @@ describe('TiptapEditor deep-link hash ladder', () => {
   });
 
   test('picks the hash up on the flip back out of source mode', async () => {
-    // The editor is never unmounted by a flip, so the deep link that arrived
-    // while it was hidden has to land when it becomes visible again.
     const result = await renderEditor(true);
     expect(scrollIntoView).not.toHaveBeenCalled();
 

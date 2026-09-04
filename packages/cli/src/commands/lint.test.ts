@@ -1,9 +1,3 @@
-/**
- * Unit tests for the `ok lint` human-readable report formatter. The walk/lint
- * pipeline is covered by `content/lint-runner.test.ts`; here we pin the output
- * shaping against a synthetic result (no fs).
- */
-
 import { isAbsolute } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { LintRunResult } from '../content/lint-runner.ts';
@@ -79,12 +73,9 @@ describe('formatLintReport', () => {
       result({ fileCount: 500, warnings: ['could not read directory drafts'] }),
     );
     expect(out).toContain('could not read directory drafts');
-    // On a large KB a warning block rendered first scrolls off, leaving a
-    // terminal whose last screen reads clean.
     expect(out.indexOf('could not read directory drafts')).toBeGreaterThan(
       out.indexOf('No problems in 500 files'),
     );
-    // The coverage line still sits adjacent to the no-problems claim it qualifies.
     expect(out.indexOf('Checks run: markdownlint.')).toBeLessThan(
       out.indexOf('could not read directory drafts'),
     );
@@ -113,8 +104,6 @@ describe('resolveTarget', () => {
   });
 
   test('produces a single absolute path (never the cwd-prefixed concat bug)', () => {
-    // The prior hand-rolled `startsWith('/')` join produced `${cwd}/C:\docs`
-    // on Windows-style inputs; resolve() yields one well-formed absolute path.
     const out = resolveTarget('sub/dir', cwd);
     expect(isAbsolute(out)).toBe(true);
     expect(out.includes(`${cwd}/${cwd}`)).toBe(false);

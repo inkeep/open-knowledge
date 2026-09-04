@@ -1,13 +1,3 @@
-/**
- * Coverage for the embed-group slash items — generic blank-HTML entry and
- * the themed `html preview` starter family.
- *
- * Pins the load-bearing insertion shape (every item inserts a `codeBlock`
- * with `language: 'html'` + `meta: 'preview'` so the inserted block opens
- * straight into preview mode) and the 1:1 mapping between the themed
- * entries and the shared `PREVIEW_EMBED_STARTERS` set.
- */
-
 import { PREVIEW_EMBED_STARTERS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { getEmbedStarterItems } from './embed-starter-items';
@@ -19,7 +9,6 @@ interface InsertedNode {
   content: Array<{ type: string; text: string }>;
 }
 
-/** Minimal command-context double that captures the `insertContent` payload. */
 function makeContext(): { ctx: SlashCommandContext; getInserted: () => InsertedNode | undefined } {
   let inserted: InsertedNode | undefined;
   const chain = {
@@ -63,8 +52,6 @@ describe('getEmbedStarterItems', () => {
       expect(node?.type).toBe('codeBlock');
       expect(node?.attrs).toEqual({ language: 'html', meta: 'preview' });
       expect(node?.content[0]?.type).toBe('text');
-      // Every embed body wires colors through theme tokens so light/dark
-      // renders without hand-picked values.
       expect(node?.content[0]?.text).toContain('var(--');
     }
   });
@@ -86,17 +73,11 @@ describe('getEmbedStarterItems', () => {
     blank?.command(ctx);
     const text = getInserted()?.content[0]?.text ?? '';
     expect(text).toContain('Hello, world!');
-    // The seed nudges the author toward editing — without it the iframe
-    // would render empty and the preview affordance is invisible.
     expect(text.toLowerCase()).toContain('edit this html');
   });
 
   test('blank-HTML exposes the full set of search aliases', () => {
     const blank = getEmbedStarterItems().find((i) => i.name === 'embed-starter-html');
-    // Exhaustive equality (not arrayContaining) — every alias is a
-    // discoverability contract with users typing `/html`, `/iframe`,
-    // `/sandbox`, `/web`, `/snippet`. Silent removal of any one would
-    // regress the user-facing search surface.
     expect(blank?.aliases).toEqual([
       'html',
       'embed',

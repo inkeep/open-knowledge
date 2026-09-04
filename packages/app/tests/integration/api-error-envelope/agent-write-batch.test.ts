@@ -1,18 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleAgentWriteBatch`.
- *
- * Asserts the canonical RFC 9457 wire shape:
- *   - happy path: status 200, `Content-Type: application/json`, body parses
- *     against `AgentWriteBatchSuccessSchema` (timestamp + per-entry results +
- *     written/failed counts), no `ok: true` discriminator.
- *   - missing docs / empty docs / over-cap docs / malformed per-entry docName
- *     → `urn:ok:error:invalid-request` (pre-identity body-shape rejection
- *     from `withValidation`; the whole batch rejects at the schema boundary).
- *   - reserved docname → per-entry error INSIDE a 200 body (semantic,
- *     post-identity, partial success by design).
- *   - method-not-allowed on GET.
- */
-
 import {
   AGENT_WRITE_BATCH_MAX_DOCS,
   AgentWriteBatchSuccessSchema,

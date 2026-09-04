@@ -10,15 +10,8 @@ import type { DocumentStats } from '@/lib/document-stats';
 
 interface EditorFooterProps {
   stats: DocumentStats;
-  /** Selection-scoped stats. When non-null, the stats group reflects the
-   *  current selection (prefixed "Selected"); when null it shows `stats`
-   *  (whole document). */
   selectionStats?: DocumentStats | null;
-  /** Stats group renders only when there's a real doc scope. When false and
-   *  identity is also empty, the footer renders nothing. */
   showStats?: boolean;
-  /** When set, a "Ask AI" reopen badge renders next to the stats — shown only
-   *  while the bottom composer is dismissed. Clicking it reopens the composer. */
   composerBadge?: { onReopen: () => void } | null;
 }
 
@@ -31,7 +24,6 @@ export function EditorFooter({
   const { t } = useLingui();
   const identity = useEditorFooterIdentity();
   if (!showStats && identity === null && composerBadge == null) return null;
-  // A non-null selectionStats scopes the counts to the current selection.
   const active = selectionStats ?? stats;
   const isSelection = selectionStats != null;
   const { words, chars, tokens } = active;
@@ -50,11 +42,7 @@ export function EditorFooter({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-full h-2 bg-linear-to-t from-background to-transparent"
       />
-      {/* Reopen tab — centered and flush to the footer's bottom edge (the
-          collapsed counterpart to the composer's top-center collapse handle).
-          The Button base applies `active:translate-y-px` (a press-down nudge);
-          on this edge-anchored tab that 1px shoves it past the viewport bottom
-          and pops a transient scrollbar while held, so neutralize it here. */}
+      {}
       {composerBadge ? (
         <Button
           type="button"

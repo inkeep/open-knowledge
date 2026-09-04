@@ -45,7 +45,7 @@ describe('VectorCache', () => {
     expect(loaded?.length).toBe(2);
     expect(Array.from(loaded?.[0])).toEqual([1, 0, 0, 0]);
     expect(b.isFresh('page:doc-a', 100)).toBe(true);
-    expect(b.isFresh('page:doc-a', 101)).toBe(false); // mtime moved
+    expect(b.isFresh('page:doc-a', 101)).toBe(false);
   });
 
   test('link reuses identical content across docs (content-addressed dedup)', async () => {
@@ -53,11 +53,9 @@ describe('VectorCache', () => {
     await c.init();
     const hash = hashContent('shared body');
     c.store('page:a', hash, 1, [vec(1, 1, 1, 1)]);
-    // A different doc with the same content reuses the blob without embedding.
     expect(c.link('page:b', hash, 2)).toBe(true);
     expect(c.getVectors('page:b')).toBeDefined();
     await c.persist();
-    // Only one blob on disk for the shared hash.
     const blobs = readdirSync(join(dir, 'vec'));
     expect(blobs).toEqual([`${hash}.bin`]);
   });
@@ -85,8 +83,6 @@ describe('VectorCache', () => {
     await a.init();
     a.store('page:a', hashContent('x'), 1, [vec(1, 0, 0, 0)]);
     await a.persist();
-    // Same model + dims + chunking, but a different provider produces different
-    // vectors — the cache must not score one against the other.
     const b = makeCache({ providerId: 'https://my-azure.openai.azure.com/v1' });
     await b.init();
     expect(b.getVectors('page:a')).toBeUndefined();
@@ -113,7 +109,6 @@ describe('VectorCache', () => {
     await c.persist();
     expect(readdirSync(join(dir, 'vec')).length).toBe(2);
 
-    // doc-b removed from the corpus.
     c.retain(new Set(['page:a']));
     await c.persist();
     expect(c.getVectors('page:b')).toBeUndefined();
@@ -124,7 +119,7 @@ describe('VectorCache', () => {
     const c = makeCache();
     await c.init();
     c.store('page:a', hashContent('a'), 1, [vec(1, 0, 0, 0)]);
-    c.store('page:blank', hashContent(''), 1, []); // blank doc, no chunks
+    c.store('page:blank', hashContent(''), 1, []);
     expect(c.embeddedCount).toBe(1);
   });
 
@@ -139,7 +134,7 @@ describe('VectorCache', () => {
     await c.init();
     c.store('page:a', hashContent('a'), 1, [vec(1, 0, 0, 0)]);
     expect(c.getVectors('page:a')).toBeDefined();
-    await c.persist(); // no-op, no throw
+    await c.persist();
     expect(readdirSync(dir).length).toBe(0);
   });
 });

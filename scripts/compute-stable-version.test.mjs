@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { computePointReleaseVersion, computeStablePromotion, evaluateAnchorGuard } from './compute-stable-version.mjs';
 
-// Injected git boundary so tests need no repo. Defaults: unknown changeset bump
-// types resolve to 'patch' (the patch floor), isAncestor false.
 function fakeGit({ shas = {}, newestStable = '', changesets = {}, ancestor = () => false, bumps = {} } = {}) {
   return {
     revParse: (ref) => {
@@ -153,8 +151,6 @@ describe('evaluateAnchorGuard', () => {
   });
 
   test('a malformed anchor throws rather than reporting drift', () => {
-    // Reporting an unreadable anchor as drift would send an operator looking
-    // for a pending reset that does not exist.
     expect(() => evaluateAnchorGuard({ anchorVersion: '0.41', latestStableTag: 'v0.41.0' })).toThrow(
       /bare X\.Y\.Z version/,
     );
@@ -176,9 +172,6 @@ describe('evaluateAnchorGuard', () => {
   });
 
   test('reports only: it never sleeps, retries, or mutates', () => {
-    // The guard is called from inside the shared release-cadence group, where
-    // blocking would stall every other cut. Two calls with identical inputs
-    // must return identical verdicts with no elapsed-time dependence.
     const before = Date.now();
     const a = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
     const b = evaluateAnchorGuard({ anchorVersion: '0.41.0', latestStableTag: 'v0.41.1' });
@@ -220,10 +213,6 @@ describe('computePointReleaseVersion', () => {
   });
 
   test('revert mode reads no changeset frontmatter even when the delta is non-empty', () => {
-    // With a real boundary the read is `git show <sha>:.changeset/<id>.md`, so
-    // routing revert through the cherry-pick bump path would fail the run
-    // outright whenever the revert deleted the file being read. The fake throws
-    // to pin that the call never happens.
     const git = {
       ...fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'leftover'] } }),
       bumpTypeOf: () => {
@@ -238,8 +227,6 @@ describe('computePointReleaseVersion', () => {
   });
 
   test('revert mode stays a patch even when the synthetic tree gained a major changeset', () => {
-    // Guards against a future refactor routing revert through the cherry-pick
-    // bump path: a stray added changeset must not silently escalate the version.
     const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0', 'stray'] }, bumps: { stray: 'major' } });
     const r = computePointReleaseVersion(
       { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'revert' },
@@ -271,8 +258,6 @@ describe('computePointReleaseVersion', () => {
   });
 
   test('an empty added delta still yields a patch bump in cherry-pick mode', () => {
-    // maxBumpType floors at 'patch' for an empty list, so the version is always
-    // computable; refusing an empty delta is the caller's guard, not this one's.
     const git = fakeGit({ changesets: { S: ['c0'], SYN: ['c0'] } });
     const r = computePointReleaseVersion(
       { syntheticSha: 'SYN', latestStableTag: 'v0.32.0', latestStableSha: 'S', mode: 'cherry-pick' },
@@ -298,8 +283,6 @@ describe('computePointReleaseVersion', () => {
   });
 
   test('a malformed or absent latest stable tag throws rather than bootstrapping', () => {
-    // A point release is a patch OVER an existing stable; no stable at all means
-    // the operator is on the wrong lane, not that this is a first release.
     const git = fakeGit();
     const call = (latestStableTag) =>
       computePointReleaseVersion({ syntheticSha: 'SYN', latestStableTag, latestStableSha: 'S', mode: 'revert' }, git);

@@ -6,7 +6,6 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-/** Drain a handle's async-iterable into an array (ends on terminal event). */
 async function collectEvents(handle: {
   events: AsyncIterable<unknown>;
 }): Promise<Array<Record<string, unknown>>> {
@@ -15,7 +14,6 @@ async function collectEvents(handle: {
   return out;
 }
 
-/** An NDJSON Response whose body streams the given lines. */
 function ndjsonResponse(lines: string[]): Response {
   return new Response(new Blob([lines.map((l) => `${l}\n`).join('')]).stream(), { status: 200 });
 }
@@ -126,8 +124,6 @@ describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
   });
 
   test('a stream that ends before any code is issued surfaces the no-confirmation error', async () => {
-    // Nothing to recover: without a `verification` event there is no in-flight
-    // device flow on the server to rejoin, so failing fast is correct.
     globalThis.fetch = vi.fn(async () => ndjsonResponse([])) as unknown as typeof fetch;
 
     const events = await collectEvents(httpAuthTransport().start() as never);
@@ -156,13 +152,6 @@ describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
   });
 });
 
-/**
- * Issue #803. The device code is on screen and still valid, then the loopback
- * stream is severed by something outside OpenKnowledge (AV/EDR inspection, VPN
- * proxy, tab-backgrounding). The server keeps the flow alive across the drop,
- * so the client's job is to notice the authorization landing anyway instead of
- * declaring an unrecoverable failure.
- */
 describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
   const VERIFICATION = JSON.stringify({
     type: 'verification',
@@ -171,7 +160,6 @@ describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
     expires_in: 900,
   });
 
-  /** A body that yields the verification line, then errors mid-stream. */
   function severedAfterVerification(): Response {
     let sent = false;
     return new Response(
@@ -194,8 +182,6 @@ describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).endsWith('/auth/status')) {
         statusCalls++;
-        // Not signed in yet on the first probe; the user finishes authorizing
-        // on github.com between polls.
         return new Response(
           JSON.stringify(
             statusCalls === 1
@@ -216,8 +202,6 @@ describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
   }, 20_000);
 
   test('a clean stream end after the code was issued also recovers rather than failing', async () => {
-    // Some intermediaries close the connection tidily (FIN, no reset), so the
-    // reader sees a normal end-of-stream with no terminal event.
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).endsWith('/auth/status')) {
         return new Response(
@@ -238,8 +222,6 @@ describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
       if (String(url).endsWith('/auth/status')) {
         return new Response(JSON.stringify({ authenticated: false }), { status: 200 });
       }
-      // `expires_in: 0` — the code is already dead when the stream drops, so
-      // recovery must not spin.
       return ndjsonResponse([
         JSON.stringify({
           type: 'verification',
@@ -273,17 +255,13 @@ describe('streamAuthEndpoint — recovery after a mid-flow stream drop', () => {
     const first = await iter.next();
     expect((first.value as { type: string }).type).toBe('verification');
 
-    // The user closes the modal while recovery is polling.
     handle.cancel();
 
-    // Iteration ends with no error event — a deliberate cancel is not a failure.
     expect((await iter.next()).done).toBe(true);
     expect(cancelCalls).toEqual([{ channel: 'login' }]);
   });
 
   test('cancel after a completed flow does not tell the server to cancel', async () => {
-    // The modal unmounts on success and calls `cancel()` in cleanup; firing a
-    // cancel there could displace a NEW flow the user has since started.
     const cancelCalls: unknown[] = [];
     globalThis.fetch = vi.fn(async (url: string) => {
       if (String(url).endsWith('/auth/cancel')) {

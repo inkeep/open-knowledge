@@ -106,9 +106,6 @@ export interface SerializeCallOptions {
   skipFreshnessDerive?: boolean;
 }
 
-/** Holder for the freshness checker so a `serialize()` call can suppress it
- *  for its own synchronous duration (same pattern as `ParseContextHolder`:
- *  handlers close over the holder, not the value). */
 interface FreshnessCheckerHolder {
   checker: StructuralFreshnessChecker | undefined;
 }
@@ -300,7 +297,7 @@ function destructureAttrs(
 function hasDirtyDescendant(node: PmNode): boolean {
   let found = false;
   node.descendants((child) => {
-    if (found) return false; // short-circuit
+    if (found) return false;
     if (child.type.name === 'jsxInline') {
       if (child.attrs.sourceDirty) found = true;
       return false;

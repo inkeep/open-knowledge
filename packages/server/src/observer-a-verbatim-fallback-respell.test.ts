@@ -39,7 +39,6 @@ import { mdManager } from './md-manager.ts';
 
 const schema = getSchema(sharedExtensions);
 
-/** A JSX container with flush-left nested blocks, as a user authors it. */
 const STEPS = [
   '<Steps>',
   '',
@@ -59,7 +58,6 @@ const STEPS = [
   '',
 ].join('\n');
 
-/** A leading-whitespace `<Step>` / `</Step>` tag — the respell's signature. */
 const INDENTED_STEP = /\n[ \t]+<\/?Step\b/;
 
 const CLIENT_ORIGIN = 'observer-a-verbatim-fallback-respell/client';
@@ -78,8 +76,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-/** Parse `STEPS`, then degrade the nested block at `index` into the
- *  verbatim-bytes fallback the editor holds for a block it cannot read. */
 function fragmentWithDegradedStep(index: number, raw: string): JSONContent {
   const json = mdManager.parse(STEPS) as JSONContent;
   const container = json.content?.[0];
@@ -94,9 +90,6 @@ function fragmentWithDegradedStep(index: number, raw: string): JSONContent {
   return json;
 }
 
-/** One dual drain: the degraded fragment and a source keystroke land in the
- *  same transaction, exactly as they do when a user types in source mode while
- *  the hidden WYSIWYG rewrites the fragment underneath. */
 function degradeWhileTyping(json: JSONContent, typeAfter: string, char: string): void {
   const at = rig.ytext.toString().indexOf(typeAfter) + typeAfter.length;
   rig.stimulus('degrade-while-typing', () => {
@@ -123,11 +116,7 @@ test('a degraded nested block does not re-indent the authored source in Y.Text',
 
   const settled = rig.ytext.toString();
   expect(settled).not.toMatch(INDENTED_STEP);
-  // The block the user never touched keeps its authored bytes, character for
-  // character — a fallback holds source OK could not read, so a respell of it
-  // is not re-derivable.
   expect(settled).toContain('<Step>\n\nContent two.\n\n</Step>');
-  // The keystroke still lands: declining to respell must not decline the edit.
   expect(settled).toContain('Content one.Z');
   expect((settled.match(/<Step>/g) ?? []).length).toBe(2);
   expect((settled.match(/<\/Step>/g) ?? []).length).toBe(2);

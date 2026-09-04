@@ -65,16 +65,6 @@ const InkeepSearchAndChat: FC<SharedProps> = ({ open, onOpenChange }) => {
           },
         ],
       },
-      // transformSource: (source) => {
-      //   const tabs = source.tabs || [];
-      //   if (source.url.includes('openknowledge.ai/docs')) {
-      //     tabs.push('Docs');
-      //   }
-      //   return {
-      //     ...source,
-      //     tabs,
-      //   };
-      // },
     },
     aiChatSettings: {
       prompts: [`The user is currently viewing page ${url}.`],
@@ -96,9 +86,6 @@ const InkeepSearchAndChat: FC<SharedProps> = ({ open, onOpenChange }) => {
         },
       ],
     },
-    // searchSettings: {
-    //   tabs: [['Docs', { isAlwaysVisible: true }], ['All', { isAlwaysVisible: true }], 'GitHub'],
-    // },
   };
 
   return (
@@ -107,7 +94,6 @@ const InkeepSearchAndChat: FC<SharedProps> = ({ open, onOpenChange }) => {
       <InkeepModalSearchAndChat
         {...config}
         modalSettings={{
-          // disable default cmd+k behavior, it's handled by fumadocs
           shortcutKey: null,
           isOpen: open,
           onOpenChange,

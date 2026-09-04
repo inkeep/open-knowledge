@@ -1,20 +1,9 @@
-/**
- * Visible-in-window-chrome reminder of which named parallel dev instance this
- * window belongs to — the git branch / worktree the build was launched from.
- * Renders nothing unless the desktop host reports an `instanceLabel` (only set
- * when the launch relocated `userData` to a named sibling: auto-derived from
- * the git checkout or an explicit `OK_INSTANCE`). So it is invisible for the
- * default install, in web / CLI distribution, and for plain dev on the default
- * branch — exactly the launches that are NOT parallel instances.
- */
-
 import { useLingui } from '@lingui/react/macro';
 import { GitBranch } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from './ui/badge';
 
 interface InstanceBadgeProps {
-  /** Optional layout overrides — the badge component itself stays size-agnostic. */
   readonly className?: string;
 }
 

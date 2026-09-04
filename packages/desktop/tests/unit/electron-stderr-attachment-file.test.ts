@@ -12,20 +12,6 @@ import {
   type StderrCaptureSource,
 } from '../smoke/_helpers/electron-stderr';
 
-/**
- * Proves what a `main-process-stderr` attachment IS, on disk and in the
- * attach call: carrier is a `path` and never a `body`, the path is under
- * the test's own output directory, the bytes are readable there, and an
- * empty buffer still produces a file. `_helpers/electron-stderr.ts` owns
- * why each of those is load-bearing.
- *
- * The assertions are deliberately never about the call happening. An
- * attachment that regresses to a body would still "attach"; so would one
- * that writes somewhere readable outside the uploaded tree. Only a check
- * on the shape catches either.
- */
-
-/** Options Playwright's own `attach` accepts, so the double cannot drift. */
 type AttachOptions = NonNullable<Parameters<TestInfo['attach']>[1]>;
 
 interface RecordedAttachment {
@@ -36,10 +22,6 @@ interface RecordedAttachment {
 let outputDir: string;
 let attachments: RecordedAttachment[];
 
-/**
- * A real value the compiler checks against Playwright's signatures. The
- * helper takes only the slice it needs, so no cast is required.
- */
 const makeTestInfo = (): StderrAttachTarget => ({
   outputPath: (...segments: string[]) => {
     const target = join(outputDir, ...segments);
@@ -65,10 +47,6 @@ const makeCapture = (payload: string): ElectronStderrCapture => {
   return capture;
 };
 
-/**
- * PassThrough delivers `data` on the next tick. Deterministic today: Node
- * drains the nextTick queue fully before reaching the check phase.
- */
 const drainStreams = () => new Promise((resolve) => setImmediate(resolve));
 
 const startFixture = (prefix: string) => {
@@ -97,13 +75,8 @@ describe('captureElectronStderr: attachment materializes a file', () => {
     const [{ name, options }] = attachments;
     expect(name).toBe('main-process-stderr');
     expect(options.contentType).toBe('text/plain');
-    // The carrier assertion. A `body` leaves no file in either tree CI
-    // uploads, which is the whole defect.
     expect(options.body).toBeUndefined();
     expect(typeof options.path).toBe('string');
-    // The destination assertion. A readable path outside the test's own
-    // output directory satisfies everything above and is still in neither
-    // tree CI uploads.
     expect(options.path as string).toContain(outputDir);
 
     const written = readFileSync(options.path as string, 'utf8');
@@ -136,12 +109,6 @@ describe('captureElectronStderr: attachment materializes a file', () => {
   });
 });
 
-/**
- * Pins the entry point a fixture actually calls. Per-slot correctness in
- * `attachTo` is worth nothing if the slots are never supplied, and the
- * supplier is this walk — so it is the walk that has to be exercised, not
- * a hand-fed index.
- */
 describe('attachCapturedStderr: the registration walk a fixture calls', () => {
   beforeEach(() => startFixture('ok-stderr-walk-'));
   afterEach(endFixture);
@@ -161,8 +128,6 @@ describe('attachCapturedStderr: the registration walk a fixture calls', () => {
     const pathB = attachments[1].options.path as string;
     expect(basename(pathA)).toBe('main-process-stderr.txt');
     expect(basename(pathB)).toBe('main-process-stderr-2.txt');
-    // The property the slots exist for: the second launch did not land on
-    // top of the first.
     expect(readFileSync(pathA, 'utf8')).toContain('from the first launch');
     expect(readFileSync(pathB, 'utf8')).toContain('from the second launch');
   });
@@ -177,18 +142,15 @@ describe('attachCapturedStderr: the registration walk a fixture calls', () => {
     const healthy = makeCapture('second launch survived\n');
     await drainStreams();
 
-    // Must resolve — see FAILURE CONTAINMENT on `attachCapturedStderr`.
     await expect(
       attachCapturedStderr(makeTestInfo(), [exploding, healthy]),
     ).resolves.toBeUndefined();
 
-    // The load-bearing half — the SECOND capture still produced its file.
     const survivor = attachments.find((a) => a.name === 'main-process-stderr-2');
     expect(survivor).toBeDefined();
     expect(readFileSync(survivor?.options.path as string, 'utf8')).toContain(
       'second launch survived',
     );
-    // Reported, not swallowed, and naming the artifact rather than the slot.
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain('main-process-stderr.txt');
     expect(warn.mock.calls[0][0]).toContain('output dir vanished');
@@ -207,8 +169,6 @@ describe('attachCapturedStderr: the registration walk a fixture calls', () => {
 
     await attachCapturedStderr(rejecting, [capture]);
 
-    // The warn promises the file may still be there; this is that promise
-    // under test, and it is what the CI artifact control depends on.
     const written = readFileSync(join(outputDir, 'main-process-stderr.txt'), 'utf8');
     expect(written).toContain('bytes written before the attach threw');
     expect(warn).toHaveBeenCalledTimes(1);

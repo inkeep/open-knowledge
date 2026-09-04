@@ -38,7 +38,6 @@ import { joinTextblockBackward, joinTextblockForward } from '@tiptap/pm/commands
 import type { Node as PmNode, ResolvedPos } from '@tiptap/pm/model';
 import { type EditorState, TextSelection } from '@tiptap/pm/state';
 
-/** Depth of the nearest `listItem` ancestor, or null when outside a list. */
 function listItemDepth($pos: ResolvedPos): number | null {
   for (let d = $pos.depth; d > 0; d--) {
     if ($pos.node(d).type.name === 'listItem') return d;
@@ -46,12 +45,6 @@ function listItemDepth($pos: ResolvedPos): number | null {
   return null;
 }
 
-// Recursive on purpose: mirrors upstream ListKeymap's descendants-based
-// `listItemHasSubList`, so this guard fires exactly when upstream's lift
-// branch would misfire. A shallow direct-child scan diverges for legal
-// shapes like listItem > blockquote > list (listItem content is
-// `paragraph block*`), where upstream still lifts but a shallow guard
-// would not preempt.
 function itemContainsSublist(item: PmNode): boolean {
   let found = false;
   item.descendants((child) => {
@@ -62,18 +55,11 @@ function itemContainsSublist(item: PmNode): boolean {
   return found;
 }
 
-/** Resolved cursor, or null for ranged/Node selections (never handled). */
 function cursorOf(state: EditorState): ResolvedPos | null {
   const { selection } = state;
   return selection instanceof TextSelection ? selection.$cursor : null;
 }
 
-/**
- * Mirror of the exact configuration where ListKeymap's handleBackspace
- * falls through to `liftListItem` despite a previous sibling existing:
- * cursor at the very start of an item's first textblock, previous sibling
- * item present, and that sibling contains a nested list.
- */
 function isNestedBoundaryBackspace(state: EditorState): boolean {
   const $cursor = cursorOf(state);
   if (!$cursor || $cursor.parentOffset !== 0) return false;
@@ -81,16 +67,11 @@ function isNestedBoundaryBackspace(state: EditorState): boolean {
   if (li === null) return false;
   if ($cursor.depth !== li + 1 || $cursor.index(li) !== 0) return false;
   const itemIndex = $cursor.index(li - 1);
-  if (itemIndex === 0) return false; // first item: stock lift-out is correct
+  if (itemIndex === 0) return false;
   const prevItem = $cursor.node(li - 1).child(itemIndex - 1);
   return itemContainsSublist(prevItem);
 }
 
-/**
- * Depth of the list item that starts immediately after the item at depth
- * `li`, descending through wrapper lists; null when what follows is not a
- * list item (end of document, trailing paragraph, ...).
- */
 function nextListItemDepthAfter($cursor: ResolvedPos, li: number): number | null {
   for (let d = li - 1; d >= 0; d--) {
     const parent = $cursor.node(d);
@@ -108,12 +89,6 @@ function nextListItemDepthAfter($cursor: ResolvedPos, li: number): number | null
   return null;
 }
 
-/**
- * Mirror of the exact configuration where ListKeymap's handleDelete takes
- * its `nextListIsHigher` branch: cursor at the very end of a listItem (its
- * last textblock, last-child chain all the way up) and the next item in
- * document order sits shallower than the cursor's item.
- */
 function isNestedBoundaryDelete(state: EditorState): boolean {
   const $cursor = cursorOf(state);
   if (!$cursor || $cursor.parentOffset !== $cursor.parent.content.size) return false;
@@ -133,10 +108,6 @@ export const ListBoundaryMerge = Extension.create({
     const backspace = () => {
       const { editor } = this;
       if (!isNestedBoundaryBackspace(editor.state)) return false;
-      // ListKeymap consults undoInputRule before anything else; preserve
-      // that precedence in the one configuration this extension owns (a
-      // fresh `- ` autoformat can land in this configuration when the new
-      // item joins a list whose last item has a sublist).
       if (editor.commands.undoInputRule()) return true;
       const { state, view } = editor;
       return joinTextblockBackward(state, view.dispatch, view);

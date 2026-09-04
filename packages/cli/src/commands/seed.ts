@@ -1,13 +1,3 @@
-/**
- * `ok seed` — scaffold the Karpathy three-layer knowledge-base structure.
- *
- * Creates `external-sources/`, `research/`, `articles/`, an optional
- * `log.md`, and writes per-folder `<folder>/.ok/frontmatter.yml` defaults
- * that surface as agent guidance via `exec("ls <folder>")`.
- *
- * Replaces the former `init-content` MCP tool with a deterministic CLI.
- */
-
 import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import {
@@ -33,38 +23,18 @@ import { accent, dim, error as errorColor, info, success, warning } from '../ui/
 
 interface SeedCommandOptions {
   cwd?: string;
-  /**
-   * Subfolder (relative to `cwd`) where the chosen starter pack is
-   * scaffolded. `.` / `''` — or omitting it — scaffolds at the project root.
-   */
   root?: string;
-  /**
-   * Starter pack to scaffold. Defaults to `'knowledge-base'` for back-compat
-   * with single-scaffold callers. See `STARTER_PACKS` for the full registry.
-   */
   pack?: PackId;
-  /** Skip the Y/n confirmation prompt. */
   yes?: boolean;
-  /** Print the plan and exit without writing. */
   dryRun?: boolean;
-  /** Test-only: override stdin for confirmation. */
   confirmStream?: NodeJS.ReadableStream;
 }
 
-/**
- * Spell out why the pack's skills were not installed — and cannot be, until the
- * user changes something. `planSeed` sets `packSkillHomeRefusal` only when the
- * pack ships skills and no usable skill home exists, so this is never
- * hypothetical: apply refuses every run. Without it "already seeded" reads as a
- * complete setup while the pack's skills are silently absent.
- */
 function skillHomeRefusalNote(plan: ScaffoldPlan, packName: string): string {
   if (plan.packSkillHomeRefusal === undefined) return '';
   if (plan.packSkillHomeRefusal === 'home-escapes-project') {
     return `\n${warning('!')} The ${packName} skills were not installed: this project's skill folder is a symlink pointing outside the project, and Open Knowledge will not write through it. Replace it with a real directory inside the project, then run \`ok seed\` again.`;
   }
-  // Derived from the editor registry, so a newly onboarded host lands in this
-  // list for free rather than making the message quietly wrong.
   const homes = [
     ...new Set(
       [AGENTS_SKILLS_ROOT, ...PROJECT_SKILL_EDITOR_IDS.map((id) => EDITOR_PROJECT_SKILL_ROOT[id])]
@@ -80,19 +50,12 @@ function isPackId(value: unknown): value is PackId {
 }
 
 interface SeedCommandResult {
-  /** 'applied' (writes happened) | 'dry-run' | 'no-op' (already seeded) | 'cancelled' | 'prerequisite-missing' | 'failed' */
   status: 'applied' | 'dry-run' | 'no-op' | 'cancelled' | 'prerequisite-missing' | 'failed';
   message: string;
   plan?: ScaffoldPlan;
-  /** Non-zero on prerequisite-missing or failed. */
   exitCode: number;
 }
 
-/**
- * Programmatic entry point. Thin wrapper around planSeed + applySeed that
- * owns confirmation prompting and output formatting. Called by both the
- * Commander action and integration tests.
- */
 export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedCommandResult> {
   const cwd = resolve(opts.cwd ?? process.cwd());
   const packId: PackId = opts.pack ?? DEFAULT_PACK_ID;
@@ -107,8 +70,6 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   let plan: ScaffoldPlan;
   try {
-    // A dry-run previews a pack before `ok init`, so it must not require an
-    // initialized project — skip the prerequisite gate in that mode only.
     plan = await planSeed({
       projectDir: cwd,
       rootDir: opts.root,
@@ -130,16 +91,8 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
     };
   }
 
-  // A pending pack skill or a required plugin that is off is outstanding work
-  // even when every folder/template already exists — `applySeed` would still
-  // author the skill and enable the plugin, so this is not a no-op. Shared with
-  // SeedDialog so the CLI and the dialog cannot disagree about what "nothing to
-  // do" means. A refused skill install is not outstanding work because apply
-  // cannot perform it; the refusal note below explains what the user must do.
   if (!planHasOutstandingWork(plan)) {
     const packName = STARTER_PACKS[packId].name;
-    // A conflicted skill is present-but-not-ours: "already seeded" would
-    // misread the user's own skill as the pack's, so say what's actually true.
     const conflictNote = (plan.packSkills ?? [])
       .filter((s) => s.conflict)
       .map(
@@ -147,8 +100,6 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
           `\n${warning('!')} Skill "${s.name}" is your own — the pack's version is not installed. Rename yours to install the pack's version.`,
       )
       .join('');
-    // "Nothing to do" is false when the refusal note just told the user what to
-    // do (create an agent folder, re-run) — drop it rather than contradict it.
     const refusalNote = skillHomeRefusalNote(plan, packName);
     return {
       status: 'no-op',
@@ -159,9 +110,6 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   }
 
   if (opts.dryRun) {
-    // Surface the pack's organizing principle (per-folder "why" + templates),
-    // not just the file tree — so the reader can adapt the pattern into a
-    // similar structure of their own. The plan tree stays below it.
     const rationale = formatPackRationale(STARTER_PACKS[packId]);
     return {
       status: 'dry-run',
@@ -186,8 +134,6 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
     }
   }
 
-  // applySeed reads absolute paths from plan.created directly, so it needs
-  // only projectDir + packId — rootDir is already baked into the plan entries.
   const applyResult = await applySeed(plan, { projectDir: cwd, packId });
 
   if (applyResult.errors.length > 0) {
@@ -205,28 +151,16 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
 
   const packName = STARTER_PACKS[packId].name;
 
-  // `applySeed` installs the pack's project-local skills for every editor set up
-  // for this project (single install site shared with the desktop IPC + HTTP
-  // seed paths). Surface which editors got them. A decomposed pack ships several
-  // skills; `packSkillsInstalled` names the editors, not the skills.
   const skillLine =
     applyResult.packSkillsInstalled.length > 0
       ? `\n${dim(`Installed the ${packName} skills for: ${applyResult.packSkillsInstalled.join(', ')}`)}`
       : '';
 
-  // Name the plugins this run switched on. Silence here would leave a user who
-  // had one off to discover the change in Settings later with no explanation —
-  // the same disclosure the dialog owes, on the surface the CLI user is looking
-  // at. Only plugins actually flipped are listed, so a re-seed says nothing.
   const pluginLine =
     applyResult.pluginsEnabled.length > 0
       ? `\n${dim(`Enabled plugin(s) included with this pack: ${applyResult.pluginsEnabled.join(', ')} — turn off any time in Settings.`)}`
       : '';
 
-  // Name collisions are not errors — the seed succeeded and the user's own
-  // skill was left untouched — but silence would read as "pack installed".
-  // `hosts` means the skill DID install — a same-named skill of the user's only
-  // displaced it in those editors, so the flat "was not installed" is false.
   const conflictLines = (applyResult.packSkillConflicts ?? [])
     .map((c) =>
       c.hosts === undefined || c.hosts.length === 0
@@ -243,7 +177,6 @@ export async function runSeed(opts: SeedCommandOptions = {}): Promise<SeedComman
   };
 }
 
-/** Print the registry of available packs as a small CLI table. */
 function formatPackList(): string {
   const lines: string[] = [accent('Available packs:')];
   for (const id of STARTER_PACK_IDS) {
@@ -253,7 +186,6 @@ function formatPackList(): string {
   return lines.join('\n');
 }
 
-/** Format a ScaffoldPlan as a plain colored list for CLI output. */
 function formatPlanBody(plan: ScaffoldPlan, cwd: string): string {
   const lines: string[] = [];
 
@@ -293,10 +225,6 @@ function formatPlanBody(plan: ScaffoldPlan, cwd: string): string {
     }
   }
 
-  // Name collisions belong in the PREVIEW, not only in the applied output: this
-  // body renders both `--dry-run` and the confirm prompt, and a user deciding
-  // whether to seed needs to know a pack skill will be held back before the
-  // write, not after it.
   const conflicts = (plan.packSkills ?? []).filter((s) => s.conflict);
   if (conflicts.length > 0) {
     if (lines.length > 0) lines.push('');
@@ -315,14 +243,12 @@ async function confirm(prompt: string, input?: NodeJS.ReadableStream): Promise<b
   const rl = createInterface({ input: input ?? process.stdin, output: process.stdout });
   try {
     const answer = (await rl.question(prompt)).trim().toLowerCase();
-    // Default Y on empty input
     return answer === '' || answer === 'y' || answer === 'yes';
   } finally {
     rl.close();
   }
 }
 
-/** Commander subcommand factory. Registered in cli.ts alongside init/start/mcp. */
 export function seedCommand(): Command {
   return new Command('seed')
     .description(

@@ -55,10 +55,6 @@ describe('ownerOf', () => {
 });
 
 describe('the skills.sh URL we render is one we can parse back', () => {
-  // These two used to disagree: the emitter writes `/<owner>/<repo>/<skill>`
-  // while the parser demanded the middle segment be the literal `skills`. It
-  // only looked fine because the popular publishers name their repo `skills`.
-  // Anyone else got a 400 on the link OK itself put in the preview header.
   test.each([
     ['larksuite/cli', 'lark-attendance'],
     ['anthropics/skills', 'design'],

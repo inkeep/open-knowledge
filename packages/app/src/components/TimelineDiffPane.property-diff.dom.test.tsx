@@ -1,17 +1,3 @@
-/**
- * RTL mount test: what the version diff pane says about a property-only change.
- *
- * The defect this guards: a version that changed only frontmatter used to render
- * "No content changes in this version" over an unchanged document — the row was
- * in the timeline, and the pane refused to say what happened in it.
- *
- * Stubbed seams: `fetch` (both /api/history version loads) and the document
- * context. The pane diffs vs-parent, so both sides are historical fetches and
- * the live provider is never consulted.
- *
- * Invocation: `pnpm run test:dom` from `packages/app/`.
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -41,7 +27,6 @@ const view: TimelineDiffView = {
   absoluteTime: '2026-04-17 00:00',
 };
 
-/** Serve the two historical versions the pane compares. */
 function mockVersions(parent: string, version: string): void {
   globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -73,11 +58,6 @@ async function waitForDiffBody() {
   await waitFor(() => expect(screen.queryByText('Loading diff')).toBeNull());
 }
 
-/**
- * Switch to Source mode. The "no changes" note lives on the source branch —
- * Rendered mode's no-change path renders the document plain, with no note at
- * all — so a test about that note has to be looking at Source.
- */
 async function showSourceMode() {
   await userEvent.click(screen.getByTestId('timeline-diff-render-source'));
 }
@@ -148,8 +128,6 @@ describe('TimelineDiffPane — property changes', () => {
     expect(screen.queryByTestId('timeline-diff-property-stat')).toBeNull();
   });
 
-  // A reserialized region is not an edit — reporting it as one would make the
-  // pane cry wolf on versions where the user changed nothing.
   test('reports nothing when the frontmatter was only reordered', async () => {
     mockVersions(
       '---\ntitle: Notes\nstatus: draft\n---\nSame body.\n',
@@ -165,8 +143,6 @@ describe('TimelineDiffPane — property changes', () => {
     expect(screen.queryAllByTestId('property-diff-row')).toHaveLength(0);
   });
 
-  // The block summarizes changes past its render cap, so counting the uncapped
-  // total would print a denominator the stepper can never walk to.
   test('caps the stepper denominator at the rows the block renders', async () => {
     const keys = (suffix: string) =>
       Array.from({ length: 60 }, (_, i) => `key${i}: value${i}${suffix}`).join('\n');
@@ -175,14 +151,11 @@ describe('TimelineDiffPane — property changes', () => {
     await waitForDiffBody();
     await screen.findAllByTestId('property-diff-row');
 
-    // 60 changed properties, 50 rendered rows, body unchanged.
     expect(screen.getAllByTestId('property-diff-row')).toHaveLength(50);
     expect(screen.getByText('10 more property changes not shown')).toBeTruthy();
     expect(screen.getByText('1 / 50')).toBeTruthy();
   });
 
-  // Collapsing the disclosure unmounts the rows, so a denominator that still
-  // counted them would send the stepper walking to anchors that do not exist.
   test('drops the collapsed property rows from the stepper denominator', async () => {
     mockVersions(
       '---\na: 1\nb: 1\nc: 1\n---\nA\n\nB\n\nC\n',
@@ -193,7 +166,6 @@ describe('TimelineDiffPane — property changes', () => {
     await showSourceMode();
     await screen.findAllByTestId('property-diff-row');
 
-    // Two body change groups (A and C, separated by unchanged B) + 3 properties.
     await waitFor(() => expect(screen.getByText('1 / 5')).toBeTruthy());
 
     await userEvent.click(screen.getByRole('button', { name: /Properties/ }));
@@ -228,8 +200,6 @@ describe('TimelineDiffPane — property changes', () => {
 
     const stat = await screen.findByTestId('timeline-diff-property-stat');
     expect(stat.textContent).toBe('2 properties');
-    // The +N −M stat stays a body line count and must not absorb the two
-    // property changes.
     const bodyStat = screen.getByTestId('timeline-diff-stat');
     expect(bodyStat.getAttribute('aria-label')).toBe('2 added, 0 removed');
   });

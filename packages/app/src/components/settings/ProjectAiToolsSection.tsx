@@ -1,30 +1,3 @@
-/**
- * Settings → This project → AI tools — the project-scoped sibling of
- * `AiToolsSection.tsx`. Where that surface manages OK's user-global footprint
- * (per-editor USER MCP entries, the shell-PATH shim), this one manages the
- * per-project footprint of the currently-open project: per-editor project MCP
- * config files (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, …).
- * These live in the project folder and travel with it via git — a `project` (shared), not
- * `project-local` (per-machine), storage scope. Checkboxes reflect
- * LIVE installed state; each click applies immediately (check = install,
- * uncheck = uninstall) over the `projectIntegrations` bridge, which resolves
- * the window's project in main.
- *
- * The project runtime skill used to sit at the bottom of this page. PRD-7975
- * moved it to Settings → This project → Skills Studio (`ProjectSkillSection`),
- * so that skills live on the skills page at BOTH scopes — a rule with one
- * exception is worse than no rule.
- *
- * The one thing the global section doesn't carry: per-editor follow-up honesty.
- * A written project config is not always a connected one — Claude Code needs a
- * one-time approval, Cursor sits silently disabled until manually enabled,
- * Codex auto-connects on a trusted project. Each installed row states its next
- * step so a project-only install isn't a silent dead-end.
- *
- * Desktop-only — the sidebar item is gated on the Electron preload bridge, and
- * this component renders a fallback if mounted without it.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -47,16 +20,11 @@ import { SettingsSectionHeader } from './SettingsSectionHeader';
 type EditorRow = OkProjectIntegrationsStatus['editors'][number];
 type ComponentRef = OkProjectIntegrationsSetRequest['component'];
 
-/** Stable per-row key for the in-flight marker. */
 function editorKey(id: string): string {
   return `editor:${id}`;
 }
 const SKILL_KEY = 'skill';
 
-/**
- * Per-row disclosure tooltip. A sibling of the row's Label — a button inside
- * the label would sit in its activation path.
- */
 function RowInfoTooltip({ testId, children }: { testId: string; children: ReactNode }) {
   const { t } = useLingui();
   return (
@@ -72,8 +40,7 @@ function RowInfoTooltip({ testId, children }: { testId: string; children: ReactN
           <Info className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      {/* The base TooltipContent is a flex ROW — without the single-column
-          wrapper, sibling <p>s render side by side. */}
+      {}
       <TooltipContent side="left" className="max-w-sm text-left">
         <div className="flex min-w-0 flex-col gap-1">{children}</div>
       </TooltipContent>
@@ -81,8 +48,6 @@ function RowInfoTooltip({ testId, children }: { testId: string; children: ReactN
   );
 }
 
-/** The manual step, if any, an installed editor still needs before OK's tools
- *  actually connect for this project. Rendered only on installed/foreign rows. */
 function FollowUpHint({
   followUp,
   testId,
@@ -92,8 +57,6 @@ function FollowUpHint({
 }) {
   if (followUp === 'none') return null;
   return (
-    // Live region: the hint appears the moment a row toggles to installed, so
-    // its "one more step" is announced rather than silently painted.
     <span role="status" className="text-xs text-amber-600 dark:text-amber-400" data-testid={testId}>
       {followUp === 'approve-once' ? (
         <Trans comment="Next step for a Claude Code project MCP row">
@@ -138,8 +101,6 @@ export function ProjectAiToolsSection() {
     };
   }, [bridge]);
 
-  // No `finally` — the React Compiler can't lower TryStatement finalizers; the
-  // catch swallows, so the trailing setPending(null) runs on both paths.
   async function applyToggle(component: ComponentRef, enabled: boolean): Promise<void> {
     if (!bridge) return;
     setPending(component.kind === 'editor' ? editorKey(component.id) : SKILL_KEY);
@@ -155,8 +116,6 @@ export function ProjectAiToolsSection() {
     setPending(null);
   }
 
-  // Same ranking contract as the user-global list, by construction — both
-  // sections consume `foldEditorsByPrimary`.
   const { shownEditors, hiddenCount } = foldEditorsByPrimary(status?.editors ?? [], showAllEditors);
 
   const header = (

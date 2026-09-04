@@ -1,47 +1,3 @@
-/**
- * Activity-mount-sweep scenario.
- *
- * Measures three scaling axes at every (`ACTIVITY_MOUNT_LIMIT`, peerCount)
- * combo + verifies the provider-disconnect contract for hidden Activity
- * editors:
- *
- *   (a) style-recalc time: CDP styleMs + layoutMs over the measurement window
- *   (b) observer fire rate: delta of
- *       `window.__okPerfCounters.providerObserverFires[docName]`
- *   (c) heap delta: `performance.memory.usedJSHeapSize` delta over window
- *
- * Sweep:
- *   ACTIVITY_MOUNT_LIMIT ∈ {1, 3, 5, 10, 20} via VITE_OK_PERF_ACTIVITY_MOUNT_LIMIT
- *     (read at app boot — env override matched by env-override.ts)
- *   peerCount ∈ {0, 1, 3, 5} via the Node-side peer simulator
- *
- * IMPORTANT: This scenario runs against a dev server whose
- * VITE_OK_PERF_ACTIVITY_MOUNT_LIMIT env var has been set per-sweep — the
- * actual limit value is read at module load. Iterating the sweep across
- * limits requires either:
- *   1. Per-iteration dev-server restart (slow but correct), OR
- *   2. window.__okPerfOverrides.ACTIVITY_MOUNT_LIMIT set in init script
- *      BEFORE app code runs (this is what we do — page.addInitScript with
- *      the override). The reader (env-override.ts) checks
- *      window.__okPerfOverrides FIRST, then VITE_OK_PERF_*, so this works.
- *
- * Peer typing profile:
- *   primary: all-human at 239ms IKI, 5s burst / 3s pause
- *   validation: 1 N=5 run with 2 humans + 3 agents (agent profile:
- *               1 write / 2s × ~100-char chunks)
- *
- * Provider-disconnect verification:
- *   At (peers > 0, limit < #docs-in-pool), for docs NOT in the activity-
- *   mount-list, their `providerObserverFires[docName]` counter delta
- *   must be 0 (the editor cache disconnects providers for non-active
- *   docs). Recorded as `fr3bVerified: boolean` per combo.
- *
- * Result JSON shape:
- *   {sweeps: [{activityMountLimit, peerCount, peerProfile,
- *              metrics: {styleMs, layoutMs, observerFireRate, heapDeltaMB},
- *              fr3bVerified, nonMountedFireCounts}, ...]}
- */
-
 import { markerFor } from '../lib/doc-markers.ts';
 import { installLongtaskObserver } from '../lib/longtask-observer.ts';
 import {
@@ -89,10 +45,6 @@ interface PerfCounterShape {
   providerObserverFires: Record<string, number>;
 }
 
-/**
- * Read the per-doc fire counter map. Returns {} when not set (production-
- * only path; in DEV/test the counter is wired via provider-pool.ts).
- */
 async function readFireCounts(
   page: import('@playwright/test').Page,
 ): Promise<Record<string, number>> {
@@ -111,9 +63,6 @@ async function readHeapMb(page: import('@playwright/test').Page): Promise<number
 }
 
 async function readActivityMountList(page: import('@playwright/test').Page): Promise<string[]> {
-  // The cache module exports __getActivityMountList for inspection; in
-  // production it's not on `window`. We probe via DOM by reading the
-  // Activity boundary attribute that EditorActivityPool sets.
   return page.evaluate(() => {
     const acts = document.querySelectorAll('[name^="editor:"]');
     return Array.from(acts)
@@ -157,16 +106,10 @@ interface RunSweepArgs {
   notes: string[];
 }
 
-/**
- * Run one sweep cell: prime ACTIVITY_MOUNT_LIMIT override, navigate
- * through SWEEP_DOC_POOL to populate pool, start peers (if any), measure
- * 10s window, return per-cell result.
- */
 async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
   const { page, cdp, port, activityMountLimit, peerCount, profile, profileLabel, target, notes } =
     args;
 
-  // ─── Prime the override BEFORE app boot via init script ──────────────────
   await page.addInitScript((limit: number) => {
     (
       globalThis as unknown as {
@@ -175,7 +118,6 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
     ).__okPerfOverrides = { ACTIVITY_MOUNT_LIMIT: limit };
   }, activityMountLimit);
 
-  // Navigate to the target doc to bootstrap the app + pool.
   await page.goto(`${target}/#/${encodeURIComponent(TARGET_DOC)}`, {
     waitUntil: 'domcontentloaded',
     timeout: 60_000,
@@ -195,7 +137,6 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
     };
   }
 
-  // Populate pool by navigating through several docs so #docs-in-pool > limit.
   for (const doc of SWEEP_DOC_POOL.filter((d) => d !== TARGET_DOC)) {
     await page.goto(`${target}/#/${encodeURIComponent(doc)}`, {
       waitUntil: 'domcontentloaded',
@@ -203,24 +144,18 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
     });
     try {
       await waitForVisibleProseMirrorForDoc(page, doc, 30_000);
-    } catch {
-      // Best-effort — continue to next doc
-    }
+    } catch {}
   }
-  // Return to TARGET so the user-visible doc is the one we measure against.
   await page.goto(`${target}/#/${encodeURIComponent(TARGET_DOC)}`, {
     waitUntil: 'domcontentloaded',
     timeout: 60_000,
   });
   await waitForVisibleProseMirrorForDoc(page, TARGET_DOC, WAIT_CONTENT_MS).catch(() => {});
 
-  // Allow background work to settle.
   await page.waitForTimeout(500);
 
-  // ─── Snapshot which docs are Activity-mounted (for disconnect check) ─────
   const mountedBefore = await readActivityMountList(page);
 
-  // ─── Start peer simulator if peerCount > 0 ────────────────────────────────
   let sim: NodePeerSimulatorHandle | null = null;
   if (peerCount > 0) {
     sim = createNodePeerSimulator({
@@ -230,11 +165,9 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
       typingProfile: profile,
     });
     sim.start();
-    // Let providers connect + first writes flow before opening the window.
     await page.waitForTimeout(500);
   }
 
-  // ─── Open measurement window: trace + heap + counters ─────────────────────
   const firesBefore = await readFireCounts(page);
   const heapBefore = await readHeapMb(page);
   await cdp.send('Tracing.start', {
@@ -247,13 +180,9 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
   const firesAfter = await readFireCounts(page);
   const heapAfter = await readHeapMb(page);
 
-  // Count fires for the target doc only (this is the active editor).
   const targetFires = (firesAfter[TARGET_DOC] ?? 0) - (firesBefore[TARGET_DOC] ?? 0);
   const observerFireRate = targetFires / (MEASUREMENT_WINDOW_MS / 1000);
 
-  // Disconnect verification: for docs NOT in the activity-mount-list AT
-  // MEASUREMENT START, fires should be 0 across the window (they're
-  // disconnected).
   const mountedSet = new Set(mountedBefore);
   const nonMountedFireCounts: Record<string, number> = {};
   let fr3bVerified = true;
@@ -270,9 +199,6 @@ async function runSweepCell(args: RunSweepArgs): Promise<SweepResult> {
     await sim.stop();
   }
 
-  // We approximate styleLayoutMs by reading from `performance.getEntries()`
-  // for the measurement window. CDP trace is captured for downstream offline
-  // analysis but we don't parse it inline here.
   const styleLayoutMs = await page.evaluate((windowMs: number) => {
     const cutoff = performance.now() - windowMs - 200;
     let total = 0;
@@ -310,7 +236,6 @@ export default defineScenario({
     await installLongtaskObserver(page);
 
     const target = opts.target;
-    // Extract port from target URL for the peer simulator.
     const port = (() => {
       try {
         return Number.parseInt(new URL(target).port, 10) || 5173;
@@ -322,7 +247,6 @@ export default defineScenario({
     const sweeps: SweepResult[] = [];
     const notes: string[] = [];
 
-    // Primary all-human sweep across the 5×4 grid.
     for (const limit of ACTIVITY_MOUNT_LIMITS) {
       for (const peerCount of PEER_COUNTS) {
         const result = await runSweepCell({
@@ -343,12 +267,6 @@ export default defineScenario({
       }
     }
 
-    // Mixed-profile validation run at N=5 peers (2 humans + 3 agents).
-    // For simplicity and to keep scenario runtime bounded, we model "mixed"
-    // by running ALL 5 peers with a conservative agent-style profile and
-    // recording the cell with profileLabel='mixed'. Exact 2/3 split is
-    // future work — the AC explicitly tags this as a "validation" run, not
-    // a primary signal.
     {
       const result = await runSweepCell({
         page,

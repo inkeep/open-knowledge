@@ -1,22 +1,3 @@
-/**
- * C15: Dual `html preview` embeds under a divergence/reconnect window.
- *
- * The bug class: a doc with two `html preview` `<script>` embeds
- * (the second declaring `const DATA={…}`) corrupted the second embed's script
- * head (`const`→`{onst`) and triplicated the body under multi-replica merges.
- * This drives that construct at integration fidelity — two real clients editing
- * across a pause/resume divergence window — and asserts the embeds survive
- * intact: scripts still parse, the brace-injection signature never appears, the
- * `const DATA=` head is preserved, and the doc stays within a byte budget.
- *
- * NOTE: the bug's PRODUCTION trigger is a knowingly-deferred
- * embed-root-fix concern. This is the test-side observability of
- * the construct (an approximation of OS-process duplicate-server divergence via
- * the two-client harness), not a production mitigation.
- *
- * Per-test docName isolation; client lifecycle in try/finally.
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -42,8 +23,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-// Two `html preview` embeds; the second declares `const DATA={…}` — the M-6955
-// brace-injection target. Each script carries a unique anchor.
 const DUAL_EMBED_SEED = [
   '# C15 chart doc',
   '',
@@ -89,11 +68,6 @@ function extractScriptBodies(doc: string): string[] {
   return bodies;
 }
 
-// Real JS-syntax validation. `new Function()` parses eagerly and throws on a
-// syntax error under both Bun and Node; `new vm.Script()` compiles lazily under
-// Bun and never throws, which would silently make this oracle vacuous (it would
-// pass even on the brace-corrupted `{onst DATA=` head). Mirrors `jsParses` in
-// packages/core/src/markdown/embed-script-fidelity.test.ts.
 function jsParses(code: string): boolean {
   try {
     new Function(code);
@@ -124,7 +98,6 @@ describe('C15: dual html-preview embeds under divergence', () => {
       await agentWriteMd(server.port, DUAL_EMBED_SEED, { docName, position: 'replace' });
       await awaitAllContain(clients, ['C15-FIRST-SCRIPT', 'C15-SECOND-SCRIPT']);
 
-      // Divergence window: client 0 stops syncing, both edit concurrently.
       clients[0].pauseSync();
       appendParagraph(clients[0], 'C15-WYSIWYG-A');
       appendParagraph(clients[1], 'C15-WYSIWYG-B');
@@ -143,8 +116,6 @@ describe('C15: dual html-preview embeds under divergence', () => {
 
       const converged = ytexts[0];
 
-      // embed integrity: no brace-injection signature, the `const DATA=`
-      // head is preserved verbatim, and every extracted script still parses.
       expect(BRACE_INJECTION_RE.test(converged)).toBe(false);
       expect(converged).toContain('const DATA = {');
       const scripts = extractScriptBodies(converged);
@@ -153,12 +124,10 @@ describe('C15: dual html-preview embeds under divergence', () => {
         expect(jsParses(body)).toBe(true);
       }
 
-      // No duplication of either embed (the triplication signature).
       for (const m of ['C15-FIRST-SCRIPT', 'C15-SECOND-SCRIPT']) {
         expect(converged.split(m).length - 1).toBe(1);
       }
 
-      // byte budget: bounded by the authored input.
       const authoredBytes =
         Buffer.byteLength(DUAL_EMBED_SEED) + Buffer.byteLength('C15-WYSIWYG-A C15-WYSIWYG-B');
       expect(Buffer.byteLength(converged)).toBeLessThanOrEqual(authoredBytes * 3);
@@ -171,12 +140,6 @@ describe('C15: dual html-preview embeds under divergence', () => {
 const FENCE = '`'.repeat(3);
 
 describe('QA canary — html-preview <script> embed under concurrent source edits', () => {
-  /**
-   * A single large html-preview embed with a <script> body; two peers edit
-   * distinct prose regions concurrently. The embed must survive as exactly one
-   * copy — no triplication, no astral-brace injection into the script head.
-   *
-   */
   test('concurrent edits around an html-preview <script> embed do not duplicate or brace-inject', async () => {
     const docName = `canary-embed-${crypto.randomUUID()}`;
     const seed = [
@@ -200,7 +163,6 @@ describe('QA canary — html-preview <script> embed under concurrent source edit
     const clients = await createTestClients(server.port, { count: 2, docName });
     try {
       await assertAllConverged(clients, { timeout: 5000 });
-      // Concurrent source-side edits in distinct prose regions (W2 path per peer).
       const a = clients[0].ytext;
       const b = clients[1].ytext;
       const ia = a.toString().indexOf('Para A.') + 'Para A.'.length;
@@ -212,11 +174,11 @@ describe('QA canary — html-preview <script> embed under concurrent source edit
       const after = clients[0].ytext.toString();
       expect(after).toContain('edit-A');
       expect(after).toContain('edit-B');
-      expect((after.match(/<script>/g) ?? []).length).toBe(1); // no triplication
+      expect((after.match(/<script>/g) ?? []).length).toBe(1);
       expect((after.match(/const greeting/g) ?? []).length).toBe(1);
-      expect(after).not.toContain('{onst'); // no astral-brace injection
+      expect(after).not.toContain('{onst');
       expect(after).not.toContain('{ons{');
-      expect(after.length).toBeLessThan(seed.length + 64); // no growth blow-up
+      expect(after.length).toBeLessThan(seed.length + 64);
     } finally {
       await Promise.all(clients.map((c) => c.cleanup()));
     }

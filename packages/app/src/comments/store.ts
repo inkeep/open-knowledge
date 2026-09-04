@@ -1,22 +1,3 @@
-/**
- * Comment-thread store — a thin client cache over the server's comment API.
- *
- * Threads live in `.ok/local/comments/` and every mutation is server-mediated
- * (so writes carry attribution); this module holds the last-fetched view and
- * re-fetches when the server signals a change. It keeps the window-scoped
- * pub/sub idiom of `ask-ai-composer-events.ts` for the UI-only signals
- * (focus a thread, open a thread, start the composer).
- *
- * useSyncExternalStore contract: `getThreads(docName)` returns a referentially
- * stable array between refreshes — the array identity changes only when data
- * actually changes — so React's snapshot comparison never loops.
- *
- * Delivery (handing a comment to an agent) is NOT here: it needs the app's
- * Ask-AI handoff hook, which is React context. Callers pass their own hand-off
- * into {@link dispatchComments}; this module owns only the server round-trips
- * that bracket it (`dispatch-prepare-batch` → hand off → `dispatch-complete-batch`).
- */
-
 import { t } from '@lingui/core/macro';
 import { useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
@@ -31,39 +12,13 @@ const EMPTY: readonly CommentThread[] = Object.freeze([]);
 const EMPTY_QUEUE: readonly string[] = Object.freeze([]);
 
 const threadsByDoc = new Map<string, CommentThread[]>();
-/** Project-wide view backing the queue (threads on docs you don't have open). */
 let allThreads: CommentThread[] = [];
 const listeners = new Set<() => void>();
 const loadedDocs = new Set<string>();
 let allLoaded = false;
 
-/**
- * Which queued threads are checked for the next batch. Purely client-side: the
- * server records *queued*, the reviewer decides *selected*. Nothing to persist
- * — a selection is a decision about the click you are about to make.
- */
 let deselected = new Set<string>();
 
-/**
- * Write counters — the key every derived snapshot is cached against.
- *
- * `useSyncExternalStore` needs a getter that returns the same reference between
- * writes, and this is how the derived views get it: rebuild when the counter
- * moved, otherwise hand back what you built last time. What this replaces was
- * hand-comparing each view's fields, which went quietly stale on any field
- * nobody remembered to list and made adding a field to {@link CommentThread} a
- * two-place edit.
- *
- * Two counters rather than one because they are genuinely independent axes:
- * unchecking a queued comment changes what a send would carry, but the queue
- * itself is untouched, and collapsing them would churn the queue on every
- * checkbox.
- *
- * The remaining cost is coarseness: a refetch returning identical data still
- * counts as a write and still re-renders, where a content comparison could have
- * suppressed it. Comment writes are user-initiated clicks, not a stream, so that
- * is cheap — the same trade the ACP thread store makes.
- */
 let version = 0;
 let selectionVersion = 0;
 
@@ -71,30 +26,20 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** The fetched thread data changed. */
 function bump(): void {
   version += 1;
   notify();
 }
 
-/** Only the reviewer's checked subset changed. */
 function bumpSelection(): void {
   selectionVersion += 1;
   notify();
 }
 
-// ---------------------------------------------------------------------------
-// Server → UI mapping
-// ---------------------------------------------------------------------------
-
-/** Cover sheet → the display shape the panel renders. */
 function toThread(meta: api.CommentThreadMeta): CommentThread {
   return {
     id: meta.threadId,
     docName: meta.docName,
-    // Taken as-is: the response is schema-parsed at the client boundary, and the
-    // schema defaults `target` to `body` and `path` to `[]`, so anything that
-    // reaches here already has both.
     target: meta.target,
     anchor:
       meta.anchor === null
@@ -107,98 +52,49 @@ function toThread(meta: api.CommentThreadMeta): CommentThread {
             end: meta.anchor.end,
           },
     status: meta.state === 'anchored' ? 'open' : meta.state,
-    // The live comment rides the cover sheet — a thread renders as its current
-    // request, and there is no history behind it to render.
     body: meta.latestComment,
     createdAt: meta.createdAt,
-    // Collapsed to one field for rendering: the card states when this text was
-    // last written, and an unedited thread's answer is when it was written.
     updatedAt: meta.updatedAt ?? meta.createdAt,
-    // "Queued for the next batch" is what the UI shows as in-flight; the server
-    // deliberately does not persist "an agent is working right now".
     queued: meta.queued,
   };
 }
 
-/**
- * Every thread in the project, in one request.
- *
- * This used to fetch the open doc's threads, then the project's threads, then
- * every thread's full event log — `2 + 2N` round trips per mutation, to render
- * a list that only ever shows each thread's newest comment. The server projects
- * that comment onto the cover sheet, so the project-wide list is a superset of
- * every per-doc view and one call serves all of them.
- */
 async function fetchThreads(): Promise<CommentThread[]> {
   const metas = await api.listThreads();
   return metas.map(toThread).sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/** Refresh every loaded view from one fetch. */
 export async function refresh(docName?: string): Promise<void> {
   if (docName !== undefined) loadedDocs.add(docName);
   const nextAll = await fetchThreads();
   allThreads = nextAll;
   allLoaded = true;
-  // Every per-doc cache is a slice of the same fetch, so a change made from the
-  // queue panel shows up in an open doc's panel without a second round trip.
   for (const doc of loadedDocs) {
     threadsByDoc.set(
       doc,
       nextAll.filter((t) => t.docName === doc),
     );
   }
-  // One write, one bump. The derived queue views rebuild off the new version on
-  // whatever reads them next, so a subscriber reading during this same tick
-  // cannot see them disagree with `allThreads`.
   bump();
   standDownIfGone(nextAll);
 }
 
-/**
- * A thread that has been resolved or deleted cannot still be the open one.
- *
- * Every reader gesture that stands a thread down is a statement about the
- * READER — clicking away, Escape, re-clicking a lit marker. This is the other
- * half: the thread itself going away. Sending a batch resolves its comments,
- * and a resolved thread drops its highlight and its margin marker, so the open
- * thread would otherwise be a comment with nothing left on screen pointing at
- * it — and nothing left to click to clear it either.
- *
- * Here rather than at each mutation because every one of them lands its data
- * through {@link refresh}, including changes made in another window that arrive
- * over CC1 with no local call to hang this off. Project-wide, not per doc: the
- * open thread can belong to a document this refresh was not about, and a
- * per-doc check would clear it for being absent from the wrong list.
- */
 function standDownIfGone(threads: readonly CommentThread[]): void {
   if (openThreadId === null) return;
   if (threads.some((thread) => thread.id === openThreadId && thread.status === 'open')) return;
   emitOpenThread(null);
 }
 
-/**
- * Refetch when the server says comments changed.
- *
- * Our own mutations already refresh themselves, so this is what carries a
- * change made anywhere else — a second window, or the queue panel in a doc this
- * tab doesn't have open. Installed on first read rather than at module scope:
- * the node test tier imports this module with no `window` to listen on.
- */
 let cc1Installed = false;
 function ensureCc1Subscription(): void {
   if (cc1Installed || typeof window === 'undefined') return;
   cc1Installed = true;
   subscribeToDocumentsChanged((channels) => {
     if (!channels.includes('comments')) return;
-    // Quiet by design: this is a background signal nobody clicked, so a failed
-    // refetch has no action attached to it and toasting would interrupt work
-    // the user is doing elsewhere. The next signal re-syncs.
     void refresh().catch(() => undefined);
   });
 }
 
-/** Load a doc's threads once; subsequent refreshes come from mutations + CC1. */
 function ensureLoaded(docName: string): void {
   ensureCc1Subscription();
   if (loadedDocs.has(docName)) return;
@@ -217,10 +113,6 @@ function ensureAllLoaded(): void {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
 export function getThreads(docName: string): readonly CommentThread[] {
   ensureLoaded(docName);
   return threadsByDoc.get(docName) ?? EMPTY;
@@ -233,7 +125,6 @@ export function subscribe(listener: () => void): () => void {
   };
 }
 
-/** React binding — re-renders whenever `docName`'s threads change. */
 export function useCommentThreads(docName: string): readonly CommentThread[] {
   return useSyncExternalStore(
     subscribe,
@@ -242,13 +133,6 @@ export function useCommentThreads(docName: string): readonly CommentThread[] {
   );
 }
 
-/**
- * Every thread in the project, newest first.
- *
- * The reference is stable between refreshes (`allThreads` is reassigned, not
- * mutated), which is what `useSyncExternalStore` needs to avoid re-rendering
- * forever.
- */
 export function getAllThreads(): readonly CommentThread[] {
   ensureAllLoaded();
   return allThreads;
@@ -258,7 +142,6 @@ export function useAllThreads(): readonly CommentThread[] {
   return useSyncExternalStore(subscribe, getAllThreads, () => EMPTY);
 }
 
-/** Look a thread up across every doc (the queue is project-wide). */
 export function getThreadById(threadId: string): CommentThread | null {
   for (const threads of threadsByDoc.values()) {
     const found = threads.find((t) => t.id === threadId);
@@ -267,32 +150,12 @@ export function getThreadById(threadId: string): CommentThread | null {
   return allThreads.find((t) => t.id === threadId) ?? null;
 }
 
-// ---------------------------------------------------------------------------
-// Writes — each round-trips to the server, then refreshes
-// ---------------------------------------------------------------------------
-
-/**
- * Post a comment. The passage is identified by its quoted text — the editor has
- * ProseMirror positions, which are not the body offsets the server anchors
- * against, so the server locates the words itself. Queue-first: posting adds it
- * to the batch rather than dispatching on its own.
- */
 export function createThread(args: {
   docName: string;
   quote: string;
   body: string;
-  /** Rendered text either side of the pick — which occurrence, when the quote repeats. */
   prefix?: string;
   suffix?: string;
-  /**
-   * Runs once the server has accepted the comment, with its new id.
-   *
-   * A callback rather than a `dispatch` flag because sending goes through the
-   * open-session path, which imports this module — doing it here would close an
-   * import cycle. The sequencing still has to live behind the request: only this
-   * side holds the id, and sending before the server accepts would hand an agent
-   * a thread that failed to anchor.
-   */
   onCreated?: (threadId: string) => void;
 }): void {
   void api
@@ -305,27 +168,15 @@ export function createThread(args: {
       queue: true,
     })
     .then((meta) => {
-      // Voided + caught rather than left floating: it is NOT chained into the
-      // outer `.catch` below, so a rejection here would surface as an unhandled
-      // promise. A stale panel is the whole cost of a failed refetch, and the
-      // next CC1 signal corrects it — the creation itself already succeeded.
       void refresh(args.docName).catch(() => undefined);
       if (args.onCreated !== undefined) {
-        // Going straight to an agent: no queue reveal, because the comment is
-        // not sitting in the queue waiting to be noticed.
         args.onCreated(meta.threadId);
         return;
       }
-      // Only after the server accepted it. Revealing optimistically would open
-      // the panel on a comment that then failed to anchor. Doc scope: the thing
-      // to show is the comment just made, beside the passage it is on.
       revealComments('doc', args.docName);
       emitCommentPosted();
     })
     .catch((err: unknown) => {
-      // A failed post used to vanish — the comment simply never appeared, with
-      // nothing to explain why. Surface it: the usual cause is a passage the
-      // server can't locate in the document body.
       toast.error(
         err instanceof Error && err.message
           ? t`Couldn't add that comment: ${err.message}`
@@ -334,19 +185,10 @@ export function createThread(args: {
     });
 }
 
-/**
- * Post a comment on a frontmatter key. Same queue-first flow as a passage
- * comment — it joins the batch rather than dispatching on its own.
- *
- * The key is sent by name, so none of the passage machinery runs: no quote to
- * locate, no context to disambiguate, and no way to land on the wrong target.
- */
 export function createPropertyThread(args: {
   docName: string;
   propertyKey: string;
-  /** Steps into the value — one list item, one nested field. Omit for the value itself. */
   propertyPath?: (string | number)[];
-  /** Selected text INSIDE the value. Omit to comment on the whole thing. */
   quote?: string;
   body: string;
 }): void {
@@ -360,8 +202,6 @@ export function createPropertyThread(args: {
       queue: true,
     })
     .then(() => {
-      // Same as the passage path above: not chained into the outer `.catch`, so
-      // it has to carry its own.
       void refresh(args.docName).catch(() => undefined);
       revealComments('doc', args.docName);
       emitCommentPosted();
@@ -375,30 +215,13 @@ export function createPropertyThread(args: {
     });
 }
 
-/**
- * Every mutation's tail: refresh on success, SAY SO on failure.
- *
- * These used to end in `.catch(() => undefined)`. A rejected edit or delete then
- * looked exactly like a successful one — the card sat there unchanged and the
- * reviewer had no way to tell the server had refused. The message is the
- * server's own: `request` lifts the RFC 9457 `title`, which is where the comment
- * API puts its reasons ("The quoted passage is not in the document").
- */
 function settle(promise: Promise<unknown>, docName: string | undefined, failed: string): void {
-  // Two handlers on one `.then`, NOT `.then(...).catch(...)`. Chained, the
-  // success branch's refetch runs INSIDE the mutation's own catch: a network
-  // blip on the re-sync then reports an edit that the server accepted as one it
-  // refused, which is the exact lie this function exists to stop telling. The
-  // re-sync is background on both branches — the mutation is what reports.
   void promise.then(
     () => {
       void refresh(docName).catch(() => undefined);
     },
     (err: unknown) => {
       toast.error(err instanceof Error && err.message ? `${failed} ${err.message}` : failed);
-      // Re-sync anyway: a rejection can still have changed server state (a
-      // thread deleted by another window), and leaving the stale row on screen
-      // would be a second, quieter lie.
       void refresh(docName).catch(() => undefined);
     },
   );
@@ -409,31 +232,17 @@ export function editComment(threadId: string, body: string): void {
   settle(api.editComment(threadId, body), docName, t`Couldn't save that edit.`);
 }
 
-/**
- * No `resolveThread` twin. A comment settles by being SENT — the server resolves
- * what shipped in `completeDispatchBatch` — so a client-side "mark it done"
- * would be a second, quieter way to reach a state the send already owns.
- */
 export function reopenThread(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
-  // The server reopens it QUEUED. An untick recorded before the send is still
-  // sitting in the local set, and left there it would veto that — the comment
-  // would come back open and unchecked, which is the second click reopening
-  // exists to avoid.
   clearDeselection(threadId);
   settle(api.reopenThread(threadId), docName, t`Couldn't reopen that comment.`);
 }
 
-/**
- * Delete a thread outright. Destructive: both files go, and the conversation
- * with them. The queue's ✕ only *unqueues* — this is the separate, explicit act.
- */
 export function deleteThread(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
   settle(api.deleteThread(threadId), docName, t`Couldn't delete that comment.`);
 }
 
-/** Re-place an orphaned thread onto a fresh passage. */
 export function replaceOrphan(
   threadId: string,
   quote: string,
@@ -447,20 +256,6 @@ export function replaceOrphan(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Queue — `queued` is server state; the checked subset is local UI state
-// ---------------------------------------------------------------------------
-
-/**
- * Derived queue arrays, cached against {@link version}.
- *
- * `useSyncExternalStore` compares snapshots with `Object.is`, so a getter that
- * builds a fresh array on every call reports a change on every render and loops
- * forever ("Maximum update depth exceeded"). Rebuilding only when the version
- * moved gives the stable reference without anyone having to enumerate which
- * fields count as a change — and `selected` derives from both `allThreads` and
- * `deselected`, which one counter already covers.
- */
 let queueSnapshot: readonly string[] = EMPTY_QUEUE;
 let queueSnapshotVersion = -1;
 let selectedSnapshot: readonly string[] = EMPTY_QUEUE;
@@ -470,15 +265,6 @@ let selectedSnapshotSelectionVersion = -1;
 export function getQueue(): readonly string[] {
   ensureAllLoaded();
   if (queueSnapshotVersion !== version) {
-    // OLDEST first — the order the comments were written, which is the order a
-    // reviewer means by "these comments." `allThreads` is sorted newest-first
-    // for the panel, and inheriting that sort silently numbered the composed
-    // batch backwards. Display order and run order are different concerns, so
-    // the queue sorts for itself.
-    //
-    // `createdAt` rather than the `queued` event's timestamp: posting a comment
-    // queues it, so the two agree in practice, and the client no longer reads
-    // event logs at all.
     const ids = allThreads
       .filter((t) => t.queued && t.status !== 'resolved')
       .sort((a, b) => a.createdAt - b.createdAt)
@@ -489,10 +275,8 @@ export function getQueue(): readonly string[] {
   return queueSnapshot;
 }
 
-/** Queued minus whatever the reviewer unchecked — what a batch send actually ships. */
 export function getSelectedQueue(): readonly string[] {
   const queued = getQueue();
-  // Derives from both axes, so it rebuilds when either moves.
   if (
     selectedSnapshotVersion !== version ||
     selectedSnapshotSelectionVersion !== selectionVersion
@@ -509,23 +293,10 @@ export function useQueueSelection(): readonly string[] {
   return useSyncExternalStore(subscribe, getSelectedQueue, () => EMPTY_QUEUE);
 }
 
-/**
- * The checked batch narrowed to one document — what the This-doc footer sends,
- * and what the chord sends while that scope is the one on screen. Always a
- * subset of {@link getSelectedQueue}.
- */
 export function getSelectedQueueForDoc(docName: string): readonly string[] {
   return getSelectedQueue().filter((id) => getThreadById(id)?.docName === docName);
 }
 
-/**
- * Drop a thread from the local unticked set.
- *
- * `queued` is server state and this is the client's veto over it, so anything
- * that puts a comment back in the batch has to lift the veto too — otherwise the
- * server reports queued, the panel renders unchecked, and the two disagree with
- * nothing on screen explaining why.
- */
 function clearDeselection(threadId: string): void {
   if (!deselected.has(threadId)) return;
   const next = new Set(deselected);
@@ -536,7 +307,6 @@ function clearDeselection(threadId: string): void {
 
 function addToQueue(threadId: string): void {
   const docName = getThreadById(threadId)?.docName;
-  // Re-queuing clears any earlier deselection.
   clearDeselection(threadId);
   settle(api.queueThread(threadId), docName, t`Couldn't mark that comment to send.`);
 }
@@ -550,25 +320,11 @@ export function removeFromQueue(threadId: string): void {
   );
 }
 
-/**
- * The panels' checkbox: "this comment goes out with the next send."
- *
- * Reads the SENDING set, not `queued`, so it agrees with the composer chip —
- * a comment queued but unchecked there shows unchecked here, and ticking it
- * re-checks rather than un-queueing something that already looked off.
- */
 export function toggleSending(threadId: string): void {
   if (getSelectedQueue().includes(threadId)) removeFromQueue(threadId);
   else addToQueue(threadId);
 }
 
-/**
- * Tick or clear a whole panel's worth at once.
- *
- * Scoped to the ids passed in — the This-doc panel must not reach across the
- * project. Per-item tolerance, then ONE report: twenty comments must not fire
- * twenty toasts, and a partial run cannot pass for a complete one.
- */
 export function setSendingAll(threadIds: readonly string[], sending: boolean): void {
   const wanted = new Set(getSelectedQueue());
   const ids = threadIds.filter((id) => wanted.has(id) !== sending);
@@ -595,7 +351,6 @@ export function setSendingAll(threadIds: readonly string[], sending: boolean): v
   });
 }
 
-/** Check / uncheck a queued item without removing it from the queue. */
 export function toggleQueueSelection(threadId: string): void {
   const next = new Set(deselected);
   if (next.has(threadId)) next.delete(threadId);
@@ -604,19 +359,6 @@ export function toggleQueueSelection(threadId: string): void {
   bumpSelection();
 }
 
-// ---------------------------------------------------------------------------
-// Dispatch — the server brackets it; the app's Ask-AI plumbing delivers
-// ---------------------------------------------------------------------------
-
-/**
- * Hand a prepared batch to an agent. `true` when it landed, `false` when it did
- * not — a hand-off that never happened must not resolve its threads.
- *
- * Passed in per call rather than registered in a module slot. The slot version
- * was only installed while the Comments tab was mounted, which made the whole
- * dispatch path silently inert anywhere else and forced a second, unguarded
- * delivery route to exist alongside it.
- */
 export type ComposeDispatch = (items: readonly BatchPreparedItem[]) => Promise<boolean>;
 
 export interface BatchPreparedItem {
@@ -624,50 +366,15 @@ export interface BatchPreparedItem {
   payload: DispatchPayload;
 }
 
-/**
- * One dispatch at a time, across every surface that sends the queue.
- *
- * A send is not atomic: it awaits the server's anchor re-find, then the
- * hand-off, and only then does `completeDispatchBatch` drain what shipped. For
- * that whole window `getSelectedQueue()` still returns the same ids — so a
- * second Enter in the composer, or a second click on the queue panel's Send,
- * reads the identical batch and hands it to a second agent turn. Neither
- * surface disables its button across that window.
- *
- * Module scope so the flag spans surfaces rather than sitting in one component:
- * the composer and the panel drain ONE queue, and they must not race each
- * other either. Same shape as the launcher's `inflightLaunches`.
- */
 let dispatchInFlight = false;
 
-/**
- * THE dispatch path. Prepare the batch, hand it over, resolve what shipped.
- *
- * Every surface routes through here — the composer, the queue panel's send, and
- * the open-chat path (via `useSendQueue`) — so the re-entrancy guard, the
- * re-anchor-on-prepare, and the single `completeDispatchBatch` call site apply
- * to all of them rather than to whichever one remembered.
- *
- * Returns the ids that shipped, so a caller can clear its draft only on a real
- * send. A batch that fails to deliver leaves every thread queued.
- */
 export async function dispatchComments({
   compose,
   threadIds,
   resolve = true,
 }: {
   compose: ComposeDispatch;
-  /**
-   * Send exactly these instead of the checked queue — the selection composer
-   * hands over the ONE comment just written, which is not in the checked set.
-   */
   threadIds?: readonly string[];
-  /**
-   * Close the threads once handed over. True for a turn that RUNS: the agent
-   * has it. False when the batch only lands staged in a live input — the human
-   * still has to press enter, and marking work done that nobody has acted on is
-   * the failure the queue exists to prevent.
-   */
   resolve?: boolean;
 }): Promise<string[]> {
   const ids = threadIds ?? getSelectedQueue();
@@ -690,8 +397,6 @@ async function runDispatch(
   try {
     prepared = await api.prepareDispatchBatch(ids);
   } catch (err) {
-    // The send is over before it began, and the button gives no other feedback —
-    // silence here read as "the click did nothing".
     toast.error(
       err instanceof Error && err.message
         ? t`Couldn't read the comments waiting to send: ${err.message}`
@@ -699,16 +404,11 @@ async function runDispatch(
     );
     return [];
   }
-  // Prepare re-anchors, which can flip a thread to orphaned; surface that even
-  // when the hand-off below fails.
   bump();
   const items = prepared.results.flatMap((item) =>
     item.ok ? [{ threadId: item.threadId, payload: item.payload }] : [],
   );
   if (items.length === 0) {
-    // Every id came back missing — the threads were deleted between queueing and
-    // now, which the re-sync below makes visible. Nothing failed, so nothing to
-    // report.
     await refresh().catch(() => undefined);
     return [];
   }
@@ -716,45 +416,26 @@ async function runDispatch(
   try {
     delivered = await compose(items);
   } catch (err) {
-    // Leave them queued — a hand-off that never happened must not resolve.
-    // Logged rather than swallowed: the user-visible effect (items stay queued)
-    // is the same whether the target declined or the composition itself threw,
-    // so without this a bug in turn-composition looks like a stuck queue with
-    // no trace of why. No toast — the sibling catch above owns the "nothing was
-    // sent" message, and the queue standing still already says it here.
     console.warn('[comments] dispatch compose failed; leaving threads queued', err);
     delivered = false;
   }
   const shipped = delivered ? items.map((item) => item.threadId) : [];
   if (shipped.length > 0 && resolve) {
-    // The batch DID reach the agent; only the bookkeeping failed. Say which, or
-    // the reviewer sees comments still sitting there to send and sends them a
-    // second time.
     await api.completeDispatchBatch(shipped).catch(() => {
       toast.error(
         t`Sent, but the comments could not be marked done — they're still waiting to send.`,
       );
     });
   }
-  // Background re-sync. Deliberately quiet: the send already reported itself,
-  // and a failed refetch only means the panel is briefly stale, which the next
-  // CC1 signal or panel open corrects.
   await refresh().catch(() => undefined);
   return shipped;
 }
-
-// ---------------------------------------------------------------------------
-// UI-only signals (no server state)
-// ---------------------------------------------------------------------------
 
 const FOCUS_EVENT = 'open-knowledge:comment-focus-thread';
 const OPEN_THREAD_EVENT = 'open-knowledge:comment-open-thread';
 const START_EVENT = 'open-knowledge:comment-start';
 const POSTED_EVENT = 'open-knowledge:comment-posted';
 
-// The node-env unit tier imports this module and has no `window`, so touching
-// these emitters there would throw. One module-level stand-in (not a per-call
-// default) so subscribe and dispatch still meet on the same target.
 const bus: EventTarget = typeof window === 'undefined' ? new EventTarget() : window;
 
 export function emitFocusThread(threadId: string): void {
@@ -767,22 +448,11 @@ export function subscribeFocusThread(onFocus: (threadId: string) => void): () =>
   return () => bus.removeEventListener(FOCUS_EVENT, handler);
 }
 
-/**
- * Which thread the reader is on right now — it is the open one, or the pointer
- * is on its card or margin marker. `null` for none.
- *
- * This is what tells two comments sharing a passage apart. Every commented
- * passage carries the same pale wash, so overlapping ones read as one mark;
- * deepening the active thread's own range is what says which is which. Kept out
- * of {@link subscribe} deliberately — pointing at a comment must not re-render
- * every panel that reads the thread list.
- */
 let openThreadId: string | null = null;
 let pointedThreadId: string | null = null;
 let activeThreadId: string | null = null;
 const activeListeners = new Set<() => void>();
 
-/** Pointing at something wins over the open thread; it's the newer intent. */
 function recomputeActive(): void {
   const next = pointedThreadId ?? openThreadId;
   if (next === activeThreadId) return;
@@ -794,18 +464,11 @@ export function getActiveThread(): string | null {
   return activeThreadId;
 }
 
-/** Pointer or keyboard focus arrived on a thread's card or margin marker. */
 export function setActiveThread(threadId: string | null): void {
   pointedThreadId = threadId;
   recomputeActive();
 }
 
-/**
- * Stand down only if this thread is still the pointed-at one — the pointer can
- * reach the next card before the last one's leave handler runs, and an
- * unconditional clear would blank the highlight that just lit up. An open
- * thread stays active underneath.
- */
 export function clearActiveThread(threadId: string): void {
   if (pointedThreadId !== threadId) return;
   pointedThreadId = null;
@@ -819,59 +482,18 @@ export function subscribeActiveThread(listener: () => void): () => void {
   };
 }
 
-/**
- * The OPEN thread, for React — deliberately narrower than the active thread,
- * which also follows the pointer. The panel's card wash keys on this, and so
- * does the scroll that brings the card into view: hover-driven washing meant
- * every card lit itself up as the pointer crossed it, noise with no
- * information. A thread being open is a fact worth mirroring; a pointer passing
- * through is not.
- */
 export function useOpenThread(): string | null {
   return useSyncExternalStore(subscribeOpenThreadChanges, getOpenThread, () => null);
 }
 
-// Module-level, like every other binding here: `useSyncExternalStore` tears the
-// subscription down and rebuilds it whenever the subscribe function's identity
-// changes, so an inline lambda re-subscribes on every render of every panel
-// reading this.
 function subscribeOpenThreadChanges(listener: () => void): () => void {
   return subscribeOpenThread(() => listener());
 }
 
-/**
- * The open thread, read imperatively.
- *
- * For the handlers that have to know whether anything is open before they act —
- * the click that lands beside a highlight rather than on one, and stands the
- * open thread down. They run outside React (a ProseMirror plugin, a DOM
- * listener), so the hook above is not available to them.
- */
 export function getOpenThread(): string | null {
   return openThreadId;
 }
 
-/**
- * Which thread the reader has open — `null` for none.
- *
- * The comment itself is shown in ONE place, the Comments panel: this switches
- * the doc panel to that tab, the panel scrolls to the card and rings it, and
- * the passage deepens in the document underneath. It used to also float a card
- * over the text at the passage, which covered the document at the moment the
- * reader was trying to read it, and put the same comment on screen twice.
- *
- * One signal both ways, rather than "open" one-way. The open thread used to
- * clear itself privately (Escape, outside click, thread resolved), so the
- * margin rail never learned about it: the rail kept a marker lit for a card
- * that was gone, and could not tell whether clicking a marker should open or
- * close.
- *
- * The tab request lives here rather than at each open site (highlight click,
- * margin marker, property value, panel jump) so no path can forget; it is a
- * no-op when the tab is already showing, and closing (null) deliberately
- * leaves the panel as it is — the reader opened it, and standing down from one
- * comment is not a statement about the panel.
- */
 export function emitOpenThread(threadId: string | null): void {
   openThreadId = threadId;
   recomputeActive();
@@ -885,15 +507,6 @@ export function subscribeOpenThread(onChange: (threadId: string | null) => void)
   return () => bus.removeEventListener(OPEN_THREAD_EVENT, handler);
 }
 
-/**
- * A comment was successfully posted.
- *
- * The composer pins a selection until you send or dismiss it, deliberately, so
- * it survives clicking away into the input. But filing a comment means you are
- * DONE with that passage — leaving it pinned sends the same words to the agent
- * twice, once as the comment's quoted passage and once as an unrelated
- * in-scope selection.
- */
 export function emitCommentPosted(): void {
   bus.dispatchEvent(new CustomEvent(POSTED_EVENT));
 }

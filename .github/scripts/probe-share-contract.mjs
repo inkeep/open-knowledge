@@ -108,11 +108,6 @@ async function fetchWithTimeout(fetchImpl, url) {
   });
 }
 
-// Retry once on a network-level failure (fetch rejects — DNS, connection reset,
-// or the request-timeout AbortError) so a single CDN blip at the cron mark does
-// not page on-call for a fault that self-resolves next run. A non-ok HTTP
-// response does NOT reject, so 4xx/5xx stay immediate failures — only transport
-// faults retry.
 async function fetchWithRetry(fetchImpl, url) {
   try {
     return await fetchWithTimeout(fetchImpl, url);

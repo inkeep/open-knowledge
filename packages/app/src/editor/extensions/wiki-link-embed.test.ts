@@ -57,8 +57,6 @@ describe('applyWikiLinkEmbedImageDomAttributes', () => {
 
 describe('resolveWikiEmbedActivation', () => {
   test('keeps percent sequences in a bare wiki target literal', () => {
-    // `![[100%20done.png]]` names a file whose name really contains `%20`, and
-    // `projectRelPath` is what `shell.openPath` / `showItemInFolder` receive.
     expect(resolveWikiEmbedActivation({ target: '100%20done.png', resolvedSrc: null })).toEqual({
       url: '100%20done.png',
       projectRelPath: '100%20done.png',
@@ -74,7 +72,6 @@ describe('resolveWikiEmbedActivation', () => {
   });
 
   test('keeps percent sequences in a drop-time resolvedSrc literal', () => {
-    // `resolvedSrc` is a filesystem path the drop pipeline produced, not a URI.
     const activation = resolveWikiEmbedActivation({
       target: '100%20done.png',
       resolvedSrc: '/media/100%20done.png',

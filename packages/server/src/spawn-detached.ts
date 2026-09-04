@@ -1,24 +1,3 @@
-/**
- * Shared detached-spawn primitive used by `/api/spawn-cursor` and
- * `/api/handoff` handlers. Encapsulates the fire-and-forget "start a process
- * we don't parent" pattern with a uniform timeout race so both call sites
- * share one set of safety properties:
- *
- *   - `shell: false` + argv-array — user-supplied strings can't be
- *     interpolated as shell metacharacters.
- *   - `detached: true` + `stdio: 'ignore'` + `unref()` — OK is not the
- *     parent of the spawned process tree; killing OK doesn't kill it.
- *   - Timeout race — `setTimeout(timeoutMs)` resolves `{ok:false,
- *     reason:'timeout'}` if the child hasn't surfaced its first signal
- *     before then.
- *   - First-signal error classification — `ENOENT/EACCES/EPERM` becomes
- *     `'not-installed'` (semantic), every other error becomes
- *     `'spawn-error'` (catch-all).
- *
- * Callers map `SpawnDetachedOutcome.reason` to RFC 9457 URN tokens at the
- * wire boundary; this helper never constructs problem+json bodies itself.
- */
-
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { getLogger } from './logger.ts';
@@ -40,12 +19,6 @@ function classifySpawnError(err: unknown): SpawnDetachedOutcome {
     : { ok: false, reason: 'spawn-error' };
 }
 
-/**
- * Spawn `exec` with `args` in detached + ignored-stdio mode and resolve as
- * soon as Node has surfaced first error / spawn signal. Never throws —
- * synchronous spawn failures (e.g. invalid argv shape) resolve as
- * `{ok:false, reason:'spawn-error'}` with a warning log.
- */
 export function spawnDetached(
   exec: string,
   args: ReadonlyArray<string>,
@@ -73,9 +46,7 @@ export function spawnDetached(
         if (settled) return;
         try {
           child.unref();
-        } catch {
-          // Ignore — child already exited.
-        }
+        } catch {}
         clearTimeout(timer);
         settle({ ok: true });
       });

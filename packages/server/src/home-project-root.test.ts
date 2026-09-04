@@ -13,8 +13,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // The writer tests point `os.homedir()` at the fixture; unstub so a later
-  // test in this file can't inherit a HOME that names a deleted directory.
   vi.unstubAllEnvs();
   rmSync(home, { recursive: true, force: true });
 });
@@ -26,8 +24,6 @@ describe('isHomeDir', () => {
   });
 
   test('a symlinked spelling of home still compares equal', () => {
-    // The two operands reach the writers by different routes (a user-supplied
-    // path or a folder pick vs `os.homedir()`), so `===` is not enough.
     const link = join(tmpdir(), `ok-home-guard-link-${process.pid}`);
     try {
       symlinkSync(home, link);
@@ -58,13 +54,6 @@ describe('assertNotHomeProjectRoot', () => {
   });
 });
 
-/**
- * The two shared writers every scaffold entry point passes through: `ok init`,
- * `ok share publish --project-dir`, the desktop Open Folder confirm, the
- * desktop `ok-init` IPC and `POST /api/local-op/ok-init`. Guarding them is what
- * makes the refusal hold for the four non-CLI entry points, which have no
- * `runInit` in front of them.
- */
 describe('scaffold writers refuse $HOME', () => {
   test('ensureProjectGit does not git init the home directory', async () => {
     vi.stubEnv('HOME', home);
@@ -75,8 +64,6 @@ describe('scaffold writers refuse $HOME', () => {
   test('initContent does not scaffold into the user-global ~/.ok', () => {
     vi.stubEnv('HOME', home);
     expect(() => initContent(home)).toThrow(HomeProjectRootError);
-    // `.ok/` at home is the user-global store; a scaffold would drop a project
-    // `config.yml` into it.
     expect(existsSync(join(home, '.ok', 'config.yml'))).toBe(false);
     expect(existsSync(join(home, '.okignore'))).toBe(false);
   });

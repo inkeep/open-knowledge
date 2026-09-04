@@ -51,8 +51,6 @@ describe('classifyInstallShape', () => {
   });
 
   test('linux AppImage launch (APPIMAGE env) declines persistent integrations', () => {
-    // The exec path is the live squashfs mount — valid to spawn from right
-    // now, guaranteed-dead if persisted anywhere.
     const shape = classifyInstallShape('linux', '/tmp/.mount_OpenKnXYZ/openknowledge', {
       APPIMAGE: '/home/u/OpenKnowledge-x86_64.AppImage',
     });

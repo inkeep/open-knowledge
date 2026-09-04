@@ -1,13 +1,7 @@
 import { MIN_TERMINAL_RIGHT_WIDTH } from '@inkeep/open-knowledge-core';
 
-// Admission asks whether both rail columns can coexist at all, so it weighs the
-// terminal at its drag floor rather than its preferred width. Weighing it at the
-// preferred width would evict the agent panel from windows where the user is
-// perfectly willing to run a narrower terminal.
 export const MIN_USABLE_RIGHT_TERMINAL_WIDTH_PX = MIN_TERMINAL_RIGHT_WIDTH;
 
-// react-resizable-panels converts pixel constraints through percentages. One
-// extra pixel absorbs percentage and device-pixel rounding at the rendered edge.
 export const RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX = MIN_USABLE_RIGHT_TERMINAL_WIDTH_PX + 1;
 
 const EDITOR_RESIDUAL_FRACTION = 0.05;

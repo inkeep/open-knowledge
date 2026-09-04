@@ -35,8 +35,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const HEX = /^#[0-9a-f]{6}$/;
-// Themes whose palette isn't a static, fully-authored scheme: `default` (no
-// overlay) and `custom` (built at runtime from the user's scheme).
 const NON_STATIC = new Set(['default', 'custom']);
 
 describe('color-themes registry', () => {
@@ -50,7 +48,6 @@ describe('color-themes registry', () => {
   test('every static theme carries all sixteen base16 slots as 6-digit hex', () => {
     for (const theme of COLOR_THEMES) {
       if (NON_STATIC.has(theme.id)) continue;
-      // Static built-ins force their own mode — dark or light.
       expect(['dark', 'light']).toContain(theme.kind);
       expect(theme.scheme).toBeDefined();
       const palette = theme.scheme?.palette;
@@ -97,9 +94,6 @@ describe('base16ToTokens', () => {
     const scheme = COLOR_THEMES[1]?.scheme;
     expect(scheme).toBeDefined();
     const tokens = base16ToTokens(scheme as NonNullable<(typeof COLOR_THEMES)[number]['scheme']>);
-    // A representative slice across every family the mapping owns. The
-    // callout / lint / ansi entries are the ones a theme previously could not
-    // reach at all.
     for (const required of [
       'background',
       'foreground',
@@ -140,10 +134,6 @@ describe('base16ToTokens', () => {
 });
 
 describe('defaultThemeTokens', () => {
-  // The tokens a theme preview reads off the token map. `default` has no scheme
-  // to map, so these come from the base stylesheet instead — and must be
-  // literals, since a preview can't read `var(--…)` out from under an active
-  // palette override.
   const SWATCH_TOKENS = [
     'sidebar',
     'background',
@@ -183,7 +173,6 @@ describe('generated stylesheet', () => {
   test('emits one attribute-scoped rule per static IDE theme and none for default/custom', () => {
     const css = generateColorThemesCss();
     expect(css).not.toContain('data-color-theme="default"');
-    // `custom` has no static scheme — its rule is built at runtime, not generated.
     expect(css).not.toContain('data-color-theme="custom"');
     for (const theme of COLOR_THEMES) {
       if (NON_STATIC.has(theme.id)) continue;
@@ -194,12 +183,6 @@ describe('generated stylesheet', () => {
 
 describe('registry stays in sync with its consumers', () => {
   test('every appearance palette field admits any grammar-valid id, not a closed set', () => {
-    // These fields are shape-constrained strings, not closed enums — that is
-    // what lets a saved theme (an id the built-in registry has never heard of)
-    // be assigned without failing whole-config validation. The invariant this
-    // guards: every built-in id still validates, an id inside the grammar but
-    // outside the registry validates, and a string outside the grammar is
-    // refused so config and the pre-paint validator stay aligned.
     for (const field of ['colorTheme', 'colorThemeLight', 'colorThemeDark']) {
       for (const id of COLOR_THEMES.map((t) => t.id)) {
         expect(
@@ -221,8 +204,6 @@ describe('registry stays in sync with its consumers', () => {
   });
 
   test('the pre-paint FOUC script reads exactly the caches the apply path writes', () => {
-    // index.html can't import a module, so its script hardcodes the key names.
-    // A rename on either side would silently cost the flash-free first paint.
     const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     for (const key of [
       COLOR_THEME_PAIR_STORAGE_KEY,
@@ -235,10 +216,6 @@ describe('registry stays in sync with its consumers', () => {
   });
 
   test('the pre-paint FOUC script carries no palette-id knowledge', () => {
-    // Each cached slot ships its own resolved `dark` flag, so the script never
-    // has to know which palettes are light — the enumeration that used to live
-    // here (and had to be edited alongside every new theme) is gone. `default`
-    // and `custom` are structural cases, not palettes, so they stay.
     const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     for (const theme of COLOR_THEMES) {
       if (NON_STATIC.has(theme.id)) continue;
@@ -252,10 +229,6 @@ describe('registry stays in sync with its consumers', () => {
   });
 
   test('the pre-paint FOUC script validates ids with the config fields grammar', () => {
-    // index.html can't import a module, so its inline id check hardcodes the
-    // grammar. If the two drift, a palette config accepts could fail to
-    // pre-paint (flash of unstyled content) — so the inline source must carry
-    // THEME_ID_PATTERN verbatim.
     const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
     expect(html).toContain(THEME_ID_PATTERN.source);
   });
@@ -317,8 +290,6 @@ describe('custom theme scheme', () => {
   });
 
   test('upgrades a pre-base16 six-color seed instead of discarding it', () => {
-    // Config written by an older build carries semantic seed names and no
-    // slots; the palette must be reconstructed rather than silently reset.
     const scheme = resolveCustomScheme({
       background: '#101010',
       surface: '#202020',
@@ -331,7 +302,6 @@ describe('custom theme scheme', () => {
     expect(scheme.palette.base01).toBe('#202020');
     expect(scheme.palette.base02).toBe('#303030');
     expect(scheme.palette.base05).toBe('#fafafa');
-    // `primary` drove the accent, which is base0D's role.
     expect(scheme.palette.base0D).toBe('#3366ff');
     expect(scheme.variant).toBe('dark');
     for (const slot of BASE16_SLOTS) {
@@ -340,9 +310,6 @@ describe('custom theme scheme', () => {
   });
 
   test('a partial legacy seed merges over the default instead of resetting it', () => {
-    // The old editor only wrote the fields a user changed, and configs get
-    // hand-edited a field at a time — dropping a partial seed would silently
-    // discard a customization.
     const scheme = resolveCustomScheme({ background: '#101010' });
     expect(scheme.palette.base00).toBe('#101010');
     expect(scheme.palette.base0D).toBe(DEFAULT_CUSTOM_SCHEME.palette.base0D);
@@ -353,10 +320,6 @@ describe('custom theme scheme', () => {
   });
 
   test('a half-migrated config keeps the legacy palette under the edited slot', () => {
-    // The upgrade path a real user walks: they had a custom theme, then nudge
-    // one slot in the new editor. If explicit slots layered over the DEFAULT
-    // scheme rather than over their upgraded seed, the other fifteen would
-    // snap back to slate and their theme would be gone.
     const legacy = {
       background: '#101010',
       surface: '#202020',
@@ -385,8 +348,6 @@ describe('customThemeWritePatch', () => {
   });
 
   test('nulls the pre-base16 seed keys so a patch deletes them', () => {
-    // `null` in a config patch is a key deletion. Without this the old six
-    // colors linger in config.yml forever as dead, half-format data.
     const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
     for (const key of ['background', 'surface', 'foreground', 'primary', 'accent', 'border']) {
       expect(patch[key], key).toBeNull();
@@ -394,8 +355,6 @@ describe('customThemeWritePatch', () => {
   });
 
   test('the written patch resolves back to the same scheme', () => {
-    // Round-trip through the reader: what we persist must reconstruct exactly,
-    // including after the legacy keys are gone.
     const patch = customThemeWritePatch(DEFAULT_CUSTOM_SCHEME);
     const persisted = Object.fromEntries(
       Object.entries(patch).filter(([, v]) => v !== null),
@@ -404,8 +363,6 @@ describe('customThemeWritePatch', () => {
   });
 
   test("carries an imported scheme's author credit through the round-trip", () => {
-    // The reader accepts `author`, so a patch that omits it silently drops the
-    // credit line of any upstream scheme the user imported.
     const credited = { ...DEFAULT_CUSTOM_SCHEME, author: 'Zeno Rocha' };
     const patch = customThemeWritePatch(credited);
     expect(patch.author).toBe('Zeno Rocha');
@@ -427,7 +384,6 @@ describe('hasLegacyCustomSeed', () => {
     expect(hasLegacyCustomSeed({ background: '#101010' })).toBe(true);
     expect(hasLegacyCustomSeed({ base00: '#101010' })).toBe(false);
     expect(hasLegacyCustomSeed(undefined)).toBe(false);
-    // A non-color value is not a seed to migrate.
     expect(hasLegacyCustomSeed({ background: 'nope' })).toBe(false);
   });
 

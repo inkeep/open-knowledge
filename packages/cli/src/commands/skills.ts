@@ -1,10 +1,3 @@
-/**
- * `ok skills` — headless skill utilities: `installed` (read-only cross-agent
- * enumeration) and `import` (bring a skill in as versioned content). Skills OK
- * finds in editor dirs are versioned in place automatically — there
- * is no manage opt-in.
- */
-
 import { resolve as resolvePath } from 'node:path';
 import { isDetectedSkillInProject } from '@inkeep/open-knowledge-core';
 import { resolveProjectIdentity } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -24,10 +17,6 @@ export function skillsCommand(): Command {
     .description('List every skill installed across all your agents (read-only).')
     .option('--json', 'Emit the raw enumeration as JSON.')
     .action((opts: { json?: boolean }) => {
-      // Same project/global classifier as the sidebar + adopt: resolve the
-      // enclosing OK project (worktree→parent identity), scan its harness dirs,
-      // and drop skills bound to a different project. Falls back to cwd when not
-      // inside a project.
       const cwd = resolvePath(process.cwd());
       const identity = resolveProjectIdentity(findEnclosingProjectRoot(cwd)?.rootPath ?? cwd);
       const enumerated = enumerateInstalledSkills({ projectDir: identity });
@@ -72,8 +61,6 @@ export function skillsCommand(): Command {
     .option('--skill <name>', 'Pick one skill from a multi-skill source.')
     .option('--scope <scope>', 'project (default) or global.', 'project')
     .action(async (source: string, opts: { skill?: string; scope?: string }) => {
-      // Import WRITES through the CRDT/attribution spine, so it needs a running
-      // server for this project (unlike the read-only `installed` subcommand).
       const lockDir = resolveLockDir(process.cwd());
       const state = inspectLock(lockDir, 'server');
       if (state.status !== 'alive') {

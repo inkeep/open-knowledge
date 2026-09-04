@@ -13,17 +13,8 @@ import {
 } from '../skill-placements.ts';
 import { classifyInPlaceDest, skillProjectionRoots } from '../skill-projection.ts';
 
-/**
- * One-shot custom skill placements: put a copy or symlink of a bundle under
- * an arbitrary project-relative dir, and the lossless inverse. Placement
- * writes host dirs on this machine, OUTSIDE the content/CRDT plane — the
- * transport maps outcomes and owns the base-resolution (project vs global)
- * plus the CC1 signal.
- */
-
 type PlaceOutcome =
   | { ok: true; placedAt: string }
-  /** Asking for the location the skill ALREADY occupies — satisfied, nothing written. */
   | { ok: true; alreadyAtSource: true; placedAt: string }
   | { ok: false; kind: 'invalid-path' }
   | { ok: false; kind: 'dest-exists' };
@@ -46,7 +37,6 @@ export interface SkillPlacementOpsService {
   place(input: {
     placeBase: string;
     name: string;
-    /** Raw caller-typed dir; normalized here (backslashes, `~/`, edge slashes). */
     rawDir: string;
     skillDir: string;
     mode: 'link' | 'copy';
@@ -57,16 +47,10 @@ export interface SkillPlacementOpsService {
     rawPath: string;
     skillDir: string;
   }): Promise<UnplaceOutcome>;
-  /**
-   * Per-location mode change: make ONE installed location a symlink to the
-   * source, or an independent copy again. Lossless-only — a hand-edited copy
-   * is a fork and is refused, never overwritten.
-   */
   convert(input: {
     ledgerBase: string;
     scope: 'project' | 'global';
     name: string;
-    /** Host id (`agents` / editor) or a custom skills-root path. */
     target: string;
     mode: 'link' | 'copy';
     skillDir: string;
@@ -85,9 +69,6 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
       const placementRel = `${dirRel}/${input.name}`;
       const destAbs = resolveSkillPlacementPath(input.placeBase, placementRel);
       const baseAbs = resolve(input.placeBase);
-      // `.ok/` internals are refused; `.ok/skills` is placeable at both
-      // scopes. See `isRefusedOkPlacementRoot` for why that one path is
-      // carved out.
       const underOkInternals = isRefusedOkPlacementRoot(dirRel);
       if (
         dirRel === '' ||
@@ -97,13 +78,6 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
       ) {
         return { ok: false, kind: 'invalid-path' };
       }
-      // Asking for the location the skill ALREADY occupies is a satisfied
-      // request, not a bad path. Since imports land in-place at the
-      // `.agents/skills` hub, placing a freshly imported skill there names
-      // its own canonical dir — every caller (the hub toggle on a preview,
-      // `install --place`, MCP) hit an invalid-path error for a skill that
-      // was, in fact, exactly where it was asked to be. Report the location
-      // and change nothing; a real copy/symlink here would be self-referential.
       if (destAbs === resolve(input.skillDir)) {
         return { ok: true, alreadyAtSource: true, placedAt: placementRel };
       }
@@ -146,7 +120,7 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
         case 'canonical-dir':
           return { ok: false, kind: 'canonical-dir', path: rel };
         case 'absent':
-          break; // already gone — just drop the record
+          break;
         default:
           tracedRmSync(absDir, { recursive: true, force: true });
       }
@@ -183,8 +157,6 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
       if (cls === 'absent') {
         return { ok: false, kind: 'not-installed' };
       }
-      // Already in the requested form — nothing to write (a link-to-somewhere-
-      // else still gets re-materialized, same as the fan-out treats it).
       const alreadyRight =
         (input.mode === 'link' && cls === 'link-to-canonical') ||
         (input.mode === 'copy' && cls === 'same-copy');
@@ -198,12 +170,6 @@ export function createSkillPlacementOpsService(): SkillPlacementOpsService {
           tracedCpSync(canonicalAbs, absDir, { recursive: true, dereference: true });
         }
       }
-      // Recorded in BOTH branches. When disk is already right the ledger may
-      // not be, and a record that disagrees with disk is exactly what renders
-      // "changed outside" — skipping the write here used to skip the record
-      // too, so a stale record could never be reconciled from the UI
-      // (converting again just no-opped). Recording is idempotent when the
-      // two agree.
       await recordSkillPlacement(input.ledgerBase, input.name, {
         path: `${rootRel}/${input.name}`,
         mode: input.mode,

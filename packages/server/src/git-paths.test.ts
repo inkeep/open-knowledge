@@ -16,8 +16,6 @@ import {
   splitNulSeparatedPaths,
 } from './git-paths.ts';
 
-// A name git C-quotes in its default (non-`-z`) output — the failure the whole
-// module exists to prevent.
 const NON_ASCII = 'hyvää yötä.md';
 
 describe('splitNulSeparatedPaths', () => {
@@ -44,7 +42,6 @@ describe('parsePorcelainPaths', () => {
   });
 
   test('skips the origin record following a rename', () => {
-    // `R  <new>\0<old>\0` — the origin path is a prefix-less following record.
     expect(parsePorcelainPaths('R  new.md\0old.md\0')).toEqual(['new.md']);
   });
 
@@ -62,9 +59,6 @@ describe('parsePorcelainPaths', () => {
 });
 
 describe('parsePorcelainEntries — rename origin in either column', () => {
-  // `diff.renames` defaults to true, so git reports a WORKTREE rename in the Y
-  // column (` R`). Consuming the origin record only on the X column left it to
-  // be re-parsed as a status record, inventing a file that does not exist.
   test('a worktree rename yields one entry carrying its origin, and no phantom', () => {
     const entries = parsePorcelainEntries(' R bravo.md\0alpha.md\0');
 
@@ -72,8 +66,6 @@ describe('parsePorcelainEntries — rename origin in either column', () => {
   });
 
   test('a staged-then-worktree rename consumes both origins', () => {
-    // Two entries, each with its own origin record. Mis-parsing the second
-    // origin produced a second phantom (`vo.md`) on top of the first.
     const entries = parsePorcelainEntries('R  bravo.md\0alpha.md\0 R charlie.md\0bravo.md\0');
 
     expect(entries).toEqual([
@@ -147,10 +139,6 @@ describe('path-listing wrappers (real git)', () => {
   }
 
   test('a real worktree rename parses without inventing a file', () => {
-    // Pins the PREMISE, not just the parser: git reports worktree renames by
-    // default (`status.renames` inherits `diff.renames`), which is what the
-    // index-column-only skip got wrong. If that default ever changed, this is
-    // the test that says so.
     writeFileSync(join(projectDir, 'alpha.md'), 'x\n');
     run('git add -A');
     run('git commit -q -m seed');

@@ -7,11 +7,6 @@ import {
 } from './local-target-assessment.ts';
 import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
 
-/**
- * A content-scoped inventory backed by explicit membership sets — a boundary
- * fake, not a mock: assertions check the assessment the module computes FROM the
- * membership, so a fake that reported the wrong membership would fail the tests.
- */
 function inventory(opts?: {
   docs?: Iterable<string>;
   files?: Iterable<string>;
@@ -30,7 +25,6 @@ function inventory(opts?: {
 
 const SOURCE = 'notes/index';
 
-/** Assess a single-occurrence document and return that occurrence's assessment. */
 function assessOne(markdown: string, inv: LocalTargetInventory) {
   const [assessment, ...rest] = assessLocalTargets(markdown, SOURCE, inv);
   expect(rest).toEqual([]);
@@ -59,7 +53,6 @@ describe('canonical assessment per authored form', () => {
       status: 'exact',
       reason: null,
     });
-    // The image is a role on the occurrence, distinct from the file target kind.
     expect(a?.occurrence.role).toBe('image');
   });
 
@@ -146,7 +139,6 @@ describe('document vs ordinary-file membership', () => {
   });
 
   test('document and file oracles are consulted independently for the same document', () => {
-    // A doc target is never satisfied by a same-named entry in the file inventory.
     const a = assessOne('[see](./guide.md)', inventory({ files: ['notes/guide'] }));
     expect(a?.status).toBe('missing');
     expect(a?.reason).toBe('no-such-doc');
@@ -201,7 +193,6 @@ describe('exact existence is authoritative; tolerant navigation is explicit, nev
 
 describe('ignored and escaping targets are classified without admitting them', () => {
   test('a traversal-escaping document path is unresolvable, not missing', () => {
-    // Never probes the filesystem for an out-of-scope path: the resolver refuses it.
     const a = assessOne('[x](../../../../etc/passwd)', inventory());
     expect(a).toMatchObject({
       targetKind: 'unknown',
@@ -218,7 +209,6 @@ describe('ignored and escaping targets are classified without admitting them', (
   });
 
   test('a same-named file entry never satisfies an escaping href', () => {
-    // Guards against resolving the last segment against the inventory after an escape.
     const a = assessOne('[x](../../secrets/passwd)', inventory({ files: ['secrets/passwd'] }));
     expect(a?.status).toBe('unresolvable');
   });
@@ -240,10 +230,8 @@ describe('repeated occurrences share existence work while each keeps its range',
       SOURCE,
       inv,
     );
-    // Three occurrences, two distinct hrefs → two existence lookups.
     expect(assessments).toHaveLength(3);
     expect(docLookups).toBe(2);
-    // Every occurrence retains its own exact source range.
     for (const a of assessments) {
       expect(md.slice(a.occurrence.range.start, a.occurrence.range.end)).toContain(
         a.occurrence.href,
@@ -258,10 +246,6 @@ describe('repeated occurrences share existence work while each keeps its range',
 
 describe('scope: classification is total across every recognized form', () => {
   test('wiki link and wiki embed occurrences are classified alongside markdown forms', () => {
-    // A form the classifier refuses to answer for is a hole some surface fills
-    // by guessing, which is how four planes came to disagree about one link.
-    // Whether a classified form reaches a given surface is decided at the
-    // projection boundary, not by declining to classify it.
     const md = 'A [[Some Page]] and an embed ![[photo.png]] plus [real](./r.md).';
     const assessments = assessLocalTargets(md, SOURCE, inventory({ docs: ['notes/r'] }));
     expect(assessments.map((a) => a.occurrence.sourceForm)).toEqual([
@@ -272,14 +256,9 @@ describe('scope: classification is total across every recognized form', () => {
   });
 
   test('an extension-less wiki embed is document-shaped, not file-shaped', () => {
-    // `![[Note]]` transcludes a document. The image ROLE it carries is a
-    // rendering fact, not a target-kind one, so the role-based file shortcut
-    // that governs markdown and HTML images must not claim it.
     const a = assessLocalTargets('![[targets/missing-embed]]', SOURCE, inventory())[0];
     expect(a).toMatchObject({
       targetKind: 'document',
-      // Vault-root-relative, not source-relative — `SOURCE` is `notes/index`,
-      // and the document graph resolves the same target the same way.
       resolvedTarget: 'targets/missing-embed',
       status: 'missing',
       reason: 'no-such-doc',
@@ -296,16 +275,9 @@ describe('scope: classification is total across every recognized form', () => {
   });
 
   test('a wiki target resolves entirely against the vault root, fallback included', () => {
-    // The markdown file fallback is source-relative. Running it for a wiki form
-    // would answer one occurrence with two resolution origins: the document
-    // identity from the vault root, the file probe from the source directory.
-    // An extension-less wiki target is a document by contract, so no fallback.
     const a = assessLocalTargets(
       '[[assets/NOTICE]]',
       SOURCE,
-      // Source-relative would look for `notes/assets/NOTICE`; root-relative
-      // finds `assets/NOTICE`. Both are present, so a wrong origin would be
-      // invisible unless the assertion pins the KIND.
       inventory({ files: ['assets/NOTICE', 'notes/assets/NOTICE'] }),
     )[0];
     expect(a).toMatchObject({
@@ -316,8 +288,6 @@ describe('scope: classification is total across every recognized form', () => {
   });
 
   test('the same extension-less href resolves per form, not per href', () => {
-    // A markdown image of `assets/NOTICE` is a file; a wiki embed of it is a
-    // document. Sharing one cache entry across forms would collapse them.
     const md = '![md image](assets/NOTICE)\n\n![[assets/NOTICE]]\n';
     const rows = assessLocalTargets(md, SOURCE, inventory({ files: ['assets/NOTICE'] }));
     expect(rows.map((r) => [r.occurrence.sourceForm, r.targetKind])).toEqual([
@@ -344,7 +314,6 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
       ),
     );
 
-    // Three local resources; the document link and the wiki link are not here.
     expect(rows.map((r) => r.href).sort()).toEqual(['./logo.png', './pic.png', './report.pdf']);
     expect(rows.some((r) => r.targetKind === 'document')).toBe(false);
 
@@ -358,7 +327,6 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
       reason: 'no-such-file',
       definition: null,
     });
-    // The range travels byte-exact, so the panel can navigate to the occurrence.
     expect(report && md.slice(report.range.start, report.range.end)).toBe('[report](./report.pdf)');
 
     expect(rows.find((r) => r.href === './logo.png')).toMatchObject({
@@ -394,7 +362,6 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
     const rows = toForwardLinkLocalTargets(assessLocalTargets(md, SOURCE, inventory({})));
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.href === './x.png' && r.status === 'missing')).toBe(true);
-    // Distinct occurrences keep distinct ranges — no silent collapse.
     expect(rows[0]?.range).not.toEqual(rows[1]?.range);
   });
 
@@ -419,9 +386,6 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
   });
 });
 
-// The reported symptom was a false `dead-link` on a link the generated index
-// emitted itself. Pinning it here, at the tier that produces the verdict the
-// user sees, keeps the contract honest if the resolver is ever refactored.
 describe('percent-encoded targets are assessed against the decoded document', () => {
   test('an encoded link to an existing document is exact, not missing', () => {
     const a = assessOne(
@@ -449,10 +413,6 @@ describe('percent-encoded targets are assessed against the decoded document', ()
     expect(a).toMatchObject({ status: 'exact' });
   });
 
-  // The two planes reach the same asset resolver with the same shape, so the
-  // decode has to be gated on the authored form. A wiki target names the file
-  // literally; decoding it would hunt for a different file and report the same
-  // false dead-link this work exists to remove.
   test('a wiki asset embed keeps percent sequences literal', () => {
     const a = assessOne('![[100%20done.png]]', inventory({ files: ['notes/100%20done.png'] }));
     expect(a).toMatchObject({ status: 'exact' });

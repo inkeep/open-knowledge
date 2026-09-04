@@ -10,7 +10,6 @@ const NOTICE: UninstallScreenSpec = {
   notice: { title: 'Uninstall OpenKnowledge?', paragraphs: [], confirmLabel: 'Uninstall' },
 };
 
-/** Register one screen and collect whatever intents reach the flow code. */
 function openScreen(screen: UninstallScreenSpec = NOTICE) {
   const registry = createUninstallScreenRegistry();
   const received: UninstallIntent[] = [];
@@ -76,10 +75,6 @@ describe('uninstall screen registry — intent delivery', () => {
   });
 
   it('delivers the two notice intents unswapped', () => {
-    // notice-confirm and notice-cancel resolve completion opposite ways, and the
-    // window is destroyed either way (no user feedback). A `case 'notice-confirm':
-    // return { kind: 'notice-cancel' }` swap is TypeScript-undetectable, so pin
-    // that each arrives as itself.
     const { registry, received } = openScreen();
 
     expect(registry.dispatch(7, { kind: 'notice-confirm' })).toEqual({ kind: 'accepted' });

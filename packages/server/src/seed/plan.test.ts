@@ -14,8 +14,6 @@ describe('planSeed — nested .ok/ era', () => {
 
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'seed-plan-'));
-    // Simulate `ok init` having created `.ok/config.yml` already — the
-    // canonical project-root marker.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
   });
@@ -34,8 +32,6 @@ describe('planSeed — nested .ok/ era', () => {
   });
 
   test('throws SeedPrerequisiteError when .ok/ exists but config.yml is absent', async () => {
-    // Mimics a nested folder-rule sidecar — `.ok/` with no `config.yml`.
-    // The gate must reject this, not accept it as a valid project root.
     const bare = await mkdtemp(join(tmpdir(), 'seed-sidecar-'));
     try {
       mkdirSync(join(bare, '.ok'), { recursive: true });
@@ -62,15 +58,14 @@ describe('planSeed — nested .ok/ era', () => {
     const createdPaths = new Set(plan.created.map((e) => e.path));
 
     for (const folder of STARTER_FOLDERS) {
-      expect(createdPaths.has(folder.path)).toBe(true); // the folder itself
-      expect(createdPaths.has(`${folder.path}/.ok`)).toBe(true); // nested .ok/
+      expect(createdPaths.has(folder.path)).toBe(true);
+      expect(createdPaths.has(`${folder.path}/.ok`)).toBe(true);
       expect(createdPaths.has(`${folder.path}/.ok/frontmatter.yml`)).toBe(true);
       expect(createdPaths.has(`${folder.path}/.ok/templates`)).toBe(true);
       expect(createdPaths.has(`${folder.path}/.ok/templates/${folder.starterTemplate}.md`)).toBe(
         true,
       );
     }
-    // Plus root log.md.
     expect(createdPaths.has('log.md')).toBe(true);
   });
 
@@ -93,7 +88,6 @@ describe('planSeed — nested .ok/ era', () => {
   });
 
   test('skips entries that already exist on disk', async () => {
-    // Pre-create one folder + its nested frontmatter.
     mkdirSync(join(projectDir, 'external-sources', '.ok'), { recursive: true });
     writeFileSync(
       join(projectDir, 'external-sources', '.ok', 'frontmatter.yml'),
@@ -106,7 +100,6 @@ describe('planSeed — nested .ok/ era', () => {
     expect(skippedPaths.has('external-sources/.ok')).toBe(true);
     expect(skippedPaths.has('external-sources/.ok/frontmatter.yml')).toBe(true);
 
-    // Other folders still planned.
     const createdPaths = new Set(plan.created.map((e) => e.path));
     expect(createdPaths.has('research')).toBe(true);
     expect(createdPaths.has('articles')).toBe(true);
@@ -135,10 +128,6 @@ describe('planSeed — nested .ok/ era', () => {
     await expect(planSeed({ projectDir, rootDir: '../escape' })).rejects.toThrow(SeedRootDirError);
   });
 
-  // OK never creates an agent home, so `installPackSkill` declines outright in a
-  // project that adopted none. A plan reporting the skills pending there
-  // promises work apply refuses on every run — the seed then claims it did
-  // something forever while doing nothing.
   test('no agent folder: pack skills are not pending, and the plan says why', async () => {
     const plan = await planSeed({ projectDir, packId: 'plain-notes' });
     expect(plan.packSkills?.length).toBeGreaterThan(0);
@@ -153,17 +142,9 @@ describe('planSeed — nested .ok/ era', () => {
     expect(plan.packSkillHomeRefusal).toBeUndefined();
   });
 
-  // The OTHER refusal: an agent folder DOES exist, but it symlinks out of the
-  // project, so authoring through it would write outside the repo. Kept
-  // distinct from `no-agent-folder` because the two need different user
-  // guidance (replace the symlink vs. create a folder), so the plan must
-  // report which one it is rather than collapse both into "no home".
   test('an agent folder symlinked outside the project refuses with home-escapes-project', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'seed-outside-'));
     try {
-      // `.claude` resolves outside the project and its `skills` root exists —
-      // the shape `resolveDefaultSkillHomeRel` picks and the escape guard then
-      // refuses.
       symlinkSync(outside, join(projectDir, '.claude'));
       mkdirSync(join(outside, 'skills'), { recursive: true });
 
@@ -196,7 +177,7 @@ describe('planSeed — codebase-wiki nested paths', () => {
     const byPath = new Map(plan.created.map((e) => [e.path, e]));
 
     for (const folder of WIKI_PACK.folders) {
-      expect(byPath.has(folder.path)).toBe(true); // e.g. wiki/architecture
+      expect(byPath.has(folder.path)).toBe(true);
       expect(byPath.get(`${folder.path}/.ok/frontmatter.yml`)?.template).toBe(
         `${folder.path}/.ok/frontmatter.yml`,
       );
@@ -213,11 +194,6 @@ describe('planSeed — codebase-wiki nested paths', () => {
     expect(createdPaths.has('wiki/log.md')).toBe(true);
   });
 
-  // Existing installs are never renamed, so the planner has to recognize a
-  // pack skill sitting under its OLD name. Two ways this goes wrong: reporting
-  // it pending (dry-run promises an install apply then declines), or classifying
-  // it by the shipped name — whose lock key does not exist — and calling the
-  // user's own skill a name collision.
   test('a pack skill installed under its old name reads as present, not pending, not conflicted', async () => {
     const oldName = 'open-knowledge-pack-plain-notes';
     const skillDir = join(projectDir, '.claude', 'skills', oldName);
@@ -236,12 +212,6 @@ describe('planSeed — codebase-wiki nested paths', () => {
     expect(orientation?.conflict).toBeUndefined();
   });
 
-  // The update path rewrites frontmatter as {name, description}, dropping
-  // `metadata.pack`. After one Update the ONLY remaining proof that a legacy
-  // install is ours is its lock entry — which is keyed by the OLD name. Probe
-  // the lock with the shipped name and it always misses, so a skill we authored
-  // starts reporting as the user's own name collision, for a skill that exists
-  // nowhere on disk.
   test('an updated legacy install (no metadata.pack) is still ours, via its old lock key', async () => {
     const oldName = 'open-knowledge-pack-plain-notes';
     const skillDir = join(projectDir, '.claude', 'skills', oldName);

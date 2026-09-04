@@ -1,34 +1,3 @@
-/**
- * Settings → This project → AI tools — persistent IPC surface for per-component
- * install/uninstall of OpenKnowledge's PROJECT-LOCAL footprint: the per-editor
- * project MCP config files (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`,
- * …) and the project runtime skill (`.claude/skills/open-knowledge/`, …), all
- * scoped to the project the requesting window has open.
- *
- * The project-scoped sibling of `integrations-settings.ts` (which owns the
- * user-global footprint: user-scope MCP entries, the shell-PATH shim, the
- * user-global skill bundles). Both promote a one-shot consent flow into a
- * persistent, live-state Settings surface; this one mirrors the per-project
- * onboarding dialog (`consent-dialog.ts`) rather than the global first-launch
- * one. Same install actors underneath — `writeEditorMcpConfig` /
- * `removeOwnMcpEntry` / `writeProjectSkill` / `removeProjectSkill` with a
- * project config-path override — so the two surfaces and the reclaim-on-open
- * sweep can never disagree about what a project install means.
- *
- * Two things the global surface does not need:
- *   1. The active project. Every request resolves the sender window's project
- *      dir via the injected `resolveProjectDir(event)` (main maps webContents →
- *      ProjectContext) so the renderer can never target a foreign directory.
- *   2. Per-editor follow-up honesty. A written project config is not always a
- *      connected one — Claude Code needs a one-time approval, Cursor sits
- *      silently disabled until manually enabled, Codex auto-connects on a
- *      trusted project. `followUp` carries that per row.
- *
- * Mutations serialize through a promise-chain mutex, same as the global
- * surface. Electron-free + dependency-injected so bun-test loads it without an
- * Electron runtime; `main/index.ts` wires the real surfaces in.
- */
-
 import { relative } from 'node:path';
 import type {
   McpDeclineReason,
@@ -55,12 +24,6 @@ import {
 } from './integrations-settings.ts';
 import { logIpcError } from './ipc-log.ts';
 
-/**
- * Post-install manual step, per editor. Product knowledge, not a config
- * property — an editor that writes a project config fine may still need a
- * consent/enable/trust step before OK's tools actually connect. Unlisted
- * editors default to `none`.
- */
 const EDITOR_FOLLOW_UP: Partial<Record<McpWiringEditorId, ProjectIntegrationsFollowUp>> = {
   claude: 'approve-once',
   cursor: 'enable-manually',
@@ -71,34 +34,22 @@ function followUpFor(id: McpWiringEditorId): ProjectIntegrationsFollowUp {
   return EDITOR_FOLLOW_UP[id] ?? 'none';
 }
 
-/** CLI-side surface (backed by `@inkeep/open-knowledge` project primitives). */
 export interface ProjectIntegrationsCliSurface {
   allEditorIds: readonly McpWiringEditorId[];
   editorLabel(id: McpWiringEditorId): string;
-  /** Absolute project config path, or null when the editor exposes no
-   *  project-scope MCP surface (e.g. Claude Desktop). */
   projectConfigPath(id: McpWiringEditorId, projectDir: string): string | null;
-  /** Absolute project skill `SKILL.md` path, or null when the editor exposes
-   *  no project-scope skill surface. */
   projectSkillPath(id: McpWiringEditorId, projectDir: string): string | null;
-  /** The bundled project skill as shipped: its on-disk source, its own
-   *  frontmatter description and its three-tier cost. Injected rather than
-   *  resolved here so this module stays Electron-free and unit-testable.
-   *  Returns null when the bundle cannot be read. */
   projectSkillBundle(): {
     sourceDir: string;
     description: string;
     size?: SkillCostTiers;
   } | null;
-  /** Technical locator of OK's entry inside the config — disclosure only. */
   entryLocator(id: McpWiringEditorId): string;
   classifyExistingProjectMcpConfig(
     id: McpWiringEditorId,
     projectDir: string,
     projectPath: string,
   ): McpEntryClassification;
-  /** True when `entry` is recognizably OK's OWN managed entry (the only shape
-   *  uninstall deletes). */
   isOwnEntry(entry: unknown): boolean;
   writeProjectMcpConfig(opts: { id: McpWiringEditorId; projectDir: string; projectPath: string }): {
     action: 'written' | 'overwritten' | 'declined' | 'failed';
@@ -110,8 +61,6 @@ export interface ProjectIntegrationsCliSurface {
     projectDir: string,
     projectPath: string,
   ): McpRemoveOutcome;
-  /** The canonical project runtime skill (`.claude/skills/open-knowledge`) is
-   *  on disk — the single row's checked state. */
   isProjectSkillInstalled(projectDir: string): boolean;
   writeProjectSkill(
     id: McpWiringEditorId,
@@ -124,17 +73,7 @@ export interface ProjectIntegrationsCliSurface {
     id: McpWiringEditorId,
     projectDir: string,
   ): { action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed'; error?: string };
-  /**
-   * Persist the user's choice for this project's skill so the project-open
-   * reclaim honours it. Without this an OFF is undone on the next open, because
-   * `createIfWired` recreates the skill for every wired host that lacks one.
-   */
   recordProjectSkillDecision?(projectDir: string, enabled: boolean): void;
-  /**
-   * Count a genuine install on skills.sh — switching the skill ON for a project
-   * installs it into that project's editor dirs. Scoped to the project, so a
-   * toggle off-and-on again counts once.
-   */
   reportProjectSkillInstalled?(projectDir: string): void;
 }
 
@@ -151,18 +90,11 @@ const DEFAULT_LOGGER: ProjectIntegrationsLogger = {
 interface IpcMainLike extends Pick<IpcMain, 'handle' | 'removeHandler'> {}
 
 export interface RegisterProjectIntegrationsSettingsOpts {
-  /** Same gate set as the global surface / reclaim sweep (darwin, packaged or
-   *  OK_M6B_FORCE, `.app` executable shape). False renders the section
-   *  read-only: status still computes, mutations refuse. */
   available: boolean;
   ipcMain: IpcMainLike;
   cli: ProjectIntegrationsCliSurface;
-  /** Same machine-level probes as the user-global integrations surface. */
   probeEditorPresence: () => Promise<EditorPresenceProbes>;
-  /** Resolve the sender window's project dir (main maps webContents →
-   *  ProjectContext). Null when the sender isn't bound to a project. */
   resolveProjectDir(event: IpcMainInvokeEvent): string | null;
-  /** Tildify the project dir for disclosure display. Defaults to identity. */
   tildify?(path: string): string;
   logger?: ProjectIntegrationsLogger;
 }
@@ -184,7 +116,6 @@ export function registerProjectIntegrationsSettings(
     logger = DEFAULT_LOGGER,
   } = opts;
 
-  /** Editors that expose a project skill surface, in registry order. */
   function editorsWithProjectSkill(projectDir: string): McpWiringEditorId[] {
     return cli.allEditorIds.filter((id) => cli.projectSkillPath(id, projectDir) !== null);
   }
@@ -196,7 +127,7 @@ export function registerProjectIntegrationsSettings(
     const statuses: ProjectIntegrationsEditorStatus[] = [];
     for (const id of cli.allEditorIds) {
       const projectPath = cli.projectConfigPath(id, projectDir);
-      if (projectPath === null) continue; // No project surface → no row.
+      if (projectPath === null) continue;
       let state: IntegrationsEditorState;
       try {
         state = classifyEditorState(
@@ -204,8 +135,6 @@ export function registerProjectIntegrationsSettings(
           cli.isOwnEntry,
         );
       } catch (err) {
-        // A throwing read (EACCES, a resolver that can't produce a path) must
-        // not take the whole section down — surface the row as unmanageable.
         logger.warn('project editor classify failed', {
           projectDir,
           id,
@@ -240,8 +169,6 @@ export function registerProjectIntegrationsSettings(
       });
       editors = [];
     }
-    // Reach and paths come from the SAME editor set, walked once, so the
-    // cluster can never name an editor the paths omit (or the reverse).
     const skillHosts = editorsWithProjectSkill(projectDir).filter(
       (id) => cli.projectSkillPath(id, projectDir) !== null,
     );
@@ -260,8 +187,6 @@ export function registerProjectIntegrationsSettings(
           err,
         });
       }
-      // Best-effort: an unreadable bundle costs the row its cost line and
-      // preview affordance, never the row itself.
       let bundle: ReturnType<ProjectIntegrationsCliSurface['projectSkillBundle']> = null;
       try {
         bundle = cli.projectSkillBundle();
@@ -365,8 +290,6 @@ export function registerProjectIntegrationsSettings(
         );
       }
     }
-    // Record the choice either way, so the project-open reclaim stops
-    // resurrecting a skill the user switched off.
     cli.recordProjectSkillDecision?.(projectDir, enabled);
     if (enabled && failures.length === 0) cli.reportProjectSkillInstalled?.(projectDir);
     if (failures.length > 0) {
@@ -408,8 +331,6 @@ export function registerProjectIntegrationsSettings(
     return { ok: false, error: 'Unknown component.' };
   }
 
-  // Promise-chain mutex: mutations run strictly one at a time, in arrival
-  // order. Failures don't break the chain (each link swallows into a result).
   let mutationChain: Promise<unknown> = Promise.resolve();
 
   function dispatchSet(

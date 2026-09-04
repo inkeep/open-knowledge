@@ -19,8 +19,6 @@ describe('EditorActiveTargetRegistry', () => {
   });
 
   test('two windows retain their own targets with no cross-clobber', () => {
-    // The regression this class exists for: one module-scope snapshot meant the
-    // last window to push owned the File menu's scope for every window.
     const registry = new EditorActiveTargetRegistry();
     registry.update(WIN_A, doc('notes/alpha'));
     registry.update(WIN_B, doc('notes/beta'));
@@ -39,8 +37,6 @@ describe('EditorActiveTargetRegistry', () => {
   });
 
   test('current() falls back to the most recent pusher when nothing is focused', () => {
-    // A menu rebuild can land while the app is briefly unfocused; falling back
-    // to "no target" would flicker every scoped item to disabled.
     const registry = new EditorActiveTargetRegistry();
     registry.update(WIN_A, doc('notes/alpha'));
     registry.update(WIN_B, doc('notes/beta'));

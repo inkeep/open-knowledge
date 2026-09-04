@@ -1,20 +1,3 @@
-/**
- * Frontmatter-collision guard — end-to-end pins on the real server rigs.
- *
- * A document whose body OPENS with a `---` fence pair and carries no
- * frontmatter satisfies `FRONTMATTER_RE`, so the span between the rules is
- * read as YAML and never reaches the fragment: the bytes on disk stay perfect
- * while the content disappears from the editor. Observer A composes those
- * bytes, so it is the mint site and the fix site.
- *
- * The composition contract itself is unit-pinned alongside `core`'s bridge
- * compose module; this file pins the behaviours only the running server can
- * show — the drain,
- * the derive-timing defer bookkeeping, remote-peer convergence, the property
- * panel's HTTP surface, and the byte-sacred agent paths that must stay
- * untouched.
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -45,12 +28,10 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/** Append a `thematicBreak` node — the WYSIWYG mint that opens the collision. */
 function appendRule(client: TestClient): void {
   client.fragment.push([new Y.XmlElement('thematicBreak')]);
 }
 
-/** Append a paragraph carrying `text`. */
 function appendParagraph(client: TestClient, text: string): void {
   const paragraph = new Y.XmlElement('paragraph');
   const inner = new Y.XmlText();
@@ -59,7 +40,6 @@ function appendParagraph(client: TestClient, text: string): void {
   client.fragment.push([paragraph]);
 }
 
-/** Build the family's canonical shape in the fragment: rule, x, rule, y. */
 function mintRulePair(client: TestClient): void {
   client.doc.transact(() => {
     appendRule(client);
@@ -69,10 +49,6 @@ function mintRulePair(client: TestClient): void {
   });
 }
 
-/**
- * Wait for Observer A to drain, then read the SERVER's Y.Text — the bytes
- * persistence writes and every witness compares against.
- */
 async function settled(client: TestClient): Promise<string> {
   await awaitDocQuiescence(client.doc);
   await pollUntil(() => getServerState(server, client.docName) !== null, 5_000);
@@ -87,14 +63,11 @@ describe('Observer A drain', () => {
       mintRulePair(client);
       const ytext = await settled(client);
 
-      // The guard re-spelled the leading rule, so the partition finds no
-      // frontmatter and the whole body reaches Observer B.
       expect(stripFrontmatter(ytext).frontmatter).toBe('');
       expect(ytext.startsWith('***')).toBe(true);
       expect(ytext).toContain('x');
       expect(ytext).toContain('y');
 
-      // The view survives: all four nodes are still there after the round trip.
       const state = getServerState(server, client.docName);
       expect(state?.md).toContain('x');
       expect(state?.md).toContain('y');
@@ -104,14 +77,6 @@ describe('Observer A drain', () => {
     }
   });
 
-  /**
-   * The cell the withdrawn attempt failed. With real frontmatter the
-   * composition is already unambiguous, so a re-spell here would be a
-   * gratuitous rewrite of an authored rule AND a false positive in the
-   * bridge-invariant channel — `normalizeBridge`'s doc-start step is anchored
-   * at offset 0 and reaches only the frontmatter's own fence.
-   *
-   */
   test('does not fire on a frontmatter-bearing document', async () => {
     const client = await createTestClient(server.port);
     const violations: unknown[] = [];
@@ -127,7 +92,6 @@ describe('Observer A drain', () => {
       const ytext = await settled(client);
 
       expect(stripFrontmatter(ytext).frontmatter).toBe('---\ntitle: t\n---\n');
-      // The authored `---` spelling is untouched — no `***` anywhere.
       expect(ytext).not.toContain('***');
       expect(violations).toEqual([]);
     } finally {
@@ -136,15 +100,6 @@ describe('Observer A drain', () => {
     }
   });
 
-  /**
-   * Adding frontmatter makes the composition unambiguous again, so the guard
-   * stops firing — but the re-spelled rule does NOT churn back. The serializer
-   * preserves the current spelling through `sourceRaw`, so the guarded rule is
-   * simply what the document now says, and a frontmatter edit costs zero body
-   * bytes. The transition is where a naive guard would oscillate, so the pin
-   * is that the bytes settle and stay settled.
-   *
-   */
   test('adding frontmatter churns no body bytes', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -157,9 +112,7 @@ describe('Observer A drain', () => {
       });
       const withFm = await settled(client);
       expect(withFm).toBe(`---\ntitle: t\n---\n${guarded}`);
-      // Settled: a second quiescence pass moves nothing — no oscillation.
       expect(await settled(client)).toBe(withFm);
-      // …and the content is all still reachable through the partition.
       expect(stripFrontmatter(withFm).body).toContain('x');
     } finally {
       await client.cleanup();
@@ -168,15 +121,6 @@ describe('Observer A drain', () => {
 });
 
 describe('guard consistency', () => {
-  /**
-   * The derive-timing defer predicate is a raw line-count three-way with no
-   * `normalizeBridge` pass. If the drain composes the re-spelled rule while a
-   * witness or the fresh-fragment comparand composes the original, the surplus
-   * line reads as pending content: every drain defers, and at the bound the
-   * document is force-resolved with a checkpoint and a ring event it never
-   * earned. Sustained editing on a guarded document must produce neither.
-   *
-   */
   test('sustained editing on a guarded document mints no defer-exhaustion checkpoint', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -192,10 +136,6 @@ describe('guard consistency', () => {
       expect(ytext.startsWith('***')).toBe(true);
       for (let i = 0; i < 12; i++) expect(ytext).toContain(`edit ${i}`);
 
-      // Y.Text carries the guarded spelling while the fragment still holds the
-      // rule the user minted — the exact difference `doc-start-thematic`
-      // exists to absorb, and the bridge invariant is stated modulo the
-      // tolerance set, not on raw bytes.
       const state = getServerState(server, client.docName);
       expect(normalizeBridge(stripFrontmatter(ytext).body)).toBe(normalizeBridge(state?.md ?? ''));
 
@@ -211,12 +151,6 @@ describe('guard consistency', () => {
     }
   });
 
-  /**
-   * Layer-A unit tests run with `transaction.local = true`, which is not the
-   * production path — a remote peer receives the guarded write over the wire
-   * with `local = false`. Both surfaces must land the same bytes.
-   *
-   */
   test('a remote peer converges raw-byte-equal on a guard-active edit', async () => {
     const [author, peer] = await createTestClients(server.port, { count: 2 });
     try {
@@ -226,8 +160,6 @@ describe('guard consistency', () => {
 
       const authorBytes = author.ytext.toString();
       expect(authorBytes.startsWith('***')).toBe(true);
-      // Raw bytes, not normalized — the peer must not hold a different
-      // spelling that only agrees within tolerance.
       expect(peer.ytext.toString()).toBe(authorBytes);
       expect(peer.ytext.toString()).toContain('x');
     } finally {
@@ -237,13 +169,6 @@ describe('guard consistency', () => {
 });
 
 describe('byte-sacred paths stay untouched', () => {
-  /**
-   * The agent write path is byte-faithful by contract (precedent #57) and
-   * `evaluateContentDivergence` re-reads Y.Text after every write. A guard
-   * leaking into it would trip that tripwire on the first `---`-leading
-   * payload, so its silence is the regression signal.
-   *
-   */
   test('an agent write of rule-leading content lands verbatim', async () => {
     const client = await createTestClient(server.port);
     const warnings: string[] = [];
@@ -258,12 +183,9 @@ describe('byte-sacred paths stay untouched', () => {
         docName: client.docName,
         position: 'replace',
       }).catch((err: Error & { status?: number }) => {
-        // The composed FM span is a non-mapping, so replace already refuses
-        // it — that refusal IS the byte-sacred contract holding.
         expect(err.status).toBe(400);
       });
 
-      // A payload that carries no ambiguity lands byte-for-byte.
       await agentWriteMd(server.port, '***\n\nx\n\n---\n\ny\n', {
         docName: client.docName,
         position: 'replace',
@@ -281,12 +203,6 @@ describe('byte-sacred paths stay untouched', () => {
 });
 
 describe('A1 — fence termination at the compose seam', () => {
-  /**
-   * A frontmatter region captured at end-of-string has no trailing newline, so
-   * the drain's composition used to glue the closing fence onto the body's
-   * first line and destroy the block — corrupt bytes reaching disk.
-   *
-   */
   test('typing on a frontmatter-only document does not destroy the block', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -341,13 +257,6 @@ describe('A2 — emptying the frontmatter region', () => {
     return res.status;
   }
 
-  /**
-   * Deleting the last property removes the whole block. Over a body that opens
-   * with a rule pair that hands the body's own bytes to the next partition —
-   * the family-3 loss, minted from the frontmatter side where a serialize-side
-   * guard can never see it, and reaching disk through HTTP.
-   *
-   */
   test('keeps an explicit block when removing it would re-partition the body', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -359,26 +268,17 @@ describe('A2 — emptying the frontmatter region', () => {
       expect(await patchFrontmatter(client.docName, { title: null })).toBe(200);
       const ytext = await settled(client);
 
-      // The body is byte-identical and still partitions off cleanly.
       const partition = stripFrontmatter(ytext);
       expect(partition.frontmatter).toBe('---\n\n---\n');
       expect(partition.body).toBe('---\n\nx\n\n---\n\ny\n');
-      // The content the old behaviour ate is still in the view.
       expect(getServerState(server, client.docName)?.md).toContain('x');
 
-      // The panel path reaches disk — B13's loss was observed there, so the
-      // fix has to be observed there too.
       await pollUntil(() => readTestDoc(server.contentDir, client.docName).includes('x'), 5_000);
     } finally {
       await client.cleanup();
     }
   });
 
-  /**
-   * The retention is narrow — an ordinary document must still lose the block
-   * completely, or every property deletion would leave an artifact.
-   *
-   */
   test('an ordinary document still loses the block completely', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -412,26 +312,6 @@ describe('A3 — append/prepend payload partition', () => {
     return res.status;
   }
 
-  /**
-   * The verdict follows the COMPOSED DOCUMENT, not the payload's shape.
-   *
-   * This file's whole thesis is a document whose body OPENS with a `---` fence
-   * pair — offset 0 is what makes the span satisfy `FRONTMATTER_RE` and vanish
-   * into the YAML region. `replace` puts the payload at offset 0 by
-   * definition, and `prepend` puts it there whenever the document carries no
-   * frontmatter, so both still refuse. An `append` onto a non-empty body
-   * cannot reach offset 0: the same bytes compose into a document with no
-   * frontmatter region at all, where the fence pair is an ordinary thematic
-   * break. Refusing that was the bug this pins against — it left the agent no
-   * move but a whole-document rewrite, which clobbers concurrent writers.
-   *
-   * The earlier reading judged the payload in isolation and called the
-   * position split an asymmetry. It is one rule ("may the composed document
-   * end up with a frontmatter region the agent never asked for?") reaching
-   * three different composed documents. Same anchor the sibling WYSIWYG guard
-   * above uses: `normalizeBridge`'s doc-start step is anchored at offset 0.
-   *
-   */
   test('an ambiguous payload is refused where it would land at offset 0', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -442,27 +322,15 @@ describe('A3 — append/prepend payload partition', () => {
       await settled(client);
 
       const ambiguous = '---\n\nx\n\n---\n\ny\n';
-      // `replace` makes the payload the whole document: the fence pair IS the
-      // frontmatter region, and it is not a mapping.
       expect(await writeRaw(client.docName, ambiguous, 'replace')).toBe(400);
-      // `prepend` onto a frontmatter-less document lands at offset 0 too.
       expect(await writeRaw(client.docName, ambiguous, 'prepend')).toBe(400);
 
-      // Both refusals leave the document untouched.
       expect(getServerState(server, client.docName)?.ytext.toString()).toBe('seed\n');
     } finally {
       await client.cleanup();
     }
   });
 
-  /**
-   * The other side of the same rule, and the case the bug report was filed
-   * about. Appending onto a non-empty body puts the fence pair mid-document,
-   * where it is a thematic break and nothing is claimed as frontmatter — so
-   * the write lands, and the content survives all the way into the fragment
-   * rather than disappearing into a YAML region.
-   *
-   */
   test('the same payload appended onto a non-empty body lands, with no collision', async () => {
     const client = await createTestClient(server.port);
     const violations: unknown[] = [];
@@ -479,19 +347,13 @@ describe('A3 — append/prepend payload partition', () => {
       expect(await writeRaw(client.docName, '---\n\nx\n\n---\n\ny\n', 'append')).toBe(200);
       const ytext = await settled(client);
 
-      // No frontmatter region was created — the document still opens with its
-      // own body, so the fence pair never reaches offset 0.
       expect(stripFrontmatter(ytext).frontmatter).toBe('');
       expect(ytext.startsWith('seed')).toBe(true);
 
-      // The agent's bytes are intact: no re-spell, no dropped span. This is
-      // the byte-sacred agent path, not the WYSIWYG mint.
       expect(ytext).toContain('---');
       expect(ytext).toContain('x');
       expect(ytext).toContain('y');
 
-      // And the content reached the fragment rather than vanishing into a
-      // YAML region — the collision this file exists to catch did not happen.
       const state = getServerState(server, client.docName);
       expect(state?.md).toContain('x');
       expect(state?.md).toContain('y');
@@ -502,12 +364,6 @@ describe('A3 — append/prepend payload partition', () => {
     }
   });
 
-  /**
-   * The offset-0 sibling of the append case: with an EMPTY body there is
-   * nothing in front of the payload, so append lands at offset 0 exactly like
-   * prepend and refuses on the same rule.
-   *
-   */
   test('append onto an EMPTY body refuses — it lands at offset 0 too', async () => {
     const client = await createTestClient(server.port);
     try {
@@ -518,13 +374,6 @@ describe('A3 — append/prepend payload partition', () => {
     }
   });
 
-  /**
-   * A well-formed frontmatter payload keeps its documented silent drop: the
-   * span parses as a mapping, the body still lands, and the bound is specified.
-   * Only the unparseable case — body content being destroyed — became a
-   * refusal.
-   *
-   */
   test('a well-formed frontmatter payload keeps its documented drop', async () => {
     const client = await createTestClient(server.port);
     try {

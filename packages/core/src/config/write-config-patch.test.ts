@@ -47,9 +47,6 @@ describe('writeConfigPatch — project scope', () => {
     expect(result.appliedPaths).toContain('content.dir');
     expect(existsSync(projectConfigPath())).toBe(true);
     const onDisk = readFileSync(projectConfigPath(), 'utf-8');
-    // Lazy first-write writes the magic-comment header pointing at the
-    // project per-scope schema under the schema-major path (autocomplete
-    // only suggests project fields here).
     expect(onDisk).toMatch(
       /^# yaml-language-server: \$schema=https:\/\/unpkg\.com\/@inkeep\/open-knowledge@latest\/dist\/schemas\/v\d+\/config\.project\.schema\.json/,
     );
@@ -65,7 +62,6 @@ describe('writeConfigPatch — project scope', () => {
       patch: { content: { dir: '.' } },
     });
     const stats = statSync(projectConfigPath());
-    // mode bits include the file-type bits; mask to permission-only
     const mode = stats.mode & 0o777;
     expect(mode).toBe(0o644);
   });
@@ -117,7 +113,6 @@ mcp:
     if (!result.ok) throw new Error('expected success');
     const onDisk = readFileSync(projectConfigPath(), 'utf-8');
     expect(onDisk).not.toContain('autoStart:');
-    // search.maxResults still there — patch only touched mcp.autoStart
     expect(onDisk).toContain('maxResults: 100');
   });
 });
@@ -128,17 +123,11 @@ describe('writeConfigPatch — project-local scope', () => {
   }
 
   test('writes a fresh project-local config when none exists; lazily creates .ok/local/', async () => {
-    // Pre-condition: neither .ok/ nor .ok/local/ exists. The lazy first-write
-    // path must mkdir -p both. Mirrors the user-scope first-write contract.
     expect(existsSync(join(testDir, '.ok'))).toBe(false);
 
     const result = await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
-      // autoSync.enabled is scope: 'project-local' — the canonical field
-      // for this layer. Schema-declared with .nullable().default(null);
-      // looseObject still tolerates legacy keys, but the registered scope
-      // is enforced.
       patch: { autoSync: { enabled: true } },
     });
 
@@ -150,7 +139,6 @@ describe('writeConfigPatch — project-local scope', () => {
 
     expect(existsSync(projectLocalConfigPath())).toBe(true);
     const onDisk = readFileSync(projectLocalConfigPath(), 'utf-8');
-    // Magic-comment header points at the project-local per-scope schema.
     expect(onDisk).toMatch(
       /^# yaml-language-server: \$schema=https:\/\/unpkg\.com\/@inkeep\/open-knowledge@latest\/dist\/schemas\/v\d+\/config\.project-local\.schema\.json/,
     );
@@ -159,9 +147,6 @@ describe('writeConfigPatch — project-local scope', () => {
   });
 
   test('round-trips an autoSync.enabled write — file parseable as YAML, structure intact', async () => {
-    // The canonical project-local field. The schema declaration uses
-    // .looseObject so legacy keys still parse; this test focuses on file
-    // shape (key structure, YAML parseable).
     const result = await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -174,9 +159,6 @@ describe('writeConfigPatch — project-local scope', () => {
     expect(onDisk).toContain('autoSync:');
     expect(onDisk).toContain('enabled: false');
 
-    // Round-trip: re-read via writeConfigPatch's parse path produces the
-    // intended scalar (asserts the YAML is well-formed and the structure
-    // survived the doc.toString() pass).
     const second = await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -191,9 +173,6 @@ describe('writeConfigPatch — project-local scope', () => {
   });
 
   test('preserves unknown autoSync sub-keys on a mode write-back (looseObject round-trip)', async () => {
-    // A newer version's extra autoSync keys (worktree-inheritance flags, legacy
-    // onboarding stamps) must survive a surgical patch to a sibling field rather
-    // than being stripped — the surgical yaml write touches only the patched path.
     mkdirSync(join(testDir, '.ok', 'local'), { recursive: true });
     writeFileSync(
       projectLocalConfigPath(),
@@ -213,14 +192,11 @@ describe('writeConfigPatch — project-local scope', () => {
     const onDisk = readFileSync(projectLocalConfigPath(), 'utf-8');
     expect(onDisk).toContain('mode: off');
     expect(onDisk).not.toContain('mode: pull');
-    // Sibling keys the schema does not model round-trip verbatim.
     expect(onDisk).toContain('inheritedFrom: root');
     expect(onDisk).toContain('inheritedNoticePending: true');
   });
 
   test('does NOT touch the project file at <cwd>/.ok/config.yml', async () => {
-    // Per-machine scope is opaque to the committed project layer. A patch at
-    // project-local must never write into the sibling project file.
     await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -244,8 +220,6 @@ describe('writeConfigPatch — project-local scope', () => {
     expect(onDisk).toContain('terminal:');
     expect(onDisk).toContain('enabled: true');
 
-    // Re-read via the parse path proves the YAML is well-formed and the grant
-    // survives across restarts (a fresh load resolves the persisted value).
     const revoked = await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -274,9 +248,6 @@ describe('writeConfigPatch — project-local scope', () => {
   });
 
   test('terminal.enabled grant lands ONLY in the gitignored .ok/local/ file, never the committed project file', async () => {
-    // The grant must never reach <cwd>/.ok/config.yml — that file is committed
-    // and would carry the consent across a clone/sync/share, which the
-    // project-local scope exists to prevent.
     await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -291,7 +262,6 @@ describe('writeConfigPatch — user scope', () => {
   test('lazy first-write of ~/.ok/global.yml creates parent dir', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-write-config-patch-home-'));
     try {
-      // Pre-condition: ~/.ok does NOT exist
       expect(existsSync(join(home, '.ok'))).toBe(false);
 
       const result = await writeConfigPatch({
@@ -310,10 +280,8 @@ describe('writeConfigPatch — user scope', () => {
 
       const onDisk = readFileSync(filePath, 'utf-8');
       expect(onDisk).toContain('theme: dark');
-      // Magic-comment header present
       expect(onDisk).toMatch(/^# yaml-language-server: \$schema=/);
 
-      // loadConfig (round-trip) should resolve to a Config with appearance.theme = 'dark'
       expect(result.effective.appearance?.theme).toBe('dark');
     } finally {
       if (existsSync(home)) rmSync(home, { recursive: true, force: true });
@@ -349,8 +317,6 @@ describe('writeConfigPatch — validation failures', () => {
     mkdirSync(join(testDir, '.ok'), { recursive: true });
     const result = await writeConfigPatch({
       cwd: testDir,
-      // appearance.theme is scope: 'user' — match it so the test reaches
-      // schema validation rather than tripping the scope-violation gate.
       scope: 'user',
       homedirOverride: testDir,
       // biome-ignore lint/suspicious/noExplicitAny: deliberately malformed for the test
@@ -371,9 +337,6 @@ describe('writeConfigPatch — validation failures', () => {
     mkdirSync(join(testDir, '.ok'), { recursive: true });
     const result = await writeConfigPatch({
       cwd: testDir,
-      // appearance.theme is scope: 'user' and is an enum — feed it a
-      // value outside the 'light' | 'dark' | 'system' set to exercise
-      // the enum rejection path.
       scope: 'user',
       homedirOverride: testDir,
       // biome-ignore lint/suspicious/noExplicitAny: deliberately malformed for the test
@@ -388,7 +351,6 @@ describe('writeConfigPatch — validation failures', () => {
 
   test('YAML with malformed syntax → YAML_PARSE; no fs write', async () => {
     mkdirSync(join(testDir, '.ok'), { recursive: true });
-    // Tab character at start of a key value triggers a YAML parse error
     writeFileSync(
       projectConfigPath(),
       '\tnot: valid\n: : :\n  - broken\n - "unterminated',
@@ -409,9 +371,6 @@ describe('writeConfigPatch — validation failures', () => {
 
 describe('writeConfigPatch — defaults preserved on round-trip with stale fields', () => {
   test('config with dropped sync.* field loads via loose-mode and preserves the line on round-trip', async () => {
-    // With z.looseObject + the schema cleanup, stale fields like
-    // sync.pushIntervalSeconds round-trip cleanly even though they're no
-    // longer in the schema.
     mkdirSync(join(testDir, '.ok'), { recursive: true });
     const original = `sync:
   pushIntervalSeconds: 30
@@ -445,11 +404,9 @@ describe('writeConfigPatch — Result type narrowing', () => {
       patch: { content: { dir: '.' } },
     });
     if (result.ok) {
-      // appliedPaths is on the success branch
       expect(Array.isArray(result.appliedPaths)).toBe(true);
       expect(result.path).toBe(projectConfigPath());
     } else {
-      // error is on the failure branch
       expect(result.error).toBeDefined();
     }
   });
@@ -472,8 +429,6 @@ describe('resolveConfigPath', () => {
 
   test('project-local scope resolves a relative cwd against process.cwd()', () => {
     const out = resolveConfigPath('project-local', 'relative/proj');
-    // resolve(...) anchors against process.cwd() — assert the suffix shape
-    // rather than the full absolute string (varies by test runner cwd).
     expect(out.endsWith('/relative/proj/.ok/local/config.yml')).toBe(true);
   });
 
@@ -500,7 +455,6 @@ describe('writeConfigPatch — scope-violation gate', () => {
     expect(result.error.path).toEqual(['autoSync', 'enabled']);
     expect(result.error.expectedScope).toBe('project-local');
     expect(result.error.actualScope).toBe('project');
-    // Disk untouched on rejection.
     expect(existsSync(projectConfigPath())).toBe(false);
   });
 
@@ -522,7 +476,6 @@ describe('writeConfigPatch — scope-violation gate', () => {
   });
 
   test('project-local writer rejects a project field with SCOPE_VIOLATION', async () => {
-    // content.dir is scope: 'project' — must NOT land in project-local.
     const result = await writeConfigPatch({
       cwd: testDir,
       scope: 'project-local',
@@ -552,9 +505,6 @@ describe('writeConfigPatch — scope-violation gate', () => {
   });
 
   test('project writer rejects terminal.enabled with SCOPE_VIOLATION; no fs write', async () => {
-    // terminal.enabled is scope: 'project-local'. Routing it to the committed
-    // project file is rejected before any disk I/O, so the consent can never be
-    // shared via git.
     const result = await writeConfigPatch({
       cwd: testDir,
       scope: 'project',
@@ -613,9 +563,6 @@ describe('writeConfigPatch — concurrent writes (file lock)', () => {
   test('concurrent patches to distinct keys all land — no clobber', async () => {
     mkdirSync(join(testDir, '.ok'), { recursive: true });
 
-    // Seed an initial config so each writer has a non-trivial base. All
-    // patches target distinct top-level keys so the only way any of them
-    // can be lost is the read-modify-write race fix is missing.
     await writeConfigPatch({
       cwd: testDir,
       scope: 'project',
@@ -633,13 +580,6 @@ describe('writeConfigPatch — concurrent writes (file lock)', () => {
       { folders: [{ path: 'h' }] },
     ];
 
-    // Each writer overwrites `folders` to a single-entry list. Without the
-    // lock, the read-modify-write window means concurrent writers each base
-    // their patch on a stale snapshot, and the final on-disk `folders[0]`
-    // is whichever writer landed last — a single value, never multiple.
-    // With the lock, writers serialize and the final state is whichever
-    // patch ran last; we verify all 8 calls returned ok and that the final
-    // disk content matches one of the candidates exactly (no torn write).
     const results = await Promise.all(
       patches.map((patch) =>
         writeConfigPatch({
@@ -654,31 +594,23 @@ describe('writeConfigPatch — concurrent writes (file lock)', () => {
       if (!result.ok) throw new Error(`unexpected failure: ${JSON.stringify(result.error)}`);
     }
 
-    // Final disk state must be coherent — exactly one of the candidate
-    // single-entry folders lists, never a mangled / partial / missing one.
     const finalText = readFileSync(projectConfigPath(), 'utf-8');
     const candidatePaths = patches.map((p) => p.folders[0]?.path);
     const matches = candidatePaths.filter((path) => finalText.includes(`path: ${path}`));
     expect(matches.length).toBeGreaterThanOrEqual(1);
 
-    // Lockfile is cleaned up after every release.
     expect(existsSync(`${projectConfigPath()}.lock`)).toBe(false);
   });
 
   test('preserves keys touched only by writer A when writer B patches a different key concurrently', async () => {
     mkdirSync(join(testDir, '.ok'), { recursive: true });
 
-    // Seed: a fresh project config so the patch writers have a base.
     await writeConfigPatch({
       cwd: testDir,
       scope: 'project',
       patch: { folders: [{ path: 'seed' }] },
     });
 
-    // 50 concurrent races, each pair: A patches `folders` (rewrites it),
-    // B patches `mcp.transport` (a disjoint key under the project schema).
-    // Without the lock, B's read-modify-write base is stale and B's write
-    // can overwrite A's `folders` change; with the lock, both keys persist.
     const races = Array.from({ length: 50 }, (_, i) => ({
       a: { folders: [{ path: `path-${i}` }] } as const,
       b: { mcp: { transport: i % 2 === 0 ? 'stdio' : 'http' } } as const,
@@ -695,9 +627,6 @@ describe('writeConfigPatch — concurrent writes (file lock)', () => {
       if (!result.ok) throw new Error(`unexpected failure: ${JSON.stringify(result.error)}`);
     }
 
-    // Final state must contain BOTH a `folders` entry (any value) and an
-    // `mcp.transport` entry (any value). Pre-fix this test would
-    // intermittently lose one of the two keys.
     const finalText = readFileSync(projectConfigPath(), 'utf-8');
     expect(finalText).toMatch(/folders:/);
     expect(finalText).toMatch(/mcp:[\s\S]*transport:/);

@@ -1,36 +1,3 @@
-/**
- * Runtime verification that the Windows/Linux window chrome is actually
- * applied by Electron — not merely computed correctly.
- *
- * `src/main/window-chrome.ts` had unit coverage only: `buildNonDarwinChromeOpts`
- * and `applyThemeToWindow` were exercised against a fake window object, which
- * proves the option OBJECT is shaped right and proves nothing about whether
- * Electron honors it. Every observable in that path — does the OS actually draw
- * the overlay controls, does the solid background take, does the native menu
- * bar stay hidden — is only reachable by launching the real app on a real
- * Windows or Linux host. That gap is what this spec closes.
- *
- * Three assertions, each reading a different half of `DEFAULT_WIN_OPTS`'s
- * non-darwin branch:
- *
- *   1. `getBackgroundColor()` matches the theme's `CHROME_BG` token. There is
- *      no vibrancy analog off-mac, so this solid base is what the renderer's
- *      alpha-tinted surfaces composite over; if it is wrong (or defaulted to
- *      white) the whole chrome reads broken during load.
- *   2. `navigator.windowControlsOverlay.visible` is true in the renderer. This
- *      is the load-bearing one: the Window Controls Overlay API only reports
- *      visible when Electron accepted `titleBarStyle: 'hidden'` +
- *      `titleBarOverlay` and reserved space for OS-drawn controls. It is the
- *      closest thing to "the overlay painted" that is assertable in-process.
- *   3. `isMenuBarAutoHide()` is true, so the native Menu (kept installed for
- *      its accelerators) does not render a second row above the custom
- *      titlebar.
- *
- * Darwin-inverted on purpose: macOS composes its own vibrancy/hiddenInset
- * stack in `index.ts` and never calls `buildNonDarwinChromeOpts`, so this spec
- * skips there rather than asserting a shape macOS was never given.
- */
-
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -135,13 +102,9 @@ test.describe('Windows/Linux window chrome smoke', () => {
     const editor = await findEditorWindow(app);
     const winHandle: JSHandle = await app.browserWindow(editor);
 
-    // Read the theme the main process resolved rather than assuming light:
-    // the runner's OS theme decides which token was applied at construction.
     const isDark = await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors);
 
     const chrome = await winHandle.evaluate((win: unknown) => {
-      // BrowserWindow's type isn't in scope inside evaluate's V8 context;
-      // both members are runtime methods on the wrapper Playwright returns.
       const w = win as { getBackgroundColor: () => string; isMenuBarAutoHide: () => boolean };
       return { backgroundColor: w.getBackgroundColor(), menuBarAutoHide: w.isMenuBarAutoHide() };
     });
@@ -149,31 +112,14 @@ test.describe('Windows/Linux window chrome smoke', () => {
     expect(chrome.backgroundColor.toLowerCase()).toBe(isDark ? CHROME_BG.dark : CHROME_BG.light);
     expect(chrome.menuBarAutoHide).toBe(true);
 
-    // The Window Controls Overlay API is only exposed to the renderer when
-    // Electron accepted `titleBarStyle: 'hidden'` + `titleBarOverlay` — the
-    // closest in-process proof that the OS reserved space for its own
-    // min/max/close controls over our chrome row.
     const overlay = await editor.evaluate(() => {
       const wco = (navigator as Navigator & { windowControlsOverlay?: { visible: boolean } })
         .windowControlsOverlay;
       return { supported: wco !== undefined, visible: wco?.visible ?? false };
     });
-    // Logged on every platform so the Linux value is on the record (see below).
     console.log(`[window-chrome] windowControlsOverlay: ${JSON.stringify(overlay)}`);
     expect(overlay.supported).toBe(true);
 
-    // `visible` is asserted on Windows only. Electron's Linux overlay is
-    // creation-time-only (`setTitleBarOverlay` is Windows-only — see
-    // window-chrome.ts), and the CI runner has no real window manager, so a
-    // false reading there would not distinguish "we failed to opt in" from
-    // "Xvfb draws no decorations".
-    //
-    // Observed on ubuntu-latest under `xvfb-run`: `{supported: true, visible:
-    // true}` — so the Linux path does report it. Left un-asserted for now
-    // because that is a single sample, and this spec runs in a job intended for
-    // promotion to required; one flaky reading under a headless X server would
-    // cost more than the assertion gains. Promote it to an unconditional
-    // `expect` once several consecutive Linux runs have logged `visible: true`.
     if (process.platform === 'win32') {
       expect(overlay.visible).toBe(true);
     }

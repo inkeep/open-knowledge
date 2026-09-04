@@ -30,7 +30,6 @@ function skillSearchIdSlug(id: string): string {
   return id.split('/').filter(Boolean).pop() ?? id;
 }
 
-/** Recognize a website catalog source or its canonical skills.sh page URL. */
 export function parseSkillsShWebsiteSource(rawSource: string): SkillsShWebsiteSource | null {
   const directSource = parseSkillsShCatalogSource(rawSource.trim());
   if (directSource?.kind === 'site') return { hostname: directSource.hostname };
@@ -41,10 +40,6 @@ export function parseSkillsShWebsiteSource(rawSource: string): SkillsShWebsiteSo
   return pageSource?.kind === 'site' ? { hostname: pageSource.hostname, skill: ref.skill } : null;
 }
 
-/**
- * Resolve a skills.sh page or website catalog source to the typed source that
- * acquisition can fetch. Returns `null` for ordinary git/local sources.
- */
 export async function resolveSkillsShImportSource(
   rawSource: string,
   requestedSkill?: string,
@@ -90,9 +85,6 @@ export async function resolveSkillsShImportSource(
     payload = await r.json();
   } catch (e) {
     if (e instanceof SkillFetchError) throw e;
-    // A network failure, the AbortSignal.timeout firing, or a malformed JSON body
-    // reject with a non-SkillFetchError; wrap them so the import/reimport routes
-    // return a 400 "Could not fetch source" instead of an opaque 500.
     throw new SkillFetchError(
       `skills.sh lookup failed: ${e instanceof Error ? e.message : String(e)}`,
     );
@@ -109,9 +101,6 @@ export async function resolveSkillsShImportSource(
   if (!match) {
     throw new SkillFetchError(`No skills.sh result matched ${ref.owner}/${ref.skill}`);
   }
-  // `match.source` is untrusted external data. It may yield a repository or a
-  // strictly validated website hostname, but never a local-path shape (`/etc`,
-  // `~/.ssh`) that could turn a compromised response into a host filesystem read.
   const catalogSource = parseSkillsShCatalogSource(match.source);
   const spec =
     catalogSource?.kind === 'site'

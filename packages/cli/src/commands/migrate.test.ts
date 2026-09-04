@@ -6,7 +6,6 @@ const ID = '30545f35b5ad80a38049d283dae66763';
 const R1 = '11111111111111111111111111111111';
 const R2 = '22222222222222222222222222222222';
 
-/** Run the `notion` subcommand and return the resulting process exit code. */
 async function run(args: string[]): Promise<{ code: number; stdout: string }> {
   process.exitCode = 0;
   const originalLog = console.log;
@@ -23,7 +22,7 @@ async function run(args: string[]): Promise<{ code: number; stdout: string }> {
     console.error = originalErr;
   }
   const code = process.exitCode ?? 0;
-  process.exitCode = 0; // do not leak into the test runner's own exit
+  process.exitCode = 0;
   return { code, stdout };
 }
 

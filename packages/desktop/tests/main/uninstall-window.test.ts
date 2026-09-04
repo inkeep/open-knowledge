@@ -23,16 +23,11 @@ const UNPACKAGED: UninstallEntryDeps = {
 
 describe('noticeCloseIsConfirm', () => {
   it('closing a one-button acknowledgement (no cancelLabel) confirms it', () => {
-    // Post-teardown completion/failure notices: there is nothing to cancel, so
-    // an OS window close proceeds.
     expect(noticeCloseIsConfirm({})).toBe(true);
     expect(noticeCloseIsConfirm({ cancelLabel: undefined })).toBe(true);
   });
 
   it('closing a two-button question (has cancelLabel) cancels it', () => {
-    // The destructive confirm screen: a stray ⌘W / window-manager close must be
-    // the SAFE answer, never an uninstall. Guards against a `!== undefined`
-    // inversion shipping green (only the opt-in E2E would otherwise catch it).
     expect(noticeCloseIsConfirm({ cancelLabel: 'Cancel' })).toBe(false);
   });
 });
@@ -65,8 +60,6 @@ describe('resolveUninstallEntryTarget', () => {
   });
 
   it('loads from the copied renderer under Resources in a packaged build', () => {
-    // electron-builder copies packages/cli/dist/public/ (packages/app's own
-    // vite build) to <Resources>/app/ — NOT electron-vite's out/renderer.
     expect(resolveUninstallEntryTarget(PACKAGED, 'dark')).toEqual({
       kind: 'file',
       path: '/Applications/OpenKnowledge.app/Contents/Resources/app/uninstall.html',

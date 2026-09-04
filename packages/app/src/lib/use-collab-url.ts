@@ -29,18 +29,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { type FetchApiConfigResult, fetchApiConfig } from '@/lib/api-config';
 import { defaultCollabWsUrl } from '@/lib/cc1';
-// Loads the `Window.okDesktop?` global augmentation. Side-effect import only
-// — the actual types are exported but unused; we just need the global declaration.
 import '@/lib/desktop-bridge-types';
 import type { OkDesktopBridge, OkDesktopConfig } from '@/lib/desktop-bridge-types';
 
-/**
- * Pure Electron-host detector — returns the desktop bridge handle if the
- * preload script has populated `window.okDesktop` with a usable collabUrl,
- * else null. Exported for test seam (no React, no DOM required).
- *
- * Web / CLI distribution: `windowLike.okDesktop` is undefined → null.
- */
 export function tryElectronBridge(
   windowLike: { okDesktop?: OkDesktopBridge } | undefined,
 ): OkDesktopBridge | null {
@@ -51,7 +42,6 @@ export function tryElectronBridge(
   return bridge;
 }
 
-/** Pure shape extractor — returns the next state for `setState` given a desktop config. */
 export function electronStateFromConfig(config: OkDesktopConfig): {
   collabUrl: string;
   attempts: number;
@@ -68,7 +58,6 @@ export function electronStateFromConfig(config: OkDesktopConfig): {
 
 const INITIAL_DELAY_MS = 2_000;
 const MAX_DELAY_MS = 15_000;
-/** Transition to terminal after this wall-clock elapses without resolution. */
 export const TERMINAL_AFTER_MS = 30_000;
 
 type CollabUrlError =
@@ -78,12 +67,8 @@ type CollabUrlError =
 interface UseCollabUrlState {
   collabUrl: string | null;
   attempts: number;
-  /** When true, automatic retries have stopped — consumer should render the
-   * terminal banner with a manual-retry affordance. */
   terminal: boolean;
-  /** Last observed failure shape (when terminal). null during healthy retry. */
   lastError: CollabUrlError | null;
-  /** Call to reset backoff + wall-clock and resume polling (exits terminal). */
   retry: () => void;
 }
 
@@ -106,36 +91,25 @@ export function initialCollabUrlState(config: OkDesktopConfig | undefined): Coll
 }
 
 interface CollabPollHandle {
-  /** Stop the loop and abort any in-flight fetch. Safe to call multiple times. */
   cancel: () => void;
 }
 
 interface CollabPollDeps {
   fetchConfig: (signal: AbortSignal) => Promise<FetchApiConfigResult>;
   fallbackUrl: () => string;
-  /** Current clock reading in ms. Production: `Date.now`. Tests: virtual clock. */
   now: () => number;
   setTimeout: (cb: () => void, ms: number) => ReturnType<typeof globalThis.setTimeout>;
   clearTimeout: (handle: ReturnType<typeof globalThis.setTimeout>) => void;
   onStateChange: (state: CollabPollState) => void;
-  /** Override for tests. Default `TERMINAL_AFTER_MS`. */
   terminalAfterMs?: number;
-  /** Override for tests. Default `INITIAL_DELAY_MS`. */
   initialDelayMs?: number;
-  /** Override for tests. Default `MAX_DELAY_MS`. */
   maxDelayMs?: number;
-  /** Override for tests. Default `console.info`/`console.warn`. */
   log?: {
     info: (msg: string) => void;
     warn: (msg: string) => void;
   };
 }
 
-/**
- * Run the collab-URL poll loop. Pure of React — callers wire it into
- * `useEffect` + `useState` (see `useCollabUrl`) or drive it directly from a
- * test harness with injected `now` / `setTimeout` / `clearTimeout`.
- */
 export function runCollabUrlPoll(deps: CollabPollDeps): CollabPollHandle {
   const terminalAfterMs = deps.terminalAfterMs ?? TERMINAL_AFTER_MS;
   const initialDelayMs = deps.initialDelayMs ?? INITIAL_DELAY_MS;
@@ -191,8 +165,6 @@ export function runCollabUrlPoll(deps: CollabPollDeps): CollabPollHandle {
 
     const elapsed = deps.now() - startedAt;
     if (elapsed >= terminalAfterMs) {
-      // Transition to terminal — stop automatic retries. Caller's `retry()`
-      // creates a new loop with a fresh wall-clock window.
       deps.onStateChange({ collabUrl: null, attempts: attempt, terminal: true, lastError });
       return;
     }
@@ -230,25 +202,13 @@ export function useCollabUrl(): UseCollabUrlState {
       tryElectronBridge(typeof window === 'undefined' ? undefined : window)?.config,
     ),
   );
-  // Bump on manual retry to invalidate any in-flight loop state. Stored in a
-  // ref because we don't want a bump to trigger a re-render on its own — the
-  // effect reacts via a separate `retrySignal` state.
   const retryTokenRef = useRef<LoopState>({ token: 0 });
   const [retrySignal, setRetrySignal] = useState(0);
 
   useEffect(() => {
-    // `retrySignal` in the dep array is intentional — bumping it via `retry()`
-    // re-runs the loop with a fresh wall-clock window. The variable is
-    // referenced here so the dependency is observed by the linter.
     void retrySignal;
     const token = ++retryTokenRef.current.token;
 
-    // Electron short-circuit: when the desktop preload script has exposed
-    // `window.okDesktop` with a populated `collabUrl`, skip the HTTP poll
-    // entirely — main has already bound the utility's port and injected
-    // it via `webPreferences.additionalArguments`. Subscribe to mid-session
-    // project switches via `onProjectSwitched`. CLI / web distribution still
-    // hits the existing /api/config poll (window.okDesktop is undefined).
     const bridge = tryElectronBridge(window);
     if (bridge) {
       setState(electronStateFromConfig(bridge.config));
@@ -268,8 +228,6 @@ export function useCollabUrl(): UseCollabUrlState {
       setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
       clearTimeout: (h) => globalThis.clearTimeout(h),
       onStateChange: (next) => {
-        // In-flight loops from a previous effect run (before retry / unmount)
-        // may still resolve after their cancel — guard via token comparison.
         if (token !== retryTokenRef.current.token) return;
         setState(next);
       },
@@ -280,9 +238,6 @@ export function useCollabUrl(): UseCollabUrlState {
     };
   }, [retrySignal]);
 
-  // The returned `retry` doesn't need memoization — React Compiler handles it.
-  // Bumping `retrySignal` causes the useEffect above to tear down the old loop
-  // and spin up a new one with a fresh wall-clock window.
   const retry = () => {
     retryTokenRef.current.token += 1;
     setState((prev) => ({ ...prev, terminal: false, lastError: null }));

@@ -38,10 +38,6 @@ describe('sanitizeFolderName', () => {
     expect(sanitizeFolderName('foo---bar')).toBe('foo-bar');
   });
 
-  // First barrier against directory traversal. `path.resolve(parent, sanitized)`
-  // in the IPC handler is the second barrier; these tests pin the first so a
-  // future regex narrowing (e.g. dropping `\` replacement for Windows compat)
-  // cannot reintroduce a traversal regression silently.
   describe('path traversal defense', () => {
     test('bare .. sanitizes to empty', () => {
       expect(sanitizeFolderName('..')).toBe('');
@@ -56,9 +52,6 @@ describe('sanitizeFolderName', () => {
     });
 
     test('foo/../bar neutralizes the embedded traversal to a literal basename', () => {
-      // Separator replacement turns the path-traversal segment into a literal
-      // basename character sequence — the resulting `foo-..-bar` is a single
-      // filename component, not a traversal vector when joined via path.resolve.
       expect(sanitizeFolderName('foo/../bar')).toBe('foo-..-bar');
     });
   });

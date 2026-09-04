@@ -4,14 +4,12 @@ import { decodeShareUrl, encodeShareUrl, InvalidShareUrlError } from './share-ur
 describe('encodeShareUrl', () => {
   test('returns a base64url string with no padding for a simple blob URL', () => {
     const encoded = encodeShareUrl('https://github.com/a/b/blob/main/c.md');
-    // Base64url uses [-A-Za-z0-9_]; padding `=` must be stripped.
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(encoded.includes('=')).toBe(false);
   });
 
   test('produces a payload whose first decoded byte is 0x01 (version v1)', () => {
     const encoded = encodeShareUrl('https://github.com/a/b/blob/main/c.md');
-    // Manually base64url-decode the prefix to inspect the version byte.
     const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
     const binary = atob(padded);
@@ -39,7 +37,6 @@ describe('decodeShareUrl', () => {
   });
 
   test('throws InvalidShareUrlError for a recognized v2 payload with malformed framing', () => {
-    // Build a malformed v2 payload without its required depth header.
     const blobBytes = new TextEncoder().encode('https://example.com/foo');
     const bytes = new Uint8Array(1 + blobBytes.length);
     bytes[0] = 0x02;
@@ -52,7 +49,6 @@ describe('decodeShareUrl', () => {
   test('throws InvalidShareUrlError on undecodable base64url input', () => {
     let caught: unknown;
     try {
-      // `!` is not a valid base64url character; the body should fail to decode.
       decodeShareUrl('not!valid!base64!!!');
     } catch (e) {
       caught = e;
@@ -65,8 +61,6 @@ describe('decodeShareUrl', () => {
   });
 
   test('throws InvalidShareUrlError when the payload after the version byte is not valid UTF-8', () => {
-    // Build a v1 payload whose body is an invalid lone surrogate-equivalent byte
-    // sequence (e.g. 0xC3 alone — a UTF-8 lead byte with no continuation).
     const bytes = new Uint8Array([0x01, 0xc3, 0x28]);
     const encoded = uint8ArrayToBase64UrlForTest(bytes);
     expect(() => decodeShareUrl(encoded)).toThrow(InvalidShareUrlError);
@@ -94,12 +88,6 @@ describe('decodeShareUrl', () => {
   });
 });
 
-/**
- * Test-only helper that mirrors the production base64url encoder so tests can
- * forge non-v1 payloads without importing the private encoder. Kept inline so
- * the production module exports stay minimal (encodeShareUrl + decodeShareUrl
- * plus error classes).
- */
 function uint8ArrayToBase64UrlForTest(bytes: Uint8Array): string {
   let binaryString = '';
   for (let i = 0; i < bytes.length; i++) {

@@ -1,15 +1,3 @@
-/**
- * Anchor resolution against a repeated quote.
- *
- * The bug this pins: `indexOf` returns the FIRST match, so a phrase that appears
- * twice in a document highlighted and scrolled to the wrong occurrence. The
- * stored prefix/suffix have to break the tie.
- *
- * Exercises `findRangeInIndex` against a hand-built index rather than a real
- * ProseMirror doc — the disambiguation logic is what's under test, and the index
- * shape (`text` + per-character positions) is trivially constructible.
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
@@ -24,7 +12,6 @@ import {
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 
-/** Build the index `buildTextIndex` would produce, with PM positions offset by 1. */
 function indexOf(text: string): { text: string; positions: number[] } {
   return { text, positions: Array.from({ length: text.length }, (_, i) => i + 1) };
 }
@@ -35,12 +22,6 @@ const SECOND = DOC.indexOf('Add the garlic', FIRST + 1);
 
 describe('findRangeInIndex — deleting the selection leaves a seam', () => {
   test('declines the twin even when its neighbourhood matches honestly', () => {
-    // The sentence was duplicated after the comment was made, so the twin's
-    // surroundings match the stored context well past any evidence floor —
-    // only the seam at the old spot (prefix and suffix now touching) says the
-    // original was deleted. The stored context reaches BEYOND the duplicated
-    // sentence, as a real 32-char capture does; a context falling entirely
-    // inside the duplication is the documented indistinguishable case.
     const sentence = 'The chord stages into the agents panel specifically, naming its target.';
     const afterDelete =
       `Intro first. The chord stages into  specifically, naming its target. ` +
@@ -54,10 +35,6 @@ describe('findRangeInIndex — deleting the selection leaves a seam', () => {
 });
 
 describe('findRangeInIndex — a deleted passage with an identical twin', () => {
-  // The reported bug: delete the commented occurrence while the same words
-  // survive elsewhere. The survivor is a lone hit, and a lone hit was accepted
-  // without consulting the stored context — the highlight slid onto words
-  // nobody commented on, prefix and suffix in open disagreement.
   test('declines the surviving twin instead of highlighting it', () => {
     const afterDelete = 'Closing notes mention Add the garlic near the archive vault.';
     const range = findRangeInIndex(indexOf(afterDelete), 'Add the garlic', {
@@ -68,7 +45,6 @@ describe('findRangeInIndex — a deleted passage with an identical twin', () => 
   });
 
   test('still accepts a lone hit whose surroundings carry a trace of the context', () => {
-    // Edited around, not moved: the floor asks for a fragment, not preservation.
     const edited = 'Stir the sauce. Add the garlic and serve immediately, garnished.';
     const at = edited.indexOf('Add the garlic');
     const range = findRangeInIndex(indexOf(edited), 'Add the garlic', {
@@ -90,7 +66,6 @@ describe('findRangeInIndex — repeated quote', () => {
       prefix: 'Stir the sauce. ',
       suffix: ' and serve.',
     });
-    // positions are 1-based in the fixture, matching buildTextIndex's offset
     expect(range).toEqual({ from: SECOND + 1, to: SECOND + 1 + 'Add the garlic'.length });
   });
 
@@ -107,12 +82,6 @@ describe('findRangeInIndex — repeated quote', () => {
     expect(range?.from).toBe(FIRST + 1);
   });
 
-  /**
-   * A stored `Anchor` carries a `start` measured against the MARKDOWN BODY.
-   * There is no rendered-offset tie-break for it to be mistaken for any more —
-   * a genuine tie takes the earliest hit, which is what the server does with
-   * the same tied set, so the two agree by construction rather than by luck.
-   */
   test('a genuine tie takes the earliest hit, ignoring a stored body offset', () => {
     const doc = 'x TARGET y x TARGET y';
     const first = doc.indexOf('TARGET');
@@ -132,9 +101,6 @@ describe('findRangeInIndex — repeated quote', () => {
 });
 
 describe('findRangeInIndex — a markdown quote against rendered text', () => {
-  // The stored quote is a slice of the markdown BODY, so a passage with any
-  // formatting is not literally present in the editor's rendered text. Before
-  // the elastic pass, every such comment silently failed to highlight or scroll.
   const RENDERED = 'Peanut sauce: 3 tbsp peanut butter, 2 tbsp soy sauce, water to loosen';
 
   test('locates a quote carrying emphasis markers the editor does not render', () => {
@@ -157,9 +123,6 @@ describe('findRangeInIndex — a markdown quote against rendered text', () => {
 });
 
 describe('findRangeInIndex — the passage was edited, not removed', () => {
-  // The reported bug: comment on "needs space", edit it to "needs more space",
-  // highlight vanishes. The server only re-finds on queue/dispatch, so the
-  // document view has to recover the range itself.
   const DOC = 'Intro line. The layout needs space around the header. Outro line.';
 
   test('follows an insertion inside the passage', () => {
@@ -217,19 +180,11 @@ describe('findRangeInIndex — the passage was edited, not removed', () => {
   });
 });
 
-/**
- * Nodes whose reader-visible text lives in attributes.
- *
- * The index is what the highlight and the scroll-to are computed from, so a
- * node missing from it is a comment that anchors on the server and then cannot
- * be shown in the document.
- */
 describe('buildTextIndex — text held in attributes', () => {
   function docOf(md: string): PMNode {
     return schema.nodeFromJSON(mdManager.parse(md));
   }
 
-  /** The node of `typeName` in `doc`, as `[from, to)`. */
   function spanOf(doc: PMNode, typeName: string): { from: number; to: number } {
     let span: { from: number; to: number } | null = null;
     doc.descendants((node, pos) => {
@@ -266,11 +221,6 @@ describe('buildTextIndex — text held in attributes', () => {
     expect(range).toEqual(spanOf(doc, 'wikiLink'));
   });
 
-  /**
-   * The case that made the per-character position mapping load-bearing: a
-   * mermaid fence is two positions wide plus its content, so mapping every
-   * character to the node's start highlighted only its opening token.
-   */
   test('a hit inside a promoted fence resolves to the whole node', () => {
     const doc = docOf('```mermaid\ngraph TD;\n```');
     const range = createAnchorResolver(doc)('graph TD;');
@@ -278,15 +228,6 @@ describe('buildTextIndex — text held in attributes', () => {
   });
 });
 
-/**
- * Prose before diagram interiors.
- *
- * A diagram's interior is identifiers and edge labels, not prose, but it is
- * full of common letter pairs. Searching it alongside the prose let a short
- * quote match inside a drawing: a comment on the word "hi" resolved into a
- * diagram containing "thinks", so its margin chip docked beside the diagram
- * instead of beside the sentence it was about.
- */
 describe('createAnchorResolver — a diagram never outbids the prose', () => {
   const MD = [
     '```mermaid',
@@ -328,20 +269,6 @@ describe('createAnchorResolver — a diagram never outbids the prose', () => {
   });
 });
 
-/**
- * The reported failure, end to end: a comment on the FIRST of eight identical
- * `hi`s highlighted a later one.
- *
- * Two things had to line up. The math block above the target erased the
- * captured prefix — `textBetween` reads a block that keeps its text in
- * attributes as empty — which dropped the decision to the tie-break; and the
- * tie-break was reading the stored anchor's body offset as a rendered one,
- * which points past the target.
- *
- * Both are closed now, and the first is why the prefix asserted below is no
- * longer empty: capture reads the same substrate the quote does, so the block
- * contributes its formula and the context decides on its own.
- */
 describe('a repeated quote under a block that renders no text', () => {
   const MD = ['$$', '1 + 1', '$$', '', 'hi', '', '> hello', '', ...Array(7).fill('- hi')].join(
     '\n',
@@ -358,26 +285,13 @@ describe('a repeated quote under a block that renders no text', () => {
     const target = occurrences[0] as number;
 
     const context = captureSelectionContext(doc, target, target + 2);
-    // The math block contributes its formula rather than nothing, so the
-    // decision no longer rests on a fallback at all.
     expect(context.prefix).toContain('1 + 1');
 
-    // Exactly what the rail and the decorations pass: the stored anchor,
-    // body-measured `start` and all.
     const anchor = { quote: 'hi', ...context, start: MD.indexOf('\nhi\n') + 1, end: 0 };
     expect(createAnchorResolver(doc)('hi', anchor)?.from).toBe(target);
   });
 });
 
-/**
- * Context has to survive a block boundary.
- *
- * Captured context joins blocks with a newline; the index has nothing between
- * them. Scoring them byte for byte meant any context reaching past the end of
- * its own paragraph scored zero, so repeats were separated by the position
- * tie-break rather than by the words around them — the thing actually captured
- * to tell them apart.
- */
 describe('context scoring across a block boundary', () => {
   test('picks the occurrence whose neighbouring block matches', () => {
     const MD = ['- hi', '- hi', '- hi', '', 'the marker paragraph', '', '- hi', '- hi'].join('\n');
@@ -389,8 +303,6 @@ describe('context scoring across a block boundary', () => {
     });
     expect(occurrences.length).toBe(5);
 
-    // The third "hi" — the one directly above the marker paragraph. Its suffix
-    // is the only thing that distinguishes it, and only across a block break.
     const target = occurrences[2] as number;
     const context = captureSelectionContext(doc, target, target + 2);
     expect(context.suffix).toContain('the marker paragraph');
@@ -414,14 +326,6 @@ describe('context scoring across a block boundary', () => {
   });
 });
 
-/**
- * Context capture reads the same substrate the quote does.
- *
- * `textBetween` reads an inline atom as empty, so a context window containing a
- * wiki link or a tag came back with a hole exactly where the distinguishing
- * word was — the same failure the quote fix closed, one field over, and it
- * returned the wrong occurrence rather than merely a weaker score.
- */
 describe('captureSelectionContext across an inline atom', () => {
   const MD = ['- [[alpha]] done', '- [[beta]] done'].join('\n');
 
@@ -450,22 +354,11 @@ describe('captureSelectionContext across an inline atom', () => {
   });
 });
 
-/**
- * A stored quote carrying a decoded character reference.
- *
- * The anchor's `exact` is sliced out of the markdown BODY, so it arrives with
- * whatever the body spends on formatting — and with the boundary-whitespace
- * char-refs the byte-fidelity serializer mints to hold a space just inside
- * emphasis. The editor searches the text a reader can SEE, where those six bytes
- * are one space. Server-side the passage resolves; here the highlight vanished.
- */
 describe('findRangeInIndex — a stored quote carrying a boundary-whitespace char-ref', () => {
   const RENDERED = 'Intro line. External apps  [external action icon] follows.';
   const STORED = 'External apps &#x20;***[external action icon]';
 
   test('resolves the passage the reader can see, on the quote alone', () => {
-    // No context, so the bracket recovery that would otherwise paper over this
-    // has nothing to work from — the quote itself has to match.
     const range = findRangeInIndex(indexOf(RENDERED), STORED);
     expect(range).not.toBeNull();
     expect(RENDERED.slice((range?.from ?? 1) - 1, (range?.to ?? 1) - 1)).toBe(
@@ -474,9 +367,6 @@ describe('findRangeInIndex — a stored quote carrying a boundary-whitespace cha
   });
 
   test('resolves it on the quote, not by recovering it from its brackets', () => {
-    // With context present the bracket recovery can reach the same span, but it
-    // reports a REWRITTEN anchor — the caller re-captures `exact` from it, so a
-    // passage nobody edited would churn its stored bytes on every re-find.
     const range = findRangeInIndex(indexOf(RENDERED), STORED, {
       prefix: 'Intro line. ',
       suffix: ' follows.',

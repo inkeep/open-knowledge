@@ -1,13 +1,3 @@
-/**
- * The open-thread signal is shared state, not a one-way "open" command.
- *
- * Two bugs came from it being one-way. The thread was closed privately on
- * Escape / resolve, so the margin rail kept a marker lit for a thread nothing
- * was showing — and, not knowing what was open, the rail could not make a
- * marker toggle. Both need `null` to travel the same channel as an id, which is
- * what these pin.
- */
-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { consumePendingDocPanelTabRequest } from '@/components/doc-panel-events';
 import { emitOpenThread, subscribeOpenThread } from './store';
@@ -17,7 +7,6 @@ afterEach(() => {
   consumePendingDocPanelTabRequest();
 });
 
-/** Collect everything the bus publishes for the life of one subscription. */
 function record(): { seen: (string | null)[]; stop: () => void } {
   const seen: (string | null)[] = [];
   const stop = subscribeOpenThread((id) => seen.push(id));
@@ -33,7 +22,6 @@ describe('the open-thread bus', () => {
   });
 
   test('carries null when it closes, so mirrors can clear', () => {
-    // The rail's lit marker depends on hearing this; before, a close was silent.
     const bus = record();
     emitOpenThread('t1');
     emitOpenThread(null);
@@ -58,7 +46,6 @@ describe('the open-thread bus', () => {
   });
 
   test('every listener sees the same signal', () => {
-    // The panel and the rail both subscribe; they must not diverge.
     const a = record();
     const b = record();
     emitOpenThread('t1');
@@ -73,12 +60,9 @@ describe('opening a thread opens the Comments tab beside it', () => {
   test('an id requests the tab; a close leaves the panel alone', () => {
     consumePendingDocPanelTabRequest();
     emitOpenThread('t1');
-    // The pending-tab latch is how the panel host learns of the request even
-    // when it has not mounted yet — the same channel every open path lands on.
     expect(consumePendingDocPanelTabRequest()).toBe('comments');
 
     emitOpenThread(null);
-    // Standing down from a comment is not a statement about the panel.
     expect(consumePendingDocPanelTabRequest()).toBeNull();
   });
 });

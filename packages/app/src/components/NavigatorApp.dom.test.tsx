@@ -100,7 +100,6 @@ function createBridge() {
       mode: 'navigator',
     },
     integrations: {
-      // CreateProjectDialog seeds its editor checkboxes off this on open.
       status: async () => ({
         available: false,
         editors: [],
@@ -141,8 +140,6 @@ async function renderNavigator(bridge: ReturnType<typeof createBridge>) {
   await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 }
 
-// Import the component AFTER the mocks above register so its transitive
-// dependencies bind to the stubs rather than the real modules.
 const { NavigatorApp } = await import('./NavigatorApp');
 
 describe('NavigatorApp launcher runtime behavior', () => {
@@ -190,8 +187,6 @@ describe('NavigatorApp launcher runtime behavior', () => {
       });
     });
 
-    // Open file on disk → temporary single-file session; a single main-side hop
-    // (picker + ephemeral open both live in main).
     fireEvent.click(screen.getByTestId('nav-open-file'));
     await waitFor(() => expect(bridge.project.openFile).toHaveBeenCalledTimes(1));
 
@@ -230,9 +225,6 @@ describe('NavigatorApp launcher runtime behavior', () => {
 
   test('shows the "Opening…" overlay while a project open is in flight, then clears it', async () => {
     const bridge = createBridge();
-    // Defer the open so the overlay is observable mid-flight — this mirrors
-    // production, where `project.open` stays pending through the whole
-    // main-side spawn + lock-poll (and the Stop-Server-Retry path).
     let resolveOpen: (() => void) | undefined;
     bridge.project.open = vi.fn(
       () =>
@@ -246,13 +238,9 @@ describe('NavigatorApp launcher runtime behavior', () => {
     fireEvent.click(await screen.findByText('Recent Project'));
 
     const overlay = await screen.findByTestId('nav-opening-overlay');
-    // Label is the path's last segment, not the full path.
     expect(overlay.textContent).toContain('Opening recent');
     expect(overlay.getAttribute('role')).toBe('status');
 
-    // Failure-path parity: the main-side wrapper swallows errors and resolves
-    // the invoke, so the overlay must clear on resolution (on the success path
-    // main closes this window instead).
     act(() => {
       resolveOpen?.();
     });
@@ -278,10 +266,8 @@ describe('NavigatorApp launcher runtime behavior', () => {
     await renderNavigator(bridge);
 
     const list = await screen.findByTestId('nav-recent-list');
-    // Worktree row: name up top, a "worktree" badge, and an "of <parent>" subline.
     expect(list.textContent).toContain('dev');
     expect(list.textContent).toContain('pnw-fishing');
-    // Plain project row keeps its name + full path, unlabeled.
     expect(list.textContent).toContain('Plain Notes');
     expect(list.textContent).toContain('/Users/x/plain-notes');
   });
@@ -309,9 +295,6 @@ describe('NavigatorApp launcher runtime behavior', () => {
     const [worktreeRow, plainRow] = rows;
     if (!worktreeRow || !plainRow) throw new Error('expected two recent rows');
 
-    // every row leads with the same folder icon; a worktree
-    // is flagged by a "worktree" pill + an "of <parent>" subline, and every row
-    // gets a right-aligned branch chip.
     expect(worktreeRow.querySelector('svg.lucide-folder')).not.toBeNull();
     expect(worktreeRow.textContent).toContain('dev');
     expect(worktreeRow.textContent).toContain('worktree');
@@ -322,8 +305,6 @@ describe('NavigatorApp launcher runtime behavior', () => {
       ),
     ).not.toBeNull();
 
-    // Plain project: same folder icon, its full path, and NO worktree pill. (Its
-    // branch chip comes from async git detection — exercised in real use, not here.)
     expect(plainRow.querySelector('svg.lucide-folder')).not.toBeNull();
     expect(plainRow.textContent).toContain('Plain Notes');
     expect(plainRow.textContent).toContain('/Users/x/plain-notes');
@@ -342,9 +323,6 @@ describe('NavigatorApp launcher runtime behavior', () => {
     await screen.findByText('Keep Project');
     await screen.findByText('Gone Project');
 
-    // The lazy-remove-on-open push is a one-way main→renderer event; grab the
-    // callback the effect registered and fire it as main would for the pruned
-    // window. The module-init listener owns the toast; this effect owns the row.
     expect(bridge.onRecentRemovedMissing).toHaveBeenCalledTimes(1);
     const onRemovedMissing = bridge.onRecentRemovedMissing.mock.calls[0]?.[0];
     expect(onRemovedMissing).toBeDefined();

@@ -7,38 +7,12 @@ import type {
 import { SkillTargetEditorSchema, SkillUserTargetEditorSchema } from '@inkeep/open-knowledge-core';
 import { customPlacementRoot, pluginCoverageOf, skillHostRootDir } from '@/lib/skill-scope';
 
-/**
- * The install menu's row derivation — which locations are offered, which are
- * occupied, what form each is in, and which of them a convert would rewrite.
- *
- * Pure, and extracted from the menu component because it is the part with
- * actual decisions in it: alias-covered roots get no row of their own, the
- * `.agents` hub is existence-activated rather than always offered, and
- * `expectedMode` is a majority vote over the skill's OTHER locations that
- * decides both the per-row convert tags and what a NEW location lands as. The
- * JSX around it stays where it is.
- */
-
-/** The editors a project skill can install into — the narrowed `.options` of the
- *  canonical schema, so this can never drift from the install verb + picker. */
 export const INSTALL_EDITORS: readonly SkillTargetEditor[] = SkillTargetEditorSchema.options;
-/** Global menus speak the wider user-global vocabulary — it adds the editors
- *  with a user root but no project surface (antigravity → `~/.gemini/skills`),
- *  so a host the installer can write is a host the menu can show. */
 export const GLOBAL_INSTALL_EDITORS: readonly SkillUserTargetEditor[] =
   SkillUserTargetEditorSchema.options;
 
-/** A skill living anywhere under `.agents/` counts as the project having adopted
- *  the hub, not just one directly in `AGENTS_SKILLS_ROOT`. Deliberately a
- *  literal and not derived from that constant: the adoption MARKER ("does this
- *  project use `.agents/` at all?") is a different question from the hub's
- *  install path, and deriving one from the other would silently broaden this
- *  check if the hub ever moved to a nested path. Same bare form as the other
- *  reader of this concept, `AgentIconCluster`. */
 const AGENTS_DIR_PREFIX = '.agents/';
 
-/** What the menu knows about the skill. An un-imported explore preview carries
- *  only `{scope, name}`, so every detail field is optional. */
 export { pluginCoverageOf };
 
 export type SkillInstallMenuSkill = Pick<SkillsListEntry, 'scope' | 'name'> &
@@ -61,16 +35,9 @@ export type SkillInstallMenuSkill = Pick<SkillsListEntry, 'scope' | 'name'> &
 
 export interface SkillInstallRowsInput {
   skill: SkillInstallMenuSkill | undefined;
-  /** Every skill at any scope, or null while the list has not loaded. Several
-   *  derivations fall back to the same-scope union across it for a preview skill
-   *  that carries no entry of its own. */
   allSkills: readonly SkillsListEntry[] | null;
-  /** Hosts the skill occupies, overlay applied. */
   hostSet: ReadonlySet<string>;
-  /** Source host with the optimistic overlay applied. */
   sourceHostOverlay: string | undefined;
-  /** The server's effective fan-out preference, used only when the skill has no
-   *  other location to compare against. */
   linkMode: boolean;
 }
 
@@ -87,16 +54,10 @@ interface SkillCustomRootRow {
 }
 
 export interface SkillInstallRows {
-  /** Display path for a host row, or null when there is no skill. */
   pathFor: (host: string) => string | null;
-  /** Folder-level aliases (host id → base-relative target root). */
   aliases: Record<string, string>;
-  /** Host rows to render, in order. */
   rows: SkillInstallTarget[];
-  /** The skill's own folder when it is NOT one of the host rows, in display
-   *  form (`~/`-prefixed at global scope). */
   sourceRow: string | null;
-  /** The host row that carries the SOURCE badge, if any. */
   sourceHost: string | undefined;
   conflicted: ReadonlySet<string>;
   drifted: ReadonlySet<string>;
@@ -116,18 +77,6 @@ export function deriveSkillInstallRows({
   const pathFor = (host: string): string | null =>
     skill ? `${skillHostRootDir(host, skill.scope)}/${skill.name}` : null;
 
-  // The `.agents` hub is offered when the project has ALREADY adopted it (any
-  // skill lives there or lists it as a host) OR when the server says a host that
-  // reads it is installed (`hubOffered`, computed by the same predicate that
-  // filters the Folders surface). OK still never pushes the hub on a repo where
-  // nothing would read it.
-  //
-  // `hubOffered` is not a convenience: adoption-only was circular. The hub is
-  // not a link target until it exists (see `SkillTargetsPicker`), so with no
-  // skill under `.agents/` there was no non-circular way to make the first
-  // placement — the answer was offered only to people who already knew to type
-  // the path into Custom path. Reading the server's flag is also what keeps this
-  // surface and Settings from answering the same question differently.
   const hubOffered =
     skill?.hubOffered ??
     (skill && allSkills !== null
@@ -139,19 +88,10 @@ export function deriveSkillInstallRows({
       (skill.hosts ?? []).includes('agents') ||
       allSkills?.some(
         (s) =>
-          // Scope-filtered: without this, ONE global skill under `~/.agents/skills`
-          // activates the hub on a PROJECT menu the server said `hubOffered: false`
-          // for — the two surfaces disagreeing again, by a different route.
           s.scope === skill.scope &&
           (s.hosts.includes('agents') || s.path.startsWith(AGENTS_DIR_PREFIX)),
       ));
 
-  // Folder-level aliases. An aliased folder is a derived view of its target: NO
-  // row of its own (checking it could only write through the alias), its agent
-  // icon rides the target root's row instead. Folder-level links are a property
-  // of the SCOPE's dirs, not of one skill — a not-yet-installed skill has no
-  // entry to carry them, so fall back to the union across installed same-scope
-  // skills; otherwise the preview menu shows aliased folders as plain rows.
   const aliases: Record<string, string> =
     skill?.hostAliases ??
     (skill && allSkills !== null
@@ -161,21 +101,12 @@ export function deriveSkillInstallRows({
         )
       : {});
 
-  // Only OFFER editors installable on THIS machine for the skill's scope — for
-  // global skills that is the set whose user-home dir exists, so we don't show
-  // an editor whose install silently no-ops and flashes a checkmark that
-  // reverts. Same same-scope fallback as `aliases`; null = no data → offer
-  // everything (never over-hide). The `.agents` hub and any editor the skill is
-  // ALREADY in are always kept (uninstall stays reachable).
   const installableList: readonly string[] | undefined =
     skill?.installableEditors ??
     (skill && allSkills !== null
       ? allSkills.find((s) => s.scope === skill.scope)?.installableEditors
       : undefined);
   const installable = installableList ? new Set<string>(installableList) : null;
-  // The hub sorts LAST. It is a vendor-neutral fallback rather than a place most
-  // people install, so it belongs under the concrete host rows and the SOURCE
-  // row, not above them where it used to sit.
   const editorBase = skill?.scope === 'global' ? GLOBAL_INSTALL_EDITORS : INSTALL_EDITORS;
   const rows: SkillInstallTarget[] = (
     hubActive ? ([...editorBase, 'agents'] as SkillInstallTarget[]) : editorBase
@@ -185,32 +116,21 @@ export function deriveSkillInstallRows({
 
   const stdPaths = new Set(rows.map((e) => pathFor(e)));
   const homePrefix = skill?.scope === 'global' ? '~/' : '';
-  // `path` is `<dir>/SKILL.md`; the guard on '/' skips placeholder entries.
   const entryDir = skill?.path?.includes('/')
     ? `${homePrefix}${skill.path.replace(/\/SKILL\.mdx?$/i, '')}`
     : null;
   const sourceRow = entryDir !== null && !stdPaths.has(entryDir) ? entryDir : null;
-  // A host row carries the SOURCE badge ONLY when the skill's real dir IS that
-  // host's dir (in-place skills). A store-backed skill's source is its own row
-  // (`sourceRow`) — badging hosts[0] there showed TWO sources.
   const sourceHost = sourceRow === null ? (sourceHostOverlay ?? skill?.hosts?.[0]) : undefined;
 
   const conflicted = new Set(skill?.conflictHosts ?? []);
-  // Drift = OK's record of what it wrote disagrees with disk (another tool
-  // rewrote the path). PASSIVE disclosure only.
   const drifted = new Set(skill?.driftPaths ?? []);
   const linked = new Set(skill?.symlinkedHosts ?? []);
 
-  // Every location this skill has BESIDES its source, with the form each one is
-  // in. The source is never included: it is the real folder the others copy or
-  // point at.
   const convertible: SkillConvertibleLocation[] = [
     ...[...hostSet]
       .filter((h) => h !== sourceHost && !(h in aliases) && !conflicted.has(h) && !h.includes('/'))
       .map((h) => ({
         target: h,
-        // `pathFor` is null only when there is no skill at all, in which case
-        // there are no hosts to be here for.
         display: pathFor(h) ?? h,
         mode: linked.has(h) ? ('link' as const) : ('copy' as const),
       })),
@@ -221,10 +141,6 @@ export function deriveSkillInstallRows({
     })),
   ];
 
-  // The mode a location is EXPECTED to have: what the skill's other locations
-  // are, falling back to the server's effective preference when there are none
-  // to compare against. A row matching this says nothing (a menu of identical
-  // COPY tags was pure noise); a row that DIVERGES gets a tag that converts it.
   const otherStates = convertible.map((c) => c.mode);
   const linkCount = otherStates.filter((st) => st === 'link').length;
   const expectedMode: 'copy' | 'link' =
@@ -236,10 +152,6 @@ export function deriveSkillInstallRows({
         ? 'link'
         : 'copy';
 
-  // Non-standard locations that actually hold this skill get their own rows.
-  // KNOWN custom roots travel between SKILLS (per-machine): every distinct
-  // parent dir any skill at this scope has a recorded placement under becomes an
-  // offerable row on EVERY skill's menu. Checked when THIS skill is placed there.
   const myPlacements = new Map(
     (skill?.customPlacements ?? []).map((cp) => [customPlacementRoot(cp), cp]),
   );
@@ -249,9 +161,6 @@ export function deriveSkillInstallRows({
       if (s.scope !== skill.scope) continue;
       for (const cp of s.customPlacements ?? []) {
         const root = customPlacementRoot(cp);
-        // `.ok/skills` is the retired store, offered like any other custom root
-        // so projects that still keep skills there can manage them; the rest of
-        // `.ok/` is OK's own state and the server refuses it.
         if (root !== '') knownRoots.add(root);
       }
     }
@@ -265,9 +174,6 @@ export function deriveSkillInstallRows({
             display: `${homePrefix}${root}/${skill.name}`,
             placed: myPlacements.get(root) ?? null,
           }))
-          // Alias-covered custom roots (a folder-symlink into another root) get
-          // NO row — same rule as editor folders: their icon rides the target
-          // root's audience instead.
           .filter((r) => !stdPaths.has(r.display) && r.display !== entryDir && !(r.root in aliases))
       : [];
 

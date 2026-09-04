@@ -1,13 +1,3 @@
-/**
- * One card, two click meanings — and neither may bleed into the other.
- *
- * The card's whitespace and body are a bigger target for its own TICK; the
- * quote row keeps the JUMP. They used to differ: the body meant "send only this
- * one", clearing every other comment, which readers reached for expecting the
- * additive meaning they get from a checklist. What these pin is the split —
- * each gesture fires its own action and never also the other.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -15,8 +5,6 @@ import type { CommentThread } from './types';
 
 const captured = { revealed: [] as string[], toggled: [] as string[], deleted: 0 };
 
-// No visible editor: the jump routes through `revealThread`, which is the one
-// observable seam shared by the local and cross-document paths.
 vi.doMock('@/editor/active-editor', () => ({
   getVisibleEditorForDoc: () => null,
 }));
@@ -78,8 +66,6 @@ beforeEach(() => {
   captured.revealed = [];
   captured.toggled = [];
   captured.deleted = 0;
-  // A selection left behind by one test would change what a click means in the
-  // next — the card now reads it.
   window.getSelection()?.removeAllRanges();
 });
 
@@ -100,8 +86,6 @@ describe('clicking a card', () => {
   });
 
   test('the checkbox does the same thing, once', () => {
-    // The card body is a bigger target for this control, not a second one, so
-    // a click on the box itself must not also run the card handler.
     renderCard();
     fireEvent.click(screen.getByRole('checkbox'));
     expect(captured.toggled).toEqual(['t1']);
@@ -109,8 +93,6 @@ describe('clicking a card', () => {
 
   test('the quote row keeps the jump, and a jump is not a tick', () => {
     renderCard();
-    // Found by the quote it shows — the row's hint is a Tooltip, which renders
-    // nothing until it opens, so the quote is the button's accessible name.
     const row = screen.getByText(/the tofu/).closest('button');
     expect(row).not.toBeNull();
     if (row) fireEvent.click(row);
@@ -132,16 +114,7 @@ describe('clicking a card', () => {
   });
 });
 
-/**
- * Selecting a card's words is reading, not ticking.
- *
- * A drag that ends inside the element it started in still fires a click on it,
- * so copying a sentence out of a comment also flipped whether that comment was
- * going to be sent — the batch changed under a gesture that never touched a
- * control.
- */
 describe('selecting text in a card', () => {
-  /** Put a real selection across `node`'s text, the way a drag leaves one. */
   function selectTextIn(node: Node) {
     const range = document.createRange();
     range.selectNodeContents(node);
@@ -159,9 +132,6 @@ describe('selecting text in a card', () => {
   });
 
   test('a selection somewhere else on the page leaves the click alone', () => {
-    // The panel sits beside a document whose text readers select constantly.
-    // Reading the selection without asking WHERE it is would swallow every
-    // click on a card made while a passage was highlighted.
     renderCard();
     const elsewhere = document.createElement('p');
     elsewhere.textContent = 'a passage in the document';

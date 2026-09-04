@@ -13,7 +13,6 @@ function doc(id: string, docName: string, managed = false) {
   };
 }
 
-/** A node the server flagged as one of OpenKnowledge's own bundles. */
 function builtinDoc(id: string, docName: string) {
   return doc(id, docName, true);
 }
@@ -54,8 +53,6 @@ describe('filterGraphSkillNodes', () => {
   });
 
   test("a bundle's own structural edges do not make it self-referenced", () => {
-    // The SKILL→reference edge crosses no bundle boundary. If it counted, no
-    // built-in would ever be hidden and the default would be a no-op.
     const result = filterGraphSkillNodes(
       graph(
         [builtinDoc('b', BUILTIN_SKILL), builtinDoc('c', BUILTIN_REF)],
@@ -82,9 +79,6 @@ describe('filterGraphSkillNodes', () => {
   });
 
   test('never hides a user skill whose name merely looks built-in', () => {
-    // `open-knowledge-pack-*` installs are real user skills kept indefinitely. The
-    // app classifies purely on the server's flag, so a name that resembles a
-    // built-in is not enough to hide it.
     const result = filterGraphSkillNodes(graph([doc('p', PACK_SKILL)], []), SHOW_FULLSCREEN);
     expect(result.nodes.map((n) => n.id)).toEqual(['p']);
   });
@@ -153,8 +147,6 @@ describe('filterGraphSkillNodes', () => {
   });
 
   test('keeps a built-in connected to a user skill regardless of authored direction', () => {
-    // The link graph mirrors SKILL-to-SKILL refs, so edge direction cannot identify
-    // which document authored the ref.
     const result = filterGraphSkillNodes(
       graph(
         [builtinDoc('b', BUILTIN_SKILL), doc('u', USER_SKILL)],

@@ -143,9 +143,6 @@ export function getSortableTabStyle({
 
 export function measureTabReorderBounds(
   root: HTMLElement | null,
-  // Surface-neutral: each consumer passes the attribute selector marking its own
-  // sortable tab nodes (editor tabs vs terminal tabs), so this geometry helper is
-  // not tied to one strip.
   sortableSelector: string,
 ): TabReorderBounds | null {
   const tabNodes = root?.querySelectorAll<HTMLElement>(sortableSelector) ?? [];

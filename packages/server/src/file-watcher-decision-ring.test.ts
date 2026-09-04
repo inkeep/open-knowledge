@@ -1,12 +1,3 @@
-/**
- * Watcher decision-ring coverage: the bounded record of recent file-watcher
- * decisions (dispatched / self-write skips / drops) that backs the
- * `/api/metrics/watcher-recent` endpoint and the `state/watcher-recent.jsonl`
- * bundle artifact. Drives the ring through the real pipeline entry points
- * (`handleRawEvents` / `classifyEvents`) so the recorded decisions reflect
- * production drop sites, not a synthetic recorder.
- */
-
 import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -74,7 +65,6 @@ describe('watcher decision ring', () => {
     const records = getWatcherDecisionRingSnapshot();
     const record = records.find((r) => r.decision === 'dispatched' && r.kind === 'create');
     expect(record).toBeDefined();
-    // Path is normalized to the last two segments — never the raw absolute path.
     expect(record?.path).toBe(`...${sep}notes${sep}guide.md`);
     expect(record?.path.includes(tmpDir)).toBe(false);
     expect(record?.pathRole).toBe('content-md');
@@ -145,8 +135,6 @@ describe('watcher decision ring', () => {
   });
 
   test('ring is bounded: oldest decisions are evicted past capacity', async () => {
-    // 300 unreadable creates → 300 drop-read-failed decisions; the ring
-    // retains only the newest 256.
     for (let i = 0; i < 300; i++) {
       await classifyEvents(
         [{ type: 'create', path: resolve(contentDir, `missing-${i}.md`) }],
@@ -179,9 +167,6 @@ describe('watcher decision ring', () => {
 
 describe('watcher drop summary', () => {
   test('emits only when drops accrued, with per-reason totals, then resets the window', async () => {
-    // The module-level `log` in file-watcher.ts is the factory-cached
-    // 'file-watcher' logger — spying on the cached instance intercepts the
-    // summary emission.
     const infoSpy = vi.spyOn(getLogger('file-watcher'), 'info');
     try {
       logWatcherDropSummary();
@@ -199,7 +184,6 @@ describe('watcher drop summary', () => {
         dropTotals: { 'read-failed': 1 },
       });
 
-      // Window reset: no new drops since the last summary → silent again.
       logWatcherDropSummary();
       expect(infoSpy).toHaveBeenCalledTimes(1);
     } finally {

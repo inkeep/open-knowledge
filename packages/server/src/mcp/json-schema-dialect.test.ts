@@ -1,19 +1,3 @@
-/**
- * Every MCP tool must advertise its `inputSchema` / `outputSchema` as JSON
- * Schema 2020-12.
- *
- * The SDK converts our Zod v4 schemas with no target, which lands on
- * draft-07. Clients that validate structured output against the declared
- * dialect then reject the tool before it ever runs, taking down the whole
- * tool surface rather than degrading one tool. An Ajv 2020 instance refuses
- * every draft-07-declaring schema with `no schema with key or ref
- * "http://json-schema.org/draft-07/schema#"`.
- *
- * Black-box: assertions read the `tools/list` result off a real client
- * connected over an in-memory transport, so they observe exactly the wire
- * bytes a Claude Code or Claude Desktop client would parse.
- */
-
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -90,9 +74,6 @@ describe('installJsonSchemaDialect', () => {
   });
 
   test('warns instead of throwing when installed before any tool is registered', async () => {
-    // The ordering contract: the SDK installs its `tools/list` handler lazily
-    // on the first `registerTool`, so an install hoisted above tool
-    // registration silently does nothing. Fail loud rather than ship draft-07.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const server = new McpServer({ name: 'json-schema-dialect-test', version: '0.0.0' });
 
@@ -102,8 +83,6 @@ describe('installJsonSchemaDialect', () => {
   });
 
   test('a tool registered after install still gets re-declared', async () => {
-    // The wrapper defers to the SDK handler, which reads the live tool
-    // registry per request, so late registrations flow through it.
     const server = buildServer();
     installJsonSchemaDialect(server);
     server.registerTool(

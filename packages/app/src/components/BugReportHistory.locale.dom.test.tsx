@@ -1,19 +1,3 @@
-/**
- * The bug-report timestamp follows the PICKED interface language, not the
- * machine's.
- *
- * Deliberately does NOT mock `@lingui/react/macro` — the sibling suite does, and
- * its stub supplies an `i18n` with no `locale`, which would make this assertion
- * vacuous. Here `useLingui()` resolves through the config-wide macro shim, whose
- * `i18n` IS the real `@lingui/core` singleton, so activating a locale moves the
- * same value the component reads.
- *
- * `Intl.DateTimeFormat` is the platform, not Lingui, so its output is one of the
- * few user-visible things that genuinely varies by locale under a shim that
- * renders every message in English.
- *
- * Substrate: jsdom via `pnpm run test:dom`.
- */
 import type { OkBugReportListRow } from '@inkeep/open-knowledge-core';
 import { i18n } from '@lingui/core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -50,7 +34,6 @@ function installBridge(): void {
   }
 }
 
-/** Mount the list and return the row's rendered timestamp. */
 async function renderTimestampUnder(locale: string): Promise<string> {
   i18n.load(locale, {});
   i18n.activate(locale);
@@ -80,8 +63,6 @@ describe('bug-report timestamps follow the selected interface language', () => {
     const english = await renderTimestampUnder('en');
     cleanup();
     const spanish = await renderTimestampUnder('es');
-    // The differ-assertion is what kills a reverted `undefined` argument: both
-    // renders would agree on whatever the runtime's own locale produces.
     expect(spanish).not.toBe(english);
   });
 });

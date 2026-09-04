@@ -27,14 +27,6 @@ import {
   discoverProject,
 } from './folder-admission.ts';
 
-/**
- * Pure-function coverage of the create-new-project cascade helpers + an
- * end-to-end pin of `runCreateNew` against `mkdtempSync` trees. The handler
- * does real `git init` via `ensureProjectGit`, so these tests need a real
- * filesystem AND a working `git` binary on PATH — same precondition the
- * onboarding-consent integration suite relies on.
- */
-
 let tmpRoot: string;
 
 beforeEach(() => {
@@ -42,13 +34,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Restore writability before rmSync — some tests chmod 0o555 to force
-  // EACCES on mkdir, which would otherwise leave the tree unremovable.
   try {
     chmodSync(tmpRoot, 0o755);
-  } catch {
-    // Best-effort; rmSync still tries with force: true.
-  }
+  } catch {}
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
@@ -102,10 +90,6 @@ describe('folderState', () => {
 });
 
 describe('CreateNewProjectError — IPC-parseable message format', () => {
-  // Electron strips Error subclass identity at the IPC boundary; the renderer
-  // sees only `.message`. `parseCreateNewError` recovers the structured reason
-  // by prefix-matching `<reason>:` in the message text, so the constructor
-  // MUST embed the reason in the message itself.
   test('message prepends reason so a string-prefix match recovers it', () => {
     const err = new CreateNewProjectError('nested-project', 'detail goes here');
     expect(err.message).toBe('nested-project: detail goes here');
@@ -156,15 +140,6 @@ describe('resolveDefaultProjectsRoot', () => {
   });
 });
 
-/**
- * Build a `discoverProject` stub for the DI seam. The stub forwards to the
- * real `discoverProject` (so all the realpath / mkdir / symlink semantics
- * stay honest) but injects a fixed `homeDir` AND a deterministic
- * `gitTopLevel` lookup so the test doesn't depend on whether the macOS
- * `tmpdir()` happens to sit inside (or above) the agent's `$HOME`. The real
- * `discoverProject` only promotes when `gitRoot` sits strictly below
- * `homeDir`, so tests need to point both at the same fake-home root.
- */
 const makeDiscoverDeps = (
   fakeHome: string,
   gitTopLevelByCwd: Record<string, string | null>,
@@ -177,11 +152,6 @@ const makeDiscoverDeps = (
     }),
 });
 
-/**
- * Pin the editor set the dialog "proposed" so the telemetry variant does not
- * depend on which AI tools happen to be installed on the machine running the
- * suite. Production reads the same set from `detectInstalledEditors`.
- */
 const withDetected = (
   detected: readonly string[],
   base: RunCreateNewDeps = {},
@@ -199,8 +169,6 @@ describe('runCreateNew — happy paths', () => {
       withDetected(ALL_EDITOR_IDS),
     );
     expect(result.target).toBe(join(parent, 'My Notes'));
-    // projectDir == realpath(target). macOS aliases /tmp → /private/tmp so
-    // the realpath equality holds even though the raw strings differ.
     expect(result.projectDir).toBe(realpathSync(result.target));
     expect(result.defaultContentDir).toBe('.');
     expect(existsSync(join(result.projectDir, '.ok/config.yml'))).toBe(true);
@@ -210,11 +178,6 @@ describe('runCreateNew — happy paths', () => {
   });
 
   test('leaves a project whose default branch can base a worktree', async () => {
-    // The reported symptom, pinned at the entry point that reported it: the
-    // repo used to be left with an unborn HEAD, so the New-worktree dialog's
-    // `git worktree add -b <name> <path> -- main` died with
-    // `fatal: invalid reference: main`. `ensureProjectGit` is the shared fix
-    // site; this guards the create-new path against ever short-circuiting it.
     const result = await runCreateNew({
       parent: tmpRoot,
       name: 'Worktree Base',
@@ -242,10 +205,6 @@ describe('runCreateNew — happy paths', () => {
   });
 
   test('reports default variant when the submitted set is the detected set, even though it is not every editor', async () => {
-    // The dialog seeds its checkboxes from detection, so "default" means
-    // "unchanged from what we proposed" — NOT "every editor". Pinning this
-    // against a two-editor machine is the whole point: under the old
-    // all-editors baseline every real create would have read as customized.
     const result = await runCreateNew(
       { parent: tmpRoot, name: 'Detected Only', editors: ['codex', 'cursor'] },
       withDetected(['codex', 'cursor']),
@@ -290,10 +249,6 @@ describe('runCreateNew — happy paths', () => {
   });
 
   test('seeds project-root .gitignore with cross-platform desktop metadata', async () => {
-    // A fresh project ignores platform-generated desktop metadata. The seed only runs
-    // when ensureProjectGit actually ran `git init` — confirmed in this case
-    // by the absence of `.git/` before the call. See also the git-root-
-    // promotion case below, which exercises the skip path.
     const result = await runCreateNew({
       parent: tmpRoot,
       name: 'Fresh',
@@ -317,12 +272,6 @@ describe('runCreateNew — happy paths', () => {
 });
 
 describe('runCreateNew — starter-pack seeding under git-root promotion', () => {
-  /**
-   * When the picked location sits inside an existing git repo the project root
-   * is promoted to that repo, so "project root" is no longer the folder the
-   * user just named. Seeding there would spray the pack across someone's
-   * existing repo and leave the named folder empty.
-   */
   function promotedFixture(homeName: string) {
     const tmpReal = realpathSync(tmpRoot);
     const fakeHome = resolve(tmpReal, homeName);
@@ -352,7 +301,6 @@ describe('runCreateNew — starter-pack seeding under git-root promotion', () =>
     expect(result.gitRootPromoted).toBe(true);
     expect(existsSync(resolve(target, 'external-sources'))).toBe(true);
     expect(existsSync(resolve(target, 'log.md'))).toBe(true);
-    // The user's existing repo root stays untouched.
     expect(existsSync(resolve(repo, 'external-sources'))).toBe(false);
     expect(existsSync(resolve(repo, 'log.md'))).toBe(false);
   });
@@ -377,18 +325,7 @@ describe('runCreateNew — starter-pack seeding under git-root promotion', () =>
 });
 
 describe('runCreateNew — git-root promotion', () => {
-  /**
-   * When the user picks a parent inside an existing git working tree, the
-   * project's `.ok/config.yml` lands at the git ROOT (one `.ok/` per repo),
-   * with `content.dir` defaulting to `.` (the git root). The user-facing
-   * folder is still mkdir'd at `target` so it shows up in Finder, but the
-   * opened folder and the content scope align by default — narrowing back
-   * to the picked sub-folder is opt-in via post-init `config.yml`.
-   */
   test('scaffolds .ok/config.yml at git root; content.dir defaults to the git root, not the picked sub-folder', async () => {
-    // Fixture: <tmp>/home/repo/.git, <tmp>/home/repo/notes/  (parent), name 'MyProj'.
-    // Use realpath on tmpRoot because macOS aliases /tmp → /private/tmp — the
-    // real discoverProject realpaths everything, so fixtures must match.
     const tmpReal = realpathSync(tmpRoot);
     const fakeHome = resolve(tmpReal, 'home');
     const repo = resolve(fakeHome, 'repo');
@@ -405,36 +342,25 @@ describe('runCreateNew — git-root promotion', () => {
       deps,
     );
 
-    // The project scaffolds at the git root, not the picked subfolder.
     expect(result.projectDir).toBe(repo);
     expect(result.target).toBe(target);
     expect(result.defaultContentDir).toBe('.');
     expect(result.gitRootPromoted).toBe(true);
     expect(result.variant).toBe('create-new-default');
 
-    // Disk shape: .ok/config.yml at repo root only — NOT at target.
     expect(existsSync(resolve(repo, '.ok/config.yml'))).toBe(true);
     expect(existsSync(resolve(target, '.ok/config.yml'))).toBe(false);
 
-    // The user-facing folder still exists (mkdir'd up front).
     expect(existsSync(target)).toBe(true);
 
-    // content.dir is NOT scoped to the picked sub-folder. The "no content.dir
-    // override" branch in buildConfigYmlContent comments the value out; assert
-    // the live override is absent.
     const cfg = readFileSync(resolve(repo, '.ok/config.yml'), 'utf8');
     expect(cfg).not.toMatch(/^\s*dir:\s*notes\/MyProj/m);
 
-    // Promotion lands on a pre-existing `.git/` (the enclosing repo).
-    // ensureProjectGit reports didInit=false → the `.DS_Store` seed helper does
-    // NOT run. But the always-excluded project-skill `.gitignore` block IS
-    // written (append-only) regardless, so the per-build bundle can never be
-    // committed.
     const gi = resolve(repo, '.gitignore');
     expect(existsSync(gi)).toBe(true);
     const giBody = readFileSync(gi, 'utf8');
     expect(giBody).toContain('.claude/skills/open-knowledge/');
-    expect(giBody).not.toContain('.DS_Store'); // the DS_Store seed stayed gated
+    expect(giBody).not.toContain('.DS_Store');
   });
 
   test('no promotion when parent has no enclosing git repo — projectDir === target, content.dir === "."', async () => {
@@ -443,7 +369,6 @@ describe('runCreateNew — git-root promotion', () => {
     const parent = resolve(fakeHome, 'plain');
     mkdirSync(parent, { recursive: true });
 
-    // gitTopLevel stub returns null for the target (no enclosing repo).
     const target = resolve(parent, 'standalone');
     const deps = makeDiscoverDeps(fakeHome, { [target]: null });
 
@@ -459,16 +384,10 @@ describe('runCreateNew — git-root promotion', () => {
     expect(existsSync(resolve(target, '.ok/config.yml'))).toBe(true);
 
     const cfg = readFileSync(resolve(target, '.ok/config.yml'), 'utf8');
-    // The "no content.dir override" branch in buildConfigYmlContent comments
-    // the value out; assert the live override is absent.
     expect(cfg).not.toMatch(/^\s*dir:\s*\S/m);
   });
 
   test('throws discovery-failed when discoverProject returns rejected (symlink-escape)', async () => {
-    // The defense-in-depth `discovery.kind === 'rejected'` branch fires only
-    // when discoverProject refuses to admit the freshly-mkdir'd target —
-    // typically because the path is a symlink escape or unreadable after the
-    // mkdir. A refactor that silently drops this branch must fail this test.
     const deps: RunCreateNewDeps = {
       discoverProject: async (): Promise<DiscoverProjectResult> => ({
         kind: 'rejected',
@@ -485,11 +404,6 @@ describe('runCreateNew — git-root promotion', () => {
   });
 
   test('throws discovery-failed when discoverProject itself throws', async () => {
-    // Production callers never see this — discoverProject's own try/catch
-    // converts EACCES / ELOOP / ENOENT into a `rejected` result. The handler's
-    // catch around the call is a defensive guard for the not-yet-classified
-    // case (e.g. a future discoverProject failure mode). Test ensures the
-    // wrapper survives refactors.
     const deps: RunCreateNewDeps = {
       discoverProject: async () => {
         throw new Error('realpath EACCES');
@@ -505,11 +419,6 @@ describe('runCreateNew — git-root promotion', () => {
   });
 
   test('race: enclosing .ok/ materializes between cascade and discovery → nested-project', async () => {
-    // Stub discoverProject to return `kind: 'managed'` as if a sibling
-    // process created an ancestor `.ok/config.yml` between step 2 (the
-    // findEnclosingProjectRoot check) and step 5 (the discovery call).
-    // The handler must surface `nested-project` after-the-fact rather than
-    // silently scaffolding inside someone else's project.
     const deps: RunCreateNewDeps = {
       discoverProject: async (pickedPath: string): Promise<DiscoverProjectResult> => ({
         kind: 'managed',
@@ -531,7 +440,6 @@ describe('runCreateNew — git-root promotion', () => {
 
 describe('runCreateNew — defense-in-depth rejections', () => {
   test('rejects nested-project parents', async () => {
-    // Stand up an existing project at <tmpRoot>/existing first.
     const existing = join(tmpRoot, 'existing');
     mkdirSync(join(existing, '.ok'), { recursive: true });
     writeFileSync(join(existing, '.ok', 'config.yml'), '# stub\n');
@@ -601,33 +509,17 @@ describe('runCreateNew — defense-in-depth rejections', () => {
   });
 
   test('path traversal in name is neutralized — target stays inside parent', async () => {
-    // End-to-end pin of the handler-level traversal defense: sanitizeFolderName
-    // strips path separators BEFORE `resolve(parent, sanitized)`, so a name
-    // like '../../escape' cannot walk outside the parent tree. The sanitizer
-    // is unit-tested in isolation; this test pins the pipeline so a future
-    // sanitizer-regex weakening or a refactor that drops the sanitize step
-    // before resolve() can't silently bypass the defense.
     const result = await runCreateNew({
       parent: tmpRoot,
       name: '../../escape',
       editors: [...ALL_EDITOR_IDS],
     });
-    // tmpdir() can sit at /var (a symlink to /private/var) on macOS; resolve()
-    // doesn't follow symlinks but realpathSync does. Pin both: the literal
-    // target lives under the literal parent, AND projectDir (a realpath)
-    // lives under the parent's realpath. Either alone misses one failure mode.
     expect(result.target.startsWith(tmpRoot)).toBe(true);
     expect(result.projectDir.startsWith(realpathSync(tmpRoot))).toBe(true);
-    // The sanitizer collapses '../../escape' → 'escape' (separators are
-    // replaced with '-' then leading dashes/dots are trimmed).
     expect(result.target).toBe(join(tmpRoot, 'escape'));
   });
 
   test('surfaces mkdir-failed when the parent is not writable', async () => {
-    // Force EACCES on mkdir by chmod'ing the parent to read+execute only.
-    // tracedMkdirSync(target, { recursive: true }) attempts to create a
-    // subdirectory and throws EACCES — the handler catches and surfaces
-    // CreateNewProjectError('mkdir-failed', ...).
     const parent = join(tmpRoot, 'readonly');
     mkdirSync(parent);
     chmodSync(parent, 0o555);
@@ -642,8 +534,6 @@ describe('runCreateNew — defense-in-depth rejections', () => {
       expect(err).toBeInstanceOf(CreateNewProjectError);
       expect((err as CreateNewProjectError).reason).toBe('mkdir-failed');
     } finally {
-      // Restore so the global afterEach can rm the tree cleanly even if the
-      // chmodSync above silently no-op'd on a future platform.
       chmodSync(parent, 0o755);
     }
   });
@@ -657,17 +547,9 @@ describe('runCreateNew — idempotency', () => {
       name: 'retry',
       editors: [...ALL_EDITOR_IDS],
     });
-    // Read config.yml content; the retry should NOT overwrite it.
     const firstConfig = readFileSync(join(first.target, '.ok/config.yml'), 'utf8');
-    // Touch the config so we can detect that initContent's writeIfMissing
-    // semantics preserve the marker.
     writeFileSync(join(first.target, '.ok/config.yml'), `${firstConfig}\n# tampered\n`);
 
-    // A second call would normally hit the target-not-empty guard. The
-    // contract is: a mid-step retry succeeds, but a fully-landed retry
-    // signals to the user that the folder is already occupied. Verify the
-    // second call surfaces the structured target-not-empty error so the
-    // dialog can point at the half/fully-created folder.
     try {
       await runCreateNew({
         parent,
@@ -679,19 +561,11 @@ describe('runCreateNew — idempotency', () => {
       expect(err).toBeInstanceOf(CreateNewProjectError);
       expect((err as CreateNewProjectError).reason).toBe('target-not-empty');
     }
-    // Tampered config is preserved — the retry did NOT clobber.
     expect(readFileSync(join(first.target, '.ok/config.yml'), 'utf8')).toContain('# tampered');
   });
 });
 
 describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
-  // Regression pin: the desktop project-setup path
-  // (`writeProjectAiIntegrations`) previously wired MCP config ONLY — the
-  // project-local runtime `open-knowledge` skill was never created, so a
-  // Desktop-primary user got a project with no agent behavioral contract.
-  // `writeProjectAiIntegrations` now routes through `applyProjectIntegrations`
-  // (the same orchestrator the onboarding-consent path uses), so both desktop
-  // project-setup entry points install the skill.
   test('installs project skills when the selected editors provide MCP wiring', async () => {
     const originalCopilotHome = process.env.COPILOT_HOME;
     const copilotHome = join(tmpRoot, 'copilot-with-mcp');
@@ -733,9 +607,6 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
     expect(existsSync(join(result.projectDir, '.pi', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
       true,
     );
-    // The result's `aiIntegrations` carries the per-(editor × integration)
-    // outcomes — the project-skill writer ran and reported success for every
-    // editor that has a project skill surface.
     const skillWrites = result.aiIntegrations.integrations.filter(
       (o) => o.integration === 'project-skill' && o.action === 'written',
     );
@@ -778,11 +649,6 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
 });
 
 describe('runCreateNew — starter-pack seeding', () => {
-  // The seed step is the primary new user-facing behavior of the packs-forward
-  // launcher: a known `packId` scaffolds the pack's folders before the editor
-  // opens, an unknown id is silently coerced away (blank project), and a seed
-  // failure is best-effort (a valid project still lands). Type-checking alone
-  // doesn't cover the runtime `coercePackId` narrowing or the best-effort catch.
   test('scaffolds the pack folders when a known packId is supplied', async () => {
     const result = await runCreateNew({
       parent: tmpRoot,
@@ -790,16 +656,11 @@ describe('runCreateNew — starter-pack seeding', () => {
       editors: [...ALL_EDITOR_IDS],
       packId: 'plain-notes',
     });
-    // `plain-notes` declares `notes/` + `daily/`; the seed step creates them on
-    // disk. A blank create leaves neither.
     expect(existsSync(join(result.projectDir, 'notes'))).toBe(true);
     expect(existsSync(join(result.projectDir, 'daily'))).toBe(true);
   });
 
   test('seeds at the project root when no rootDir is given', async () => {
-    // `knowledge-base` declares `defaultSubfolder: 'brain'`. That default only
-    // pre-fills the dialog's subfolder input — the scaffold itself lands at the
-    // project root unless the user picks "In a subfolder".
     const result = await runCreateNew({
       parent: tmpRoot,
       name: 'Root Seeded Project',
@@ -829,8 +690,6 @@ describe('runCreateNew — starter-pack seeding', () => {
       editors: [...ALL_EDITOR_IDS],
       packId: 'not-a-real-pack-id',
     });
-    // `coercePackId` narrows the unknown id to `undefined`, so seeding is
-    // skipped — the project is valid but carries no pack scaffold.
     expect(existsSync(join(result.projectDir, '.ok/config.yml'))).toBe(true);
     expect(existsSync(join(result.projectDir, 'notes'))).toBe(false);
     expect(existsSync(join(result.projectDir, 'daily'))).toBe(false);

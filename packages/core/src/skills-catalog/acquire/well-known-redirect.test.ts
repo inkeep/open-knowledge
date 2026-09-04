@@ -1,14 +1,3 @@
-/**
- * Redirect containment for website ("well-known") skill sources.
- *
- * The guard exists because a plain `fetch` follows redirects itself: the origin
- * check only ever saw the FIRST url, so an https origin could bounce the
- * request to http, to another host, or to a link-local address while the gate
- * reported success. `fetchWithinOrigin` follows hops itself and re-checks each
- * one. It is the most security-load-bearing function on this surface and had no
- * test at all — these pin every refusal path so a "simplification" back to
- * default redirect handling fails loudly instead of silently reopening SSRF.
- */
 import { describe, expect, test } from 'vitest';
 import { readWellKnownIndex } from './well-known.ts';
 
@@ -20,7 +9,6 @@ const redirectTo = (location: string | null, status = 302): Response =>
     headers: location === null ? {} : { location },
   });
 
-/** A fetch stub that records every url it is asked for. */
 function trackingFetch(handler: (url: string) => Response): {
   fetchImpl: typeof fetch;
   urls: string[];
@@ -41,7 +29,6 @@ describe('fetchWithinOrigin (via readWellKnownIndex)', () => {
     );
 
     await expect(readWellKnownIndex(ORIGIN, { fetchImpl })).rejects.toThrow(/left the origin/);
-    // Refused, not followed: the downgraded url was never requested.
     expect(urls.some((u) => u.startsWith('http://'))).toBe(false);
   });
 
@@ -74,8 +61,6 @@ describe('fetchWithinOrigin (via readWellKnownIndex)', () => {
     await expect(readWellKnownIndex(ORIGIN, { fetchImpl })).rejects.toThrow(
       /exceeded \d+ redirects/,
     );
-    // Bounded, not unbounded: (MAX_REDIRECTS + 1) attempts per candidate index
-    // path, and there are two candidates. The point is that it terminates.
     expect(urls.length).toBeLessThanOrEqual(12);
   });
 

@@ -108,12 +108,6 @@ describe('Select runtime class contracts', () => {
   });
 
   test('open content matches the globals.css drag-suspension selector', async () => {
-    // `globals.css` suspends the Electron drag band while a floater is open by
-    // matching `[data-slot="select-content"][data-state="open"]`. A Select can
-    // open inside a Dialog, whose overlay no longer covers the band, so if
-    // either attribute stops being emitted the selector goes silently inert and
-    // clicking the band drags the window instead of closing the Select. jsdom
-    // cannot evaluate `:has()`, but it can pin the attributes it keys off.
     await renderSelectContent();
 
     const content = document.querySelector('[data-slot="select-content"]');

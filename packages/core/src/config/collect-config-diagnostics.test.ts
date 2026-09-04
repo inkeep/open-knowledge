@@ -8,12 +8,10 @@ import type { WriteScope } from './errors.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
 import { resolveConfigPath } from './write-config-patch.ts';
 
-/** True when `value` is a non-null, non-array object. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Set a (possibly nested) leaf on `root`, creating intermediate objects. */
 function setPath(root: Record<string, unknown>, path: readonly string[], leaf: unknown): void {
   let cur = root;
   for (let i = 0; i < path.length - 1; i++) {
@@ -26,7 +24,6 @@ function setPath(root: Record<string, unknown>, path: readonly string[], leaf: u
 
 let projectDir: string;
 let homeDir: string;
-/** Diagnostics are returned, not logged — keep test output clean. */
 const quiet = () => {};
 
 beforeEach(() => {
@@ -42,7 +39,6 @@ afterEach(() => {
   rmSync(homeDir, { recursive: true, force: true });
 });
 
-/** Write `value` as YAML at the config path for `scope`; returns that path. */
 function writeScopeConfig(scope: WriteScope, value: Record<string, unknown>): string {
   const file = resolveConfigPath(scope, projectDir, homeDir);
   mkdirSync(dirname(file), { recursive: true });
@@ -50,7 +46,6 @@ function writeScopeConfig(scope: WriteScope, value: Record<string, unknown>): st
   return file;
 }
 
-/** Write raw (possibly malformed) bytes at the config path for `scope`. */
 function writeScopeRaw(scope: WriteScope, raw: string): string {
   const file = resolveConfigPath(scope, projectDir, homeDir);
   mkdirSync(dirname(file), { recursive: true });
@@ -87,7 +82,6 @@ describe('collectConfigDiagnostics', () => {
   });
 
   test('reports each layer with its own scope, file, and key path', () => {
-    // Three different registry keys, one per layer.
     const userKey = ['server', 'host'];
     const projectKey = ['upload', 'maxBytes'];
     const localKey = ['appearance', 'sidebar', 'showAllFiles'];
@@ -118,15 +112,12 @@ describe('collectConfigDiagnostics', () => {
       file: localFile,
       path: localKey,
     });
-    // Every requested layer is represented exactly once.
     expect(diagnostics).toHaveLength(3);
   });
 
   test('every registry key is reported with its scope + registry redirect, and no on-disk value leaks', () => {
     for (const entry of REMOVED_KEYS) {
       const config: Record<string, unknown> = {
-        // A schema-valid sibling whose distinctive value must never appear in
-        // the report — proves the finding carries key identity, not values.
         content: { dir: 'SENTINEL_SIBLING_DIR' },
       };
       setPath(config, entry.path, 'SENTINEL_REMOVED_LEAF');
@@ -144,7 +135,6 @@ describe('collectConfigDiagnostics', () => {
       expect(serialized).not.toContain('SENTINEL_SIBLING_DIR');
       expect(serialized).not.toContain('SENTINEL_REMOVED_LEAF');
 
-      // Reset for the next entry so findings don't accumulate across the loop.
       rmSync(resolveConfigPath('project-local', projectDir, homeDir), { force: true });
     }
   });
@@ -180,9 +170,7 @@ describe('collectConfigDiagnostics', () => {
     const { diagnostics } = collect();
 
     expect(diagnostics).toEqual([{ code: 'SCHEMA_INVALID', scope: 'project-local', file }]);
-    // The offending value never crosses the boundary.
     expect(JSON.stringify(diagnostics)).not.toContain('midnight');
-    // Read is non-destructive — the file is reported, never sidelined/renamed.
     expect(existsSync(file)).toBe(true);
   });
 
@@ -195,10 +183,6 @@ describe('collectConfigDiagnostics', () => {
     expect(existsSync(file)).toBe(true);
   });
 
-  // A directory where the file belongs: the path exists, so the missing-file
-  // arm is skipped and the read itself throws. This is the only variant whose
-  // wire projection was reachable only through `readConfigSafely` in isolation
-  // — the collector's own arm for it was untested.
   test('a layer that cannot be read at all surfaces a value-free UNREADABLE finding', () => {
     const file = resolveConfigPath('project-local', projectDir, homeDir);
     mkdirSync(file, { recursive: true });

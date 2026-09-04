@@ -1,45 +1,3 @@
-/**
- * Integration test for orphan reaping: an `ok mcp` server must
- * terminate when its launching host process dies, instead of surviving as a
- * `launchd`-reparented orphan whose keepalive WS keeps a stale agent-presence
- * entry "live" forever.
- *
- * Production mechanism this reproduces:
- *   A Claude desktop "local agent mode" session spawns a per-run embedded
- *   harness, which spawns `ok mcp`. When the run ends the harness exits, but
- *   `ok mcp` can outlive it — reparented to pid 1 (`launchd`) with its
- *   `/collab/keepalive` WS still open, so the server's 3s `bumpPresenceTs`
- *   heartbeat keeps the presence entry fresh past the client 5s TTL and server
- *   20s eviction and the ghost icon never clears. Observed in the wild as
- *   orphaned `ok mcp` PIDs with `ppid == 1`, fd0 a still-open socket (no stdin
- *   EOF), alive long after the host died.
- *
- * Why stdin EOF alone is insufficient (so the ppid watch is load-bearing):
- *   A clean disconnect closes stdin and `ok mcp` exits via its `'end'` handler.
- *   But when an intermediary (wrapper / Electron helper) holds the stdin write
- *   end open, EOF never arrives — only reparenting signals the host is gone.
- *   This test exercises exactly that case.
- *
- * Test fidelity (each choice load-bearing):
- *   - `OK_BUNDLE_PROXY=0`: without it, a dev/source `ok mcp` re-proxies to the
- *     INSTALLED app bundle and we'd test the shipped build, not this worktree.
- *   - stdin is a FIFO whose write end is held by a separate "keeper" process
- *     that survives the parent. This models the wrapper-held socket: killing
- *     the parent delivers NO stdin EOF, so only a genuine parent-death watch
- *     can make the process exit (a normal pipe or /dev/null would EOF).
- *   - `ok mcp` is spawned as a GRANDCHILD under an intermediate parent we
- *     SIGKILL; the grandchild reparents to launchd (ppid -> 1), exactly the
- *     production orphan condition.
- *
- * The downstream "WS close -> grace timer -> clearPresence" link is already
- * proven by `keepalive-presence-cleanup.test.ts`; this test pins the first
- * link — the process must exit when its host dies.
- *
- * Requires the cli + its workspace deps to be built to `dist/` (the package
- * `exports` resolve to `./dist/*` by default), which the normal turbo `^build`
- * gate provides before tests run.
- */
-
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,17 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-// packages/cli/src/mcp -> packages/cli/dist/cli.mjs. The built entry (required
-// by this suite, see header) boots under plain node, matching how the packaged
-// CLI launches `mcp`; running the raw cli.ts graph through a loader is too slow
-// to come up inside the readiness window.
 const CLI_ENTRY = join(HERE, '..', '..', 'dist', 'cli.mjs');
 
-// Named so the failure messages below quote the budget they actually waited,
-// rather than a hardcoded number that silently starts lying the moment either
-// value is tuned. Both are generous multiples of what the work needs: the exit
-// budget is 12x `startHostLivenessWatch`'s 1s ppid poll, so blowing it is a
-// scheduling problem, not a cadence one.
 const STARTUP_BUDGET_MS = 6_000;
 const EXIT_BUDGET_MS = 12_000;
 
@@ -76,26 +25,9 @@ function killQuietly(pid: number | undefined): void {
   if (pid === undefined) return;
   try {
     process.kill(pid, 'SIGKILL');
-  } catch {
-    // already gone
-  }
+  } catch {}
 }
 
-/**
- * Why a process-liveness assertion failed, gathered at the moment it failed.
- *
- * A bare `expect(exited).toBe(true)` reports "expected false to be true", which
- * cannot separate the two failures that reach it, and they have opposite fixes:
- * the ppid watch never firing (the grandchild was never reparented, so the
- * signal it waits on never arrived) versus the watch firing and shutdown then
- * hanging. The live ppid separates them — `1` proves reparenting DID happen, so
- * the watch had its signal and the fault is downstream of detection. The suite
- * already redirects the server's stderr to a file and never reads it; on a
- * failure that file is the other half of the picture.
- *
- * Only ever called on the failing branch, so the two syscalls cost nothing on
- * a green run.
- */
 function diagnoseStuckChild(childPid: number, errPath: string): string {
   let ppid: string;
   try {
@@ -103,8 +35,6 @@ function diagnoseStuckChild(childPid: number, errPath: string): string {
       encoding: 'utf-8',
     }).trim();
   } catch {
-    // `ps` exits non-zero once the pid is gone, which is itself a useful
-    // answer: the process died between the poll giving up and this call.
     ppid = 'gone';
   }
   let stderr: string;
@@ -136,9 +66,7 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     for (const fn of cleanups.splice(0).reverse()) {
       try {
         fn();
-      } catch {
-        // best-effort teardown
-      }
+      } catch {}
     }
   });
 
@@ -151,16 +79,11 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     const mcpErr = join(dir, 'mcp.err');
     writeFileSync(mcpErr, '');
 
-    // Keeper: holds the FIFO write end open and survives the parent, so the
-    // grandchild's stdin never EOFs. Detached + ignored stdio so it is fully
-    // independent of this test process and the parent.
     const keeperScript = join(dir, 'keeper.mjs');
     writeFileSync(
       keeperScript,
       [
         "import { openSync } from 'node:fs';",
-        // Open for write — blocks until the parent opens the read end, then
-        // holds it open indefinitely.
         'openSync(process.argv[2], "a");',
         'setInterval(() => {}, 1 << 30);',
       ].join('\n'),
@@ -173,9 +96,6 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     keeper.unref();
     cleanups.push(() => killQuietly(keeper.pid));
 
-    // Intermediate parent: opens the FIFO read end and spawns `ok mcp` with
-    // it as stdin (stdout ignored, stderr -> file so a SIGKILL can't EPIPE
-    // it). Reports the grandchild pid, then idles until we SIGKILL it.
     const parentScript = join(dir, 'parent.mjs');
     writeFileSync(
       parentScript,
@@ -185,12 +105,9 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
         'const [cliEntry, fifoPath, errPath] = process.argv.slice(2);',
         'const rfd = openSync(fifoPath, "r");',
         'const efd = openSync(errPath, "a");',
-        // cliEntry is the built cli.mjs, so plain node runs it directly.
         'const child = spawn("node", [cliEntry, "mcp"], {',
         '  cwd: process.cwd(),',
         '  stdio: [rfd, "ignore", efd],',
-        // OK_BUNDLE_PROXY=0 so we exercise THIS worktree's cli, not the
-        // installed app bundle it would otherwise re-proxy to.
         '  env: { ...process.env, OK_BUNDLE_PROXY: "0" },',
         '});',
         // biome-ignore lint/suspicious/noTemplateCurlyInString: literal source emitted into the spawned child script, not a template string in this file
@@ -217,9 +134,6 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
     const childPid = Number(match?.[1]);
     cleanups.push(() => killQuietly(childPid));
 
-    // Sanity: the grandchild must come up and stay up while parented. If it
-    // exits here, the harness is broken (e.g. spurious stdin EOF), not the
-    // behavior under test — fail loudly rather than as a false GREEN.
     const cameUp = await pollUntil(() => isAlive(childPid), STARTUP_BUDGET_MS, 100);
     expect(
       cameUp,
@@ -227,19 +141,11 @@ describe('ok mcp orphan reaping (PRD-6917)', () => {
         ? ''
         : `grandchild never came up within ${STARTUP_BUDGET_MS}ms — ${diagnoseStuckChild(childPid, mcpErr)}`,
     ).toBe(true);
-    // Prove it's a stable long-lived process while parented — but fail fast:
-    // pollUntil returns true the instant it dies early, false after the full
-    // 3s window if it stays alive (the desired outcome).
     const diedWhileParented = await pollUntil(() => !isAlive(childPid), 3_000, 250);
     expect(diedWhileParented).toBe(false);
 
-    // Host dies: SIGKILL the parent. The grandchild reparents to launchd
-    // (ppid -> 1); stdin stays open (keeper survives) so no EOF fires.
     killQuietly(parent.pid);
 
-    // Contract: the grandchild must notice its host is gone and exit — the
-    // ppid watch in startHostLivenessWatch detects the reparenting (no stdin
-    // EOF arrives here) and fires shutdown(), which closes the keepalive WS.
     const exited = await pollUntil(() => !isAlive(childPid), EXIT_BUDGET_MS, 250);
     expect(
       exited,

@@ -18,8 +18,6 @@ describe('applySeed — nested .ok/ era', () => {
 
   beforeEach(async () => {
     projectDir = await mkdtemp(join(tmpdir(), 'seed-apply-'));
-    // planSeed's gate requires `.ok/config.yml`. Seed it so apply tests can
-    // exercise the post-gate plan/apply flow.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
   });
@@ -58,7 +56,6 @@ describe('applySeed — nested .ok/ era', () => {
         join(projectDir, folder.path, '.ok', 'frontmatter.yml'),
         'utf-8',
       );
-      // Title + description quoted-or-not depending on content; check substring.
       expect(fmContent).toContain(folder.title);
       expect(fmContent).toContain(folder.description.slice(0, 30));
       for (const tag of folder.tags) {
@@ -95,27 +92,22 @@ describe('applySeed — nested .ok/ era', () => {
     const secondPlan = await planSeed({ projectDir });
     const secondResult = await applySeed(secondPlan, { projectDir });
     expect(secondResult.errors).toEqual([]);
-    // Second pass should have nothing left to create.
     expect(secondPlan.created).toEqual([]);
     expect(secondResult.applied).toBe(0);
   });
 
   test('user-edited frontmatter.yml is preserved across reseed', async () => {
-    // First seed.
     const plan1 = await planSeed({ projectDir });
     await applySeed(plan1, { projectDir });
 
-    // User edits one of the frontmatter files.
     const fmPath = join(projectDir, 'external-sources', '.ok', 'frontmatter.yml');
     const userEdit =
       'title: My Custom External Sources\ndescription: edited by user\ntags:\n  - mine\n';
     writeFileSync(fmPath, userEdit, 'utf-8');
 
-    // Re-seed.
     const plan2 = await planSeed({ projectDir });
     await applySeed(plan2, { projectDir });
 
-    // User content survives.
     expect(readFileSync(fmPath, 'utf-8')).toBe(userEdit);
   });
 
@@ -145,9 +137,6 @@ describe('applySeed — nested .ok/ era', () => {
   });
 
   test('no adopted agent host: pack skills are skipped cleanly, not reported as errors', async () => {
-    // OK never creates `.claude` / `.agents` / … on the user's behalf, so a
-    // project that has adopted no host gets no pack skills — a consented
-    // refusal, not an authoring failure. It must not surface on `errors`.
     const plan = await planSeed({ projectDir });
     const result = await applySeed(plan, { projectDir });
 
@@ -158,8 +147,6 @@ describe('applySeed — nested .ok/ era', () => {
   });
 
   test('an adopted agent host receives the pack skills', async () => {
-    // The counterpart: with a host root already on disk the skills DO land, so
-    // the guard above suppresses only the no-host case, not real failures.
     mkdirSync(join(projectDir, '.claude', 'skills'), { recursive: true });
     const plan = await planSeed({ projectDir });
     const result = await applySeed(plan, { projectDir });
@@ -169,8 +156,6 @@ describe('applySeed — nested .ok/ era', () => {
   });
 
   test('reports an error for unknown template ids without crashing', async () => {
-    // Hand-craft a plan with an entry that points at a template id we don't
-    // ship — apply should record an error rather than write empty content.
     const result = await applySeed(
       {
         created: [
@@ -193,11 +178,6 @@ describe('applySeed — nested .ok/ era', () => {
 });
 
 describe('applySeed — codebase-wiki nested folder paths + wiki/-prefixed rootFiles', () => {
-  // Regression guard for the `resolveFileContent` resolver: the `codebase-wiki`
-  // pack is the only one whose folder paths nest (`wiki/architecture`) and whose
-  // rootFiles keys carry a folder prefix (`wiki/OVERVIEW.md`). A resolver that
-  // only matched single-segment folder ids (or required bare-filename rootFiles)
-  // would record "No content template registered" errors and write nothing.
   let projectDir: string;
   const WIKI_PACK = STARTER_PACKS['codebase-wiki'];
 
@@ -219,7 +199,6 @@ describe('applySeed — codebase-wiki nested folder paths + wiki/-prefixed rootF
     expect(result.applied).toBe(plan.created.length);
 
     for (const folder of WIKI_PACK.folders) {
-      // folder.path is e.g. `wiki/architecture` — the nested case.
       expect(existsSync(join(projectDir, folder.path, '.ok', 'frontmatter.yml'))).toBe(true);
       expect(
         existsSync(
@@ -279,7 +258,6 @@ describe('applySeed — required plugins', () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  /** Seed `.ok/config.yml` with `body`, run the okf pack, return the config after. */
   async function seedOkfWith(body: string): Promise<{ after: string; enabled: string[] }> {
     writeFileSync(join(projectDir, '.ok', 'config.yml'), body, 'utf-8');
     const plan = await planSeed({ projectDir, packId: 'okf' });
@@ -292,10 +270,6 @@ describe('applySeed — required plugins', () => {
   }
 
   test('turns the plugin back on even when the user had switched it off', async () => {
-    // The decided behaviour, and the one worth pinning: a pack that cannot keep
-    // its own scaffold conformant is not delivering what it promised, so the
-    // seed asserts rather than defers. What makes it acceptable is that the plan
-    // disclosed it and Settings can undo it — neither of which this test covers.
     const { after, enabled } = await seedOkfWith('contentRules:\n  okf:\n    enabled: false\n');
 
     expect(enabled).toEqual(['okf']);
@@ -303,8 +277,6 @@ describe('applySeed — required plugins', () => {
   });
 
   test('leaves the rest of the user config standing', async () => {
-    // Patched, not rewritten. A seed that silently dropped an unrelated setting
-    // or a hand-written comment would be a far worse trade than the enablement.
     const { after } = await seedOkfWith(
       '# my notes\ncontentRules:\n  okf:\n    enabled: false\n  markdownlint:\n    enabled: true\n',
     );
@@ -316,8 +288,6 @@ describe('applySeed — required plugins', () => {
   test('re-seeding an already-enabled project writes nothing', async () => {
     const { after, enabled } = await seedOkfWith('contentRules:\n  okf:\n    enabled: true\n');
 
-    // Empty means the config was not touched at all — the picker is re-runnable
-    // by contract, so a repeat run must not churn the file.
     expect(enabled).toEqual([]);
     expect(after).toBe('contentRules:\n  okf:\n    enabled: true\n');
   });

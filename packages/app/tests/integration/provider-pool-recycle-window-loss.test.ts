@@ -7,26 +7,6 @@ import * as Y from 'yjs';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, pollUntil, seedPoolServerInstanceId } from './test-harness';
 
-/**
- * Disconnect-recycle window vs local edits.
- *
- * `onDisconnect` (provider-pool.ts) checks `provider.unsyncedChanges === 0`
- * when ARMING the debounced recycle timer AND re-checks it inside the timer
- * closure at FIRE time. The fire-time re-check is load-bearing: an edit
- * typed inside the debounce window makes the doc dirty, and the plain
- * recycle path has no buffer-and-replay (that exists only for
- * `server-instance-mismatch`) — without the re-check, the recycle destroys
- * the edit permanently whenever the server identity changes before resync.
- *
- * Pinned contract: a dirty entry is never torn down by the plain recycle;
- * the edit survives both identity-changed reconnects (via the mismatch
- * path's buffer-and-replay) and identity-stable offline windows (edit stays
- * live in the un-recycled doc). A clean entry whose doc has materialized
- * content is preserved outright — the debounced recycle is armed only for
- * contentless providers, so a warm doc never flashes empty on an ordinary
- * disconnect.
- */
-
 const SEED = `# Seed
 
 Adeline: 1652
@@ -51,7 +31,6 @@ describe('disconnect-recycle window vs local edit', () => {
 
     const docName = `recycle-window-${crypto.randomUUID()}`;
     const pool = new ProviderPool(3, `ws://127.0.0.1:${server.port}/collab`, {
-      // Short debounce so the window is testable; production is 4000ms.
       recycleDebounceMs: 250,
     });
     cleanups.push(() => pool.dispose());
@@ -66,14 +45,9 @@ describe('disconnect-recycle window vs local edit', () => {
     const firstProvider = pool.getActive()?.provider;
     if (!firstProvider) throw new Error('no active provider after seed');
 
-    // Disconnect with a clean provider — the recycle timer arms because
-    // `unsyncedChanges === 0` holds NOW.
     server.killNetwork();
     await pollUntil(() => pool.getActive()?.syncState === 'disconnected', 5_000, 20);
 
-    // Type INSIDE the armed window (before the 250ms timer fires). This is
-    // the customer motion: window blur drops the socket, the user types on
-    // return before the (background-clamped) timer has fired.
     const MARKER = 'RW-LOCAL-EDIT-MARKER-c41d';
     const doc = firstProvider.document;
     const paragraph = new Y.XmlElement('paragraph');
@@ -83,22 +57,18 @@ describe('disconnect-recycle window vs local edit', () => {
     doc.getXmlFragment('default').push([paragraph]);
     expect(firstProvider.unsyncedChanges).toBeGreaterThan(0);
 
-    // Let the armed timer fire.
     await wait(700);
     const recycled = pool.getActive()?.provider !== firstProvider;
 
-    // Bring the server back on the same port and let the pool re-sync.
     server = await server.killAndRestartOnSamePort({ downtimeMs: 300 });
     cleanups.unshift(() => server.shutdown());
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 15_000, 50);
-    // Allow any deferred persistence hydration / replay to land.
     await wait(1_000);
 
     const finalText =
       pool.getActive()?.provider.document.getXmlFragment('default').toString() ?? '';
     const finalSource = pool.getActive()?.provider.document.getText('source').toString() ?? '';
 
-    // Diagnostic context on failure.
     console.info(
       JSON.stringify({
         event: 'recycle-window-loss-diagnostic',
@@ -108,21 +78,11 @@ describe('disconnect-recycle window vs local edit', () => {
       }),
     );
 
-    // Correct behavior: the local edit survives the disconnect + recycle.
     expect(finalText.includes(MARKER) || finalSource.includes(MARKER)).toBe(true);
-    // No double-apply: the marker lands at most once per CRDT surface even
-    // though IDB rehydration and mismatch buffer-and-replay both ran.
     expect(finalText.split(MARKER).length - 1).toBeLessThanOrEqual(1);
     expect(finalSource.split(MARKER).length - 1).toBeLessThanOrEqual(1);
   }, 40_000);
 
-  /**
-   * Same identity-changed motion, source-mode surface: the unsynced edit
-   * lives in Y.Text (W2) instead of the XmlFragment. Pins the symmetric
-   * branch of the content-level replay (fragment is the clean base, Y.Text
-   * carries the edit).
-   *
-   */
   test('a source-mode edit typed during the window survives a server-identity change', async () => {
     let server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
@@ -165,14 +125,6 @@ describe('disconnect-recycle window vs local edit', () => {
     expect(finalSource.split(MARKER).length - 1).toBe(1);
   }, 40_000);
 
-  /**
-   * Identity-stable offline window: the server never comes back during the
-   * test. The fire-time guard must SKIP the recycle while the doc holds an
-   * unsynced edit — the entry stays pooled and the edit stays live in the
-   * original Y.Doc, ready to sync on a same-identity reconnect (the customer
-   * case where their local server never restarted).
-   *
-   */
   test('a dirty entry is not recycled when the debounce window elapses offline', async () => {
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
@@ -205,20 +157,12 @@ describe('disconnect-recycle window vs local edit', () => {
     doc.getXmlFragment('default').push([paragraph]);
     expect(firstProvider.unsyncedChanges).toBeGreaterThan(0);
 
-    // Let the armed timer fire well past the 250ms debounce.
     await wait(700);
 
-    // The fire-time guard skipped the recycle: same provider, edit live.
     expect(pool.getActive()?.provider).toBe(firstProvider);
     expect(firstProvider.document.getXmlFragment('default').toString().includes(MARKER)).toBe(true);
   }, 40_000);
 
-  /**
-   * Resource reclamation is unchanged for clean entries: with no unsynced
-   * edits, the debounced recycle still tears down and re-opens the entry
-   * after the window elapses.
-   *
-   */
   test('a clean content-bearing entry is preserved across the debounce window', async () => {
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
@@ -242,19 +186,12 @@ describe('disconnect-recycle window vs local edit', () => {
     server.killNetwork();
     await pollUntil(() => pool.getActive()?.syncState === 'disconnected', 5_000, 20);
 
-    // No local edit — the entry is clean, but its doc has materialized
-    // content, so the disconnect handler must not arm the debounced recycle.
     expect(pool.getActive()?.pendingRecycleTimer ?? null).toBeNull();
 
-    // Wait well past the debounce window: the provider identity and the
-    // synced content must both survive.
     await wait(600);
     expect(pool.getActive()?.provider).toBe(firstProvider);
     expect(firstProvider.document.getText('source').toString()).toContain('Adeline: 1652');
 
-    // Re-open while still offline (what every workspace commit does for
-    // visible docs): the open() hit path shares the preservation policy,
-    // so the warm provider survives the switch-back as well.
     const reopened = pool.open(docName);
     expect(reopened?.provider).toBe(firstProvider);
     expect(firstProvider.document.getText('source').toString()).toContain('Adeline: 1652');

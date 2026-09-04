@@ -1,10 +1,3 @@
-/**
- * DOM-substrate tests for Spinner. This primitive is the single loading
- * indicator across the app, so its accessibility contract is what every call
- * site inherits — including the `aria-hidden` escape hatch that keeps a spinner
- * inside an already-labelled wrapper from being announced twice.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import type { LucideProps } from 'lucide-react';
 import { RefreshCw } from 'lucide-react';
@@ -26,8 +19,6 @@ describe('Spinner', () => {
 
     const spinner = screen.getByRole('status');
 
-    // The name must be non-empty: a Lingui `t` that fails to resolve renders as
-    // an empty string, which would leave the element silently unnamed.
     expect(spinner.getAttribute('aria-label')).toMatch(/\S/);
   });
 
@@ -77,8 +68,6 @@ describe('Spinner', () => {
   });
 
   test('aria-hidden wins over the default role and label', () => {
-    // The migration relies on this: a spinner inside a labelled `role="status"`
-    // wrapper must stay out of the a11y tree or it is announced twice.
     render(<Spinner aria-hidden="true" />);
 
     expect(screen.queryByRole('status')).toBeNull();

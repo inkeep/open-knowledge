@@ -55,13 +55,6 @@ async function setup(): Promise<{ contentDir: string; shadow: ShadowHandle }> {
   return { contentDir, shadow };
 }
 
-/**
- * The restore probe the API handlers build: extension-full disk path first
- * (full-tree checkpoints), then the extension-less docName tree path (the
- * single-blob trees `saveInMemoryCheckpoint` writes). Mirrors the handler
- * closures so this suite exercises the same two-shape resolution production
- * uses.
- */
 function candidatesFor(name: string): readonly string[] {
   const full = `${CONTENT_ROOT}/${name}.md`;
   const extless = extensionlessDocTreePath(full, name);
@@ -74,8 +67,6 @@ describe('extension-less silent checkpoint restore floor', () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# Edited\n');
     await commitWip(shadow, human, CONTENT_ROOT, 'WIP: edit');
 
-    // Production callers pass the extension-LESS Hocuspocus docName, so the
-    // blob lands at `content/docs/intro` (no `.md`).
     const silentSha = await saveInMemoryCheckpoint(shadow, CONTENT_ROOT, {
       kind: 'bridge-merge-loss',
       docName: 'intro',
@@ -142,8 +133,6 @@ describe('extension-less silent checkpoint restore floor', () => {
       candidatesFor,
       cache,
     );
-    // Full-tree snapshots mirror disk (extension-full); the extension-full
-    // candidate is probed first, so it wins — no extension-less regression.
     expect(resolved).toBe(`${CONTENT_ROOT}/intro.md`);
   });
 
@@ -154,8 +143,8 @@ describe('extension-less silent checkpoint restore floor', () => {
     const svSha = sv.checkpointRef.match(/([0-9a-f]{40})$/)?.[1] ?? '';
 
     const res = await batchCheckExistence(shadow, [
-      { sha: svSha, path: CONTENT_ROOT }, // a directory (tree), not the doc blob
-      { sha: svSha, path: `${CONTENT_ROOT}/intro.md` }, // the doc blob
+      { sha: svSha, path: CONTENT_ROOT },
+      { sha: svSha, path: `${CONTENT_ROOT}/intro.md` },
     ]);
     expect(res).toEqual([false, true]);
   });

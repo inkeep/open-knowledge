@@ -6,16 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed link/graph read group over a REAL
- * socket through the composed `bootServer` stack. These routes left the
- * legacy dispatch registry when they moved to the Hono mount, so a 200 here
- * is proof of native serving — a wiring gap would surface as the legacy
- * dispatch's 404. The admission-gate pins mirror
- * `api-admission-composition.test.ts` on a ported route, closing the exact
- * bypass the native mount exists to prevent.
- */
-
 let tmpRoot: string;
 let normal: BootedServer;
 let ephemeral: BootedServer;
@@ -117,9 +107,6 @@ describe('link/graph group over the composed listener — served natively', () =
   });
 
   test('read posture parity: a ported route under a rebound Host is refused in normal mode', async () => {
-    // Flipped pin (read-posture hardening): reads share the mutating gate's
-    // Host predicate in every mode, so a rebound Host is refused on ported
-    // reads too.
     const res = await rawRequest(normal.port, '/api/backlinks?docName=beta', {
       headers: { Host: 'evil.example' },
     });

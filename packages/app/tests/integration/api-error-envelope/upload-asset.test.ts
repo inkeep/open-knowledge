@@ -1,17 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleUploadAsset`.
- *
- * Asserts the canonical RFC 9457 wire shape:
- *   - happy-path: status 200, `Content-Type: application/json`, body parses
- *     against `UploadAssetSuccessSchema`, no `ok: true` discriminator.
- *   - error-path: status 400, `Content-Type: application/problem+json`, body
- *     parses against `ProblemDetailsSchema`, `instance` is a UUID matching
- *     `body.status === HTTP status`.
- *
- * Real server + real handler + real schema. Mocks only the in-process
- * test-harness boundary (Hocuspocus server, contentDir tempdir).
- */
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ProblemDetailsSchema, UploadAssetSuccessSchema } from '@inkeep/open-knowledge-core';
@@ -23,7 +9,6 @@ let server: TestServer;
 
 beforeAll(async () => {
   server = await createTestServer();
-  // Seed a parent doc so `parentDocName` resolves to a real directory.
   mkdirSync(join(server.contentDir, 'docs'), { recursive: true });
   writeFileSync(join(server.contentDir, 'docs', 'guide.md'), '# Guide\n');
 }, HARNESS_BOOT_TIMEOUT_MS);
@@ -33,7 +18,6 @@ afterAll(async () => {
 });
 
 function pngFixture(): Buffer {
-  // Minimal valid PNG (1×1 transparent pixel).
   return Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQABNjN9GQAAAABJRElEQrkJggg==',
     'base64',
@@ -68,7 +52,6 @@ describe('upload-asset envelope (RFC 9457)', () => {
       expect(parsed.data.deduped).toBe(false);
     }
 
-    // Wire shape: no `ok: true` discriminator on success bodies.
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
 
@@ -87,13 +70,10 @@ describe('upload-asset envelope (RFC 9457)', () => {
       expect(parsed.data.type).toBe('urn:ok:error:invalid-request');
       expect(parsed.data.status).toBe(400);
       expect(parsed.data.title.length).toBeGreaterThan(0);
-      // RFC 9457 instance is a UUID; same UUID is mirrored in the
-      // Pino structured log line for grep correlation.
       expect(parsed.data.instance).toBeDefined();
       if (parsed.data.instance) {
         expect(parsed.data.instance).toMatch(UUID_RE);
       }
-      // body.status MUST equal HTTP response status.
       expect(parsed.data.status).toBe(res.status);
     }
   });

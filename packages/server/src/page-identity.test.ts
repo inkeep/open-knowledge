@@ -56,9 +56,6 @@ describe('extractPageIdentity', () => {
 
 describe('extractPageIdentity — fence trailing whitespace (fm-delimiter hazard)', () => {
   test('title and aliases survive trailing spaces on both fence lines', () => {
-    // `--- ` is one in-tolerance source-mode keystroke away from `---`;
-    // identity extraction must keep partitioning the FM region as FM
-    // instead of falling through to the body heading.
     const content = [
       '--- ',
       'title: Project Alpha',
@@ -251,10 +248,6 @@ describe('extractPageIcon', () => {
   });
 
   test('returns undefined when the icon scalar exceeds the 2048-char cap', () => {
-    // Server-side cap matches `PageEntrySchema.icon.max(2048)` and the
-    // client classifier's `MAX_VALUE_LENGTH`. Without it, a 3000-char
-    // scalar on a single doc would 500 the entire `/api/pages` listing
-    // via `successResponse`'s `safeParse`.
     const oversized = 'x'.repeat(3000);
     const content = `---\nicon: ${oversized}\n---\n`;
     expect(extractPageIcon(content)).toBeUndefined();
@@ -267,21 +260,12 @@ describe('extractPageIcon', () => {
   });
 
   test('returns undefined when icon holds a nested map (graceful degradation)', () => {
-    // Recursive frontmatter values are now representable upstream, but the
-    // regex scalar reader is intentionally not a YAML parser — it sees an
-    // empty inline value on the `icon:` line and returns undefined. The
-    // load-bearing posture: never crash on a shape it can't read.
     const content = '---\nicon:\n  url: https://example.com/img.png\n  alt: example\n---\n';
     expect(extractPageIcon(content)).toBeUndefined();
   });
 });
 
 describe('extractFirstHeading', () => {
-  // Split out of `extractPageTitle` so enrichment can answer `undefined` for
-  // "no heading" instead of the filename. It is now a second public entry
-  // point, so its contract is pinned here rather than only through the ladder.
-  // Takes a body with frontmatter ALREADY stripped.
-
   test('returns the H1 text', () => {
     expect(extractFirstHeading('# Someday / Open Loops\n\nBody\n')).toBe('Someday / Open Loops');
   });
@@ -299,8 +283,6 @@ describe('extractFirstHeading', () => {
   });
 
   test('finds an H1 that is not the first line', () => {
-    // The `m` flag is what makes this work; dropping it would silently narrow
-    // the fallback to documents whose very first line is the heading.
     expect(extractFirstHeading('intro paragraph\n\n# Real Title\n')).toBe('Real Title');
   });
 

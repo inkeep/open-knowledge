@@ -1,15 +1,3 @@
-/**
- * Unit tests for streaming upload primitives.
- *
- * Pure-function level. No HTTP server, no busboy. Covers:
- *  - HashingPassThrough: digest correctness, pre-finish guard, byteLength
- *  - tmpUploadDir / mintTempUploadPath: lazy mkdir, UUID uniqueness
- *  - linkTempToFinalWithCollisionRetry: 0/1/50/99/100 collisions, EEXIST
- *    retry, ENOSPC/EACCES classification + tempfile unlink
- *  - cleanupOrphanUploadTempfiles: age threshold, non-upload-* skip,
- *    missing-dir no-op, per-entry error containment
- */
-
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
@@ -28,9 +16,6 @@ import {
   tmpUploadDir,
 } from './upload-streaming.ts';
 
-// Collecting Writable — avoids biome's useYield rule that fires on
-// async-generator consumers. Production code uses createWriteStream; the
-// test just needs a sink that can be piped to and whose buffer is readable.
 class CollectingSink extends Writable {
   readonly chunks: Buffer[] = [];
   _write(chunk: Buffer, _enc: BufferEncoding, cb: (err?: Error) => void) {
@@ -87,7 +72,6 @@ describe('HashingPassThrough', () => {
   });
 
   test('digest matches reference across many small chunks', async () => {
-    // 1000 × 4 KB chunks = 4 MB total; exercises the _transform loop.
     const chunks = Array.from({ length: 1000 }, () => randomBytes(4096));
     const { sha, size } = await streamToDigest(chunks);
     expect(sha).toBe(referenceSha(chunks));
@@ -105,9 +89,7 @@ describe('HashingPassThrough', () => {
   test('byteLength() works mid-stream (not only post-finish)', async () => {
     const hasher = new HashingPassThrough();
     expect(hasher.byteLength()).toBe(0);
-    // Write one chunk, check byteLength before finishing.
     hasher.write(Buffer.alloc(42));
-    // Give the event loop a tick so _transform runs.
     await new Promise((r) => setImmediate(r));
     expect(hasher.byteLength()).toBe(42);
     hasher.end();
@@ -231,11 +213,6 @@ describe('linkTempToFinalWithCollisionRetry', () => {
   });
 
   test('EACCES on destDir: throws storage-readonly + unlinks tempfile', () => {
-    // A non-existent destDir reliably produces ENOENT (not EEXIST); but we
-    // want to exercise the non-EEXIST retry-terminator, which is the
-    // concrete behavior that matters. ENOENT lands in the 'storage-error'
-    // fallback bucket — fine as a regression guard for "retry loop
-    // terminates on any non-EEXIST error".
     const tmp = makeTemp('doomed');
     const missing = join(tmpBase, 'does-not-exist');
     expect(() => linkTempToFinalWithCollisionRetry(tmp, missing, 'x.png')).toThrow(
@@ -283,7 +260,6 @@ describe('cleanupOrphanUploadTempfiles', () => {
     writeFileSync(stale, 'stale');
     writeFileSync(fresh, 'fresh');
 
-    // Backdate stale to 25 hours ago.
     const stalePast = (Date.now() - 25 * 60 * 60 * 1000) / 1000;
     utimesSync(stale, stalePast, stalePast);
 
@@ -314,16 +290,13 @@ describe('cleanupOrphanUploadTempfiles', () => {
     mkdirSync(dir, { recursive: true });
     const mid = join(dir, 'upload-mid');
     writeFileSync(mid, 'mid');
-    // Backdate 2 hours.
     const midPast = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
     utimesSync(mid, midPast, midPast);
 
-    // Default 24h: file is young, not deleted.
     const defaultResult = cleanupOrphanUploadTempfiles(tmpBase);
     expect(defaultResult.deleted).toBe(0);
     expect(existsSync(mid)).toBe(true);
 
-    // 1h threshold: now deletes.
     const tightResult = cleanupOrphanUploadTempfiles(tmpBase, { ageMs: 60 * 60 * 1000 });
     expect(tightResult.deleted).toBe(1);
     expect(existsSync(mid)).toBe(false);

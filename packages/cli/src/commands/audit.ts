@@ -1,15 +1,3 @@
-/**
- * `ok audit [path]` — unified read-only validation audit: every content
- * problem (markdown-lint violations AND broken internal links) in one grouped
- * report. CLI sibling of the `audit` MCP tool and `GET /api/audit`.
- *
- * Server-first by necessity, not preference: the links validator reads the
- * running server's in-memory backlink index (there is no disk-only dead-link
- * oracle), so this command delegates to the project's live server instead of
- * walking files. No running server is an actionable error — `ok lint` remains
- * the headless, lint-only alternative.
- */
-
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   clientVersionHeaders,
@@ -63,10 +51,6 @@ export function auditCommand(getConfig: () => Config): Command {
     });
 }
 
-/**
- * Core audit flow, separated from the Commander wiring so tests can drive it
- * with a planted lock + stubbed `fetch` and injected writers.
- */
 export async function runAudit(
   path: string | undefined,
   opts: AuditOptions,
@@ -87,8 +71,6 @@ export async function runAudit(
     target = rel === '' ? undefined : rel;
   }
 
-  // Same server-first discovery as `ok sync`: the lock anchor is the project
-  // root, and `readServerLock` already prunes stale same-host locks.
   const lock = readServerLock(resolveLockDir(projectDir));
   if (!lock || lock.port <= 0) {
     io.err(SERVER_NOT_RUNNING_MESSAGE);
@@ -107,8 +89,6 @@ export async function runAudit(
   }
 
   if (!res.ok) {
-    // RFC 9457 problem+json — `title` carries the user-visible message; fall
-    // back through legacy shapes, then the HTTP status.
     const body = (await res.json().catch(() => ({}))) as {
       title?: string;
       error?: string;
@@ -122,9 +102,6 @@ export async function runAudit(
 
   const parsed = ValidationAuditResponseSchema.safeParse(await res.json().catch(() => null));
   if (!parsed.success) {
-    // Name the offending fields: the headless CI consumer has no DevTools, so
-    // a client/server version skew is otherwise indistinguishable from a
-    // transient parse error. The Zod issues are pure structural metadata.
     const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     io.err(`Audit failed: unexpected response shape from the server. Schema issues: ${summary}`);
     return 1;
@@ -132,8 +109,6 @@ export async function runAudit(
   const result = parsed.data;
 
   if (opts.json === true) {
-    // Unlike the MCP tool (agent-context-bound, capped at 10×10), the CLI is
-    // a terminal/CI surface — emit the full uncapped plane.
     io.out(JSON.stringify(result, null, 2));
   } else {
     io.out(formatLintReport(toReportInput(result)));
@@ -144,12 +119,6 @@ export async function runAudit(
   return failed ? 1 : 0;
 }
 
-/**
- * Translate the user's path (relative to where they invoked the command) into
- * the contentDir-relative, forward-slash form `GET /api/audit?path=` expects.
- * Returns `''` for the content dir itself (audit everything) and `null` when
- * the path escapes the content dir.
- */
 export function toContentRelativeTarget(
   path: string,
   invocationCwd: string,

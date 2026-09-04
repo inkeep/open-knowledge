@@ -54,6 +54,7 @@ html[data-color-theme="dracula"] {
   --lint-error-color: #ff5555;
   --diff-added: #50fa7b;
   --diff-removed: #ff5555;
+  --diff-modified: #bd93f9;
   --callout-note-color: #bd93f9;
   --callout-info-color: #bd93f9;
   --callout-todo-color: #bd93f9;
@@ -141,6 +142,7 @@ html[data-color-theme="catppuccin-frappe"] {
   --lint-error-color: #e78284;
   --diff-added: #a6d189;
   --diff-removed: #e78284;
+  --diff-modified: #8caaee;
   --callout-note-color: #8caaee;
   --callout-info-color: #8caaee;
   --callout-todo-color: #8caaee;
@@ -228,6 +230,7 @@ html[data-color-theme="catppuccin-latte"] {
   --lint-error-color: #d20f39;
   --diff-added: #40a02b;
   --diff-removed: #d20f39;
+  --diff-modified: #1d62ec;
   --callout-note-color: #1d62ec;
   --callout-info-color: #1d62ec;
   --callout-todo-color: #1d62ec;
@@ -315,6 +318,7 @@ html[data-color-theme="monokai"] {
   --lint-error-color: #f92672;
   --diff-added: #a6e22e;
   --diff-removed: #f92672;
+  --diff-modified: #66d9ef;
   --callout-note-color: #66d9ef;
   --callout-info-color: #66d9ef;
   --callout-todo-color: #66d9ef;
@@ -402,6 +406,7 @@ html[data-color-theme="gruvbox"] {
   --lint-error-color: #fb4934;
   --diff-added: #b8bb26;
   --diff-removed: #fb4934;
+  --diff-modified: #83a598;
   --callout-note-color: #83a598;
   --callout-info-color: #83a598;
   --callout-todo-color: #83a598;
@@ -489,6 +494,7 @@ html[data-color-theme="solarized"] {
   --lint-error-color: #dc322f;
   --diff-added: #859900;
   --diff-removed: #dc322f;
+  --diff-modified: #2995e1;
   --callout-note-color: #2995e1;
   --callout-info-color: #2995e1;
   --callout-todo-color: #2995e1;

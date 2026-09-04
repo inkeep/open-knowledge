@@ -1,26 +1,14 @@
 import { ArrowRight, Bot, FileText, type LucideIcon, NotebookPen } from 'lucide-react';
-import type { ReactNode } from 'react';
-
-/**
- * Overview-page blocks recreating the "Refined Classic" docs design:
- * a connected three-layer stack (Editor → Knowledge Engine → Content),
- * numbered "Where to start" path cards, and a Quickstart CTA.
- *
- * Surfaces/borders/text use Fumadocs `fd-*` theme tokens so they track the
- * docs light/dark theme; the periwinkle accent comes from `--ok-*` tokens
- * scoped to `.ok-overview` (see global.css). The connecting spine and inline
- * code chips are styled there too.
- */
 
 interface Layer {
   k: string;
   Icon: LucideIcon;
   title: string;
   role: string;
-  desc: ReactNode;
+  desc: string;
 }
 
-const LAYERS: Layer[] = [
+export const LAYERS: Layer[] = [
   {
     k: 'LAYER 01',
     Icon: NotebookPen,
@@ -84,7 +72,7 @@ interface Path {
   desc: string;
 }
 
-const PATHS: Path[] = [
+export const PATHS: Path[] = [
   {
     href: '/docs/get-started/quickstart',
     title: 'Try the Quickstart',

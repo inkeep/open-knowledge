@@ -47,35 +47,21 @@ const FOCUS_RETRY_DISTANCE_PX = 18;
 const FINAL_SETTLE_DRIFT_PX = 28;
 const BACKGROUND_CLICK_TOLERANCE_PX = 5;
 
-// "Showcase" growth mode — while an agent is rapidly adding pages (the stub /
-// interlink phase), frame the WHOLE graph and let it assemble instead of
-// zooming to a single "active" node whose neighborhood is churning. Enters when
-// >= GROWTH_MIN_ADDS doc nodes appear within GROWTH_WINDOW_MS; exits after the
-// window goes quiet, handing back to active-node focus (the Phase-2 minimap).
 const GROWTH_WINDOW_MS = 8000;
 const GROWTH_MIN_ADDS = 2;
 const GROWTH_FIT_THROTTLE_MS = 650;
 const GROWTH_FIT_PADDING_PX = 44;
-// Node/link birth animation — a brief scale + fade as each element first lands.
 const NODE_BIRTH_MS = 520;
 const LINK_BIRTH_MS = 480;
-// Showcase staged entrance: a batch of pages lands in one push, so without
-// pacing the whole cluster blooms in a single frame (observed live). Each new
-// node of an apply pops `NODE_ENTRANCE_STEP_MS` after the previous; links wait
-// for both endpoints. Ten pages ≈ 1.3s of sequential assembly + birth tails.
 const NODE_ENTRANCE_STEP_MS = 140;
 const LINK_ENTRANCE_EXTRA_MS = 260;
-// Labels only attach once a node is mostly landed — a label on a not-yet-born
-// (invisible) staggered node would float over empty canvas.
 const LABEL_MIN_BIRTH = 0.65;
 
-/** easeOutCubic — fast start, gentle settle; used for birth + camera feel. */
 function easeOut(p: number): number {
   const c = 1 - p;
   return 1 - c * c * c;
 }
 
-/** Birth progress in [0,1] for an element stamped `bornAt`, or 1 if unstamped/aged out. */
 function birthProgress(bornAt: number | undefined, now: number, durationMs: number): number {
   if (typeof bornAt !== 'number') return 1;
   const age = now - bornAt;
@@ -452,8 +438,6 @@ function applyGraphNodeClick({
   const action = resolveGraphNodeClickAction(node, docClickBehavior);
 
   if (action.kind === 'external') {
-    // openExternalUrl gates unsafe schemes internally (a graph node URL can
-    // carry any authored scheme), then routes to the OS browser / new tab.
     openExternalUrl(action.url);
     return;
   }
@@ -518,17 +502,9 @@ export function GraphView({
   activeDocName: string;
   selectedNodeId?: string | null;
   isExpanded?: boolean;
-  /** Force the growth-showcase presentation (whole-project fetch, zoom-to-fit
-   *  framing, gentler physics) regardless of arrival detection — the
-   *  agent-build overlay is always a showcase, it never waits for a burst. */
   showcase?: boolean;
-  /** The showcase build's start-of-build graph (node ids + doc-link keys).
-   *  On a fresh mount that content materializes instantly; only the build's
-   *  ADDITIONS get the staged pop-in entrance. */
   showcaseBaseline?: { nodeIds: ReadonlySet<string>; linkKeys: ReadonlySet<string> } | null;
   showUrlNodes?: boolean;
-  /** How much of the skill layer to draw. The docked local graph leaves this
-   *  'all' so a skill's own neighborhood stays inspectable there. */
   skillVisibility?: GraphSkillVisibility;
   className?: string;
   docClickBehavior?: GraphDocClickBehavior;
@@ -537,11 +513,7 @@ export function GraphView({
   onStatsChange?: (nodes: number, links: number, loading: boolean) => void;
   onClustersChange?: (clusters: string[]) => void;
 }) {
-  // force-graph mutates the objects it receives in-place during layout, so we compare
-  // incoming API payloads against separate signatures before replacing graphData.
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
-  // Signatures of the last-applied API response, stored separately from rendered graph data because
-  // force-graph mutates link objects in-place (replacing string IDs with node object refs).
   const lastSigRef = useRef({ nodes: '', links: '' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -550,25 +522,13 @@ export function GraphView({
   const focusStateRef = useRef<FocusState>({ key: '', lastX: null, lastY: null, lastAt: 0 });
   const backgroundPointerRef = useRef<BackgroundPointerState | null>(null);
   const graphNodesRef = useRef<GraphNode[]>(graphData.nodes);
-  // Tracks whether the force-layout simulation has reached its cooldown
-  // terminus. Flipped true in `onEngineStop`, false on every `onEngineTick`
-  // (engine re-runs whenever graphData mutates or an explicit reheat fires).
-  // Consumed by the DEV-gated `__graphHarness.isSimulationSettled()` so
-  // canvas-click-at-coord tests can gate on a real settlement signal instead
-  // of racing the physics.
   const simulationSettledRef = useRef(false);
   const [dimensions, setDimensions] = useState({ width: 320, height: 400 });
-  // Showcase growth mode (see constants above). `growthMode` drives fetch scope
-  // + camera; the refs track recent doc-node arrivals to decide it and to
-  // throttle zoom-to-fit.
   const [growthMode, setGrowthMode] = useState(false);
   const growthAddsRef = useRef<number[]>([]);
   const appliedDocIdsRef = useRef<Set<string>>(new Set());
   const growthTimerRef = useRef<number | null>(null);
   const lastFitAtRef = useRef(0);
-  // Growth showcase only applies docked; `!isExpanded` also neutralizes a stale
-  // growthMode if the panel is toggled to fullscreen mid-growth. The showcase
-  // prop (agent-build overlay) forces it unconditionally.
   const inGrowth = showcase || (growthMode && !isExpanded);
   const { t } = useLingui();
   const { resolvedTheme } = useTheme();
@@ -583,17 +543,10 @@ export function GraphView({
   useEffect(() => {
     let cancelled = false;
 
-    // Decide showcase growth from doc-node arrivals. Only live doc changes
-    // (CC1 pushes) count — mount and navigation reseed the baseline without
-    // triggering, so opening a big graph or moving to a denser neighborhood
-    // doesn't read as "the agent is building".
     function detectGrowth(nextNodes: GraphNode[], countGrowth: boolean) {
       const nextDocIds = new Set(
         nextNodes.filter((node) => node.kind === 'doc').map((node) => node.id),
       );
-      // Growth showcase is a docked-view affordance — fullscreen already frames
-      // the whole graph, and the showcase prop forces the presentation outright,
-      // so never run arrival detection in either.
       if (!countGrowth || isExpanded || showcase) {
         appliedDocIdsRef.current = nextDocIds;
         return;
@@ -621,8 +574,6 @@ export function GraphView({
     async function load(countGrowth: boolean) {
       try {
         const params = new URLSearchParams();
-        // Scope to the active doc's 2-hop neighborhood normally; during showcase
-        // growth, fetch the whole project graph so it assembles in one frame.
         if (!showcase && !isExpanded && activeDocName && !growthMode) {
           params.set('docName', activeDocName);
           params.set('degrees', '2');
@@ -651,10 +602,6 @@ export function GraphView({
         if (nextNodeSig !== lastSigRef.current.nodes || nextLinkSig !== lastSigRef.current.links) {
           lastSigRef.current = { nodes: nextNodeSig, links: nextLinkSig };
           detectGrowth(nextNodes, countGrowth);
-          // Showcase paces same-push node clumps into a sequential entrance —
-          // but the build-start baseline materializes instantly (the replay is
-          // of the agent's additions, not of pre-existing content). Reduced
-          // motion gets the instant (unpaced) presentation.
           const entrance =
             showcase && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
               ? {
@@ -712,8 +659,6 @@ export function GraphView({
     };
   }, [activeDocName, isExpanded, growthMode, showcase, showcaseBaseline, t]);
 
-  // Growth-off timer is component-lifetime (it must survive load-effect re-runs
-  // that fire on every activeDocName change), so it's cleared only on unmount.
   useEffect(
     () => () => {
       if (growthTimerRef.current !== null) clearTimeout(growthTimerRef.current);
@@ -756,8 +701,6 @@ export function GraphView({
   const labelChipBorderColor = isDark ? 'rgba(243,244,246,0.08)' : 'rgba(17,24,39,0.08)';
   const focusZoom = isExpanded ? 1.6 : 2.35;
   const maxLabelWidthPx = isExpanded ? 220 : 150;
-  // Fullscreen shows the whole project graph, so it intentionally uses a tighter
-  // label budget than the docked 2-hop neighborhood view to avoid flooding.
   const maxVisibleLabels = isExpanded ? 10 : 18;
 
   const urlFilteredData: GraphData = showUrlNodes
@@ -827,8 +770,6 @@ export function GraphView({
       lastY: null,
       lastAt: 0,
     };
-    // In showcase growth mode the camera frames the whole graph (zoom-to-fit on
-    // each tick), so don't yank focus to the active node here.
     if (inGrowth) return;
     const animationFrame = window.requestAnimationFrame(() => {
       focusStateRef.current = maybeFocusActiveGraphNode({
@@ -844,8 +785,6 @@ export function GraphView({
     return () => window.cancelAnimationFrame(animationFrame);
   }, [focusKey, activeDocName, focusZoom, inGrowth]);
 
-  // Frame the whole graph during growth; throttled so bursts don't jitter the
-  // camera. `force` bypasses the throttle for the final settle.
   const fitGraphToView = (force: boolean): void => {
     const fg = fgRef.current;
     if (!fg) return;
@@ -856,10 +795,6 @@ export function GraphView({
   };
 
   useEffect(() => {
-    // DEV-gate guards all `window.__graphHarness` writes below; see
-    // precedent #20. Vite statically replaces
-    // `import.meta.env.DEV` at build time, so this entire effect body
-    // is tree-shaken from production bundles.
     if (!import.meta.env.DEV) return;
 
     const harness = {
@@ -945,8 +880,6 @@ export function GraphView({
           availableHeight: containerRef.current?.parentElement?.getBoundingClientRect().height ?? 0,
         };
       },
-      // True once the force-layout simulation has reached cooldown — flipped
-      // in `onEngineStop` and cleared on every `onEngineTick`.
       isSimulationSettled() {
         return simulationSettledRef.current;
       },
@@ -1238,8 +1171,6 @@ export function GraphView({
                             ? folderNodeColor
                             : clusterFill;
 
-              // Birth animation — a new node scales + fades in with a halo that
-              // collapses onto it, so each page the agent creates visibly lands.
               const birth = birthProgress(node.bornAt, Date.now(), NODE_BIRTH_MS);
               const drawRadius = nodeRadius * (0.4 + 0.6 * birth);
 
@@ -1322,14 +1253,10 @@ export function GraphView({
               if (!fg) return;
 
               ctx.save();
-              // force-graph keeps the graph transform active during frame hooks; reset to
-              // CSS-pixel space so placement math and text rendering share one coordinate system.
               const pxRatio = window.devicePixelRatio || 1;
               ctx.setTransform(pxRatio, 0, 0, pxRatio, 0, 0);
               ctx.font = '10px system-ui, sans-serif';
 
-              // Unborn (staggered-entrance) nodes are invisible — planning a
-              // label for one would float text over empty canvas.
               const labelNowMs = Date.now();
               const bornLayoutNodes = layoutNodes.filter(
                 (node) =>
@@ -1377,7 +1304,6 @@ export function GraphView({
               ctx.restore();
             }}
             linkColor={(link: LinkObject<GraphNode, GraphLink>) => {
-              // Fade each edge in as it lands (birth animation counterpart).
               const born = birthProgress(
                 (link as { bornAt?: number }).bornAt,
                 Date.now(),
@@ -1392,16 +1318,11 @@ export function GraphView({
             showPointerCursor={(obj) => Boolean(obj && 'kind' in obj)}
             onNodeClick={(node: NodeObject<GraphNode>) => {
               if (node.kind === 'external') {
-                // openExternalUrl gates unsafe schemes internally (a node URL can
-                // carry any authored scheme), then routes to the OS browser / new tab.
                 openExternalUrl(node.url);
                 return;
               }
               if (node.docName) {
                 const navigationIntent = navigationIntentByNodeId.get(node.id);
-                // A kind-aware hash (e.g. a global skill bundle reference routing
-                // to the read-only skill-file viewer) takes precedence; otherwise
-                // wrap the resolved docName as a normal `#/<doc>` hash.
                 window.location.assign(
                   navigationIntent?.hash ??
                     hashFromDocName(

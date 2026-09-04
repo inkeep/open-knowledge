@@ -1,8 +1,3 @@
-/**
- * Substrate: jsdom via `pnpm run test:dom`. No component renders here — the
- * tracker is plain window listeners over module state.
- */
-
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLastPointerPosition, installPointerPositionTracker } from './pointer-position';
 
@@ -34,7 +29,6 @@ describe('last-known pointer position', () => {
     uninstall = installPointerPositionTracker();
     movePointerTo(120, 48);
 
-    // Crossing between two elements inside the window is not leaving it.
     window.dispatchEvent(
       new PointerEvent('pointerout', { bubbles: true, relatedTarget: document.body }),
     );
@@ -45,9 +39,6 @@ describe('last-known pointer position', () => {
   });
 
   test('a second install does not let the first disposer blind the second', () => {
-    // Two listener pairs on one module-global position: disposing the first
-    // would forget the position while the second pair is still recording into
-    // it, so the tracker reads as installed and answers null forever.
     const stop = installPointerPositionTracker();
     const stopAgain = installPointerPositionTracker();
     movePointerTo(200, 90);
@@ -58,7 +49,6 @@ describe('last-known pointer position', () => {
     stop();
     expect(getLastPointerPosition()).toBeNull();
 
-    // And the module is installable again afterwards, not latched shut.
     const restart = installPointerPositionTracker();
     movePointerTo(15, 25);
     expect(getLastPointerPosition()).toEqual({ x: 15, y: 25 });

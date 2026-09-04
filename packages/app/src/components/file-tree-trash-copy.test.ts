@@ -1,16 +1,3 @@
-/**
- * Verbatim-copy tests for the VSCode-parity Trash confirm modal. Every
- * single-target / multi-target permutation is pinned at the string level so a
- * future refactor that "improves" the phrasing cannot silently drift away
- * from VSCode parity.
- *
- * The copy is Lingui-wrapped, and the app's vitest config aliases the macros
- * to an English-passthrough shim — so these assertions pin the `en` source
- * text, which is exactly what VSCode parity is a claim about.
- *
- * VSCode source: `microsoft/vscode/blob/main/src/vs/workbench/contrib/files/browser/fileActions.ts`
- */
-
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -161,29 +148,6 @@ describe('file-tree-trash-copy — trashTargetDisplayName', () => {
 });
 
 describe('file-tree-trash-copy — ICU escape regression guard', () => {
-  // Lingui compiles catalogs as ICU MessageFormat. Wrapping an interpolation
-  // in `'…'` (single quotes) in the source template — e.g.
-  // `` t`delete '${name}'` `` — extracts the msgid `"delete '{name}'"`, which
-  // ICU treats as an ESCAPED literal: the compiled catalog collapses the whole
-  // thing to `"delete {name}"` with no interpolation slot and the runtime
-  // renders `{name}` verbatim to the user. `"…"` (double quotes) have no ICU
-  // escape meaning and interpolate correctly.
-  //
-  // The test-harness Lingui macro shim (`tests/lingui-macro-shim.tsx`) is a
-  // plain template-literal reduce with no ICU parsing, so a `t\`… '${x}' …\``
-  // call resolves through it correctly even when the shipped catalog would
-  // not. Any assertion made against `buildTrashConfirmCopyElectron(...).title`
-  // therefore passes with the bug present — the guard has to run at the
-  // artifact layer, not the source layer. Read the compiled JSON catalog and
-  // check the message shape: a valid interpolating message compiles to an
-  // array containing at least one `["name"]` slot; the buggy form compiles
-  // to a single flat string with `{name}` living inside literal text. Same
-  // check runs across every shipped locale so a translator can't reintroduce
-  // the escape by wrapping the placeholder in single quotes.
-  // Locale sweep — walk `src/locales/*/messages.json` from disk so a new
-  // locale gets covered automatically the moment it lands. `pseudo` is
-  // structurally identical to `en` (it just character-substitutes the source
-  // string) and skipping it keeps the assertion focused on the shipped set.
   const localeDir = fileURLToPath(new URL('../locales/', import.meta.url));
   const shippedLocales = readdirSync(localeDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && entry.name !== 'pseudo')
@@ -202,9 +166,6 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
     return typeof entry === 'string' ? entry : '';
   }
 
-  /** Re-render a compiled entry back to source shape (with placeholders
-   *  written as `{name}`), so an exact-string anchor can match a compiled
-   *  entry against its known-good English source string. */
   function joinWithSlots(entry: unknown): string {
     if (Array.isArray(entry)) {
       return entry
@@ -218,14 +179,6 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
     return typeof entry === 'string' ? entry : '';
   }
 
-  // Derive the two guarded msgIds by matching against the English source
-  // strings in the en catalog. Lingui hashes the English source into a stable
-  // id; when the source is edited, the hash regenerates — so anchoring by id
-  // directly rots on any legitimate copy tweak. Anchoring by an English
-  // substring in the en catalog and then reusing the id across every locale
-  // sidesteps both problems: id stays live under source edits, and the
-  // localized catalogs (whose flat text is in the target language, not
-  // English) can still be walked by id.
   const enCatalog = loadCatalog('en');
   const trashFileEntry = Object.entries(enCatalog.messages).find(
     ([, entry]) => joinWithSlots(entry) === 'Are you sure you want to delete "{name}"?',
@@ -236,9 +189,6 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
   );
 
   test('anchor lookup finds both trash-copy entries in the en catalog', () => {
-    // Guardrail so the sweep below isn't silently vacuous — if either lookup
-    // fails, every downstream test-each also fails but with a less-clear
-    // error, so surface the root cause up front.
     expect(trashFileEntry, 'single-file trash-copy entry not found in en catalog').toBeDefined();
     expect(
       trashFolderEntry,
@@ -249,11 +199,6 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
   const fileId = trashFileEntry?.[0];
   const folderId = trashFolderEntry?.[0];
 
-  // Structural guard: the two entries, in every locale, must be an array
-  // that contains a `["name"]` interpolation slot AND has no literal
-  // `{name}` substring anywhere in its flat text portions. The buggy shape
-  // is a single flat string with `{name}` embedded (no slot). This shape
-  // check catches the ICU escape hazard for the exact entries the bug hit.
   function assertInterpolatingSlot(entry: unknown, msgLocation: string): void {
     expect(Array.isArray(entry), `${msgLocation}: entry is not an array`).toBe(true);
     if (!Array.isArray(entry)) return;
@@ -287,10 +232,6 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
 });
 
 describe('file-tree-trash-copy — source-layer smoke tests', () => {
-  // Not the primary regression guard — the compiled-catalog tests above catch
-  // the ICU escape bug. These pin the shape of the source function's return
-  // value so a refactor that drops `${name}` interpolation entirely doesn't
-  // slip through undetected.
   test('single-file title contains the file name (source-layer sanity)', () => {
     const copy = buildTrashConfirmCopyElectron([file('foo.md')]);
     expect(copy.title).toContain('foo.md');

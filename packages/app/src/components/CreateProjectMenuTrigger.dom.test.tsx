@@ -1,19 +1,3 @@
-/**
- * DOM mount test for CreateProjectMenuTrigger — the App-root surface that
- * opens CreateProjectDialog when the `new-project` menu action fires
- * (File → New project…).
- *
- * Pins the user-visible contract: the dialog is closed until the menu action
- * fires, opens on `new-project`, and ignores unrelated menu actions. The
- * trigger subscribes to the renderer-local menu-action bus (a real menu click
- * reaches it via main → `ok:menu-action` → the bus forwarder), so this test
- * drives it with `emitLocalMenuAction`. The `bridge` prop is still threaded
- * into CreateProjectDialog, so the fake bridge keeps the surface the dialog
- * touches on open.
- *
- * Invocation: `bun run test:dom` from `packages/app/`.
- */
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -23,11 +7,6 @@ import {
 } from '@/lib/local-menu-action-bus';
 import { CreateProjectMenuTrigger } from './CreateProjectMenuTrigger';
 
-// Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
-// broadly-needed constructors (MutationObserver) live in the shared
-// tests/dom/jsdom-preload.ts; NodeFilter (react-focus-scope) and
-// ResizeObserver (react-use-size) are hoisted locally per the sibling
-// CreateProjectDialog.cascade-staleness.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -49,24 +28,16 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 
 const ASYNC_TIMEOUT_MS = 2000;
 
-// Wrap the bus emit in act so the resulting setOpen state flush is applied
-// before assertions run (mirrors fireEvent's internal act wrapping).
 function fireMenuAction(action: Parameters<typeof emitLocalMenuAction>[0]): void {
   act(() => emitLocalMenuAction(action));
 }
 
-/**
- * Fake bridge exposing just the surface CreateProjectDialog touches on open:
- * `fs.defaultProjectsRoot` + a few project/dialog stubs. `onMenuAction` is no
- * longer read by the trigger (it listens on the bus), so it is omitted.
- */
 function makeBridge(): OkDesktopBridge {
   return {
     fs: {
       defaultProjectsRoot: async (): Promise<string> => '/Users/test/Projects',
     },
     integrations: {
-      // CreateProjectDialog seeds its editor checkboxes off this on open.
       status: async () => ({
         available: false,
         editors: [],
@@ -90,8 +61,6 @@ describe('CreateProjectMenuTrigger', () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // CreateProjectDialog's defaultProjectsRoot catch arm logs via
-    // console.warn on unhappy paths; suppress to keep output clean.
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -103,7 +72,6 @@ describe('CreateProjectMenuTrigger', () => {
 
   test('dialog is closed until the new-project menu action fires', () => {
     render(<CreateProjectMenuTrigger bridge={makeBridge()} />);
-    // Radix Dialog renders nothing when closed — no portal, no testid.
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);
   });
 
@@ -118,7 +86,6 @@ describe('CreateProjectMenuTrigger', () => {
       },
       { timeout: ASYNC_TIMEOUT_MS },
     );
-    // The dialog title confirms it's the create-new-project surface.
     expect(screen.queryByText('Create new project') !== null).toBe(true);
   });
 
@@ -128,7 +95,6 @@ describe('CreateProjectMenuTrigger', () => {
     fireMenuAction('new-doc');
     fireMenuAction('toggle-sidebar');
 
-    // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);
   });
@@ -137,7 +103,6 @@ describe('CreateProjectMenuTrigger', () => {
     const { unmount } = render(<CreateProjectMenuTrigger bridge={makeBridge()} />);
     unmount();
 
-    // After unmount the subscription is gone, so a later emit must not reopen.
     fireMenuAction('new-project');
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);

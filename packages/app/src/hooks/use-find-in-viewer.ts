@@ -1,9 +1,3 @@
-/**
- * Shared Cmd/Ctrl+F capture for read-only viewer surfaces. The active
- * viewer is the only mounted surface with a live listener, so it owns the
- * shortcut even when focus remains in the sidebar after navigation.
- * Pair with `ProseFindBar`.
- */
 import { type RefObject, useEffect, useState } from 'react';
 import { isEditableShortcutTarget } from '@/lib/keyboard-shortcuts';
 

@@ -20,8 +20,6 @@ describe('resolvePackageVersion', () => {
   });
 
   test('walks up past unrelated package.json entries until a name match is found', async () => {
-    // Layout: tmp/wrapper/package.json (different name) → tmp/wrapper/inner/leaf.mjs (the fromUrl)
-    //         tmp/package.json (matching name + version)  → matched after walk-up.
     const root = mkdtempSync(join(tmpdir(), 'resolve-pkg-version-walk-'));
     try {
       writeFileSync(
@@ -39,11 +37,6 @@ describe('resolvePackageVersion', () => {
       const leafPath = join(inner, 'leaf.mjs');
       writeFileSync(leafPath, '// nothing');
 
-      // The function takes the resolved entry's dirname and walks up. We exercise
-      // that loop by passing a fromUrl that, after `createRequire` falls through
-      // to MODULE_NOT_FOUND, returns undefined — so this test asserts the
-      // unresolvable branch indirectly. The real walk path is exercised by the
-      // first test (server's own package).
       const fromUrl = pathToFileURL(leafPath).toString();
       const v = await resolvePackageVersion('@test/this-also-does-not-exist', fromUrl);
       expect(v).toBeUndefined();
@@ -53,8 +46,6 @@ describe('resolvePackageVersion', () => {
   });
 
   test('throws non-MODULE_NOT_FOUND errors instead of swallowing them', async () => {
-    // Passing a non-string non-URL forces ERR_INVALID_ARG_TYPE inside
-    // createRequire. The function must not silently return undefined.
     let threw = false;
     try {
       await resolvePackageVersion('@inkeep/open-knowledge-server', 42 as unknown as string);

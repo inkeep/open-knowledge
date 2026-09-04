@@ -1,11 +1,3 @@
-/**
- * Settings → This project → Preferences, Content rules block — the
- * validation-surface knobs that
- * are NOT lint plugins: how broken internal links are classified (hidden /
- * warning / error) and whether the file tree tints problem files. Both are
- * project-scope (`validation.*` in config.yml, committed and shared via git);
- * the lint plugins themselves are managed on their own tab.
- */
 import {
   DEFAULT_LINKS_VALIDATION,
   humanFormat,
@@ -123,11 +115,6 @@ export function ContentRulesSection() {
             checked={indicatorsOn}
             disabled={!bindingReady}
             onCheckedChange={(next) => write({ fileTreeIndicators: next })}
-            // No aria-label: the associated <Label> is the accessible name, so
-            // voice control can activate this switch by the words on screen. An
-            // aria-label would replace that name with text the user cannot see
-            // (WCAG 2.5.3), and the on/off state it described is already carried
-            // by the switch role.
             data-testid="settings-content-rules-indicators"
           />
         </div>

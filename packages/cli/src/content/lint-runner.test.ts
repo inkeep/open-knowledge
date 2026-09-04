@@ -1,11 +1,3 @@
-/**
- * Integration tests for the headless lint runner over a real temp project:
- * the walk, ignore filtering, native-file config resolution, the lint pass,
- * and `--fix` write-back. A real temp dir (not in-memory) is used so the
- * `createContentFilter` ignore-file path and the fs seams are exercised as in
- * production.
- */
-
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,8 +27,6 @@ function run(opts: Partial<Parameters<typeof runLint>[0]> = {}) {
   return runLint({
     projectDir: root,
     contentDir: root,
-    // markdownlint is opt-in (off by default); these tests exercise the linter,
-    // so enable the plugin explicitly on the base config.
     baseConfig: {
       ...DEFAULT_LINTER_CONFIG,
       plugins: {
@@ -73,7 +63,6 @@ describe('runLint — walk + lint', () => {
     write('.ok/skills/pack/SKILL.md', '# S\n\ntext with a\ttab\n');
     const swept = await run();
     expect(swept.files.map((f) => f.file)).toEqual(['visible.md']);
-    // Naming the hidden file bypasses the walk — linter-CLI convention.
     const explicit = await run({ targetPath: join(root, '.ok/skills/pack/SKILL.md') });
     expect(explicit.files.map((f) => f.file)).toEqual(['.ok/skills/pack/SKILL.md']);
   });
@@ -90,9 +79,6 @@ describe('runLint — walk + lint', () => {
   });
 
   test('does not flag OK non-HTML superset syntax', async () => {
-    // Defaults match vscode-markdownlint (all on except MD013): raw-HTML MDX
-    // (MD033) and a frontmatter title beside an H1 (MD025) DO flag, as in VS
-    // Code — so the clean fixture covers only the non-HTML superset.
     write(
       'clean.md',
       '---\nstatus: draft\n---\n\n# H\n\nA [[wiki]], math $x^2$, ==hl==.\n\n> [!NOTE]\n> alert\n',
@@ -111,8 +97,6 @@ describe('runLint — walk + lint', () => {
 
 describe('runLint — native markdownlint config', () => {
   test('the native .markdownlint.json disables a rule project-wide', async () => {
-    // markdownlint rules live in the project's own `.markdownlint.*`, discovered
-    // at the content root and injected into the effective config.
     write('.markdownlint.json', JSON.stringify({ MD010: false }));
     write('strict/tabs.md', '# H\n\nhas a\ttab\n');
     const result = await run();
@@ -157,7 +141,6 @@ describe('runLint — fix', () => {
 
 describe('runLint — per-dir cascade (cli2 semantics)', () => {
   test('the nearest .markdownlint.json governs its subtree wholesale', async () => {
-    // Root file leaves MD010 (hard tabs) ON; the folder file turns it off.
     write('.markdownlint.json', JSON.stringify({ MD047: false }));
     write('notes/.markdownlint.json', JSON.stringify({ MD010: false, MD047: false }));
     write('tabbed-root.md', '# A\n\na\tb\n');

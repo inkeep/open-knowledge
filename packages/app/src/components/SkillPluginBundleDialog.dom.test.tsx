@@ -81,8 +81,6 @@ describe('SkillPluginBundleDialog', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: 'Install from Example' });
-    // Zero selected: the CTA is a bare disabled "Install" — the count only
-    // enters the label once there is a count to state.
     const install = within(dialog).getByRole('button', { name: 'Install' });
     expect((install as HTMLButtonElement).disabled).toBe(true);
     expect(discoverSkillsInSource).toHaveBeenCalledWith(
@@ -91,7 +89,6 @@ describe('SkillPluginBundleDialog', () => {
     );
 
     await user.click(await within(dialog).findByRole('checkbox', { name: /alpha/i }));
-    // The verb now carries the scope of what lands.
     expect(within(dialog).getByRole('button', { name: 'Install 1 skill' })).toBe(install);
     await user.click(install);
 
@@ -121,8 +118,6 @@ describe('SkillPluginBundleDialog', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: 'Install from Example' });
-    // Let the bundle discovery resolve before reading the footer, so the
-    // assertions run against a settled tree rather than the pending one.
     await within(dialog).findByRole('checkbox', { name: /alpha/i });
 
     const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
@@ -130,14 +125,6 @@ describe('SkillPluginBundleDialog', () => {
 
     expect(cancel.getAttribute('data-variant')).toBe('outline');
     expect(confirm.getAttribute('data-variant')).toBe('default');
-    // Asserted on the merged class list rather than on the authored prop, so
-    // this holds whether the treatment arrives from the variant or from a
-    // hand-added className. The fill tokens are the point of the assertion:
-    // `data-variant` reports the authored prop, but `cn`'s tailwind-merge lets
-    // a hand-added `bg-*` override the variant's fill while `data-variant`
-    // still reads `default`. That is the same hand-added-className shape the
-    // bug this test guards was authored in, so the merged list is the only
-    // place a demotion of that form shows up.
     expectVisualClassTokens(confirm.className, [
       'font-mono',
       'uppercase',

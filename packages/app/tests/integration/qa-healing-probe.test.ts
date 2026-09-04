@@ -1,19 +1,3 @@
-/**
- * QA probes round 3: healing bounds + corrected restart lifecycle.
- *
- * HEAL-A/B: the stranded states (source-authored edge run invisible to the
- * WYSIWYG; merge-seam keystroke) — drive up to 10 further source-side drains
- * and record per-round whether the fragment ever converges (the derive-timing
- * defer guard force-resolves after MAX_DERIVE_TIMING_DEFERS=8 deferring
- * drains, IF the defer path is what strands them).
- *
- * INV-04b: phantom-blank state after a source delete — does a later WYSIWYG
- * edit resurrect the deleted run into Y.Text?
- *
- * RESTART: clean + crash-sim restarts WITHOUT the harness testReset (which
- * truncates the doc file by design and invalidated the first restart probe).
- */
-
 import { appendFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,7 +41,6 @@ async function settle(predicate: () => boolean, timeoutMs: number): Promise<bool
   return false;
 }
 
-/** Destroy the local client WITHOUT the harness testReset (which truncates the doc file by design). */
 function detachClient(c: TestClient): void {
   c.provider.destroy();
   c.doc.destroy();
@@ -85,7 +68,6 @@ describe('healing bounds for the stranded states', () => {
         () => clients.every((c) => c.ytext.toString() === 'Above.\n\nBelow.\n\n\n'),
         5000,
       );
-      // Make the fragment dirty once (the INV-09 reproduction shape).
       b.doc.transact(() => {
         const first = b.fragment.get(0) as { get(i: number): unknown };
         (first.get(0) as { insert(i: number, s: string): void }).insert(0, 'Z');
@@ -338,10 +320,6 @@ describe('defer-guard innocence under the honest early-exit', () => {
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await pollUntil(() => clients.every((c) => c.ytext.toString() === seed), 10_000);
       const a = clients[0];
-      // One transaction: un-propagated WYSIWYG content in the fragment plus a
-      // source keystroke in Y.Text — the defer guard must protect the pending
-      // paragraph while the source edit still lands, and the re-derive that
-      // follows must not discard either.
       a.doc.transact(() => {
         const p = new Y.XmlElement('paragraph');
         const t = new Y.XmlText();

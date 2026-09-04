@@ -11,11 +11,6 @@ interface PatOptions {
   json: boolean;
 }
 
-/**
- * Read a token from stdin — the non-interactive path used when the desktop app
- * (or any automation) drives `auth pat`. The parent writes the token to the
- * child's stdin and closes it; we read to EOF and trim the trailing newline.
- */
 async function readTokenFromStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -54,8 +49,6 @@ async function runPat(
   } catch (err) {
     const message = describeAuthFailure(err, host).message;
     if (json) {
-      // Bounded, structured error so the relay/UI can show the real cause
-      // (bad token vs. cert vs. network) without leaking paths from raw stderr.
       process.stdout.write(`${JSON.stringify({ type: 'error', message })}\n`);
     } else {
       process.stderr.write(`${message}\n`);

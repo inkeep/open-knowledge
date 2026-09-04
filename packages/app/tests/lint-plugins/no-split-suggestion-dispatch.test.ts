@@ -28,7 +28,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
-// __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-split-suggestion-dispatch.fixture.tsx';
 
@@ -42,19 +41,12 @@ describe('no-split-suggestion-dispatch GritQL plugin', () => {
     const output = `${result.stdout}\n${result.stderr}`;
     const fires = (output.match(/Split suggestion dispatch/g) ?? []).length;
     expect(fires).toBe(3);
-    // Diagnostic message names the fix (action verb-phrase substring).
     expect(output).toContain('Compose the delete and the insert into ONE chain');
-    // Diagnostic message appends a docs URL — generic URL regex + anchor
-    // substring. The anchor check keeps the regex from being vacuously
-    // satisfied by an unrelated URL biome might surface elsewhere.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-split-suggestion-dispatchgrit');
   });
 
   test('plugin is registered in biome.jsonc at root plugins (workspace-wide)', () => {
-    // Root registration is load-bearing: the pattern self-scopes to
-    // `Suggestion({ ... })` call sites, and a FUTURE suggestion surface in any
-    // package must be covered without a biome.jsonc edit.
     const config = readBiomeConfig(REPO_ROOT);
     const plugins = config.plugins ?? [];
     expect(plugins).toContain('./biome-plugins/no-split-suggestion-dispatch.grit');

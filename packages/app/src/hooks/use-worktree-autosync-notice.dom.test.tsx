@@ -22,8 +22,6 @@ let ctx: {
 };
 vi.doMock('@/lib/config-provider', () => ({ useConfigContext: () => ctx }));
 
-// Import the hook AFTER the mocks register so it binds to the mocked
-// config-provider / sonner rather than the real modules.
 const { useWorktreeAutoSyncNotice } = await import('./use-worktree-autosync-notice');
 
 function Probe() {
@@ -31,7 +29,6 @@ function Probe() {
   return null;
 }
 
-/** Render the most recent captured toast node and read its text. */
 function lastToastText(): string {
   const node = toastNodes[toastNodes.length - 1];
   const { container } = render(node);
@@ -55,7 +52,6 @@ describe('useWorktreeAutoSyncNotice', () => {
     };
     render(<Probe />);
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
-    // Clears the one-shot flag so it never repeats.
     expect(patch).toHaveBeenCalledWith({ autoSync: { inheritedNoticePending: null } });
   });
 

@@ -1,39 +1,3 @@
-/**
- * Runtime verification that Electron actually applies the background-throttling
- * policy main computes from the renderer's unsynced-work signal. The Vitest
- * unit test in `src/main/background-throttle.test.ts` pins the predicate and
- * the toggle call against a `vi.fn()` webContents; this smoke test proves the
- * real chain honors it end to end — renderer `window.okDesktop.editor
- * .notifyBackgroundThrottle` -> preload `invoke` -> the
- * `ok:editor:background-throttle` main handler -> a live Chromium
- * `webContents` — by reading `webContents.backgroundThrottling` back from
- * main-process context.
- *
- * The observable is the Chromium-side property, not a spy: a window holding
- * unsynced work opts OUT of background throttling (`false`), and a clean
- * window (or one whose kill-switch is off) sits at the OS default (`true`).
- *
- * Pattern mirrors `window-min-size.e2e.ts`:
- *   - Seed a tmp HOME with `lastOpenedProject` so the Editor window opens
- *     first (Navigator stays closed).
- *   - Launch with `--user-data-dir=<tmpHome>/electron-userdata`.
- *   - Find the Editor window, drive the real preload API from its renderer,
- *     read main-process state through `app.browserWindow(page)`.
- *
- * Each transition re-pushes its signal on every poll iteration. The renderer's
- * own `BackgroundThrottleReporter` seeds main once on install and then pushes
- * on true<->false unsynced-work edges, so a real edge during window warm-up
- * could otherwise land between this test's push and its read; re-pushing makes
- * the test's signal the last writer on each attempt rather than depending on
- * the window being quiescent.
- *
- * Skip gates (same as the rest of the cross-platform smoke suite):
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in.
- *   - an unsupported host platform — `backgroundThrottling` is a Chromium
- *     property, so the contract is the same wherever Electron runs.
- *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -133,13 +97,9 @@ async function findWindow(
   throw new Error(`${mode} window vanished between poll resolution and read`);
 }
 
-/** Read the live Chromium property from main-process context. */
 async function readBackgroundThrottling(app: ElectronApplication, page: Page): Promise<boolean> {
   const winHandle: JSHandle = await app.browserWindow(page);
   return winHandle.evaluate((win: unknown) => {
-    // BrowserWindow types are not in scope inside evaluate's V8 context;
-    // `webContents.backgroundThrottling` is a runtime property on the
-    // BrowserWindow wrapper Playwright hands back. The cast is local here.
     const w = win as { webContents: { backgroundThrottling: boolean } };
     return w.webContents.backgroundThrottling;
   });
@@ -150,17 +110,12 @@ interface ThrottleSignal {
   enabled: boolean;
 }
 
-/** Push the signal through the real preload bridge from the renderer. */
 async function pushSignal(page: Page, signal: ThrottleSignal): Promise<void> {
   await page.evaluate((s) => {
     window.okDesktop?.editor.notifyBackgroundThrottle(s);
   }, signal);
 }
 
-/**
- * Push `signal` and wait for Chromium's `backgroundThrottling` to settle on
- * `expected`. The push repeats per poll iteration (see the file docblock).
- */
 async function pushAndExpectThrottling(
   app: ElectronApplication,
   page: Page,
@@ -199,9 +154,6 @@ test.describe('background-throttle smoke', () => {
 
     const editor = await findWindow(app, 'editor');
 
-    // Baseline: a window with no pending work sits at the OS default. The
-    // renderer's reporter seeds `hasPendingWork: false` on install, and the
-    // BrowserWindow is constructed with Electron's default throttling.
     await expect
       .poll(() => readBackgroundThrottling(app, editor), {
         timeout: 10_000,
@@ -209,7 +161,6 @@ test.describe('background-throttle smoke', () => {
       })
       .toBe(true);
 
-    // Unsynced work: main must keep the window's timers alive.
     await pushAndExpectThrottling(
       app,
       editor,
@@ -218,8 +169,6 @@ test.describe('background-throttle smoke', () => {
       'pending work',
     );
 
-    // Clean again: the OS default comes back, so the Page Visibility API the
-    // flush-on-hide and presence paths depend on keeps working.
     await pushAndExpectThrottling(
       app,
       editor,
@@ -228,8 +177,6 @@ test.describe('background-throttle smoke', () => {
       'work drained',
     );
 
-    // Re-arm, then prove the kill-switch is honored at the real boundary:
-    // pending work with `enabled: false` returns to the OS default.
     await pushAndExpectThrottling(
       app,
       editor,

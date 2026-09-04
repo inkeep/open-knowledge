@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { aggregateStableChangelog } from './aggregate-stable-changelog.mjs';
 
-// A raw beta body as produced by the beta cadence: a lead line, one bump-level
-// subsection, then the internal consumed-set marker.
 function betaBody({ lead, section }) {
   return `${lead}\n\n${section}\n\n<!-- ok-consumed-set: ["x"] -->\n`;
 }
@@ -82,9 +80,6 @@ describe('aggregateStableChangelog', () => {
   });
 
   test('strips the Downloads block even when a bullet block is still open above it', () => {
-    // The line parser accrues every non-heading line onto an open bullet
-    // block, so without the up-front strip the table would leak INTO the
-    // final Patch bullet — this pins the pre-filter, not just the output.
     const downloads = [
       '<!-- ok-downloads:start -->',
       '## Downloads',

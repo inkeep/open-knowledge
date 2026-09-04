@@ -1,42 +1,3 @@
-/**
- * Substrate-additive contract pinning for the Tier-3 test runner.
- *
- * The two-project substrate split only holds if the `test` and `test:dom`
- * scripts (and the vitest configs they name) maintain specific invariants. This
- * meta-test converts that into structural enforcement: when the package.json
- * scripts or the dom project config drift away from the contract, the test
- * fails loudly with a pointer at the broken invariant.
- *
- * Invariants pinned:
- *
- *   1. Unit-tier `test` script + its vitest config
- *        - The script MUST run vitest with `vitest.config.ts` (the config
- *          that carries the substrate contract below).
- *        - The config MUST pin the `development` export condition
- *          (`ssr.resolve.conditions`) so `workspace:*` imports resolve to
- *          source, not stale dist.
- *        - The config MUST exclude `**\/*.dom.test.tsx` so Tier-3 files stay
- *          out of the unit run (they belong to the dedicated jsdom project).
- *        - The config MUST run in the `node` environment so the unit
- *          substrate stays no-DOM and production
- *          `typeof document === 'undefined'` short-circuits keep their
- *          contract.
- *
- *   2. Tier-3 `test:dom` script + its dedicated jsdom project config
- *        - The script MUST run vitest with `vitest.dom.config.ts`.
- *        - The config MUST use the `jsdom` environment (declarative DOM
- *          globals, replacing the retired invocation-scoped preload chain).
- *        - The config MUST carry `tests/dom/jsdom-preload.ts` as a per-project
- *          setupFile (the DOM-global backfill jsdom omits).
- *        - The config MUST pin the `development` export condition (parity with
- *          the unit tier).
- *        - The config MUST scope its `include` to `**\/*.dom.test.tsx` (the
- *          routing suffix).
- *        - The config MUST set `isolate: true` so each file runs in a fresh
- *          module registry — the parity-critical property the retired
- *          `bun test --isolate` flag provided (oven-sh/bun#12823).
- */
-
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -58,27 +19,15 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
     expect(testScript).toBeDefined();
     expect(testScript).toContain('vitest run');
     expect(testScript).toContain('vitest.config.ts');
-    // The `--conditions development` workspace-src resolution moved from a bun
-    // CLI flag onto the shared vitest base (`ssr.resolve.conditions`), which the
-    // app config spreads.
     expect(appVitestConfig.ssr.resolve.conditions).toContain('development');
   });
 
   test('unit-tier vitest config excludes **/*.dom.test.ts?(x) (Tier-3 stays out of the unit run)', () => {
-    // The bun `--path-ignore-patterns='**/*.dom.test.tsx'` flag is now the
-    // config `test.exclude` glob; the dom tier runs in its own jsdom project.
     expect(appVitestConfig.test.exclude).toContain('**/*.dom.test.ts?(x)');
   });
 
   test('unit-tier vitest config runs in the node environment (no jsdom in the unit substrate)', () => {
-    // Keeps production `typeof document === 'undefined'` short-circuits honest —
-    // the unit tier must not carry jsdom globals.
     expect(appVitestConfig.test.environment).toBe('node');
-    // Runtime no-bleed proof: this meta-test itself runs in a non-dom project
-    // (the integration tier is node-env). The jsdom project's `environment:
-    // 'jsdom'` is scoped per project, so no DOM global leaks into node-env
-    // projects — `document` is genuinely absent here even though 1833 dom-tier
-    // tests render against jsdom's `document` in their own project.
     expect(typeof document).toBe('undefined');
     expect(typeof window).toBe('undefined');
   });
@@ -91,9 +40,6 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
   });
 
   test('dom project runs the jsdom environment with the per-project jsdom setup file', () => {
-    // Declarative replacement for the retired `--preload ./tests/dom/jsdom-preload.ts`
-    // invocation flag: the jsdom environment installs DOM globals per project and
-    // the setupFile backfills the handful jsdom omits.
     expect(appDomVitestConfig.test.environment).toBe('jsdom');
     const setupFiles = appDomVitestConfig.test.setupFiles as string[];
     expect(setupFiles.some((path) => path.endsWith('tests/dom/jsdom-preload.ts'))).toBe(true);
@@ -108,8 +54,6 @@ describe('Tier-3 substrate-additive contract — package.json + vitest config in
   });
 
   test('dom project sets isolate:true for a fresh per-file module registry', () => {
-    // Several DOM suites register module-level vi.doMock factories. Per-file
-    // isolation keeps those replacements from changing sibling suites.
     expect(appDomVitestConfig.test.isolate).toBe(true);
   });
 });

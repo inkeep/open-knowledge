@@ -13,7 +13,6 @@ const CODEX: CodexLegacyAgentIdentity = fixture.agents.codexRegistry;
 const CODEX_CUSTOM: CodexLegacyAgentIdentity = fixture.agents.codexCustom;
 const OTHER_AGENT: CodexLegacyAgentIdentity = fixture.agents.claudeRegistry;
 
-/** A `session_update` transcript event carrying a streamed text chunk. */
 function chunk(
   sessionUpdate: string,
   text: string,
@@ -25,7 +24,6 @@ function chunk(
   return { kind: 'session_update', update: update as unknown as SessionUpdate, ts: 1 };
 }
 
-/** Read the folded text off a `session_update` chunk event. */
 function textOf(event: ThreadEvent): string {
   if (event.kind !== 'session_update') throw new Error('not a session_update');
   return (event.update as unknown as { content: { text: string } }).content.text;
@@ -73,8 +71,6 @@ describe('boundSessionUpdateForLog', () => {
       sessionUpdate: 'agent_message_chunk',
       content: { type: 'text', text: big },
     } as unknown as SessionUpdate;
-    // Message chunks arrive pre-chunked by the agent; only tool payloads
-    // carry whole-file text.
     expect(boundSessionUpdateForLog(update)).toBe(update);
   });
 });
@@ -112,7 +108,6 @@ describe('coalesceChunkInto', () => {
     expect(
       coalesceChunkInto(a, chunk('agent_message_chunk', 'b', { messageId: 'm2' }), CODEX),
     ).toBe(false);
-    // Same explicit messageId still folds.
     const c = chunk('agent_message_chunk', 'c', { messageId: 'm1' });
     expect(
       coalesceChunkInto(c, chunk('agent_message_chunk', 'd', { messageId: 'm1' }), CODEX),
@@ -143,11 +138,8 @@ describe('coalesceChunkInto', () => {
 
   test('stops folding once the tail hits the size cap (bounds one line)', () => {
     const prev = chunk('agent_message_chunk', 'x'.repeat(16_000));
-    // At the cap: refuses further folds so no single line grows unbounded.
     expect(coalesceChunkInto(prev, chunk('agent_message_chunk', 'more'), CODEX)).toBe(false);
     expect(textOf(prev)).toBe('x'.repeat(16_000));
-    // Just under the cap still folds once (may exceed the cap by the added
-    // chunk — the cap gates the NEXT fold, it doesn't truncate).
     const under = chunk('agent_message_chunk', 'y'.repeat(15_999));
     expect(coalesceChunkInto(under, chunk('agent_message_chunk', 'zz'), CODEX)).toBe(true);
     expect(coalesceChunkInto(under, chunk('agent_message_chunk', 'no'), CODEX)).toBe(false);
@@ -194,11 +186,6 @@ describe('coalesceChunkInto — terminal output', () => {
 });
 
 describe('coalesceChunkInto — Codex legacy warning boundaries', () => {
-  /**
-   * A retained event carrying one of the fixture's recorded producer envelopes.
-   * Cloned because a fold mutates `prev` in place, and the fixture objects are
-   * shared across every test in this file.
-   */
   const recorded = (name: string): ThreadEvent => {
     const candidate = fixture.candidates.find((c) => c.name === name);
     if (candidate === undefined) throw new Error(`no recorded candidate '${name}'`);
@@ -277,12 +264,6 @@ describe('coalesceChunkInto — Codex legacy warning boundaries', () => {
   test.each(
     fixture.negatives.map((n) => [n.name, n] as const),
   )('near miss %s folds as if the guard were not there', (_name, negative) => {
-    // Whether a near miss folds at all is the ordinary predicate's business —
-    // kind, messageId, and content shape. What must never happen is the guard
-    // firing on one and inventing a boundary the producer never drew, so the
-    // oracle is the verdict under an identity the guard can never match.
-    // A few negatives are near misses only BECAUSE of their agent, which is
-    // the identity the fixture records alongside them.
     const agentKey = (negative as { agent?: string }).agent;
     const declared =
       agentKey === undefined
@@ -304,8 +285,6 @@ describe('coalesceChunkInto — Codex legacy warning boundaries', () => {
   });
 
   test('a warning is preserved even when the neighbour would otherwise fold', () => {
-    // The chrome pair folds (proved above), so refusing here isolates the
-    // warning rather than reflecting a pair that was never mergeable.
     const chrome = neighbor('turnError');
 
     expect(coalesceChunkInto(chrome, recorded('config-warning-summary-only'), CODEX)).toBe(false);

@@ -79,11 +79,8 @@ describe('createMcpStderrMirror', () => {
     mirror.write('[mcp] before\n');
     expect(existsSync(join(nested, 'mcp.2026-07-18.log'))).toBe(true);
 
-    // Something external (tmpwatch, user cleanup) removes the dir mid-session.
     await rm(nested, { recursive: true, force: true });
 
-    // The write that raced the removal is lost, but the mirror re-ensures the
-    // dir on the next attempt rather than counting down to a permanent disable.
     mirror.write('[mcp] lost\n');
     mirror.write('[mcp] recovered\n');
     const content = readFileSync(join(nested, 'mcp.2026-07-18.log'), 'utf-8');
@@ -91,7 +88,6 @@ describe('createMcpStderrMirror', () => {
   });
 
   test('write failures are swallowed and disable the mirror after repeated failures', () => {
-    // A regular file where the logs dir should be makes every write fail.
     const blocked = join(dir, 'blocked');
     writeFileSync(blocked, 'file, not dir');
     const mirror = createMcpStderrMirror({
@@ -110,7 +106,6 @@ describe('pruneMirrorLogs', () => {
   function touch(name: string, ageMs: number, now: Date, bytes = 10): void {
     const path = join(dir, name);
     const fd = openSync(path, 'w');
-    // Sparse file: statSync reports the logical size without eating disk.
     ftruncateSync(fd, bytes);
     closeSync(fd);
     const mtime = new Date(now.getTime() - ageMs);
@@ -144,7 +139,6 @@ describe('pruneMirrorLogs', () => {
     touch('mcp.2026-07-16.log', 2 * DAY_MS, now, twentyMb);
     touch('mcp.2026-07-17.log', 1 * DAY_MS, now, twentyMb);
     pruneMirrorLogs(dir, () => now);
-    // 60 MB total against the 45 MB cap: only the oldest goes.
     expect(existsSync(join(dir, 'mcp.2026-07-15.log'))).toBe(false);
     expect(existsSync(join(dir, 'mcp.2026-07-16.log'))).toBe(true);
     expect(existsSync(join(dir, 'mcp.2026-07-17.log'))).toBe(true);

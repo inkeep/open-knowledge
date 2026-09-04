@@ -1,12 +1,3 @@
-/**
- * Frame-level coverage of the `/collab/thread` socket for the history ops:
- * `resume` (success → `resumed` frame; failure → error frame carrying the
- * reqId + `resume-unsupported`), `delete` (refused live / applied archived,
- * followed by a refreshed `threads` list), `rename` (live + archived, manual
- * title wins over first-prompt adoption), and archived `subscribe` replay
- * through the socket's async path.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,7 +36,6 @@ afterEach(async () => {
   dirs = [];
 });
 
-/** Same minimal capability-matrix agent as the manager integration suite. */
 function writeFixtureAgent(
   localDir: string,
   caps: string,
@@ -181,8 +171,6 @@ function makeManager(contentDir: string, localDir: string): AcpThreadManager {
     isExcludedPath: () => false,
     isIgnoredPath: () => false,
     log,
-    // Hermetic (see the thread-manager integration suite): every launch merges
-    // the login shell's PATH, and a test must not spawn the developer's shell.
     resolveLoginShellPath: async () => null,
   });
   managers.push(manager);
@@ -219,12 +207,9 @@ describe('/collab/thread socket — history ops', () => {
     const threadId = created.info.threadId;
     await waitStatus(manager, threadId, 'ready');
 
-    // A real message makes it a conversation worth keeping — an untouched
-    // thread is discarded on close, never archived.
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p0', content: 'hello' }));
     await waitStatus(manager, threadId, 'ready');
 
-    // Delete on a live thread → not-ready error, thread intact.
     socket.emit(JSON.stringify({ op: 'delete', threadId }));
     const err1 = await socket.awaitFrame('error');
     expect(err1.code).toBe('not-ready');
@@ -234,18 +219,12 @@ describe('/collab/thread socket — history ops', () => {
     const threadsAfterClose = await socket.awaitFrame('threads');
     expect(threadsAfterClose.threads[0]?.archived).toBe(true);
 
-    // Reopen the archived thread the way the client does (history open =
-    // subscribe), then resume through the socket: the resumed frame carries
-    // the reqId + live info.
     socket.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
     await socket.awaitFrame('subscribed');
     socket.emit(JSON.stringify({ op: 'resume', threadId, reqId: 'r1', prompt: 'go' }));
     const resumed = await socket.awaitFrame('resumed');
     expect(resumed.reqId).toBe('r1');
     expect(resumed.info.archived).toBe(false);
-    // Optimistic echo: the carried prompt reached subscribers as a
-    // user_message BEFORE the handshake finished (the resumed frame) — the
-    // transcript never sits empty while the agent respawns.
     const resumedAt = socket.frames.indexOf(resumed);
     const echoAt = socket.frames.findIndex(
       (f) =>
@@ -255,7 +234,6 @@ describe('/collab/thread socket — history ops', () => {
     expect(echoAt).toBeLessThan(resumedAt);
     await waitStatus(manager, threadId, 'ready');
 
-    // Archive again, then delete for real: threads list refresh excludes it.
     socket.emit(JSON.stringify({ op: 'close', threadId }));
     await waitStatus(manager, threadId, 'exited');
     socket.emit(JSON.stringify({ op: 'delete', threadId }));
@@ -285,14 +263,9 @@ describe('/collab/thread socket — history ops', () => {
     const created = await socket.awaitFrame('created');
     const threadId = created.info.threadId;
     await waitStatus(manager, threadId, 'ready');
-    // A real message so close archives it (an untouched thread is discarded).
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p0', content: 'hello' }));
     await waitStatus(manager, threadId, 'ready');
     socket.emit(JSON.stringify({ op: 'close', threadId }));
-    // The close op's own `threads` response is the signal that the close
-    // FINISHED: the 'exited' status flips mid-teardown, while the record is
-    // still marked closing, and a resume that lands in that window is refused
-    // for a reason that has nothing to do with what this test asserts.
     await socket.awaitFrame('threads');
 
     socket.emit(JSON.stringify({ op: 'resume', threadId, reqId: 'r9' }));
@@ -303,8 +276,6 @@ describe('/collab/thread socket — history ops', () => {
     socket.close();
   }, 45_000);
 
-  // The op is routed and its reqId echoed on the error path — the client
-  // matches its pending promise on that id, so a dropped reqId hangs the UI.
   test('retry on a healthy thread answers the reqId with not-ready', async () => {
     const localDir = tmp();
     writeFixtureAgent(localDir, '');
@@ -363,7 +334,6 @@ describe('/collab/thread socket — history ops', () => {
     const threadId = created.info.threadId;
     await waitStatus(manager, threadId, 'ready');
 
-    // Live rename → confirmed via an info frame carrying the new title.
     socket.emit(JSON.stringify({ op: 'rename', threadId, title: 'Roadmap rewrite' }));
     const deadline = Date.now() + 10_000;
     while (manager.getInfo(threadId)?.title !== 'Roadmap rewrite') {
@@ -375,12 +345,10 @@ describe('/collab/thread socket — history ops', () => {
     );
     expect(infoFrames.some((f) => f.info.title === 'Roadmap rewrite')).toBe(true);
 
-    // First-prompt title adoption must NOT clobber the manual title.
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p1', content: 'do the thing' }));
     await waitStatus(manager, threadId, 'ready');
     expect(manager.getInfo(threadId)?.title).toBe('Roadmap rewrite');
 
-    // Renames apply to archived threads too (the history menu keeps them).
     socket.emit(JSON.stringify({ op: 'close', threadId }));
     await waitStatus(manager, threadId, 'exited');
     socket.emit(JSON.stringify({ op: 'rename', threadId, title: 'Archived and renamed' }));
@@ -391,7 +359,6 @@ describe('/collab/thread socket — history ops', () => {
     }
     expect(manager.getInfo(threadId)?.archived).toBe(true);
 
-    // Unknown thread → error frame, no crash.
     socket.emit(JSON.stringify({ op: 'rename', threadId: 'nope', title: 'x' }));
     const err = await socket.awaitFrame('error');
     expect(err.code).toBe('unknown-thread');
@@ -419,7 +386,6 @@ describe('/collab/thread socket — history ops', () => {
     socket.emit(JSON.stringify({ op: 'close', threadId }));
     await waitStatus(manager, threadId, 'exited');
 
-    // A SECOND socket (fresh client) subscribes to the archived thread.
     const viewer = attachFakeSocket(manager);
     viewer.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
     await viewer.awaitFrame('subscribed');
@@ -466,7 +432,6 @@ describe('/collab/thread socket — steer', () => {
     const threadId = created.info.threadId;
     await waitStatus(manager, threadId, 'ready');
 
-    // Empty content fails structural parse and never reaches the manager.
     socket.emit(JSON.stringify({ op: 'steer', threadId, reqId: 's0', content: '' }));
     socket.emit(
       JSON.stringify({ op: 'steer', threadId: 'missing', reqId: 's1', content: 'go left' }),
@@ -475,7 +440,6 @@ describe('/collab/thread socket — steer', () => {
     expect(errors().map((f) => f.code)).toEqual(['bad-frame', 'unknown-thread']);
     expect(errors()[1]).toMatchObject({ reqId: 's1', threadId: 'missing' });
 
-    // No turn is running, so the steer dispatches as an ordinary prompt.
     socket.emit(JSON.stringify({ op: 'steer', threadId, reqId: 's2', content: 'go left' }));
     const deadline = Date.now() + 10_000;
     for (;;) {
@@ -518,7 +482,6 @@ describe('/collab/thread socket — queue ops', () => {
       JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: 'new text' }),
     );
     socket.emit(JSON.stringify({ op: 'queue_remove', threadId: 'missing', id: 'q1' }));
-    // Empty content fails structural parse and never reaches the manager.
     socket.emit(JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: '' }));
     await awaitErrors(3);
 
@@ -543,7 +506,6 @@ describe('/collab/thread socket — queue ops', () => {
         (f): f is Extract<ThreadServerFrame, { op: 'error' }> => f.op === 'error',
       );
 
-    // Nothing is queued on this thread, so every id is already-dispatched.
     socket.emit(
       JSON.stringify({ op: 'queue_edit', threadId, id: 'gone', content: 'my correction' }),
     );
@@ -563,7 +525,6 @@ describe('/collab/thread socket — queue ops', () => {
       if (Date.now() > deadline) throw new Error('no error frame for the reqId-carrying edit');
       await new Promise((r) => setTimeout(r, 10));
     }
-    // Exactly one: the reqId-less edit and the hold are fire-and-forget.
     expect(errors()).toHaveLength(1);
     expect(errors()[0]).toMatchObject({
       code: 'not-ready',
@@ -595,7 +556,6 @@ describe('/collab/thread socket — queue ops', () => {
       await new Promise((r) => setTimeout(r, 25));
     }
 
-    // First prompt parks on the gate; the second queues behind it.
     socket.emit(JSON.stringify({ op: 'prompt', threadId, reqId: 'p1', content: 'hold the turn' }));
     deadline = Date.now() + 10_000;
     while (status() !== 'running') {
@@ -630,12 +590,6 @@ describe('/collab/thread socket — queue ops', () => {
 });
 
 describe('/collab/thread socket — crash-recovered replay bound', () => {
-  /**
-   * A crash leaves the meta behind the log: meta rewrites ride info changes,
-   * not each appended event, so `lastSeq` on disk can name an event far short
-   * of the log's real end. Both files are written by hand because that skew is
-   * only reachable by killing a server mid-stream.
-   */
   function writeCrashStaleThread(
     localDir: string,
     threadId: string,
@@ -670,7 +624,6 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
     );
   }
 
-  /** Longer than one replay chunk, so the log walks back in more than one frame. */
   const MULTI_CHUNK_EVENTS: ThreadEvent[] = Array.from({ length: 600 }, (_, i) => ({
     kind: 'user_message',
     content: `m${i}`,
@@ -683,15 +636,12 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
     writeCrashStaleThread(localDir, threadId, MULTI_CHUNK_EVENTS, 2);
     const manager = makeManager(tmp(), localDir);
     await manager.init();
-    // The rehydrated record still believes the stale meta until the log is read.
     expect(manager.getInfo(threadId)?.lastSeq).toBe(2);
 
     const socket = attachFakeSocket(manager);
     socket.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
     const subscribed = await socket.awaitFrame('subscribed');
 
-    // The announced bound covers the whole log, so a client that waits for
-    // delivery to reach it cannot mistake a later replay chunk for live traffic.
     expect(subscribed.info.lastSeq).toBe(MULTI_CHUNK_EVENTS.length - 1);
     const ops = socket.frames.map((f) => f.op);
     expect(ops.indexOf('subscribed')).toBeLessThan(ops.indexOf('events'));
@@ -703,8 +653,6 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
       );
       const delivered = replayed.reduce((n, f) => n + f.events.length, 0);
       if (delivered === MULTI_CHUNK_EVENTS.length) {
-        // More than one frame is the point: a single-chunk replay could not
-        // separate an accurate bound from a stale one.
         expect(replayed.length).toBeGreaterThan(1);
         expect(replayed[0].fromSeq).toBe(0);
         break;
@@ -720,8 +668,6 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
     const threadId = 'unreadable-log';
     const events: ThreadEvent[] = [{ kind: 'user_message', content: 'hello', ts: 1 }];
     writeCrashStaleThread(localDir, threadId, events, 0);
-    // A directory where the log belongs: it exists, so resolution reaches it,
-    // and reading it throws the way an EACCES/EIO log would.
     const logPath = join(localDir, 'threads', `${threadId}.ndjson`);
     rmSync(logPath);
     mkdirSync(logPath);
@@ -735,11 +681,6 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
     expect(failing.frames.map((f) => f.op)).not.toContain('subscribed');
     failing.close();
 
-    // Whatever made the log unreadable is gone. The next subscribe has to read
-    // it again: a memoized rejection would answer every later subscribe and
-    // resume for the life of the process, and since `subscribed` is emitted
-    // behind that resolution the thread would stay dark rather than merely
-    // lose its transcript.
     rmSync(logPath, { recursive: true });
     writeFileSync(logPath, `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
 

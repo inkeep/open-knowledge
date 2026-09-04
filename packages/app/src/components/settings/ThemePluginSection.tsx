@@ -1,10 +1,3 @@
-/**
- * The theme "plugin" panel — the color-palette picker + custom-theme editor,
- * rendered in the Plugins menu (Settings → Plugins → Themes) as a peer of the
- * lint plugins. Reuses the same user-scope config-form machinery the Preferences
- * pane uses.
- */
-
 import type { ConfigBinding } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect } from 'react';

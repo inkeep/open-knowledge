@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { extractBase64Images } from './base64-images.ts';
 
-// 1x1 transparent PNG.
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 

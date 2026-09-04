@@ -89,7 +89,6 @@ describe('file-tree-path-helpers', () => {
 
     test('drops paths already covered by a selected ancestor folder', () => {
       const targets = selectedTreePathsToDeleteTargets(['docs/', 'docs/notes.md'], documents);
-      // The folder subsumes the file inside it — only the folder survives.
       expect(targets).toHaveLength(1);
       expect(targets[0].kind).toBe('folder');
       expect(targets[0].path).toBe('docs');
@@ -114,7 +113,6 @@ describe('file-tree-path-helpers', () => {
           createdPath: 'docs/other',
         }),
       ).toBe(false);
-      // A file target never covers a pending folder.
       expect(
         deleteTargetCoversPendingCreate(fileTarget('docs/new'), {
           kind: 'folder',
@@ -145,7 +143,6 @@ describe('file-tree-path-helpers', () => {
           createdPath: 'docs',
         }),
       ).toBe(true);
-      // A sibling folder that only shares a name prefix is not inside it.
       expect(
         deleteTargetCoversPendingCreate(folderTarget('docs'), {
           kind: 'folder',
@@ -167,7 +164,6 @@ describe('file-tree-path-helpers', () => {
       expect(index.docsByTreePath.get('docs/notes.md')?.kind).toBe('document');
       expect(index.docsByTreePath.get('README.md')?.kind).toBe('document');
       expect(index.foldersByTreeDirectoryPath.get('docs/empty/')?.kind).toBe('folder');
-      // Assets are not indexed by either map.
       expect(index.docsByTreePath.has('docs/image.png')).toBe(false);
       expect(index.foldersByTreeDirectoryPath.has('docs/image.png')).toBe(false);
     });

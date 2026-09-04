@@ -21,7 +21,6 @@ function createPorts(
     deferredClears?: boolean;
     remapActiveTarget?: boolean;
     clearRejects?: boolean;
-    /** Present = a surface that handles active-doc deletion itself (note window). */
     deletedStateHandled?: boolean;
   } = {},
 ) {
@@ -221,8 +220,6 @@ describe('ClientRemovalReconciler', () => {
   });
 
   test('a surface that shows its own deleted state suppresses navigate-home', async () => {
-    // The note window has exactly one document and no home surface to navigate
-    // to, so it takes over and shows an explicit deleted state instead.
     const { log, reconciler } = createPorts({
       activePoolDocName: 'deleted',
       deletedStateHandled: true,
@@ -231,7 +228,6 @@ describe('ClientRemovalReconciler', () => {
 
     expect(log).toContain('deleted-state:deleted');
     expect(log).not.toContain('navigate:home');
-    // Cleanup still runs — the window stops showing a document that is gone.
     expect(log).toContain('remove-tab:deleted');
     expect(log).toContain('clear-target:deleted');
   });

@@ -1,12 +1,3 @@
-/**
- * Verifies the write-side of the rename history mitigation:
- * - Per-rename JSONL appends to `<gitdir>/ok/renames.jsonl`.
- * - Anonymous renames produce service-writer log entries.
- * - `previous_paths` threads to `OkActorEntry.previous_paths` on the
- *   writer's L2 commit.
- * - Folder rename of N docs produces N entries with shared `groupId`.
- */
-
 import {
   existsSync,
   mkdirSync,
@@ -170,7 +161,7 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
     expect(e.v).toBe(1);
     expect(e.kind).toBe('file');
     expect(e.branch).toBe('main');
-    expect(e.commitSha).toBe(''); // lazy-population — backfill is concern
+    expect(e.commitSha).toBe('');
     expect(e.actor.writerId).toBe('agent-claude-1');
     expect(e.actor.displayName).toBeTruthy();
     expect(e.groupId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -201,7 +192,6 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
       kind: 'file',
       fromPath: 'a.md',
       toPath: 'b.md',
-      // no agentId; no getPrincipal supplied (default → null)
     });
     expect(response.status).toBe(200);
 
@@ -228,7 +218,7 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
     const entries = loadEntries();
     expect(entries).toHaveLength(3);
     const groupIds = new Set(entries.map((e) => e.groupId));
-    expect(groupIds.size).toBe(1); // all three share a single groupId
+    expect(groupIds.size).toBe(1);
     const tos = entries.map((e) => e.to).sort();
     expect(tos).toEqual(['essays/auth', 'essays/oauth', 'essays/sso']);
     for (const e of entries) {
@@ -237,12 +227,6 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
   });
 
   test('previous_paths threads through recordContributor onto the writer ContributorEntry — agent path', async () => {
-    // The L2 drain (commitToWipRefInner) projects ContributorEntry.previousPaths
-    // onto OkActorEntry.previous_paths verbatim. Asserting the upstream entry
-    // proves the rename pipeline populated it; the projection is covered by
-    // the integration test in rename-history.test.ts which runs a real
-    // Hocuspocus drain and verifies `git show <renameSha> --no-patch
-    // --format=%B` body contains the `previous_paths` field.
     writeFileSync(resolve(contentDir, 'a.md'), '# A\n');
     const response = await callRename({
       kind: 'file',
@@ -262,21 +246,13 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
   });
 
   test('previous_paths threads through service-writer recordContributor on anonymous rename — regression for M1', async () => {
-    // Without the explicit service-writer recordContributor, an anonymous
-    // rename's empty-commitSha jsonl entry would orphan when a concurrent
-    // agent write fires per-writer fan-out (no service-writer commit ⇒ no
-    // backfill ⇒ next-boot sweepLazyPopOrphans drops it). This test
-    // simulates the concurrent-agent scenario and asserts
-    // `openknowledge-service` is in the pending snapshot.
     writeFileSync(resolve(contentDir, 'a.md'), '# A\n');
-    // Pre-existing agent activity in this drain window (a write to some doc).
     recordContributor('unrelated-doc', 'agent-claude-x', 'Claude');
 
     const response = await callRename({
       kind: 'file',
       fromPath: 'a.md',
       toPath: 'b.md',
-      // anonymous — no agentId, no principal
     });
     expect(response.status).toBe(200);
 
@@ -285,7 +261,6 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
     expect(serviceEntry).toBeDefined();
     expect(serviceEntry?.previousPaths).toEqual([{ from: 'a', to: 'b' }]);
     expect(serviceEntry?.subjectOverride).toBe('rename: a -> b');
-    // Agent's own contributor entry is preserved alongside.
     expect(snapshot.get('agent-claude-x')).toBeDefined();
   });
 
@@ -301,7 +276,6 @@ describe('rename log emission inside withManagedRenameRecovery (US-006)', () => 
     const path = resolve(shadowRef.current.gitDir, 'renames.jsonl');
     expect(existsSync(path)).toBe(true);
     const raw = readFileSync(path, 'utf-8');
-    // Single newline-terminated line for a file rename
     expect(raw.endsWith('\n')).toBe(true);
     expect(raw.split('\n').filter((l) => l.length > 0)).toHaveLength(1);
   });

@@ -1,10 +1,3 @@
-/**
- * Unit coverage for the HTTP auth-query transport's `signout` parse logic: the
- * empty-body 200 success path and the RFC 9457 problem+json failure path. The
- * real client<->server boundary is exercised separately against a live route
- * handler in tests/integration/api-error-envelope.
- */
-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthQueryTransport } from './auth-query-transport';
 
@@ -176,8 +169,6 @@ describe('httpAuthQueryTransport().signout', () => {
 
     const result = await transport.signout();
 
-    // No server title → no error field; the UI supplies a localized fallback
-    // rather than the transport emitting an English literal.
     expect(result).toEqual({ ok: false });
   });
 

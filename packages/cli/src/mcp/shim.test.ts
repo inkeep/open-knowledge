@@ -20,10 +20,6 @@ import {
   startMcpShim,
 } from './shim.ts';
 
-// ---------------------------------------------------------------------------
-// Fake transport helpers for bridge unit tests
-// ---------------------------------------------------------------------------
-
 interface FakeTransport {
   onerror: ((err: Error) => void) | undefined;
   onclose: (() => void) | undefined;
@@ -94,9 +90,6 @@ describe('MCP stdio shim server resolution', () => {
     const drainingLock: ServerLockMetadata = { ...liveLock, draining: true };
     let reads = 0;
     const calls: string[] = [];
-    // Read sequence: initial check (draining) → 2 drain polls (draining) →
-    // drain poll sees release (null) → post-drain re-check (null) → spawn →
-    // spawn poll picks up the fresh child lock.
     const url = await resolveMcpHttpUrl({
       lockDir,
       contentDir: tmp,
@@ -156,15 +149,10 @@ describe('MCP stdio shim server resolution', () => {
       }) as never,
     });
 
-    // Numeric IPv4 loopback, not `localhost` — the shim must target the same
-    // family `ok start` binds (Windows `localhost` → `::1` mismatch).
     expect(url).toBe('http://127.0.0.1:4123/mcp');
   });
 
   test('live lock with url prefers the advertised origin over the port', async () => {
-    // The origin deliberately differs from the port-derived fallback
-    // (`http://127.0.0.1:4123`) in both host and port, so a silent fall-back
-    // to the port branch fails this assertion.
     const lockWithUrl: ServerLockMetadata = { ...liveLock, url: 'http://localhost:4999' };
     const url = await resolveMcpHttpUrl({
       lockDir,
@@ -231,9 +219,6 @@ describe('MCP stdio shim server resolution', () => {
     expect(calls[0]?.cmd).toBe(process.execPath);
     expect(calls[0]?.args.at(-1)).toBe('start');
     expect(calls[0]?.cwd).toBe(tmp);
-    // Explicit `'1'` keeps Electron's CLI bin in Node mode under the
-    // packaged-app spawn path; silent reversion would re-introduce the
-    // Dock-tile leak.
     expect(calls[0]?.env?.ELECTRON_RUN_AS_NODE).toBe('1');
   });
 
@@ -245,10 +230,6 @@ describe('MCP stdio shim server resolution', () => {
       readLock: () => null,
       isAlive: () => false,
     }).catch((e: unknown) => e);
-    // The type is the cross-package contract: preview_url's catch branches on
-    // instanceof to give the opt-out a soft not-running payload instead of a
-    // tool error. A message-only assertion would keep passing if this
-    // reverted to a plain Error and silently break that branch.
     expect(err).toBeInstanceOf(AutoStartDisabledError);
     expect((err as Error).message).toContain('OK_MCP_AUTOSTART=0');
   });
@@ -303,10 +284,6 @@ describe('MCP stdio shim server resolution', () => {
     ).rejects.toThrow('spawn failed: spawn EACCES stderr:\nboot failed loudly');
   });
 
-  // Pins the DEFAULT reader, which every other test at this throw site
-  // replaces by injecting `readErrorLog`. The file appends across spawns now,
-  // so reading it whole would hand the previous attempt's stderr to this
-  // failure — and this is the tier where that string reaches an MCP client.
   test('the default reader quotes only the current attempt', async () => {
     mkdirSync(lockDir, { recursive: true });
     writeFileSync(
@@ -335,13 +312,9 @@ describe('MCP stdio shim server resolution', () => {
 
     expect(err?.message).toContain('the real cause');
     expect(err?.message).not.toContain('EADDRINUSE from before');
-    // Nor our own delimiter — the report quotes the child, not the parent.
     expect(err?.message).not.toContain('spawn attempt');
   });
 
-  // The reader's other property, and the one that decides how big a payload
-  // this hands an MCP client. The file's own cap is 256 KiB, so without this
-  // bound a single noisy attempt would be quoted whole into a JSON-RPC error.
   test('the default reader bounds one huge attempt to a tail', async () => {
     mkdirSync(lockDir, { recursive: true });
     const oldest = 'FIRST-LINE-MARKER\n';
@@ -368,8 +341,6 @@ describe('MCP stdio shim server resolution', () => {
       (e: unknown) => e as Error,
     );
 
-    // Truncated from the front, marked as truncated, and nowhere near the
-    // file's own 256 KiB cap.
     expect(err?.message).not.toContain('FIRST-LINE-MARKER');
     expect(err?.message).toContain('…');
     expect(err?.message.length).toBeLessThan(9_000);
@@ -440,9 +411,6 @@ describe('MCP stdio shim server resolution', () => {
         },
         'http://localhost:4123/mcp',
       ),
-      // Live-lock path derives the host from `DEFAULT_SERVER_HOST` (numeric
-      // IPv4 loopback), not the endpoint arg — must match where `ok start`
-      // binds. Only the port-override branch below reuses the endpoint host.
     ).toBe('ws://127.0.0.1:4123');
 
     expect(
@@ -455,8 +423,6 @@ describe('MCP stdio shim server resolution', () => {
         },
         'http://localhost:4123/mcp',
       ),
-      // A url-carrying lock wins over the port: the WS endpoint derives from
-      // the advertised origin, not DEFAULT_SERVER_HOST + port.
     ).toBe('ws://localhost:4999');
 
     expect(
@@ -486,10 +452,6 @@ describe('MCP stdio shim server resolution', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// bridgeStdioToHttpMcp — error path unit tests
-// ---------------------------------------------------------------------------
-
 describe('bridgeStdioToHttpMcp error paths', () => {
   test('notification-forward failure logs to stderr and leaves bridge alive', async () => {
     const stderr = makeStderr();
@@ -502,7 +464,6 @@ describe('bridgeStdioToHttpMcp error paths', () => {
       },
     });
     const fakeStdio = makeFakeTransport({
-      // Should NOT be called for notifications (no id → no error response).
       send: async () => {
         throw new Error('send should not be called for a notification');
       },
@@ -514,13 +475,11 @@ describe('bridgeStdioToHttpMcp error paths', () => {
       createHttpTransport: () => fakeHttp,
     });
 
-    // Fire a notification (no `id` field).
     fakeStdio.onmessage?.({
       jsonrpc: '2.0',
       method: 'notifications/initialized',
     } as JSONRPCMessage);
 
-    // Let the forward queue settle.
     await wait(20);
 
     expect(httpSendCalled).toBe(true);
@@ -550,7 +509,6 @@ describe('bridgeStdioToHttpMcp error paths', () => {
       createHttpTransport: () => fakeHttp,
     });
 
-    // Fire a request (has `id` → expects an error-response write back on failure).
     fakeStdio.onmessage?.({
       jsonrpc: '2.0',
       id: 42,
@@ -567,10 +525,6 @@ describe('bridgeStdioToHttpMcp error paths', () => {
     await bridge.close();
   });
 });
-
-// ---------------------------------------------------------------------------
-// startMcpShim lifecycle — keepalive cleanup on bridge start failure
-// ---------------------------------------------------------------------------
 
 describe('startMcpShim lifecycle', () => {
   let tmp: string;

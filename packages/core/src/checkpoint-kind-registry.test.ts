@@ -14,10 +14,8 @@ describe('checkpoint-kind registry', () => {
     for (const sample of Object.values(SAMPLE_BY_KIND)) {
       const parsed = parseCheckpoint(formatCheckpointBodyLine(sample));
       expect(parsed?.kind).toBe(sample.kind);
-      // The kind the parser round-trips must be a registered kind.
       expect(CHECKPOINT_KINDS).toContain(parsed?.kind);
     }
-    // And the registry carries no kind the parser can't produce.
     expect([...CHECKPOINT_KINDS].sort()).toEqual(Object.keys(SAMPLE_BY_KIND).sort());
   });
 
@@ -26,7 +24,6 @@ describe('checkpoint-kind registry', () => {
       const attrs = CHECKPOINT_KIND_REGISTRY[kind];
       expect(['surfaced', 'hidden']).toContain(attrs.visibility);
       expect(['metadata', 'subject-only', 'none']).toContain(attrs.bundleExposure);
-      // Every GC bucket must itself be a registered kind (a real partition key).
       expect(CHECKPOINT_KINDS).toContain(attrs.gcBucket);
     }
   });
@@ -40,8 +37,6 @@ describe('checkpoint-kind registry', () => {
   });
 
   it('keeps secrets out of the bundle by not exposing routine kinds', () => {
-    // Loss/rescue kinds may ride a consent-gated bundle (correlation only);
-    // routine consolidations never do.
     expect(CHECKPOINT_KIND_REGISTRY['bridge-merge-loss'].bundleExposure).toBe('subject-only');
     expect(CHECKPOINT_KIND_REGISTRY['auto-consolidation'].bundleExposure).toBe('none');
   });
@@ -59,9 +54,6 @@ describe('checkpoint-kind registry', () => {
   });
 
   it('classifies every content-bearing kind as subject-only', () => {
-    // `lostSubstrings` is verbatim document content. A kind carrying it must
-    // never be classified as safe to stage whole into a diagnostics bundle —
-    // that is the difference between a correlation record and an exfiltration.
     for (const [kind, sample] of Object.entries(SAMPLE_BY_KIND)) {
       const carriesContent = 'lostSubstrings' in sample.metadata;
       const exposure = CHECKPOINT_KIND_REGISTRY[kind as CheckpointKind].bundleExposure;

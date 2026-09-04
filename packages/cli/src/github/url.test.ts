@@ -85,13 +85,6 @@ describe('parseGitUrl', () => {
   });
 
   describe('userinfo handling', () => {
-    // The hostname split is load-bearing: with userinfo folded into the
-    // hostname, the public-repo probe gate never fires and
-    // `gh auth token --hostname alice@github.com` fails, so the exact URL
-    // form GCM's multi-account guide tells users to write lost all auth.
-    // Account extraction is NOT this parser's job — the server-side origin
-    // parser owns it (with login-grammar validation); this one only splits
-    // the userinfo off the host and drops it.
     test('https URL with userinfo yields the real hostname', () => {
       const result = parseGitUrl('https://alice@github.com/owner/repo');
       expect(result).toEqual({
@@ -432,12 +425,6 @@ describe('parseGitHubBlobUrl', () => {
   });
 
   test('an unknown host (incl. a github.com lookalike) parses as an enterprise host', () => {
-    // GHES hostnames are arbitrary, so the parser cannot distinguish a
-    // lookalike like `github.com.evil.example` from a legitimate enterprise
-    // host by structure alone — both parse, carrying the host verbatim. The
-    // defense is the receive-side trust gate (`url-scheme.ts`), which prompts
-    // for any host the recipient is not authenticated to; it is NOT the
-    // parser's job to guess trust.
     expect(
       parseGitHubBlobUrl('https://github.com.evil.example/owner/repo/blob/main/README.md'),
     ).toEqual({
@@ -453,10 +440,6 @@ describe('parseGitHubBlobUrl', () => {
     expect(parseGitHubBlobUrl('https://gitlab.com/owner/repo/blob/main/README.md')).toBeNull();
   });
 
-  // REGRESSION PIN: the blob-only parser treats a
-  // tree URL as invalid. This simulates a pre-folder client receiving a folder
-  // share — it MUST degrade to the "Invalid share URL" path rather than
-  // silently mis-parsing. parseGitHubShareUrl (below) is the folder-aware path.
   test('tree (folder) URL returns null from blob-only parser', () => {
     expect(parseGitHubBlobUrl('https://github.com/owner/repo/tree/main/README.md')).toBeNull();
   });
@@ -491,10 +474,6 @@ describe('parseGitHubBlobUrl', () => {
   });
 
   describe('round-trip with buildGitHubBlobUrl-shape URLs', () => {
-    // The server's buildGitHubBlobUrl encodes branch as a single segment
-    // (slashes become %2F) and path segments individually (separator preserved).
-    // These cases pair build-shape input with parser output to prove the
-    // contract on the parser side without crossing a package boundary.
     const cases: Array<{ branch: string; encodedBranch: string }> = [
       { branch: 'main', encodedBranch: 'main' },
       { branch: 'feat/foo', encodedBranch: 'feat%2Ffoo' },
@@ -519,9 +498,6 @@ describe('parseGitHubBlobUrl', () => {
 });
 
 describe('parser scheme guard (https-only)', () => {
-  // A crafted deep link can pair a non-https scheme with a valid host + path
-  // and otherwise parse; the parser must reject it so the URL never reaches an
-  // <a href> or shell.openExternal. Legitimate share links are always https.
   for (const url of [
     'vscode://ghes.internal.example/owner/repo/blob/main/README.md',
     'http://github.com/owner/repo/blob/main/README.md',
@@ -642,8 +618,6 @@ describe('parseGitHubTreeUrl', () => {
   });
 
   test('an unknown host (incl. a github.com lookalike) parses as an enterprise host', () => {
-    // See the blob parser's companion test: structural parsing accepts any
-    // non-forge host; trust is enforced downstream by the receive-side gate.
     expect(parseGitHubTreeUrl('https://github.com.evil.example/owner/repo/tree/main/docs')).toEqual(
       {
         host: 'github.com.evil.example',

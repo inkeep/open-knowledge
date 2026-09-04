@@ -77,12 +77,10 @@ describe('instrumentIndexRebuild', () => {
       }),
     ).rejects.toThrow('walk failed');
     const span = requireSpan('ok.index.rebuild');
-    expect(span.status.code).not.toBe(0); // ERROR, not UNSET
+    expect(span.status.code).not.toBe(0);
   });
 
   test('metric record path is no-throw under the default (disabled) meter', async () => {
-    // metrics.disable() in afterEach leaves the no-op global meter; the
-    // counter + histogram must never be able to break a rebuild.
     await expect(instrumentIndexRebuild('tag', 'reconcile', async () => 1)).resolves.toBe(1);
   });
 });

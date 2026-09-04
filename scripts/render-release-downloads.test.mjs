@@ -20,8 +20,6 @@ const ALL_INSTALLERS = [
   'OpenKnowledge-aarch64.rpm',
 ];
 
-// The full asset set a release carries — installers plus updater plumbing
-// that must NOT get table rows.
 const ALL_ASSETS = [
   ...ALL_INSTALLERS,
   'OpenKnowledge-arm64.dmg.blockmap',
@@ -33,8 +31,6 @@ const ALL_ASSETS = [
   'latest-linux-arm64.yml',
 ];
 
-// A beta body shaped like the cadence produces: lead, changelog section, and
-// the hidden consumed-set marker compute-next-beta.mjs reads back.
 const BETA_BODY = 'Delta since previous beta v0.43.0-beta.4\n\n### Patch Changes\n\n- fix a thing\n\n<!-- ok-consumed-set: ["abc"] -->\n';
 
 describe('renderDownloadsBlock', () => {
@@ -80,10 +76,7 @@ describe('upsertDownloadsBlock', () => {
       repo: REPO,
       assetNames: ALL_ASSETS,
     });
-    // Everything before the block is the original body (modulo the trailing
-    // whitespace the append normalizes).
     expect(out.startsWith(BETA_BODY.trimEnd())).toBe(true);
-    // The consumed-set marker survives — compute-next-beta.mjs reads it back.
     expect(out).toContain('<!-- ok-consumed-set: ["abc"] -->');
     expect(out).toContain(DOWNLOADS_START);
     expect(out).toContain(DOWNLOADS_END);
@@ -93,7 +86,7 @@ describe('upsertDownloadsBlock', () => {
     const once = upsertDownloadsBlock({ body: BETA_BODY, tag: TAG, repo: REPO, assetNames: ALL_ASSETS });
     const twice = upsertDownloadsBlock({ body: once, tag: TAG, repo: REPO, assetNames: ALL_ASSETS });
     expect(twice).toBe(once);
-    expect(twice.split(DOWNLOADS_START).length).toBe(2); // exactly one occurrence
+    expect(twice.split(DOWNLOADS_START).length).toBe(2);
   });
 
   test('a re-render with fewer assets drops the missing rows', () => {
@@ -115,9 +108,6 @@ describe('upsertDownloadsBlock', () => {
   });
 
   test('a re-render with NO installers strips a previously-rendered block', () => {
-    // A stale table left behind here would carry dead links to assets that
-    // were never uploaded — the strip-on-empty path is load-bearing, not a
-    // formality of the null-block branch.
     const withBlock = upsertDownloadsBlock({ body: BETA_BODY, tag: TAG, repo: REPO, assetNames: ALL_ASSETS });
     const rerender = upsertDownloadsBlock({
       body: withBlock,

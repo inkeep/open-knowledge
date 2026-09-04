@@ -1,17 +1,3 @@
-/**
- * Single-flight dedupe + abort-on-disconnect for `GET /api/documents?showAll=true`
- * Concurrent identical walks must collapse to one traversal (the
- * `concurrent_walks` heap multiplier → 1), the in-flight entry must evict on
- * settle (no stale caching), distinct `dir` shapes must not coalesce, and a
- * walk whose last waiter disconnects must abort at the next directory boundary.
- *
- * Walk counting uses the server's `__getShowAllWalkStatsForTesting()` seam:
- * `invocations` counts how many times the walk actually ran, `aborts` counts
- * walks that bailed on their signal. The integration server and this test share
- * one `@inkeep/open-knowledge-server` module instance, so the counter is the
- * same object the handler increments.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,12 +9,6 @@ import {
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createTestServer, pollUntil, type TestServer } from './test-harness';
 
-// The fixture is intentionally large AND deep so one walk spans many event-loop
-// ticks: it gives single-flight coalescing a wide window, and — critically for
-// the disconnect test — keeps the walk in flight long enough that an abort fired
-// right after the walk starts reliably lands mid-traversal on fast hardware.
-// Each nested directory adds realpath + readdir + stat awaits on top of the
-// per-file stats, so the walk duration dwarfs the abort round-trip latency.
 const ROOT_FILE_COUNT = 1500;
 const NESTED_DIR_COUNT = 30;
 const FILES_PER_NESTED_DIR = 40;
@@ -44,8 +24,6 @@ beforeAll(async () => {
   for (let i = 0; i < ROOT_FILE_COUNT; i++) {
     writeFileSync(join(contentDir, `file-${String(i).padStart(4, '0')}.md`), `# File ${i}\n`);
   }
-  // A wide nested tree: more directory boundaries → more realpath/readdir
-  // awaits → a reliably long walk for the abort-on-disconnect test.
   for (let d = 0; d < NESTED_DIR_COUNT; d++) {
     const dirPath = join(contentDir, 'nested', `d-${String(d).padStart(2, '0')}`);
     mkdirSync(dirPath, { recursive: true });
@@ -57,8 +35,6 @@ beforeAll(async () => {
     mkdirSync(join(contentDir, sub));
     writeFileSync(join(contentDir, sub, 'note.md'), `# ${sub}\n`);
   }
-  // Non-skill `.ok` content for the showOk key-isolation test below. Default
-  // showAll walks never admit `.ok`, so the sibling tests are unaffected.
   mkdirSync(join(contentDir, '.ok', 'templates'), { recursive: true });
   writeFileSync(join(contentDir, '.ok', 'templates', 'daily.md'), '# Daily\n');
   server = await createTestServer({ contentDir, keepContentDir: false });
@@ -70,11 +46,6 @@ afterAll(async () => {
 
 describe('single-flight dedupe (AC1, AC2)', () => {
   test('N concurrent identical requests trigger exactly one walk and share the result', async () => {
-    // Coalescing relies on the handler inserting the in-flight entry synchronously
-    // between the map miss and set (http/document-routes.ts, the showAll branch
-    // - no `await` in that window). If a future refactor introduces an await there,
-    // these requests would each start a walk and `invocations` would jump to N,
-    // failing this assertion.
     __resetShowAllWalkStatsForTesting();
     const N = 10;
     const responses = await Promise.all(Array.from({ length: N }, () => fetch(showAllUrl())));
@@ -83,17 +54,14 @@ describe('single-flight dedupe (AC1, AC2)', () => {
       responses.map(async (res) => DocumentListSuccessSchema.parse(await res.json())),
     );
 
-    // Exactly one underlying walk despite N concurrent callers.
     expect(__getShowAllWalkStatsForTesting().invocations).toBe(1);
 
-    // Every coalesced caller received the identical sorted result.
     const first = bodies[0];
     expect(first).toBeDefined();
     for (const body of bodies) {
       expect(body.documents.length).toBe(first?.documents.length);
     }
     expect(bodies[1]).toEqual(first);
-    // Sanity: the shared walk actually surfaced the fixture.
     expect(first?.documents.length ?? 0).toBeGreaterThan(ROOT_FILE_COUNT);
   }, 30_000);
 
@@ -101,9 +69,7 @@ describe('single-flight dedupe (AC1, AC2)', () => {
     __resetShowAllWalkStatsForTesting();
     const a = DocumentListSuccessSchema.parse(await (await fetch(showAllUrl())).json());
     const b = DocumentListSuccessSchema.parse(await (await fetch(showAllUrl())).json());
-    // No stale caching: each fully-awaited request re-walks.
     expect(__getShowAllWalkStatsForTesting().invocations).toBe(2);
-    // ...and still returns the same view.
     expect(b.documents.length).toBe(a.documents.length);
   }, 30_000);
 
@@ -114,13 +80,10 @@ describe('single-flight dedupe (AC1, AC2)', () => {
     expect(rb.ok).toBe(true);
     await ra.json();
     await rb.json();
-    // Distinct keys (`showAll:dir-a` vs `showAll:dir-b`) → two independent walks.
     expect(__getShowAllWalkStatsForTesting().invocations).toBe(2);
   }, 30_000);
 
   test('a truncated coalesced walk delivers truncated:true to every waiter', async () => {
-    // The truncation signal is computed once inside the shared walk and must
-    // reach all coalesced callers through the single shared result.
     const prev = process.env.OK_SHOWALL_MAX_ENTRIES;
     process.env.OK_SHOWALL_MAX_ENTRIES = '50';
     try {
@@ -144,9 +107,6 @@ describe('single-flight dedupe (AC1, AC2)', () => {
 
 describe('showOk single-flight isolation', () => {
   test('concurrent showAll and showAll+showOk requests never coalesce', async () => {
-    // The in-flight key must incorporate the showOk flag: coalescing across
-    // modes would hand one caller the other mode's listing — either a plain
-    // caller receiving `.ok` rows or a reveal caller silently missing them.
     __resetShowAllWalkStatsForTesting();
     const [plainRes, revealRes] = await Promise.all([
       fetch(showAllUrl()),
@@ -157,10 +117,8 @@ describe('showOk single-flight isolation', () => {
     const plain = DocumentListSuccessSchema.parse(await plainRes.json());
     const reveal = DocumentListSuccessSchema.parse(await revealRes.json());
 
-    // Distinct cache keys → two independent walks...
     expect(__getShowAllWalkStatsForTesting().invocations).toBe(2);
 
-    // ...and each caller received its own mode's listing.
     const pathOf = (e: { kind: string; docName?: string; path?: string }) =>
       e.kind === 'folder' ? (e.path ?? '') : (e.docName ?? e.path ?? '');
     expect(plain.documents.map(pathOf).some((p) => p.split('/').includes('.ok'))).toBe(false);
@@ -172,24 +130,14 @@ describe('abort-on-disconnect (AC4)', () => {
   test.skip('a disconnect with no other waiter aborts the shared walk', async () => {
     __resetShowAllWalkStatsForTesting();
     const controller = new AbortController();
-    // Capture the rejection so the deliberate abort never surfaces as an
-    // unhandled rejection.
     const rejected = fetch(showAllUrl(), { signal: controller.signal }).then(
       () => false,
       () => true,
     );
 
-    // Abort only once the walk has actually started, so the abort lands
-    // mid-traversal rather than before the request reaches the handler. Budgets
-    // are generous because the full integration suite runs many servers
-    // concurrently — under that CPU load the walk start and the abort round-trip
-    // (socket close → refcount → next directory-boundary check) can each take
-    // several seconds. The per-test timeout below must exceed their sum.
     await pollUntil(() => __getShowAllWalkStatsForTesting().invocations >= 1, 12_000, 5);
     controller.abort();
 
-    // The server observes the disconnect, refcount hits zero, and the walk
-    // bails at the next directory boundary.
     await pollUntil(() => __getShowAllWalkStatsForTesting().aborts >= 1, 12_000, 5);
     expect(__getShowAllWalkStatsForTesting().aborts).toBe(1);
     expect(await rejected).toBe(true);

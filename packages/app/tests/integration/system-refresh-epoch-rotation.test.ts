@@ -1,22 +1,3 @@
-/**
- * The token-less `__system__` refresh must not suppress per-doc recycle.
- *
- * `__system__` is constructed without an auth token, so it carries no epoch
- * claim and the server's stale-claim rejection never applies to it. After a
- * server restart it therefore re-syncs freely and its reconnect refresh
- * reaches the pool over HTTP, while per-doc providers are still retrying
- * tokens frozen with the dead epoch. If that refresh is allowed to be a
- * plain field write, the pool caches the new epoch and every subsequent
- * per-doc rejection is discarded as "already handled" — the docs stay
- * offline for the rest of the session, showing a reconnect toast that
- * promises edits will sync.
- *
- * Both halves have to be wired at once for the composition to be observable:
- * the refresher alone recycles nothing, and a restart without a `__system__`
- * subscriber never produces the suppressing write. The ordering is forced
- * rather than raced, so this is a falsifier and not a coin flip.
- */
-
 import './idb-preload';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -44,7 +25,6 @@ afterEach(async () => {
   }
 }, 30_000);
 
-/** Recycle entries observed on the structured breadcrumb channel. */
 function countRecycleBegins(calls: readonly unknown[][]): number {
   return calls.filter((call) => {
     const first = call[0];
@@ -81,34 +61,23 @@ describe('__system__ refresh across a server epoch rotation', () => {
     const staleProvider = pool.getActive()?.provider;
     if (!staleProvider) throw new Error('expected an active provider before the restart');
 
-    // The half that was never wired alongside a recycle assertion.
     const systemSub = attachSystemDocSubscriber(pool, server.port);
     cleanups.push(() => systemSub.dispose());
     await wait(200);
 
-    // Short downtime keeps the pool's debounced disconnect-recycle out of the
-    // picture, so any recycle observed below is attributable to the epoch
-    // transition and nothing else.
     server = await server.killAndRestartOnSamePort({ downtimeMs: 300 });
     cleanups.unshift(() => server.shutdown());
 
     const recyclesBeforeRefresh = countRecycleBegins(infoSpy.mock.calls);
 
-    // Force the arm rather than race it. Hocuspocus's first reconnect attempt
-    // is a second out, so the per-doc provider cannot have been rejected yet:
-    // whatever this observes is the refresh reaching the pool alone. This is
-    // the same call the `__system__` reconnect gate makes in production.
     await refreshServerInfo(pool, `http://127.0.0.1:${server.port}`);
     const recyclesAfterRefresh = countRecycleBegins(infoSpy.mock.calls);
 
     expect(recyclesAfterRefresh).toBeGreaterThan(recyclesBeforeRefresh);
 
-    // The epoch really did rotate, so the suppression would have been real.
     const secondEpoch = await pool.whenServerInstanceKnown();
     expect(secondEpoch).not.toBe(firstEpoch);
 
-    // User-visible outcome: the doc comes back rather than retrying a frozen
-    // claim forever.
     await pool.awaitMismatchSettled();
     await pollUntil(
       () => {

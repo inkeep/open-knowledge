@@ -24,12 +24,6 @@ interface TempRepoHandle {
   cleanup(): void;
 }
 
-/**
- * Build a temp git repo with a main checkout and N linked worktrees on
- * freshly created branches. Each worktree gets an initial commit so HEAD has
- * a real SHA. Realpath-resolved so macOS `/private/var` symlink collapse
- * doesn't confuse comparisons with the implementation's output.
- */
 async function makeRepoWithWorktrees(branches: readonly string[]): Promise<TempRepoHandle> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'resolve-share-')));
   const mainRepo = join(root, 'main');
@@ -166,13 +160,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
   });
 
   test('a ghost most-recent entry does not poison the worktree-enumeration anchor', async () => {
-    // The behavior only the recents filter provides: it runs upstream of
-    // findRecentProjectsForRepo, so it is what keeps the ghost from becoming
-    // recentMatches[0] and rooting listGitWorktrees at a non-repo cwd. Drop
-    // the filter and this share lands on `fallback`/main-checkout — a
-    // branch-switch dialog — even though the branch is already checked out in
-    // a worktree. The downstream soft-match guard runs after the anchor is
-    // chosen and cannot rescue this.
     handle = await makeRepoWithWorktrees(['feat-foo']);
     const wtPath = handle.worktrees.get('feat-foo');
     expect(wtPath).toBeDefined();
@@ -185,7 +172,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
     writeFileSync(join(ghostPath, '.ok', 'local', 'logs', 'server-current.jsonl'), '{}\n');
 
     const selection = await resolveShareTarget(PAYLOAD, {
-      // Ghost is the most recently opened, so it would be the anchor.
       listRecent: () => [recent(ghostPath), recent(handle?.mainRepo ?? '')],
     });
 
@@ -196,11 +182,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
   });
 
   test('filterShareEligibleRecents drops a ghost directory (no .git) but keeps a real git working tree', async () => {
-    // The share-admission predicate must refuse a moved-away directory that
-    // survives the bare-existence missing filter — it exists on disk but holds
-    // only OK's own droppings (no .git, no .ok/config.yml) — while still
-    // admitting a real checkout. Uses the real on-disk readGitDirKind against
-    // real fixtures.
     handle = await makeRepoWithWorktrees([]);
     const ghostRoot = realpathSync(mkdtempSync(join(tmpdir(), 'eligible-ghost-')));
     try {
@@ -220,10 +201,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
   });
 
   test('filterShareEligibleRecents drops a stale worktree pointer (.git file to a gone gitdir)', async () => {
-    // The moved-away-linked-worktree ghost shape: the directory still holds a
-    // `.git` FILE, but its pointer targets an admin gitdir that no longer
-    // exists. Not a dispatchable checkout — must be refused like the
-    // no-.git ghost.
     handle = await makeRepoWithWorktrees([]);
     const staleRoot = realpathSync(mkdtempSync(join(tmpdir(), 'eligible-stale-')));
     try {
@@ -246,14 +223,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
   });
 
   test('ghost recents entry (exists, no .git, no .ok/config.yml) resolves to miss through the production annotateMissing wiring', async () => {
-    // Reproduces the full share-receive ghost scenario end to end: a recents
-    // entry still carries the repo's gitRemoteUrl from when the project was
-    // real at this path, but the path now holds only OK's own droppings (the
-    // folder was moved in Finder and the still-running server recreated it to
-    // write logs). The share carries a branch. A ghost directory that is
-    // neither a git checkout nor an OK project must never be presented as the
-    // share target with a "this branch is checked out here" claim — selection
-    // must return a miss.
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'resolve-share-ghost-')));
     handle = {
       root,
@@ -278,10 +247,6 @@ describe('resolveShareTarget — main-side adapter parity with the shared algori
     };
 
     const selection = await resolveShareTarget(PAYLOAD, {
-      // Production wiring: the share path feeds selection the annotateMissing
-      // projection, which marks this ghost non-missing because the directory
-      // does exist — so it reaches the share-eligibility filter rather than
-      // being dropped upstream of it.
       listRecent: () => annotateMissing(state),
     });
 

@@ -1,30 +1,3 @@
-/**
- * Settings → This project → Remote control (desktop-only).
- *
- * The GUI for exposing this Desktop's loopback project server over a user-run
- * tunnel (Tailscale, a reverse proxy, a VPN). It writes the two config leaves
- * the server boot reads, then restarts the project server:
- *
- *  - `server.allowExternal` (project-LOCAL, gitignored) — the exposure consent
- *    the boot interlock requires. Per-machine: never travels via clone/share.
- *  - `server.externalUrl` + `server.port` (project scope) — the public origin
- *    the Host-gate admits, and a pinned port so the tunnel's fixed target stays
- *    stable across restarts.
- *
- * BOTH are needed to expose: an origin without consent is inert (no exposure),
- * consent without an origin admits no external Host (every request 403s). The
- * tunnel itself is the user's — OK provisions nothing and runs no server-side
- * auth (the edge owns it), and OK does not detect, prefill, or drive the tunnel:
- * the setup how-to lives in the docs (a docs link lands once the docs rename
- * deploys). The pane never writes
- * `server.bind`, so a normal project binds loopback and the tunnel forwards to
- * it; a non-loopback bind that arrived via committed config still binds only
- * under the boot exposure interlock, which refuses a wide bind without the
- * consent this pane writes — which is also why a loopback port probe is the
- * right surface to preflight here. Scope split is locked: consent is
- * project-local, origin + port are committed project scope (inert without the
- * local consent).
- */
 import { DEFAULT_TUNNEL_PORT, humanFormat } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
@@ -61,10 +34,6 @@ export function NetworkAccessSection() {
     projectLocalBinding,
   } = useConfigContext();
 
-  // Consent is project-local; origin + port are committed project scope. We
-  // read each field only from the scope that owns it — never surface a
-  // committed allowExternal (it is always inert per the clone-leak guard, so
-  // display = what actually boots).
   const configuredAllow = projectLocalConfig?.server?.allowExternal === true;
   const configuredOrigin = projectConfig?.server?.externalUrl ?? '';
   const configuredPort = projectConfig?.server?.port;
@@ -79,13 +48,8 @@ export function NetworkAccessSection() {
   const [portError, setPortError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applying, setApplying] = useState(false);
-  // Preflight availability of the typed fixed port: true (bindable), false (held
-  // by another process), or null (not checked / unknown / no desktop bridge).
   const [portAvailable, setPortAvailable] = useState<boolean | null>(null);
 
-  // Re-seed the drafts when the persisted values change out from under us — a
-  // `ok config` edit in a terminal while Settings is open, or the first sync
-  // after mount. "Adjust state during render on a changed value" (no effect).
   const [prevConfigured, setPrevConfigured] = useState({
     allow: configuredAllow,
     origin: configuredOrigin,
@@ -103,18 +67,12 @@ export function NetworkAccessSection() {
     setPortDraft(configuredPort != null ? String(configuredPort) : String(DEFAULT_TUNNEL_PORT));
     setOriginError(null);
     setPortError(null);
-    // Drop the stale probe verdict too — it was measured against the old draft.
     setPortAvailable(null);
   }
 
   const bindingsReady =
     projectSynced && projectLocalSynced && projectBinding !== null && projectLocalBinding !== null;
 
-  // Surface a pinned-port fallback: if a fixed `server.port` is configured but
-  // the server actually bound a different port (EADDRINUSE → ephemeral fallback
-  // in the utility boot), a tunnel forwarding to the fixed port reaches nothing.
-  // The bound port is the one this window is talking to, read off the desktop
-  // bridge's apiOrigin — no extra IPC needed.
   const boundPort = (() => {
     const apiOrigin = window.okDesktop?.config?.apiOrigin;
     if (!apiOrigin) return null;
@@ -127,14 +85,8 @@ export function NetworkAccessSection() {
   })();
   const portInUse = configuredPort != null && boundPort != null && boundPort !== configuredPort;
 
-  // Exposing pins the port: a tunnel forwards to a fixed target, so an
-  // ephemeral port would break it on every restart.
   const effectivePortMode: PortMode = expose ? 'fixed' : portMode;
 
-  // Preflight probe: when a fixed port is typed, ask main whether it is bindable
-  // so the user learns "that port is taken" BEFORE Apply, not after a silent
-  // ephemeral fallback. The port we are already bound to counts as available —
-  // it is ours, and a restart rebinds it. Debounced so typing doesn't spam it.
   useEffect(() => {
     const probe = window.okDesktop?.remoteAccess?.probePort;
     const raw = portDraft.trim();
@@ -148,10 +100,6 @@ export function NetworkAccessSection() {
       setPortAvailable(true);
       return;
     }
-    // Clear the previous port's verdict immediately so a stale "available" (or
-    // "in use") never renders against the new draft during the debounce window —
-    // otherwise a fast edit from a free port to a taken one could be applied
-    // before the fresh probe resolves.
     setPortAvailable(null);
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -160,9 +108,6 @@ export function NetworkAccessSection() {
           if (!cancelled) setPortAvailable(ok);
         })
         .catch((err: unknown) => {
-          // Fail-open (null → Apply not blocked), but leave a breadcrumb: a
-          // silent probe failure (unregistered handler, packaging skew) would
-          // otherwise be undiagnosable.
           console.warn('[remote-access] port probe failed:', err);
           if (!cancelled) setPortAvailable(null);
         });
@@ -205,20 +150,9 @@ export function NetworkAccessSection() {
   const dirty =
     expose !== configuredAllow || (expose && origin.trim() !== configuredOrigin) || portChanged;
 
-  // The typed fixed port is known-taken by another process — the preflight probe
-  // came back negative. `null` (probe pending / no bridge) does NOT flag —
-  // fail-open. This is the display signal for the "in use" line.
   const portUnavailable =
     effectivePortMode === 'fixed' && portError === null && portAvailable === false;
-  // Block Apply on a taken port ONLY while exposing — applying an exposed config
-  // on a taken port lets boot fall back to an ephemeral port and defeats the
-  // pinned tunnel target. Never block the disable path (`expose` false): a user
-  // stuck in the fallback state must always be able to turn exposure back off to
-  // recover, even when the old port is still held.
   const portTaken = portUnavailable && expose;
-  // The pre-Apply "in use" line is redundant with the post-Apply "running on X
-  // instead" banner when the draft is the very port that already fell back — show
-  // only one for that case (the post-Apply banner, which names the real port).
   const probeUnavailableRedundant =
     portInUse && Number(portDraft.trim()) === configuredPort && !applying;
 
@@ -250,14 +184,9 @@ export function NetworkAccessSection() {
 
     const port = effectivePortMode === 'fixed' ? Number(portDraft.trim()) : null;
     const originValue = expose ? origin.trim() : null;
-    // `null` clears the leaf (yaml-patch deleteIn); a scalar sets it.
     const runProject = () => projectBinding.patch({ server: { externalUrl: originValue, port } });
     const runConsent = () => projectLocalBinding.patch({ server: { allowExternal: expose } });
 
-    // Fail-safe ordering. Enabling: write origin/port FIRST, consent LAST — a
-    // committed origin without consent is inert, so a mid-way failure never
-    // exposes anything. Disabling: drop consent FIRST so exposure is removed
-    // immediately, even if the origin/port write then fails.
     const first = expose ? runProject() : runConsent();
     if (!first.ok) {
       toast.error(t`Couldn't save network settings. ${humanFormat(first.error)}`);
@@ -267,15 +196,10 @@ export function NetworkAccessSection() {
     const second = expose ? runConsent() : runProject();
     if (!second.ok) {
       if (expose) {
-        // Enable path: origin/port committed but consent (the second write) did
-        // not, so nothing is exposed — stop here.
         toast.error(t`Couldn't save network settings. ${humanFormat(second.error)}`);
         setApplying(false);
         return;
       }
-      // Disable path: consent was already dropped (first write), so a restart
-      // still removes exposure even though clearing the origin failed. Warn, then
-      // fall through to the restart so exposure actually stops.
       toast.error(
         t`Couldn't fully clear network settings, but exposure is turning off. ${humanFormat(second.error)}`,
       );
@@ -287,12 +211,6 @@ export function NetworkAccessSection() {
       setApplying(false);
       return;
     }
-    // On success the main process tears this window down and recreates it, so
-    // the awaited call may reject or never resolve — that IS the success path.
-    // Only a resolved failure is actionable here. Catch the rejection so an
-    // unexpected IPC error re-enables the button (on the success path the
-    // component is unmounting, so the state update is a harmless no-op) instead
-    // of leaking an unhandled rejection and stranding "Applying…".
     try {
       const result = await restartCollabServer(bridge);
       if (!result.ok) {
@@ -301,17 +219,10 @@ export function NetworkAccessSection() {
       }
     } catch (err) {
       setApplying(false);
-      // Discriminate the success-path window teardown (the IPC rejects because
-      // main tore this window down) from a genuine IPC failure. On a real error
-      // the config already committed to disk but the server did not restart, so
-      // surface it instead of a silent re-enable. Same teardown signature the
-      // preload's `isDockStateIpcTeardown` filters on.
       const isWindowTeardown =
         err instanceof Error &&
         /destroyed|disposed|closed|no handler registered/i.test(err.message);
       if (!isWindowTeardown) {
-        // Highest-impact failure in this flow — config already on disk, server
-        // never restarted. Renderer React is exempt from pino, so console it.
         console.warn(
           '[remote-access] restart IPC failed (config committed, server not restarted):',
           err,
@@ -323,9 +234,6 @@ export function NetworkAccessSection() {
 
   function onApply(): void {
     if (!validate()) return;
-    // Enabling exposure is consequential and auth-free — confirm the off→on
-    // consent transition. Edits while already exposed, and disabling, apply
-    // straight away.
     if (expose && !configuredAllow) {
       setConfirmOpen(true);
       return;
@@ -479,8 +387,7 @@ export function NetworkAccessSection() {
             {portError}
           </p>
         ) : null}
-        {/* Preflight availability of the typed fixed port (advisory) — shown only
-            when the field is otherwise valid and not the port we already run on. */}
+        {}
         {portUnavailable && !probeUnavailableRedundant ? (
           <p
             id="settings-network-port-unavailable"
@@ -503,11 +410,7 @@ export function NetworkAccessSection() {
             {t`Port ${portDraft.trim()} is available.`}
           </p>
         ) : null}
-        {/* Suppress both port banners while a restart is in flight: during
-            Apply the config port already changed but the server (and this
-            window's static apiOrigin) has not, so an unguarded compare flashes
-            a false "port in use" even on a successful re-pin — the window is
-            recreated on the new port moments later. */}
+        {}
         {portInUse && !applying ? (
           <p
             id="settings-network-port-inuse"

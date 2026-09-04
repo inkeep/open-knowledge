@@ -38,8 +38,6 @@ describe('EnableSyncConfirmDialog', () => {
     expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     const note = screen.getByRole('note').textContent ?? '';
     expect(note).toContain('Commits happen automatically');
-    // Stranded disclosure is pull-only; a full enable pushes the commits, so it
-    // must not appear even when a count is passed.
     expect(screen.queryByText(/stay on this computer/i)).toBeNull();
   });
 

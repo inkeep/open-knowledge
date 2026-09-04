@@ -1,15 +1,3 @@
-/**
- * Behavioral tests for `SingleFileModeProvider` / `useSingleFileMode` — the
- * dual-channel resolution of the no-project single-file signal:
- *   - desktop reads it synchronously from `window.okDesktop.config.singleFile`
- *     (the renderer loads from `file://`, off-origin from `/api/config`);
- *   - the browser fallback fetches `/api/config` (served same-origin by the
- *     ephemeral server).
- *
- * Runs under `bun run test:dom` (jsdom). Asserts rendered DOM (a probe shows the
- * resolved boolean), never source text.
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SingleFileModeProvider, useSingleFileMode } from './single-file-mode.tsx';
@@ -24,7 +12,6 @@ const originalDesktop = (globalThis as { window?: { okDesktop?: unknown } }).win
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  // Restore any okDesktop we stubbed so cross-test state doesn't leak.
   if (typeof window !== 'undefined') {
     (window as { okDesktop?: unknown }).okDesktop = originalDesktop;
   }
@@ -51,7 +38,6 @@ describe('SingleFileModeProvider — desktop bridge channel', () => {
         <Probe />
       </SingleFileModeProvider>,
     );
-    // Synchronous on first paint — no flash, no /api/config round-trip.
     expect(screen.getByTestId('probe').textContent).toBe('single-file');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -82,7 +68,6 @@ describe('SingleFileModeProvider — browser /api/config channel', () => {
         <Probe />
       </SingleFileModeProvider>,
     );
-    // Starts at the project default, flips after the fetch resolves.
     expect(screen.getByTestId('probe').textContent).toBe('project');
     await waitFor(() => expect(screen.getByTestId('probe').textContent).toBe('single-file'));
   });

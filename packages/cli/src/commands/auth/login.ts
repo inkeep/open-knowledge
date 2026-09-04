@@ -16,10 +16,6 @@ function emit(json: boolean, obj: Record<string, unknown>): void {
   }
 }
 
-/**
- * Core login logic — runs Device Flow and stores the resulting token.
- * Injectable for unit tests (pass mocked tokenStore + runDeviceFlowFn).
- */
 async function runLogin(
   opts: LoginOptions,
   tokenStore: TokenStore,
@@ -55,7 +51,6 @@ async function runLogin(
     },
   });
 
-  // Fetch user profile for identity resolution
   let login = 'unknown';
   let name: string | undefined;
   let email: string | undefined;
@@ -74,9 +69,7 @@ async function runLogin(
       name = user.name ?? undefined;
       email = user.email ?? undefined;
     }
-  } catch {
-    // Non-fatal — token stored without profile
-  }
+  } catch {}
 
   await tokenStore.set(host, login, result.token, {
     gitProtocol: 'https',

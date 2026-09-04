@@ -2,12 +2,6 @@ import { ChevronDown, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { resolveLucideIcon } from './lucide-lookup';
 
-/**
- * Preview clone of the app `Accordion`. Native HTML5 `<details>` — same
- * substrate as the app render, minus the editor-scoped CSS. Optional
- * `name` groups sibling accordions (browser-native exclusive open) so
- * demo blocks that share a `name` auto-close each other.
- */
 export function AccordionPreview({
   title,
   defaultOpen,

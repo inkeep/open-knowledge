@@ -94,12 +94,6 @@ describe('normalizeDocRelativeMediaRenderProps', () => {
   });
 });
 
-/**
- * Cross-package parity pin: the JSX src-reference registry's `resolution`
- * field must agree with the render normalization's doc-relative allowlist
- * — it is the field that decides whether the backlink graph and the
- * rename rewriter resolve a `src` the same way the renderer loads it.
- */
 describe('JSX src-ref registry ↔ render-prop normalization parity', () => {
   test("every registry row's resolution matches the renderer's doc-relative set", async () => {
     const { JSX_SRC_REF_TAGS } = await import('@inkeep/open-knowledge-core');

@@ -1,9 +1,3 @@
-/**
- * Target-status verdicts verified against the real-git S1 fixture — one
- * case per verdict, no mocks. The receiver clones BEFORE the sender's mutation
- * in the move/delete cases, so the fetch inside `computeShareTargetStatus` is
- * what reveals the change (a stale local ref would otherwise misclassify it).
- */
 import { afterEach, describe, expect, test } from 'vitest';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';
@@ -25,8 +19,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('doc1.md', 'one\n');
     const receiver = t.cloneReceiver();
-    // Sender pushes a second doc AFTER the clone; the receiver's origin ref is
-    // now stale and does not know about it — until the fetch.
     t.seedAndPush('doc2.md', 'two\n');
     const status = await computeShareTargetStatus(receiver, t.branch, 'doc2.md', 'doc', {
       credentialConfig: [],
@@ -50,8 +42,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('old.md', '# stable content that survives the move intact\n');
     const receiver = t.cloneReceiver();
-    // The removal lands in a merge commit, whose bare diff-tree is combined
-    // format — a first-parent diff is what keeps the rename row readable.
     t.mergeRenameOnOrigin('old.md', 'new.md');
     const status = await computeShareTargetStatus(receiver, t.branch, 'old.md', 'doc', {
       credentialConfig: [],
@@ -97,7 +87,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('doc.md', 'one\n');
     const receiver = t.cloneReceiver();
-    // No reachable origin — the fetch fails fast.
     t.git(receiver, ['remote', 'remove', 'origin']);
     const status = await computeShareTargetStatus(receiver, t.branch, 'doc.md', 'doc', {
       credentialConfig: [],
@@ -126,8 +115,6 @@ describe('computeShareTargetStatus', () => {
     const status = await computeShareTargetStatus(receiver, t.branch, 'a.md', 'doc', {
       credentialConfig: [],
     });
-    // a.md's removal commit renamed it to b.md, but b.md no longer resolves at
-    // origin (it became c.md), so the redirect is refused in favor of deleted.
     expect(status.verdict).toBe('deleted');
   });
 
@@ -135,8 +122,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('gone.md', 'bye\n');
     t.deleteOnOrigin('gone.md');
-    // Clone AFTER the delete: the clone's own history carries the removal, so
-    // the verdict is reachable from local refs with no fetch.
     const receiver = t.cloneReceiver();
     const status = await computeShareTargetStatus(receiver, t.branch, 'gone.md', 'doc', {
       credentialConfig: [],
@@ -150,8 +135,6 @@ describe('computeShareTargetStatus', () => {
     t.seedAndPush('docs/a.md', 'a\n');
     t.seedAndPush('docs/b.md', 'b\n');
     const receiver = t.cloneReceiver();
-    // One commit moves docs/ files to two DIFFERENT prefixes — no single new
-    // folder, so the common-prefix inference is ambiguous and must not redirect.
     t.splitRenameOnOrigin([
       ['docs/a.md', 'x/a.md'],
       ['docs/b.md', 'y/b.md'],
@@ -166,9 +149,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('local-del.md', '# committed, then deleted locally without syncing\n');
     const receiver = t.cloneReceiver();
-    // The receiver removes their own copy WITHOUT committing/pushing: the path
-    // is still on origin and in their HEAD, but absent from the working tree.
-    // "Pull" would be wrong guidance — they are not behind.
     t.deleteInReceiverWorkingTree('local-del.md');
     const status = await computeShareTargetStatus(receiver, t.branch, 'local-del.md', 'doc', {
       credentialConfig: [],
@@ -180,8 +160,6 @@ describe('computeShareTargetStatus', () => {
     const t = newTriangle();
     t.seedAndPush('local-mv.md', '# committed, then renamed locally without syncing\n');
     const receiver = t.cloneReceiver();
-    // A local rename looks identical to a local delete from the OLD path's
-    // vantage: present in HEAD, gone from the working tree.
     t.renameInReceiverWorkingTree('local-mv.md', 'renamed-local.md');
     const status = await computeShareTargetStatus(receiver, t.branch, 'local-mv.md', 'doc', {
       credentialConfig: [],

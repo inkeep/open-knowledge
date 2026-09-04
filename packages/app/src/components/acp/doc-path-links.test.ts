@@ -39,8 +39,6 @@ describe('buildDocPathResolver', () => {
       workspace,
       pages: new Set(['reports/foo/REPORT']),
     });
-    // Mike's canonical example: agent writes `public/open-knowledge/reports/…`
-    // and contentDir *is* `.../public/open-knowledge`.
     expect(resolve?.('public/open-knowledge/reports/foo/REPORT.md')).toBe('reports/foo/REPORT');
   });
 
@@ -65,8 +63,6 @@ describe('buildDocPathResolver', () => {
       workspace,
       pages: new Set(['some/deep/place/notes', 'reports/foo/REPORT']),
     });
-    // `place/notes.md` isn't a doc on its own, but exactly one page ends
-    // with `/place/notes` — that's the unambiguous target.
     expect(resolve?.('place/notes.md')).toBe('some/deep/place/notes');
   });
 
@@ -75,9 +71,7 @@ describe('buildDocPathResolver', () => {
       workspace,
       pages: new Set(['a/foo/README', 'b/foo/README']),
     });
-    // Two docs end in `/foo/README`; the resolver refuses rather than guess.
     expect(resolve?.('foo/README.md')).toBeNull();
-    // The bare basename is also ambiguous.
     expect(resolve?.('README.md')).toBeNull();
   });
 
@@ -99,7 +93,7 @@ describe('buildDocPathResolver', () => {
     });
     expect(resolve?.('reports/foo/REPORT.ts')).toBeNull();
     expect(resolve?.('reports/foo/REPORT.txt')).toBeNull();
-    expect(resolve?.('reports/foo/README')).toBeNull(); // no extension
+    expect(resolve?.('reports/foo/README')).toBeNull();
   });
 
   test('a leading @ is stripped before resolution — agents mention paths that way', () => {
@@ -123,10 +117,6 @@ describe('buildDocPathResolver', () => {
       workspace,
       pages: new Set(['.changeset/some-fix', '.github/CONTRIBUTING']),
     });
-    // A `.changeset/*` doc is user-authored content, not agent plumbing.
-    // Legacy follow-the-file's `sanitizeDocName` refuses all dot-segments;
-    // this resolver gates on the tracked page set instead, so tracked
-    // dot-segment content links normally.
     expect(resolve?.('.changeset/some-fix.md')).toBe('.changeset/some-fix');
     expect(resolve?.('@.changeset/some-fix.md')).toBe('.changeset/some-fix');
     expect(resolve?.('.github/CONTRIBUTING.md')).toBe('.github/CONTRIBUTING');
@@ -167,7 +157,6 @@ describe('remarkDocPathLinks', () => {
     ]);
     setDocPathResolver(null);
     remarkDocPathLinks()()(tree);
-    // Identity preserved.
     expect(tree.children?.[0]?.children?.[0]).toEqual({
       type: 'text',
       value: 'see reports/foo/REPORT.md ok',
@@ -288,7 +277,6 @@ describe('remarkDocPathLinks', () => {
     const kids = tree.children?.[0]?.children ?? [];
     expect(kids).toHaveLength(1);
     expect(kids[0]?.url).toBe('https://example.com');
-    // The link's own child text stays as text, NOT a nested link (mdast forbids that).
     expect(kids[0]?.children?.[0]).toEqual({
       type: 'text',
       value: 'reports/foo/REPORT.md',

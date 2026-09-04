@@ -65,16 +65,12 @@ describe('CommentThreadStore', () => {
 
     expect(updated?.queued).toBe(true);
     expect(updated?.state).toBe('orphaned');
-    // Untouched fields survive the patch.
     expect(updated?.latestComment).toBe(created.latestComment);
     expect(updated?.anchor).toEqual(created.anchor);
     expect(await store.readMeta('thread-1')).toEqual(updated);
   });
 
   test('identity fields are not patchable', async () => {
-    // `threadId`, `createdBy` and `createdAt` are the thread's provenance and
-    // exist nowhere else — a patch type that admitted them would let a caller
-    // quietly rewrite who wrote a comment.
     const store = await makeStore();
     await newThread(store);
     // @ts-expect-error createdBy is deliberately outside CommentThreadPatch
@@ -89,9 +85,6 @@ describe('CommentThreadStore', () => {
   });
 
   test('concurrent updates to different fields do not lose each other', async () => {
-    // Each update is a read-modify-write. Without the per-thread queue both
-    // would read the same starting thread and the second would clobber the
-    // first's field — the classic lost update.
     const store = await makeStore();
     await newThread(store);
 
@@ -109,8 +102,6 @@ describe('CommentThreadStore', () => {
   });
 
   test('a thread on disk always parses — there is no partial state to read', async () => {
-    // The write is atomic (tmp + rename), so a reader never sees a blend of the
-    // old thread and the new one. This asserts the observable consequence.
     const store = await makeStore();
     await newThread(store);
     for (const patch of [{ queued: true }, { state: 'resolved' as const }, { queued: false }]) {

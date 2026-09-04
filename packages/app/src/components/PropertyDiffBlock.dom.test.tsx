@@ -1,16 +1,3 @@
-/**
- * RTL mount test: the property-delta block shown above the prose diff in both
- * diff panes.
- *
- * The load-bearing contracts are that change kind survives without color (a
- * screen reader and a monochrome display must both distinguish added from
- * removed), that a complex value routes to the shared preview widget rather
- * than stringifying to `[object Object]`, and that an unparseable region says
- * so instead of rendering as "no changes".
- *
- * Invocation: `pnpm run test:dom` from `packages/app/`.
- */
-
 import type { FrontmatterDelta, PropertyChange } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -67,8 +54,6 @@ describe('PropertyDiffBlock', () => {
     expect(screen.getByText('ready')).toBeTruthy();
   });
 
-  // Color alone would leave the kind unreadable to a screen reader and to anyone
-  // who cannot distinguish the hues.
   test('conveys change kind as text, not only as color', () => {
     render(
       <PropertyDiffBlock
@@ -143,8 +128,6 @@ describe('PropertyDiffBlock', () => {
     expect(screen.getByText('10 more property changes not shown')).toBeTruthy();
   });
 
-  // Silence here would be indistinguishable from "nothing changed" on exactly
-  // the version worth inspecting.
   test('says so when the region could not be parsed, and shows both raw sides', () => {
     render(
       <PropertyDiffBlock

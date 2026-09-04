@@ -118,16 +118,9 @@ export function LinkPathSuggestionInput({
   const trimmedValue = value.trim();
   const emptyTriggered = trimmedValue === '';
   const slashTriggered = isSlashPathSuggestionValue(value);
-  // Suggest for any internal path target — a bare name matches by basename like
-  // the command palette, not just a leading-slash path. Suppress for an
-  // external URL or a bare in-doc anchor, which are valid targets that must not
-  // pop a page list.
   const pathTargetTriggered = !isExternalHref(trimmedValue) && !trimmedValue.startsWith('#');
   const suggestionTriggered = emptyTriggered || pathTargetTriggered;
   const suggestionValue = emptyTriggered ? '' : value;
-  // Only score the page list when a suggestion could actually show — avoids
-  // re-scoring the whole KB on every keystroke of a URL, and keeps URL-shaped
-  // input out of the matcher.
   const suggestions = suggestionTriggered
     ? buildLinkPathSuggestions({
         value: suggestionValue,
@@ -143,11 +136,6 @@ export function LinkPathSuggestionInput({
   const showSuggestionOptions = suggestions.length > 0;
   const showSuggestions =
     focused && !dismissed && suggestionTriggered && (showSuggestionOptions || loading);
-  // The "no matching paths" empty-state is louder than a silent field, so only
-  // surface it on a strong path signal — an empty browse or an explicit leading
-  // slash. A bare name that matches nothing stays silent, so typing/pasting a
-  // scheme-less URL (e.g. example.com) into the dual-purpose field never flashes
-  // an empty page list.
   const showNoMatches =
     focused &&
     !dismissed &&
@@ -231,11 +219,6 @@ export function LinkPathSuggestionInput({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // Gate on the options being VISIBLE (panel open), not merely existing:
-    // suggestions still exist for the current value after an Escape dismissal,
-    // and swallowing keys against an invisible panel strands the user — the
-    // next Escape must reach the parent popover/dialog (as the branch below
-    // documents) and Enter must reach the parent's apply handler.
     if (showSuggestions && showSuggestionOptions) {
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -255,15 +238,12 @@ export function LinkPathSuggestionInput({
       }
       if (event.key === 'Escape') {
         event.preventDefault();
-        // First Escape dismisses autocomplete; the parent dialog/popover gets
-        // the next Escape if the user wants to close the whole surface.
         setDismissed(true);
         return;
       }
     }
     if (showSuggestionPanel && event.key === 'Escape') {
       event.preventDefault();
-      // See matching-options Escape branch.
       setDismissed(true);
       return;
     }
@@ -360,8 +340,7 @@ export function LinkPathSuggestionInput({
         autoComplete="off"
         className={className}
       />
-      {/* Manual portal + Floating UI keeps the listbox out of clipped dialog
-      bodies and avoids nested Radix Popover focus management in prop panels. */}
+      {}
       {suggestionPanel && createPortal(suggestionPanel, document.body)}
     </div>
   );

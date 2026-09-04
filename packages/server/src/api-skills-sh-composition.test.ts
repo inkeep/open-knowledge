@@ -6,21 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed skills.sh proxy group over a REAL
- * socket through the composed `bootServer` stack — native registration and
- * the shared admission posture. The wire cannot distinguish the mutating
- * gate from the read gate (both apply the same loopback + workspace-Host
- * checks), so the mutating DECLARATION itself is pinned at the table tier in
- * `http/skills-sh-routes.test.ts`; the rebound-Host pins here hold that the
- * admission outcome is unchanged across the lift.
- *
- * Every request below refuses BEFORE any outbound fetch (missing/invalid
- * params, wrong verb, or a gate) — the suite never reaches skills.sh, GitHub,
- * or `git clone`.
- */
-
-/** The whole proxy family — method-gated, so a POST answers 405 when registered. */
 const ALL_ROUTES = [
   '/api/skills/search',
   '/api/skills/popular',
@@ -31,14 +16,8 @@ const ALL_ROUTES = [
   '/api/skills/resolve-ref',
 ];
 
-/** The clone-egress trio — legacy `MUTATING_ROUTES` members (declaration pinned in the table suite). */
 const MUTATING_ROUTES = ['/api/skills/preview', '/api/skills/discover', '/api/skills/resolve-ref'];
 
-/**
- * Missing-required-param requests that the real handler refuses with its OWN
- * 400 before any network egress — proving dispatch reaches the handler (an
- * unregistered path would return the pipeline's generic `/api/*` 404).
- */
 const HANDLER_400S = [
   '/api/skills/search',
   '/api/skills/publisher',

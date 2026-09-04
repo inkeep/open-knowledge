@@ -172,8 +172,6 @@ describe('editor tab state', () => {
   });
 
   test('a skill-file tab id with an unknown scope is not parsed as a skill-file', () => {
-    // The scope segment must be a real skill scope — a hand-edited / stale tab id
-    // with a bogus scope falls through to a docName rather than a bogus target.
     const bogus = `\u0000skill-file:personal/trip-log/references/x.md`;
     expect(parseEditorTabId(bogus).kind).toBe('doc');
   });
@@ -212,8 +210,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets keeps a displayed folder absent from folderPaths', () => {
-    // Folder twin of the `keepHashDocName` case. Why an existing folder can be
-    // missing from `folderPaths` at all is on the `keepFolderPaths` JSDoc.
     expect(
       filterOpenTabsForKnownTargets([folderTabId('hello')], {
         pages: new Set(),
@@ -222,9 +218,6 @@ describe('editor tab state', () => {
         keepFolderPaths: new Set(['hello']),
       }),
     ).toEqual([folderTabId('hello')]);
-    // It spares ONLY the folders passed in. A blanket folder exemption would
-    // satisfy the assertion above while disabling folder pruning outright, so
-    // pin that stale siblings still go.
     expect(
       filterOpenTabsForKnownTargets([folderTabId('hello'), folderTabId('old-folder')], {
         pages: new Set(),
@@ -233,7 +226,6 @@ describe('editor tab state', () => {
         keepFolderPaths: new Set(['hello']),
       }),
     ).toEqual([folderTabId('hello')]);
-    // And with no displayed folder there is no exemption at all.
     expect(
       filterOpenTabsForKnownTargets([folderTabId('hello')], {
         pages: new Set(),
@@ -245,11 +237,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets keeps the SKILL doc that left the page list', () => {
-    // A scope move deletes the source bundle BEFORE its response lands, so the
-    // source doc stops being a page mid-move. Pruning it there closed the tab
-    // `useMoveSkillScope` was about to repoint; the retarget then matched no
-    // open tab, did nothing, and the skill could not be opened until a reload.
-    // The skills reconciler owns this doc's lifecycle instead.
     expect(
       filterOpenTabsForKnownTargets(['.claude/skills/demo/SKILL', 'docs/a', 'deleted'], {
         pages: new Set(['docs/a']),
@@ -260,11 +247,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets still prunes a bundle FILE tab', () => {
-    // Deliberately NOT exempt. The reconciler keeps any tab whose SKILL still
-    // exists, so it will never close a `references/*` doc deleted out of band
-    // (an agent, MCP, another client). The page list is that file's only
-    // closer; exempting it would leave a live provider on a deleted file, and
-    // typing into that tab would rematerialise it on disk.
     expect(
       filterOpenTabsForKnownTargets(['.claude/skills/demo/references/notes'], {
         pages: new Set(),
@@ -275,10 +257,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets does not exempt a shape the reconciler cannot parse', () => {
-    // A symlinked bundle's canonical doc (`plugins/x/skills/<name>/SKILL`) is a
-    // REAL page, so it needs no exemption — and exempting it would be worse than
-    // useless: `parseSkillTabDocName` cannot read that shape, so nothing could
-    // ever close the tab once the skill was deleted.
     expect(
       filterOpenTabsForKnownTargets(['plugins/ok/skills/demo/SKILL'], {
         pages: new Set(),
@@ -307,11 +285,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets keeps the hash doc even when absent from pages', () => {
-    // Cold-start race: the page list arrives empty-then-populated, so a sync
-    // firing while `pages` is still empty must not evict the doc the hash points
-    // at (which would clear the hash → empty-state splash). Unlike
-    // keepMissingDocName, this protects the doc BEFORE the nav effect resolves it
-    // to a `missing` target.
     expect(
       filterOpenTabsForKnownTargets(['event_watcher'], {
         pages: new Set(),
@@ -320,7 +293,6 @@ describe('editor tab state', () => {
         keepHashDocName: 'event_watcher',
       }),
     ).toEqual(['event_watcher']);
-    // It only spares the hash doc — genuinely stale siblings are still pruned.
     expect(
       filterOpenTabsForKnownTargets(['event_watcher', 'old-doc'], {
         pages: new Set(),
@@ -332,11 +304,6 @@ describe('editor tab state', () => {
   });
 
   test('filterOpenTabsForKnownTargets keeps a managed skill tab and a template content tab', () => {
-    // A global skill never appears in `pages` (managed); a template content doc
-    // lands in `pages` only after the async `files` refetch. The filter must keep
-    // both regardless — and unlike `keepHashDocName`, the protection holds even
-    // when the hash points elsewhere, so the tab survives opening a regular doc
-    // during the index-lag window.
     expect(
       filterOpenTabsForKnownTargets(['__skill__/global/foo', 'notes/.ok/templates/daily', 'gone'], {
         pages: new Set(),
@@ -469,13 +436,6 @@ describe('editor tab state', () => {
     ).toEqual(['renamed', 'b']);
   });
 
-  // remapVisibleTabsForRename is the structural guarantee used by BOTH rename
-  // call sites in DocumentContext — server-driven onRenameRedirect and
-  // sidebar-driven remapTabsForRename. The helper exists so the visible tab
-  // order survives a rename WITHOUT re-deriving via reconcileVisibleTabOrder,
-  // which would drop the stale tabId at the membership check and re-append the
-  // new tabId at the end (shifting the renamed tab's slot). Tests here exercise
-  // the helper directly — the dom integration tests cover the call-site wiring.
   test('remapVisibleTabsForRename — doc rename preserves slot order', () => {
     expect(
       remapVisibleTabsForRename(
@@ -486,9 +446,6 @@ describe('editor tab state', () => {
   });
 
   test('remapVisibleTabsForRename — uncapped (no limit applied to visible tabs)', () => {
-    // visibleTabIds is a derived view of openTabs + newTabIds — capping happens
-    // elsewhere. The helper passes Number.MAX_SAFE_INTEGER to remapOpenTabs so
-    // long visible-tab lists are not truncated mid-rename.
     const many = Array.from({ length: 100 }, (_, i) => `doc${i}.md`);
     const result = remapVisibleTabsForRename(many, [
       { fromDocName: 'doc0.md', toDocName: 'renamed0.md' },
@@ -661,9 +618,6 @@ describe('editor tab state', () => {
   });
 
   test('a note window gets no local tab-session key, so it cannot clobber the editor window', () => {
-    // Every desktop window shares one `file://` origin, so a popped-out note
-    // window writing the origin-derived key would overwrite the main editor
-    // window's tabs. Single-document windows persist nothing at all.
     expect(localTabSessionKeyForMode('note', 'file://')).toBeNull();
   });
 
@@ -725,9 +679,6 @@ describe('editor tab state', () => {
   });
 
   test('readLocalTabSessionState returns empty state when storage is null', () => {
-    // The null parameter exists for defensive programming (e.g. SSR where
-    // sessionStorage is absent). Pin the guard so a future refactor that
-    // drops the null-check can't silently throw on every read.
     expect(readLocalTabSessionState(null, 'key')).toEqual({
       updatedAt: null,
       ...persistedWorkspace([], [], null),
@@ -764,7 +715,6 @@ describe('preview-tab integration', () => {
     expect(
       findLocalSkillPreviewTabId([first, second], 'builtin', 'write-skill', '', 'global'),
     ).toBe(first);
-    // A different host subtitle is a different copy — never reused across.
     expect(
       findLocalSkillPreviewTabId([first, second], 'builtin', 'write-skill', 'claude', 'global'),
     ).toBeNull();
@@ -777,9 +727,6 @@ describe('preview-tab integration', () => {
   });
 
   test('a suppressed restore never persists, however many tabs the user opens', () => {
-    // The count-based escape hatch above exists for a session we could not
-    // read. A suppressed one IS readable and intact, so opening tabs in the
-    // recovered workspace must never earn the right to replace it.
     expect(shouldPersistTabSession('suppressed', 0)).toBe(false);
     expect(shouldPersistTabSession('suppressed', 1)).toBe(false);
     expect(shouldPersistTabSession('suppressed', 12)).toBe(false);
@@ -788,34 +735,22 @@ describe('preview-tab integration', () => {
 
 describe('applyDragPinMutation — drag-mutable pin state', () => {
   test('pinned tab dragged out of the (size-1) pinned zone unpins; only it changes', () => {
-    // [A,B,C] pinned {A}. Divide after position 0. Drag A to index 1 → A is
-    // now in the unpinned region → unpin. B,C untouched.
     expect(applyDragPinMutation(['B', 'A', 'C'], ['A'], 'A')).toEqual([]);
   });
 
   test('unpinned tab dragged into the pinned zone pins; others keep state', () => {
-    // [A,B,C,D] pinned {A,B} (zone = first 2). Drag D to front → D at index 0
-    // is inside the zone → pin D. A,B stay pinned even though B slid out of
-    // the first-2 positions (pin is membership, not position).
     expect(applyDragPinMutation(['D', 'A', 'B', 'C'], ['A', 'B'], 'D')).toEqual(['A', 'B', 'D']);
   });
 
   test('pinned tab dragged past the divide into the unpinned region unpins', () => {
-    // [A,B,C,D] pinned {A,B} (zone = first 2). Drag A to index 2 → outside the
-    // zone → unpin A. B stays pinned.
     expect(applyDragPinMutation(['B', 'C', 'A', 'D'], ['A', 'B'], 'A')).toEqual(['B']);
   });
 
   test('swapping two pinned tabs within the zone keeps both pinned', () => {
-    // [A,B,C,D] pinned {A,B}. Swap A,B → [B,A,C,D]. Dragged A still at index 1
-    // (< pinnedCount 2) → no flip. Regression guard against unpinning on a
-    // benign intra-pin reorder.
     expect(applyDragPinMutation(['B', 'A', 'C', 'D'], ['A', 'B'], 'A')).toEqual(['A', 'B']);
   });
 
   test('reordering unpinned tabs among themselves never touches pin state', () => {
-    // [A,B,C,D] pinned {A,B}. Swap C,D → [A,B,D,C], dragged C stays outside
-    // the zone (index 3 ≥ 2) and was already unpinned → no change.
     expect(applyDragPinMutation(['A', 'B', 'D', 'C'], ['A', 'B'], 'C')).toEqual(['A', 'B']);
   });
 
@@ -828,19 +763,11 @@ describe('applyDragPinMutation — drag-mutable pin state', () => {
   });
 
   test('normalizes inputs: stale pinned ids not in openTabs are dropped', () => {
-    // 'Z' is pinned but no longer open → normalized away; A stays pinned
-    // (index 0 < pinnedCount 1 after normalization).
     expect(applyDragPinMutation(['A', 'B'], ['A', 'Z'], 'B')).toEqual(['A']);
   });
 });
 
 describe('tabParts — non-`.md` call-site shapes (folder + asset)', () => {
-  // Production call sites in EditorTabs.tsx invoke `tabParts` with three docExt
-  // shapes: `'.md'` for doc tabs, `'/'` for folder tabs, `''` for asset tabs.
-  // The `.md` shape is exercised throughout the rest of this file; these pin
-  // the other two so a future refactor that normalizes docExt (e.g. trimming
-  // trailing `/`) can't silently break folder/asset labels.
-
   test('folder shape: docExt `/` produces baseName-with-trailing-slash label', () => {
     expect(tabParts('docs/guides', '/')).toEqual({
       baseName: 'guides',
@@ -898,15 +825,12 @@ describe('tabParts — non-`.md` call-site shapes (folder + asset)', () => {
   });
 
   test('template content doc labels name-only, hiding the `.ok/templates/` prefix', () => {
-    // Without a template branch the tab would read `docs/.ok/templates/note`;
-    // it should read just the template name, like the skill branches.
     expect(tabParts('docs/.ok/templates/note', '.md')).toEqual({
       baseName: 'note',
       extension: '',
       label: 'note',
       prefix: '',
     });
-    // Project-root template (no owning folder).
     expect(tabParts('.ok/templates/daily', '.md')).toEqual({
       baseName: 'daily',
       extension: '',
@@ -917,9 +841,6 @@ describe('tabParts — non-`.md` call-site shapes (folder + asset)', () => {
 });
 
 describe('skill discriminators reject template content shapes', () => {
-  // Templates are content docs sharing the `.ok/**` neighbourhood with skills;
-  // the skill-only discriminators must not misclassify them, or a template tab
-  // would inherit skill chrome / sidebar focus.
   const templateDocs = ['.ok/templates/daily', 'docs/.ok/templates/note', 'a/b/.ok/templates/x'];
 
   test('isSkillDocName is false for every template content doc', () => {
@@ -927,26 +848,14 @@ describe('skill discriminators reject template content shapes', () => {
   });
 
   test('isSkillBundleShapedPath is false for template content docs', () => {
-    // The bundle-shaped regex is loose (no `^\.` anchor) but still requires a
-    // `skills/<x>/…` segment, which a template path never has.
     for (const doc of templateDocs) expect(isSkillBundleShapedPath(doc)).toBe(false);
   });
 
-  // Bundles are free to ship companion markdown beside SKILL.md — `tdd` on
-  // skills.sh carries `tests.md` + `mocking.md` at its root. Those are ordinary
-  // content docs, so the surface decision is the only thing keeping the sidebar
-  // on Skills when the user clicks one straight after installing.
-  // Dot-rooted bundles are matched by SHAPE — no skills list needed, which is
-  // what keeps first paint correct (the tab-session parser runs before any fetch).
   const dotRootedCompanionDocs = [
     '.claude/skills/tdd/mocking',
     '.claude/skills/tdd/tests',
     '.agents/skills/grill-me/GUIDE',
   ];
-
-  // A bundle reached by a path no host root names — the symlink-alias case: a
-  // repo keeping bundles in `plugins/<x>/skills/` and linking them into
-  // `.agents/`. Shape cannot see this; only `/api/skills` (`canonicalPath`) can.
 
   afterEach(() => {
     __resetKnownProjectSkillDirsForTests();
@@ -958,16 +867,11 @@ describe('skill discriminators reject template content shapes', () => {
 
   test('isSkillBundleShapedPath is false for the bundle dir itself', () => {
     expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
-    // Also when the list names it: a doc AT the bundle dir is not a file inside one.
     setKnownProjectSkillDirs(new Set(['.claude/skills/tdd', 'plugins/ok/skills/demo']));
     expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
     expect(isSkillBundleShapedPath('plugins/ok/skills/demo')).toBe(false);
   });
 });
-// The twin-tab bug's root cause was the hash side dropping `level`: a tab id
-// that round-trips its level through parse must ALSO keep it through the hash,
-// or clicking a global-level preview navigates to the project-level route and
-// re-mints the twin the dedup just closed.
 test('a global-level skill-preview tab id round-trips its level through the hash', () => {
   const tabId = skillPreviewTabId({
     flavor: 'detected',
@@ -1048,11 +952,6 @@ describe('persisted tab ids are repaired on read', () => {
   });
 
   test('two double-extension files under one stem keep their tab ids apart', () => {
-    // `notes/foo.md.md` and `notes/foo.mdx.md` on disk. Each doc name still ends
-    // in a markdown extension that belongs to its file, so stripping either
-    // would collapse two distinct documents onto one tab. A genuine same-stem
-    // `.md` + `.mdx` pair cannot produce this session: it is indexed under one
-    // bare stem, so only its winning half ever becomes a tab id.
     const state = parseEditorTabSessionState(
       session(['notes/foo.md', 'notes/foo.mdx'], { activeTabId: 'notes/foo.mdx' }),
     );

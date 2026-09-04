@@ -1,17 +1,3 @@
-/**
- * Acceptance suite for the deployment deck's Case 2 (laptop + tailnet bind)
- * and Case 3 (managed server behind a reverse proxy): every NAME=value drawn
- * on those diagrams does what the slide says, through the REAL composed
- * `bootServer` stack over real sockets, with zero proxy header surgery.
- *
- * What real loopback sockets cannot fake is a non-loopback TCP peer, so the
- * consent-relaxes-the-peer-gate behavior itself is pinned by the
- * `ingress-policy` unit matrix; here every request arrives via loopback
- * (exactly what Case 3's same-box proxy delivers) and the suite exercises
- * the Host/Origin admission, the forwarded-header posture, and the env
- * spellings end to end.
- */
-
 import { mkdtempSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,14 +12,12 @@ let tmpRoot: string;
 let case2: BootedServer;
 let case3: BootedServer;
 
-/** Case 2 env, exactly as the deck draws it (externalUrl per the corrected slide). */
 const CASE2_ENV = {
   OK_BIND: '127.0.0.1 100.64.0.7',
   OK_ALLOW_EXTERNAL: '1',
   OK_EXTERNAL_URL: 'http://laptop.tail:55222',
 };
 
-/** Case 3 env, exactly as the deck draws it. */
 const CASE3_ENV = {
   PORT: '8080',
   OK_EXTERNAL_URL: 'https://notes.example.com',
@@ -43,12 +27,6 @@ const CASE3_ENV = {
 beforeAll(async () => {
   tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-deploy-cases-'));
 
-  // The rigs boot from the CONFIG the env layer produces, listening on
-  // loopback only (CI cannot bind a tailnet address) while the policy sees
-  // the full declared bind list. Consent is honored only from an explicit,
-  // scope-correctly resolved `serverRuntime` (the CLI path), so each rig
-  // passes `resolveServerRuntimeConfig(config)` — config-derived consent
-  // alone is forced off at boot (the desktop/embedder clone-leak guard).
   const case2Config = ConfigSchema.parse({ server: resolveEnvConfigLayer(CASE2_ENV).layer.server });
   case2 = await bootCompositionRig(mkdtempSync(resolve(tmpRoot, 'case2-')), {
     config: case2Config,
@@ -57,9 +35,6 @@ beforeAll(async () => {
   });
   await case2.ready;
 
-  // Deck pins PORT=8080; the rig keeps the kernel-allocated port so parallel
-  // suites can't collide — the PORT=8080 mapping itself is asserted in the
-  // env-spelling block below.
   const case3Config = ConfigSchema.parse({
     server: {
       ...(resolveEnvConfigLayer(CASE3_ENV).layer.server as Record<string, unknown>),
@@ -171,7 +146,6 @@ describe('Case 2 — tailnet bind + consent + externalUrl', () => {
 });
 
 describe('Case 3 — loopback bind behind a reverse proxy + externalUrl + consent', () => {
-  /** What Caddy/nginx deliver: loopback peer, public Host, forwarding headers. */
   const proxied = (extra: Record<string, string> = {}) => ({
     Host: 'notes.example.com',
     'X-Forwarded-For': '203.0.113.7',

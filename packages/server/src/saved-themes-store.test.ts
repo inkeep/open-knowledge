@@ -29,7 +29,6 @@ afterEach(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-/** A valid nested Tinted Theming scheme: all sixteen slots, distinct hex per slot. */
 function validSchemeYaml(name: string): string {
   const palette = BASE16_SLOTS.map((slot, i) => {
     const byte = (i * 16).toString(16).padStart(2, '0');
@@ -38,7 +37,6 @@ function validSchemeYaml(name: string): string {
   return `name: "${name}"\nvariant: "dark"\npalette:\n${palette}\n`;
 }
 
-/** Create `<home>/.ok/themes` and write one file into it, returning the store dir. */
 function seedStore(files: Record<string, string>): string {
   const dir = savedThemesDir(home);
   mkdirSync(dir, { recursive: true });
@@ -83,7 +81,6 @@ describe('scanSavedThemes', () => {
     const result = scanSavedThemes({ homedirOverride: home });
 
     expect(result).toEqual({ entries: [], truncated: false });
-    // No lazy write: reading an absent store must not materialize it.
     expect(existsSync(savedThemesDir(home))).toBe(false);
   });
 
@@ -95,13 +92,12 @@ describe('scanSavedThemes', () => {
   test('one malformed file never fails enumeration; it is listed with a code', () => {
     seedStore({
       'good.yaml': validSchemeYaml('Good'),
-      'broken.yaml': 'name: "Broken"\npalette:\n  base00: "#000000"\n', // missing 15 slots
+      'broken.yaml': 'name: "Broken"\npalette:\n  base00: "#000000"\n',
     });
 
     const entries = byId(scanSavedThemes({ homedirOverride: home }).entries);
 
     expect(entries.get('saved-good')).toMatchObject({ ok: true });
-    // The bad file is present, not hidden, and carries the machine-readable reason.
     expect(entries.get('broken.yaml')).toEqual({
       ok: false,
       filename: 'broken.yaml',
@@ -133,7 +129,6 @@ describe('scanSavedThemes', () => {
   });
 
   test('a name that overflows the id budget is listed, not truncated', () => {
-    // 27-char stem → saved-<27> = 33 chars, past the 32-char id grammar.
     const filename = `${'a'.repeat(27)}.yaml`;
     seedStore({ [filename]: validSchemeYaml('TooLong') });
 
@@ -157,8 +152,6 @@ describe('scanSavedThemes', () => {
       { ok: false, filename: 'Ocean.yaml', code: 'invalid-chars' },
     ]);
 
-    // Case-insensitive filesystems cannot hold the mixed-case pair. The
-    // uppercase-only assertion above still verifies their scanner behavior.
     if (existsSync(join(dir, 'ocean.yaml'))) return;
 
     writeFileSync(join(dir, 'ocean.yaml'), validSchemeYaml('Lowercase stem'));
@@ -270,7 +263,6 @@ describe('scanSavedThemes', () => {
     const result = scanSavedThemes({ root: dir, cap: 2 });
     expect(result.truncated).toBe(true);
     expect(result.entries).toHaveLength(2);
-    // Sorted, so truncation drops the tail deterministically.
     expect(result.entries.map((e) => e.filename)).toEqual(['a.yaml', 'b.yaml']);
   });
 
@@ -299,7 +291,6 @@ describe('scanSavedThemes', () => {
   test('scanning writes nothing back to the store', () => {
     const dir = seedStore({ 'only.yaml': validSchemeYaml('Only') });
     scanSavedThemes({ homedirOverride: home });
-    // The reader persists no provenance file, index, or lockfile alongside themes.
     expect(readdirSync(dir).sort()).toEqual(['only.yaml']);
   });
 });

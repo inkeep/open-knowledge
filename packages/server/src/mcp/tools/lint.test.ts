@@ -20,8 +20,6 @@ import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
 } from './shared.ts';
 
-// Skip-on-CI gate (oven-sh/bun#11892): same git-child-reaping issue the sibling
-// MCP tool tests guard against on ubuntu-latest GHA runners.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -112,7 +110,6 @@ beforeAll(async () => {
       const url = new URL(req.url);
       seenRequests.push(`${url.pathname}?${url.searchParams.toString()}`);
       if (url.pathname === '/api/lint/fix') {
-        // The server's attributed auto-fix. Two fixed, one non-fixable remains.
         return Response.json({
           ok: true,
           file: 'notes.md',
@@ -234,7 +231,6 @@ describe('lint — registration + DESCRIPTION', () => {
   test('declares mutating (fix-capable) tool annotations', () => {
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
-    // Not read-only: `fix: true` mutates the doc (recoverable content write).
     expect(getTool().annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: false,
@@ -341,7 +337,6 @@ describe('lint — audit output cap', () => {
       expect(file.diagnostics).toHaveLength(AUDIT_FILE_DIAGNOSTIC_CAP);
       expect(file.omittedDiagnosticCount).toBe(3);
     }
-    // Totals mirror the server's full-scan counts, not the truncated view.
     expect(s.fileCount).toBe(AUDIT_FILE_CAP + 2);
     expect(s.warningCount).toBe((AUDIT_FILE_CAP + 2) * (AUDIT_FILE_DIAGNOSTIC_CAP + 3));
 

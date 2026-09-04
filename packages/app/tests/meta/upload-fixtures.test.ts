@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'vitest';
-// Leaf modules, not the `_helpers` barrel: the barrel re-exports
-// Playwright-dependent helpers, which do not load under vitest.
 import { escapeRegExp } from '../stress/_helpers/regexp.ts';
 import { uniqueAssetName } from '../stress/_helpers/upload-fixtures.ts';
 
@@ -25,12 +23,6 @@ describe('escapeRegExp', () => {
     expect(re.test('shot-abcXpng')).toBe(false);
   });
 
-  // Asserting only that the escaped pattern matches the string it was built
-  // from is a tautology for the characters that matter: an unescaped `.`
-  // still matches its own literal `.`, so the regression this helper exists
-  // to prevent would pass. Each metacharacter is probed with a NEAR-MISS —
-  // a string that differs only where the unescaped form would have matched
-  // anyway — so a dropped escape fails.
   test.each([
     ['.', 'a.b', 'aXb'],
     ['*', 'ab*', 'abbb'],

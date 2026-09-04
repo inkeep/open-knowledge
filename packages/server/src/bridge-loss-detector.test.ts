@@ -1,12 +1,3 @@
-/**
- * Observer-B (Y.Text→XmlFragment) derive-loss detection.
- *
- * Covers the pure twin verdict, the observation a real `deriveFragmentFromYtext`
- * produces when the fragment holds content Y.Text lacks, and the reporter that
- * writes a `bridge-derive-loss` checkpoint + content-free `detector-trip` ring
- * event through real shadow git.
- */
-
 import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -44,7 +35,6 @@ import { getDocumentHistory } from './timeline-query.ts';
 
 type RingEvent = ReturnType<typeof parseLossCaptureLines>[number];
 
-/** Poll the loss ring until an event matching `predicate` appears (bounded). */
 async function pollForEvent(
   projectDir: string,
   ring: LossCaptureRing,
@@ -60,9 +50,7 @@ async function pollForEvent(
       );
       const found = events.find(predicate);
       if (found) return found;
-    } catch {
-      // Ring file not written yet.
-    }
+    } catch {}
     await new Promise((r) => setTimeout(r, 20));
   }
   throw new Error('timed out waiting for loss-ring event');
@@ -74,12 +62,9 @@ function buildFragment(doc: Y.Doc, body: string): void {
   doc.transact(() => updateYFragment(doc, xf, pm, { mapping: new Map(), isOMark: new Map() }));
 }
 
-/** A doc whose fragment holds `pendingBody` while Y.Text still holds `syncedMd`. */
 function seedDivergedDoc(syncedMd: string, pendingBody: string): Y.Doc {
   const doc = new Y.Doc();
   doc.getText('source').insert(0, syncedMd);
-  // Fragment first materialized in sync, then advanced with the pending edit —
-  // Y.Text is left untouched, so the fragment holds content Y.Text lacks.
   buildFragment(doc, stripFrontmatter(syncedMd).body);
   buildFragment(doc, pendingBody);
   return doc;
@@ -89,7 +74,6 @@ describe('detectDeriveLoss (the twin verdict)', () => {
   it('flags a never-propagated fragment line that both twins lack', () => {
     const obs: DeriveLossObservation = {
       pendingBody: 'Shared body\n\nPending keystroke',
-      // The keystroke was never in Y.Text before the op.
       baselineBody: 'Shared body',
       ytextDerivedBody: 'Shared body',
       rebuiltBody: 'Shared body',
@@ -99,8 +83,6 @@ describe('detectDeriveLoss (the twin verdict)', () => {
   });
 
   it('does NOT flag content the operation legitimately removed (an intended undo)', () => {
-    // The undone line WAS in the pre-op Y.Text (propagated), so the undo
-    // removing it is intended — not a loss. This is the fuzz-caught regression.
     const obs: DeriveLossObservation = {
       pendingBody: 'Line A\n\nLine B',
       baselineBody: 'Line A\n\nLine B',
@@ -123,9 +105,6 @@ describe('detectDeriveLoss (the twin verdict)', () => {
   });
 
   it('catches a loss via the independent twin when one representation is blind', () => {
-    // Planted producer-side blindness: the rebuilt live fragment still shows the
-    // content (as if updateYFragment silently kept it), so the producer check
-    // reports nothing — but the ytext-derived twin catches the real drop.
     const obs: DeriveLossObservation = {
       pendingBody: 'Shared body\n\nPending keystroke',
       baselineBody: 'Shared body',
@@ -156,7 +135,6 @@ describe('deriveFragmentFromYtext observation', () => {
     expect(captured).toBeDefined();
     const dropped = detectDeriveLoss(captured as DeriveLossObservation);
     expect(dropped).toContain('Pending keystroke');
-    // The restore payload carries the pending content so it stays recoverable.
     expect((captured as DeriveLossObservation).restorePayload).toContain('Pending keystroke');
     doc.destroy();
   });
@@ -219,8 +197,6 @@ describe('createBridgeDeriveLossReporter (real shadow + ring)', () => {
     });
     doc.destroy();
 
-    // The checkpoint write is a real git commit; the sha-bearing ring event is
-    // written from its `.then`. Poll until it lands.
     const trip = await pollForEvent(
       projectRoot,
       ring,
@@ -229,7 +205,6 @@ describe('createBridgeDeriveLossReporter (real shadow + ring)', () => {
     expect(trip).toBeDefined();
     expect(trip?.direction).toBe('b');
     expect(trip?.docName).toBe('intro');
-    // Content-free: a length + a digest, never the bytes.
     expect(typeof trip?.lostLen).toBe('number');
     expect(trip?.digest).toBeTruthy();
 
@@ -267,9 +242,7 @@ describe('createBridgeDeriveLossReporter (real shadow + ring)', () => {
     let events: ReturnType<typeof parseLossCaptureLines> = [];
     try {
       events = parseLossCaptureLines(readFileSync(lossCaptureCurrentPath(projectRoot), 'utf-8'));
-    } catch {
-      // No ring file written at all is also a pass.
-    }
+    } catch {}
     expect(events.filter((e) => e.event === 'detector-trip')).toEqual([]);
     const hist = await getDocumentHistory(shadow, { docName: 'intro' }, '');
     expect(hist.entries.some((e) => e.checkpoint?.kind === 'bridge-derive-loss')).toBe(false);
@@ -291,11 +264,8 @@ describe('detectApplyArmDrop (Observer-A apply verdict)', () => {
   });
 
   it('does not flag a normalization-only difference (raw vs canonical form)', () => {
-    // The byte-preserving splice legitimately leaves the raw multi-blank form in
-    // Y.Text while the fragment serializes to the single-blank canonical form.
     const canonical = 'A paragraph\n\nAnother paragraph';
     const raw = 'A paragraph\n\n\n\nAnother paragraph';
-    // Precondition: normalize-equal — a tolerance difference, not a loss.
     expect(normalizeBridge(raw)).toBe(normalizeBridge(canonical));
     expect(
       detectApplyArmDrop(canonical, normalizeBridge(canonical), raw, normalizeBridge(raw)),
@@ -314,7 +284,6 @@ describe('Observer-A apply post-condition (real drain)', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  /** Delete `target` from Y.Text once — models an apply arm dropping content. */
   function makeInjector(target: string): (yt: Y.Text) => void {
     let fired = false;
     return (yt) => {
@@ -353,8 +322,6 @@ describe('Observer-A apply post-condition (real drain)', () => {
       __testApplyLossInjector: makeInjector('Line two'),
     });
 
-    // Edit the fragment (adds a line) to drive an Observer-A apply drain; the
-    // injector then drops "Line two" from the applied Y.Text.
     buildFragment(doc, '# Title\n\nLine one\n\nLine two\n\nLine three');
 
     const trip = await pollForEvent(
@@ -366,8 +333,6 @@ describe('Observer-A apply post-condition (real drain)', () => {
     const hist = await getDocumentHistory(shadow, { docName: 'intro' }, '');
     expect(
       hist.entries.some(
-        // Its OWN kind, not Path B's — the two detection sites stay
-        // distinguishable by kind, counter, and retention budget.
         (e) => e.sha === trip.checkpointSha && e.checkpoint?.kind === 'observer-a-apply-loss',
       ),
     ).toBe(true);
@@ -409,9 +374,7 @@ describe('Observer-A apply post-condition (real drain)', () => {
     let events: RingEvent[] = [];
     try {
       events = parseLossCaptureLines(readFileSync(lossCaptureCurrentPath(projectRoot), 'utf-8'));
-    } catch {
-      // No ring file is also a pass.
-    }
+    } catch {}
     expect(events.filter((e) => e.event === 'detector-trip')).toEqual([]);
 
     cleanup();
@@ -454,15 +417,12 @@ describe('paired-intake derive-loss (composeAndWriteRawBody / replaceRawBody, re
     let events: RingEvent[] = [];
     try {
       events = parseLossCaptureLines(readFileSync(lossCaptureCurrentPath(projectRoot), 'utf-8'));
-    } catch {
-      // No ring file is also a pass.
-    }
+    } catch {}
     expect(events.filter((e) => e.event === 'detector-trip')).toEqual([]);
   }
 
   it('file-watcher intake: a disk write that drops un-propagated fragment content trips + checkpoints', async () => {
     const { projectRoot, shadow, ring, reporter } = await setupReporter();
-    // Dirty open doc: the fragment holds a keystroke Y.Text never absorbed.
     const doc = seedDivergedDoc('# Title\n\nOriginal', '# Title\n\nOriginal\n\nPending keystroke');
     const baselineFullMd = doc.getText('source').toString();
     doc.transact(() => {
@@ -492,7 +452,6 @@ describe('paired-intake derive-loss (composeAndWriteRawBody / replaceRawBody, re
     expect(trip.direction).toBe('b');
     expect(trip.docName).toBe('intro');
     expect(trip.writerId).toBe('file-system');
-    // Content-free: a length + a digest, never the bytes.
     expect(typeof trip.lostLen).toBe('number');
     expect(trip.digest).toBeTruthy();
     expect(JSON.stringify(trip)).not.toContain('Pending keystroke');
@@ -580,9 +539,6 @@ describe('paired-intake derive-loss (composeAndWriteRawBody / replaceRawBody, re
   it('applyExternalChange builds + forwards the reporter and the file-watcher detector fires', async () => {
     const { projectRoot, shadow, ring, reporter } = await setupReporter();
     const doc = seedDivergedDoc('# Title\n\nOriginal', '# Title\n\nOriginal\n\nPending keystroke');
-    // The file-watcher intake spine: applyExternalChange resolves the doc, builds
-    // the paired-intake detect from the reporter (file-watcher is classified
-    // `detect`), and threads it through applyDiskContentToDoc → the primitive.
     const hocuspocus = {
       documents: { get: (n: string) => (n === 'intro' ? doc : undefined) },
     } as unknown as Parameters<typeof applyExternalChange>[1];
@@ -616,13 +572,9 @@ describe('paired-intake derive-loss (composeAndWriteRawBody / replaceRawBody, re
   });
 
   it('a suppress-classified paired write (no detect option) never trips, even on a dirty fragment', async () => {
-    // Rollback + managed-rename callers pass NO detect option — the structural
-    // suppression the registry classifies. Even with a live reporter available,
-    // a write that omits the detect option runs the detector for nobody.
     const { projectRoot, ring } = await setupReporter();
     const doc = seedDivergedDoc('# Title\n\nOriginal', '# Title\n\nOriginal\n\nPending keystroke');
     doc.transact(() => {
-      // The rollback/rename shape: a full overwrite with no detect wired.
       replaceRawBody(doc, '# Title\n\nRolled back to an older version');
     });
     doc.destroy();
@@ -631,11 +583,6 @@ describe('paired-intake derive-loss (composeAndWriteRawBody / replaceRawBody, re
 });
 
 describe('detectPairedIntakeLoss (the line-predicate floor)', () => {
-  // The substring twin diffs inserted segments; a short intra-line delta that
-  // coincidentally reappears in the write's new bytes is filtered out and the
-  // twin reports nothing (the customer `bod`→`body.` shape). The line predicate
-  // keys on whole raw lines, so the changed line — absent from both the target
-  // derivation and the pre-operation baseline — is flagged.
   const INTRA_LINE_STOMP: DeriveLossObservation = {
     pendingBody: 'Deploy the staging server now.',
     baselineBody: 'Deploy the server now.',
@@ -645,10 +592,7 @@ describe('detectPairedIntakeLoss (the line-predicate floor)', () => {
   };
 
   it('flags an intra-line stomp the substring twin filters away', () => {
-    // The inserted "staging" reappears in the applied bytes, so the substring
-    // twin's filter drops it — the twin alone is blind here.
     expect(detectDeriveLoss(INTRA_LINE_STOMP)).toEqual([]);
-    // The floor catches it via the line predicate.
     expect(detectPairedIntakeLoss(INTRA_LINE_STOMP)).toContain('Deploy the staging server now.');
   });
 
@@ -665,8 +609,6 @@ describe('detectPairedIntakeLoss (the line-predicate floor)', () => {
   });
 
   it('does not flag an intended removal (the witness leg excludes it)', () => {
-    // The line was in the pre-operation Y.Text, so removing it is intended — not
-    // a never-propagated keystroke.
     const obs: DeriveLossObservation = {
       pendingBody: 'Line A\n\nLine B',
       baselineBody: 'Line A\n\nLine B',
@@ -689,9 +631,6 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  // An intra-line stomp: the fragment holds "Deploy the staging server now." while
-  // Y.Text holds "Deploy the server now."; the write replaces the line with content
-  // that reuses "staging", so only the line predicate catches the loss.
   const PRE_OP_BODY = '## Guide\n\nDeploy the server now.';
   const PENDING_BODY = '## Guide\n\nDeploy the staging server now.';
   const PENDING_LINE = 'Deploy the staging server now.';
@@ -731,8 +670,6 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     });
     doc.destroy();
 
-    // The captured observation proves the line predicate — not the substring
-    // twin — is what enables the trip through the real serialize pipeline.
     expect(captured).toBeDefined();
     const obs = captured as DeriveLossObservation;
     expect(detectDeriveLoss(obs)).toEqual([]);
@@ -747,7 +684,6 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
         Boolean(e.checkpointSha),
     );
     expect(trip.direction).toBe('b');
-    // Content-free ring: never the lost bytes.
     expect(JSON.stringify(trip)).not.toContain(PENDING_LINE);
 
     const hist = await getDocumentHistory(shadow, { docName: 'intro' }, '');
@@ -782,12 +718,8 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     );
     const blob = (await shadowGit(shadow).raw('show', `${trip.checkpointSha}:intro`)).toString();
 
-    // Byte-identical to the captured restore payload …
     expect(blob).toBe(obs.restorePayload);
-    // … which carries the un-propagated fragment keystroke Y.Text never held …
     expect(blob).toContain(PENDING_LINE);
-    // … and is NOT the Y.Text-derived content the write applied (a Y.Text payload
-    // would miss the keystroke entirely).
     expect(blob).not.toContain('Restart the staging cluster');
   });
 
@@ -845,8 +777,6 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     });
     doc.destroy();
     const obs = captured as DeriveLossObservation;
-    // The line predicate flags the un-propagated fragment line for the agent-undo
-    // vector too — the floor covers every deriveFragmentFromYtext caller.
     expect(pendingContentLines(obs.pendingBody, obs.ytextDerivedBody, obs.baselineBody)).toContain(
       'Pending line here.',
     );
@@ -872,7 +802,6 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     const { projectRoot, ring } = await setup();
     const doc = seedDivergedDoc(PRE_OP_BODY, PENDING_BODY);
     doc.transact(() => {
-      // The rollback/rename shape: a full overwrite with no detect wired.
       replaceRawBody(doc, REPLACEMENT);
     });
     doc.destroy();
@@ -881,9 +810,7 @@ describe('paired-intake floor through the real pipeline (real shadow + ring)', (
     let events: RingEvent[] = [];
     try {
       events = parseLossCaptureLines(readFileSync(lossCaptureCurrentPath(projectRoot), 'utf-8'));
-    } catch {
-      // No ring file is also a pass.
-    }
+    } catch {}
     expect(events.filter((e) => e.event === 'detector-trip')).toEqual([]);
   });
 });

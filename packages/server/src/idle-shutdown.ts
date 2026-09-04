@@ -25,50 +25,22 @@ import type { PinoLogger } from './logger.ts';
 const DEFAULT_WARN_BEFORE_MS = 5 * 60 * 1000;
 
 export interface AttachIdleShutdownOptions {
-  /** HTTP server to hook `upgrade` events on. */
   httpServer: HttpServer;
-  /** Milliseconds of WebSocket-idle before `onShutdown` fires. */
   thresholdMs: number;
-  /** Callback invoked when the threshold is reached with zero WS clients. */
   onShutdown: () => Promise<void> | void;
-  /** Optional logger for WARN / INFO lines. */
   log?: PinoLogger;
-  /**
-   * Milliseconds before threshold at which to emit a WARN log.
-   * Default 5 minutes. Suppressed when `>= thresholdMs`.
-   */
   warnBeforeMs?: number;
-  /** Injectable scheduler for deterministic tests. */
   scheduler?: Scheduler;
-  /**
-   * An already-attached counter to schedule off. Supplied when the caller
-   * already counts for another consumer, so one upgrade listener serves both.
-   * When omitted this attaches its own and owns tearing it down.
-   */
   counter?: CollabClientCounter;
 }
 
 export interface IdleShutdownHandle {
-  /** Removes the upgrade listener and clears any pending timers. Idempotent. */
   detach: () => void;
 }
 
 export interface CollabClientCounter {
-  /** Live `/collab` WebSocket clients right now — editor windows AND agents. */
   getCount: () => number;
-  /**
-   * Observe count changes. Returns an unsubscribe. Several consumers watch the
-   * same count (idle-shutdown schedules off it; the server-info route reads
-   * it), so this is a fan-out rather than a single callback — two counters over
-   * one server would double the upgrade listeners and drift the moment the
-   * counting rule changes.
-   */
   subscribe: (listener: (count: number) => void) => () => void;
-  /**
-   * Removes the upgrade listener. Idempotent. Belongs to whoever CREATED the
-   * counter — a consumer handed one it did not create unsubscribes instead,
-   * or it would stop counting for every other consumer.
-   */
   detach: () => void;
 }
 
@@ -193,7 +165,6 @@ export function attachIdleShutdown(opts: AttachIdleShutdownOptions): IdleShutdow
       if (detached) return;
       detached = true;
       unsubscribe();
-      // Detaching a counter we were handed would stop counting for its owner.
       if (ownsCounter) counter.detach();
       clearTimers();
     },

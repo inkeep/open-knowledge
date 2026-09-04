@@ -12,7 +12,6 @@ import { DisclosureWarning, DisclosureWarningItem } from '@/components/Disclosur
 import { DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 interface SyncVariantProps {
-  /** 'full' = bidirectional sync copy (default); 'pull' = one-directional. */
   variant?: AutoSyncOnboardingVariant;
 }
 

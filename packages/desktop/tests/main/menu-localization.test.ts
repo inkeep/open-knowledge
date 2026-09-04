@@ -5,17 +5,6 @@ import { buildMenuTemplate, type MenuDeps } from '../../src/main/menu.ts';
 import type { MenuTranslator } from '../../src/main/menu-translator.ts';
 import { buildSpellcheckMenuTemplate } from '../../src/main/spellcheck-menu.ts';
 
-/**
- * Guards for the half of the menu bar we do not own: Electron's `role:` labels
- * are English literals inside its own bundle, so a role item left implicit
- * renders English inside an otherwise translated menu. The walker below is the
- * standing check that no role ever ships without an explicit label again.
- *
- * A second, quieter guard rides along: every builder must render English when
- * no translator is injected. That is what keeps the template suites (which look
- * items up by exact English label) and the packaged smoke tests honest.
- */
-
 function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
   return {
     appName: 'OpenKnowledge',
@@ -31,7 +20,6 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
   };
 }
 
-/** Every item in the template, depth-first through submenus. */
 function walk(items: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   const out: MenuItemConstructorOptions[] = [];
   for (const item of items) {
@@ -41,8 +29,6 @@ function walk(items: readonly MenuItemConstructorOptions[]): MenuItemConstructor
   return out;
 }
 
-/** Marks each rendered label so a translated build is unmistakable, and proves
- *  the placeholder values reach the translator rather than being pre-baked. */
 const MARKING_TRANSLATOR: MenuTranslator = (message, values) =>
   `«${message.replace(/\{(\w+)\}/g, (whole, name: string) => values?.[name] ?? whole)}»`;
 
@@ -115,10 +101,6 @@ describe('builders render English when no translator is injected', () => {
     ]) {
       expect(labels).toContain(expected);
     }
-    // `Quit <app>` sits in the macOS application menu, which `buildMenuTemplate`
-    // omits entirely off-mac — it reads `process.platform` rather than taking it
-    // as a dep, so the template genuinely differs by host. Asserted unguarded it
-    // passes on a developer Mac and fails only on the Linux runners.
     if (process.platform === 'darwin') {
       expect(labels).toContain('Quit OpenKnowledge');
     }
@@ -173,8 +155,6 @@ describe('an injected translator reaches every label', () => {
         onCopyFullPath: vi.fn(),
       }),
     );
-    // The macOS App menu's own title is `app.name`, a proper noun; recent rows
-    // are project and file names the user chose. Everything else is chrome.
     const userAuthored = new Set(['OpenKnowledge', 'Notes', 'a.md']);
     const untranslated = walk(template)
       .map((item) => item.label)
@@ -220,8 +200,6 @@ describe('an injected translator reaches every label', () => {
         viewInSource: vi.fn(),
       },
     }).map((item) => item.label);
-    // "the" is an OS dictionary suggestion in the document's own language, not
-    // chrome — it must pass through untouched.
     expect(spellcheck).toContain('the');
     expect(spellcheck).toContain('«Add to Dictionary»');
     expect(spellcheck).toContain('«Cut»');

@@ -23,8 +23,6 @@ describe('matchesShareReceiveMiss', () => {
     expect(matchesShareReceiveMiss(missing('notes/plan'), DOC_NAV)).toEqual(DOC_NAV);
   });
 
-  // A missing target with no armed nav is an ordinary wiki-link
-  // create-on-navigate — the guard must stay out of its way.
   test('a missing target with no armed nav is not a share-receive miss', () => {
     expect(matchesShareReceiveMiss(missing('notes/plan'), null)).toBeNull();
   });
@@ -33,9 +31,6 @@ describe('matchesShareReceiveMiss', () => {
     expect(matchesShareReceiveMiss(missing('other/doc'), DOC_NAV)).toBeNull();
   });
 
-  // The store keeps the share target's extension (the verdict fetch needs it),
-  // while the resolver reports the stripped docName — the matcher normalizes so
-  // an extension-bearing armed nav still recognizes its missing target.
   test('an extension-bearing armed nav matches its stripped missing target', () => {
     const mdNav: PendingReceiveNav = { kind: 'doc', path: 'docs/moved.md', branch: 'main' };
     expect(matchesShareReceiveMiss(missing('docs/moved'), mdNav)).toEqual(mdNav);
@@ -77,10 +72,6 @@ describe('hashSelectsPendingNav', () => {
     expect(hashSelectsPendingNav('#/other', DOC_NAV)).toBe(false);
   });
 
-  // A real share link's target carries the `.md`/`.mdx` extension (GitHub blob
-  // URLs always do), so the store is armed with that extension-bearing path and
-  // the hash encodes the same. Both sides must normalize to compare, or the store
-  // clears itself on its own arming navigation and the miss guard never fires.
   test('a doc hash carrying a file extension still selects the armed extension-bearing nav', () => {
     const mdNav: PendingReceiveNav = { kind: 'doc', path: 'docs/moved.md', branch: 'main' };
     expect(hashSelectsPendingNav('#/docs%2Fmoved.md?branch=main', mdNav)).toBe(true);
@@ -102,12 +93,6 @@ describe('hashSelectsPendingNav', () => {
   });
 });
 
-// Drives the store's real hashchange wiring through a controllable fake
-// `window` (the DOM is a system boundary). The store captures its own
-// `hashchange` handler on first arm; `navigateTo` sets the fake location and
-// invokes that captured handler, so `onHashChange` runs its real
-// `hashSelectsPendingNav` logic against a live-looking navigation. Mirrors the
-// `globalThis.window` fake pattern in `relaunch-store.test.ts`.
 describe('pendingReceiveNavStore lifecycle', () => {
   let hashHandler: (() => void) | null = null;
   const stores: PendingReceiveNavStore[] = [];
@@ -152,9 +137,6 @@ describe('pendingReceiveNavStore lifecycle', () => {
     expect(notifications).toBe(1);
   });
 
-  // After a share-receive miss, a later navigation elsewhere must drop the
-  // pending nav so a subsequent wiki-link to the same path is create-on-navigate
-  // again, not a spurious miss panel.
   test('navigating away from the armed target self-clears the pending nav', () => {
     const store = freshStore();
     navigateTo('#/notes/plan?branch=feature');
@@ -170,15 +152,10 @@ describe('pendingReceiveNavStore lifecycle', () => {
     navigateTo('#/notes/plan');
     store.arm(DOC_NAV);
 
-    // e.g. a re-dispatched deep link re-appends the branch query — same target.
     navigateTo('#/notes/plan?branch=feature');
     expect(store.getSnapshot()).toEqual(DOC_NAV);
   });
 
-  // The listener arms with the extension-bearing share target, then sets the hash
-  // from the same path. The store must survive its own arming navigation —
-  // otherwise the guard self-clears before the editor reads it and the receiver
-  // lands in create-mode at the shared path.
   test('a share target with a file extension survives its own arming hashchange', () => {
     const store = freshStore();
     const mdNav: PendingReceiveNav = { kind: 'doc', path: 'docs/moved.md', branch: 'main' };

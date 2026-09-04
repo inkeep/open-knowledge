@@ -1,23 +1,9 @@
-/**
- * Field repro: the check-in doc where deleting "e agents pan" slid the
- * highlight onto the "Decided:" paragraph's copy.
- *
- * Reconstructed from the report, with the properties that make it hard kept
- * intact: the surviving twin renders the same words but carries `**bold**`
- * markup in the body (so the quote is not literally present there in markdown,
- * only in rendered text), and a third stray occurrence sits at the end of the
- * document with unrelated context. Real markdown pipeline, real index — not a
- * hand-built fixture.
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
 import { createAnchorResolver } from './anchor-search';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
-// The schema import keeps parity with anchor-search.test.ts's setup; parsing
-// alone is what this suite needs.
 void getSchema(sharedExtensions);
 
 const BODY = [
@@ -33,7 +19,6 @@ const BODY = [
 
 const QUOTE = 'e agents pan';
 
-/** Server-style context: 32 chars of the markdown body either side. */
 function bodyContext(body: string, at: number): { prefix: string; suffix: string } {
   return {
     prefix: body.slice(Math.max(0, at - 32), at),
@@ -56,7 +41,6 @@ describe('the check-in repro', () => {
   test('deleting the selection orphans instead of sliding to the bold twin', () => {
     const at = BODY.indexOf(QUOTE);
     const context = bodyContext(BODY, at);
-    // Exactly the reported gesture: the selected text removed where it stood.
     const afterDelete = BODY.slice(0, at) + BODY.slice(at + QUOTE.length);
     const range = createAnchorResolver(docFor(afterDelete))(QUOTE, context);
     expect(range).toBeNull();

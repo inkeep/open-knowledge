@@ -40,14 +40,11 @@ export interface SavedThemesData {
 }
 
 export interface SavedThemesFetchResult extends SavedThemesData {
-  /** True only when the server returned a valid, complete list response. */
   authoritative: boolean;
 }
 
 interface SavedThemesContextValue extends SavedThemesData {
-  /** True after the first authoritative list response, including an empty store. */
   loaded: boolean;
-  /** The latest list attempt failed; retained data may still be shown. */
   loadError: boolean;
   refresh: () => Promise<boolean>;
   updateTheme: (input: { id: string; scheme: Base16Scheme }) => Promise<UpdateSavedThemeResult>;
@@ -60,7 +57,6 @@ interface SavedThemesContextValue extends SavedThemesData {
     extension?: '.yaml' | '.yml';
   }) => Promise<SaveSavedThemeResult>;
   editingThemeId: string;
-  /** Identity generation for an id; increments whenever that saved theme is deleted. */
   themeIncarnations: Readonly<Record<string, number>>;
   themeEditorOpen: boolean;
   selectThemeToEdit: (id: string | null) => void;

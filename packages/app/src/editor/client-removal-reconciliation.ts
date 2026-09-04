@@ -5,7 +5,6 @@ export interface LocalRenameReconciliation {
   renamed: readonly RenamedDocMapping[];
   renamedFolders?: readonly RenamedFolderMapping[];
   renamedAssets?: readonly RenamedAssetMapping[];
-  /** Source doc names removed outside `renamed`, such as doc-to-asset transitions. */
   additionalRemovedDocNames?: readonly string[];
 }
 
@@ -47,16 +46,6 @@ export interface ClientRemovalReconciliationPorts {
   clearActiveTargetForRemoval(docName: string): void;
   navigateToDocument(docName: string): void;
   navigateHome(): void;
-  /**
-   * Offer the surface a chance to handle the deletion of the ACTIVE document
-   * itself, returning true when it did.
-   *
-   * Exists for the popped-out note window, which shows exactly one document and
-   * so has nowhere to navigate home TO — the home surface is a workspace view it
-   * deliberately does not have. It shows an explicit deleted state instead.
-   * Absent (or returning false) keeps the workspace window's navigate-home
-   * behavior unchanged.
-   */
   showDocumentDeletedState?(docName: string): boolean;
 }
 

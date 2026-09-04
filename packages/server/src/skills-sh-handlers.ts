@@ -1,16 +1,3 @@
-/**
- * The seven skills.sh discovery handlers, lifted out of `api-extension.ts`.
- *
- * Stateless proxy and cache reads: no `session`, no `dc`, no `transact`. What
- * they closed over in the extension arrives as {@link SkillsShHandlerDeps} so
- * the route table keeps referencing them by name.
- *
- * `resolveSkillDirForRead` is passed in rather than imported because it is a
- * closure local of the extension. The factory call therefore has to sit AFTER
- * `skillsHome` is initialized (it is a `const`, so an earlier call would hit its
- * temporal dead zone); it lives immediately above the route table.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, relative, sep } from 'node:path';
 import type { SkillRefResolution } from '@inkeep/open-knowledge-core';
@@ -78,11 +65,6 @@ export type SkillsShHandlers = Record<
 export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandlers {
   const { log, skillsHome, projectDir, contentDir, resolveSkillDirForRead } = deps;
 
-  // `GET /api/skills/search?q=<query>` — proxy skill discovery. Primary backend is
-  // the keyless skills.sh endpoint its own CLI uses (undocumented, so we
-  // defensive-parse and fall back to GitHub-topic search on error or shape drift).
-  // The GitHub fallback is degraded (repo-level, no install-count ranking); the
-  // response's `backend`/`degraded` let the client drop the install-count sort.
   const handleSkillsSearch = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -127,11 +109,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           headers: { Accept: 'application/vnd.github+json' },
         });
         if (!gh.ok) {
-          // 403 (unauthenticated rate cap) / 429 are the common cases. Reporting
-          // these as an empty result set told the user "No skills found" — that
-          // the skill does not exist — when both backends were simply refusing
-          // to answer. Take the same exit as the outer catch so the client says
-          // the search failed instead.
           log.warn({ status: gh.status }, 'GitHub skill search fallback returned non-ok');
           errorResponse(
             res,
@@ -163,10 +140,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-search', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/popular?limit=<n>` — the Discover blank-state list. No keyless
-  // leaderboard endpoint exists (token-gated), so the server scrapes the skills.sh
-  // front-page RSC payload, cached + best-effort (see `getPopularSkills`). An empty
-  // list (backend degraded) tells the client to fall back to topic chips.
   const handleSkillsPopular = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -174,10 +147,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
       const limitRaw = Number(url.searchParams.get('limit'));
       const limit =
         Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 60) : 24;
-      // `getPopularSkills` is best-effort (swallows fetch/parse failures and
-      // returns []), but guard the wire boundary anyway — the sibling
-      // `handleSkillsSearch` does the same, and it keeps the handler correct if
-      // the leaderboard helper's contract ever changes to throw.
       try {
         const results = await getPopularSkills(limit);
         successResponse(
@@ -200,32 +169,17 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-popular', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/publisher?source=<owner/repo>` — every skill one publisher
-  // lists, most-installed first. The only complete + ranked view of a single
-  // publisher: `/api/skills/search` is fuzzy (interleaves other publishers and
-  // misses some of the named one's skills) and `/api/skills/discover` reads the
-  // repository, which knows nothing about installs. Scraped + cached like the
-  // leaderboard, and best-effort for the same reason — a caller merges these
-  // counts into a list it already has, so an empty result costs ranking, not
-  // the list.
   const handleSkillsPublisher = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
       const url = new URL(req.url ?? '', 'http://localhost');
       const source = url.searchParams.get('source')?.trim() ?? '';
-      // `owner/repo` only. The value lands in a skills.sh URL path, so anything
-      // else — a git URL, a local path, a traversal — is refused rather than
-      // fetched, the same shape gate the install reporter applies.
       if (!/^[\w.-]+\/[\w.-]+$/.test(source) || source.includes('..')) {
         errorResponse(res, 400, 'urn:ok:error:invalid-request', 'source must be owner/repo.', {
           handler: 'skills-publisher',
         });
         return;
       }
-      // `getPublisherSkills` is best-effort (swallows fetch/parse failures and
-      // returns []), so this catch is defensive rather than live — same as the
-      // sibling `handleSkillsPopular`. It keeps the handler correct if the
-      // helper's contract ever changes to throw.
       try {
         const results = await getPublisherSkills(source);
         successResponse(
@@ -248,10 +202,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-publisher', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/detail?source=&name=` — enrich one discovery result for the
-  // info modal. The shared catalog-source parser owns both GitHub and website
-  // route shapes. The rich preview comes from the skills.sh page's Open Graph
-  // tags because the page itself cannot be iframed (`x-frame-options: DENY`).
   const handleSkillsDetail = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -301,11 +251,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-detail', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/preview?source=&name=` fetches one un-imported bundle so
-  // Explore can render the exact files before installation. Repository and
-  // website sources converge on the same temporary-directory parser here.
-  // Sibling skills share a source, so the shallow clone is cached by source
-  // (fetchCachedSource): previewing several skills from one repo clones it once.
   const handleSkillsPreview = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -349,13 +294,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           });
           return;
         }
-        // Match the search row's name against the dir basename OR the SKILL.md
-        // frontmatter name (they often differ). A named MISS is a 404 here for
-        // the same reason it is one on import: this is the consent surface. The
-        // old fallback to `dirs[0]` rendered a different skill's prose under the
-        // requested name — the header still said "a preview of <name>" and the
-        // properties block still showed `<name>` — and then import refused the
-        // same miss, so the user read one skill and could only install another.
         let pick = dirs[0];
         if (name) {
           const found =
@@ -386,9 +324,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           return;
         }
         const plugin = inspectPluginSource(source);
-        // The skills.sh source repo may itself be a plugin bundling several
-        // skills — skills.sh never flags that, but the clone carries the
-        // manifest and we already have it in hand (`fetched.dir`). Read-only.
         const pluginBundle = inspectPluginBundleDir(fetched.dir);
         successResponse(
           res,
@@ -398,9 +333,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
             name: parsed.name,
             description: parsed.description,
             skillMd: parsed.skillMd,
-            // Strip raw `bytes` (binary files) — a preview renders text or shows
-            // the file as binary (`content: null`); the bytes are not JSON-safe
-            // and only matter on import.
             files: parsed.files.map((f) => ({ relPath: f.relPath, content: f.content })),
             plugin: plugin ?? undefined,
             pluginBundle: pluginBundle ?? undefined,
@@ -424,10 +356,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-preview', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/discover?source=` enumerates a repository/local tree or a
-  // website's well-known index so the Import modal can offer an exact picker.
-  // The clone is cached by source (fetchCachedSource), so discovering then
-  // previewing the same source, or re-discovering it, reuses one clone.
   const handleSkillsDiscover = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -474,12 +402,7 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
       try {
         const fetched = await fetchCachedSource(spec);
         const dirs = discoverSkillDirs(fetched.dir);
-        // Prefer the SKILL.md frontmatter name (what the import path matches and
-        // what a user recognizes); fall back to the dir basename.
         const skills = dirs.map((d) => {
-          // Metadata-only: a listing has no use for bundle bytes, and reading
-          // them for every skill in a large repo is how a preview turns into an
-          // out-of-memory kill.
           const meta = readSkillDirMeta(d.dir);
           return { name: meta?.name ?? d.name, description: meta?.description ?? null };
         });
@@ -501,13 +424,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
     { handler: 'skills-discover', method: 'GET', skipBodyParse: true },
   );
 
-  // `GET /api/skills/resolve-ref?ref=<name>&scope=<scope>&from=<skill>` — resolve
-  // a skill's `/other-skill` reference by TRUSTED-PROVENANCE precedence, never a
-  // marketplace-wide name search (that would import a stranger's same-name skill
-  // thinking it's the dependency). Ladder: (1) already installed → local; (2) a
-  // sibling in the referencing skill's own origin repo/plugin → import via
-  // source; (3) a same-publisher skills.sh result with the exact name → import
-  // via publisher; else none, and the caller offers MANUAL Explore search.
   const handleSkillsResolveRef = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -521,24 +437,15 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
         });
         return;
       }
-      // Top-level guard like every sibling skills handler: `readSkillsLockFile`
-      // (existsSync → readFileSync) can throw on EACCES / a TOCTOU race, and an
-      // unguarded throw would surface as a context-less 500 from the outer
-      // catch.
       try {
         const respond = (resolution: SkillRefResolution) =>
           successResponse(res, 200, SkillRefResolutionSchema, resolution, {
             handler: 'skills-resolve-ref',
           });
 
-        // 1. LOCAL — same scope first, then the other. Already-present wins: it's
-        // what the user chose to have, and importing a same-name skill would fork.
         for (const s of [scope, scope === 'project' ? 'global' : 'project'] as const) {
           const realDir = resolveSkillDirForRead(s, ref);
           if (realDir !== null) {
-            // Return the REAL dir, not just the name: the caller opens this skill,
-            // and deriving the doc name from the name alone assumes the retired
-            // store layout.
             respond({
               kind: 'local',
               scope: s,
@@ -551,15 +458,12 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           }
         }
 
-        // Referencing skill's provenance from its scope lockfile (import origin).
         const lockBase = scope === 'project' ? projectDir : skillsHome;
         const entry =
           from && lockBase
             ? readSkillsLockFile(join(lockBase, ...SKILLS_LOCK_REL)).skills[from]
             : undefined;
 
-        // 2. SAME SOURCE — a sibling in the referencing skill's own repo/plugin.
-        // (A plugin's siblings resolve here too: its source is the plugin dir.)
         if (entry?.source) {
           const resolvedSkillsSh = await resolveSkillsShImportSource(entry.source, ref);
           const spec = resolvedSkillsSh?.spec ?? parseSource(entry.source);
@@ -577,9 +481,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
                 return;
               }
             } catch (err) {
-              // Source unreachable (clone failure / bad source) — fall through to
-              // the publisher rung, but leave a trail so a stale/deleted origin
-              // repo doesn't degrade ref resolution silently.
               log.debug(
                 { err, ref, from, source: entry.source },
                 'resolve-ref: source rung unreachable, falling through to publisher',
@@ -590,8 +491,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           }
         }
 
-        // 3. SAME PUBLISHER — a same-publisher skills.sh result with the EXACT name.
-        // Constrained (publisher + exact name), not a fuzzy match; a unique hit only.
         if (entry?.publisher) {
           try {
             const r = await fetch(
@@ -611,9 +510,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
               }
             }
           } catch (err) {
-            // skills.sh unreachable or a malformed (e.g. HTML during an outage)
-            // response — no publisher resolution this call. Log so an outage is
-            // distinguishable from "skill genuinely absent from this publisher".
             log.debug(
               { err, ref, publisher: entry.publisher },
               'resolve-ref: skills.sh unavailable, no publisher resolution',
@@ -621,8 +517,6 @@ export function createSkillsShHandlers(deps: SkillsShHandlerDeps): SkillsShHandl
           }
         }
 
-        // 4. NONE — no trusted signal. The caller keeps the missing-ref marker
-        // and offers manual Explore search; OK never auto-picks a fuzzy match.
         respond({ kind: 'none' });
       } catch (err) {
         errorResponse(

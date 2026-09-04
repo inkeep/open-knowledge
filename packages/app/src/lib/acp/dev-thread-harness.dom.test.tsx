@@ -1,16 +1,3 @@
-/**
- * The injection harness is only worth anything if the frames it hands the
- * client travel the same road a real socket message does, so these tests
- * assert against what came out the far end — the store, the folded render
- * model, and finally the mounted transcript — rather than against the frames
- * that went in.
- *
- * The last describe block is the one no cheaper test can replace: it renders
- * the real `ThreadView` over the real module-scope client, so a harness that
- * stopped reaching the fold, or a fold whose output the renderer ignored,
- * fails here and nowhere else.
- */
-
 import type {
   SessionUpdate,
   ThreadAgentInfo,
@@ -25,11 +12,6 @@ import { type AcpThreadHarness, installAcpThreadHarness } from './dev-thread-har
 import { AgentThreadClient } from './thread-client';
 import type { RenderedItem } from './thread-event-model';
 
-// Only the surfaces jsdom genuinely cannot host are doubled: the editor's
-// Y.Doc context, the workspace lookup, the ProseMirror-backed composer, and
-// toasts. The thread client, the fold, the markdown renderer, and the
-// transcript are the shipping modules — doubling any of them would hide the
-// break this file exists to catch.
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ systemProvider: null }),
 }));
@@ -58,7 +40,6 @@ function isMessage(item: RenderedItem): item is Extract<RenderedItem, { kind: 'm
   return item.kind === 'message';
 }
 
-/** Every message body the fold produced, in transcript order. */
 function messageTexts(client: AgentThreadClient, threadId: string): string[] {
   return (client.getThreadModel(threadId)?.items ?? []).filter(isMessage).map((item) => item.text);
 }
@@ -131,9 +112,6 @@ describe('injected frames reach the store through the socket path', () => {
 
     const threadId = harness.replayThread({ agent: CODEX }, updates);
 
-    // The transcript reaching the announced bound is how a consumer knows the
-    // replay is done and anything further is new. A live thread announces an
-    // empty log, so its very first update is already past the bound.
     const state = client.getThread(threadId);
     expect(state?.info.lastSeq).toBe(updates.length - 1);
     expect(state?.lastSeq).toBe(updates.length - 1);
@@ -179,9 +157,6 @@ describe('injected frames reach the store through the socket path', () => {
   });
 
   test('publishes itself on the exact global the production-artifact gate scans for', () => {
-    // That gate greps emitted chunks for a bare string, which stays green
-    // forever once the name it looks for stops being the name anything
-    // writes. This is the only place the two can be held together.
     expect(Reflect.get(window, DEV_HARNESS_SENTINEL)).toBe(harness);
   });
 });

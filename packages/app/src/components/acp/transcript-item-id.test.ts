@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { RenderedItem } from '@/lib/acp/thread-event-model';
 import { transcriptItemId } from './transcript-item-id';
 
-// transcriptItemId only reads `kind` and the id field, so fixtures stay minimal.
 const msg = (messageId: string, role: 'user' | 'agent' | 'thought' = 'agent'): RenderedItem =>
   ({ kind: 'message', role, text: '', messageId }) as RenderedItem;
 const tool = (toolCallId: string): RenderedItem =>
@@ -19,8 +18,6 @@ const agentNotice = (text = 'Warning: something\n\n'): RenderedItem =>
 
 describe('transcriptItemId', () => {
   it('is unique across sibling messages that share the default messageId', () => {
-    // The ordinary turn: a thought chunk then an agent chunk, both arriving with
-    // no adapter messageId, so both key to 'default'.
     const items = [msg('default', 'thought'), msg('default', 'agent')];
     expect(new Set(items.map(transcriptItemId)).size).toBe(items.length);
   });
@@ -42,8 +39,6 @@ describe('transcriptItemId', () => {
   });
 
   it('distinguishes two identical runtime warnings and a failure notice at the same positions', () => {
-    // Same text twice: nothing about the payload separates them, so the row
-    // identity has to come from position alone.
     const items: RenderedItem[] = [agentNotice(), agentNotice(), notice()];
     expect(new Set(items.map(transcriptItemId)).size).toBe(items.length);
   });

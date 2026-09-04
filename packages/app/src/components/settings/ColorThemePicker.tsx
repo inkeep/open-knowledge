@@ -22,7 +22,6 @@ interface UnavailableColorTheme {
 }
 
 interface ColorThemeEditControl {
-  /** The user-owned saved themes that expose the editor toggle. */
   themeIds: readonly string[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -38,51 +37,21 @@ interface ColorThemeCreateControl {
 }
 
 export interface ColorThemePickerProps {
-  /** The palette assigned to each mode (`appearance.colorThemeLight` / `…Dark`). */
   selection: ColorThemeSelection;
-  /**
-   * The palettes to render as tiles, in order. Defaults to the built-in
-   * registry; the settings surface passes the built-ins plus the user's saved
-   * themes, which are ordinary `ColorTheme`s and so render identically.
-   */
   themes?: readonly ColorTheme[];
-  /** Saved files that exist but cannot provide a usable palette. */
   unavailableThemes?: readonly UnavailableColorTheme[];
-  /** Fired with the mode slot and the theme id when a tile's sun/moon is pressed.
-   *  The id is any shape-valid theme id — a built-in's or a saved theme's. */
   onAssign: (slot: 'light' | 'dark', id: string) => void;
-  /** Optional editor binding shown only on the theme ids declared here. */
   editControl?: ColorThemeEditControl;
-  /** Optional destructive action shown only for the user-owned ids declared here. */
   deleteControl?: ColorThemeDeleteControl;
-  /** Optional gallery tile that starts the saved-theme creation flow. */
   createControl?: ColorThemeCreateControl;
-  /**
-   * The mode on screen right now — the one `appearance.theme` resolves to. Rings
-   * the tile currently in effect, and paints the Default tile: that tile has no
-   * palette of its own, so it advertises the base stylesheet in the live mode.
-   */
   slotMode?: 'light' | 'dark';
-  /** The user's custom-theme scheme (partial), used to paint the Custom tile preview. */
   customSeed?: SeedInput;
-  /**
-   * The form label's `htmlFor` target. It lands on the first sun toggle, not on
-   * the grid root: a `<fieldset>` is not a labelable element, so `<label for>`
-   * pointing at it would never move focus. Same treatment the enum-toggle
-   * control gives its first ToggleGroupItem.
-   */
   firstItemId?: string;
   'aria-label'?: string;
   'aria-describedby'?: string;
-  /**
-   * Forwarded for the same reason as `aria-describedby`: a rejected palette
-   * write surfaces through `form.setError`, and without this the group never
-   * signals that state to assistive tech.
-   */
   'aria-invalid'?: boolean | 'true' | 'false';
 }
 
-/** The handful of palette colors a preview tile renders. */
 interface SwatchColors {
   chrome: string;
   surface: string;
@@ -110,15 +79,11 @@ function swatchColors(
     return swatchFromTokens(base16ToTokens(resolveCustomScheme(customSeed)));
   }
   if (!theme.scheme) {
-    // `default` has no authored palette — it IS the base stylesheet. Reading the
-    // cascaded `var(--…)` here would inherit whichever palette is currently
-    // applied to `<html>`, so paint the base tokens as literals instead.
     return swatchFromTokens(defaultThemeTokens(slotMode));
   }
   return swatchFromTokens(base16ToTokens(theme.scheme));
 }
 
-/** A miniature editor-window preview, à la the Vivaldi theme tiles. */
 function ThemeSwatch({
   theme,
   customSeed,
@@ -136,7 +101,7 @@ function ThemeSwatch({
       className="aspect-[4/3] w-full overflow-hidden rounded-md border"
       style={{ backgroundColor: c.surface, borderColor: c.line }}
     >
-      {/* Title bar: accent pill + a faux address field. */}
+      {}
       <div
         className="flex h-1/3 items-center gap-1 px-1.5"
         style={{ backgroundColor: c.chrome, borderBottom: `1px solid ${c.line}` }}
@@ -147,7 +112,7 @@ function ThemeSwatch({
           style={{ backgroundColor: c.line }}
         />
       </div>
-      {/* Body: a sidebar rail of dots + content accents. */}
+      {}
       <div className="flex h-2/3">
         <div
           className="flex w-1/4 flex-col items-center justify-center gap-1"
@@ -175,13 +140,6 @@ function ThemeSwatch({
   );
 }
 
-/**
- * A slot icon has to read as on/off at a glance across every palette — it sits
- * on the tile, so the surrounding color is whatever scheme that tile previews.
- * The shadcn Toggle's stock pressed state is a `bg-muted` wash, which against a
- * themed tile is close to invisible; an accent ring plus a filled, accent-tinted
- * glyph survives any background.
- */
 function slotToggleClass(pressed: boolean): string {
   return cn(
     'size-6 min-w-6 rounded-md border p-0 transition-colors',
@@ -195,20 +153,6 @@ function slotIconClass(pressed: boolean): string {
   return cn('size-3.5', pressed && 'fill-current');
 }
 
-/**
- * Tile grid for the light/dark palette pair. Every tile carries a sun and a
- * moon, so a palette can be the light theme, the dark theme, or both — which is
- * also why the grid is not a radio group: the two assignments are independent
- * single-selects that happen to share a row of tiles.
- *
- * Pressing the icon for the mode you are NOT currently in changes nothing on
- * screen by design, so the icon's own on/off state is the only feedback that
- * the assignment landed — it has to be unmistakable.
- *
- * Pressing an already-pressed icon is ignored rather than clearing the slot.
- * Each mode must resolve to some palette, and "none" is spelled `default`,
- * which is a tile of its own.
- */
 export function ColorThemePicker({
   selection,
   themes = COLOR_THEMES,
@@ -226,8 +170,6 @@ export function ColorThemePicker({
 }: ColorThemePickerProps) {
   const { t } = useLingui();
   return (
-    // `fieldset` rather than a div: the grid is a set of related controls, and
-    // the UA border/padding are reset by the utilities below.
     <fieldset
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedby}

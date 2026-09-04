@@ -1,15 +1,3 @@
-/**
- * Unit tests for the single outbound dispatch entry point.
- *
- * Every target POSTs to `/api/handoff` with `{ target, url, workspacePath? }`.
- * No renderer-side timing dance — the server owns the recipe. Tests assert:
- *   (a) each target produces the right body shape
- *   (b) the URL passed in `body.url` is built by the matching URL builder
- *   (c) `workspacePath` is threaded only for Cursor (the cli-binary recipe)
- *   (d) HTTP failures map to `HandoffOutcome` shapes the toast hook expects
- *   (e) exhaustiveness guard fires for unknown targets at runtime
- */
-
 import type { HandoffPayload, HandoffTarget } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
 import { dispatchHandoff } from './dispatch.ts';
@@ -41,9 +29,6 @@ async function readSentBody(fetchImpl: typeof globalThis.fetch): Promise<unknown
 
 describe('dispatchHandoff — claude-cowork', () => {
   test('POSTs /api/handoff with target=claude-cowork and a prompt-threaded claude://cowork/new URL', async () => {
-    // Doc-scoped Claude handoff threads the directive prompt;
-    // precedent #25 invariant preserved — no `file=` attach (the prompt is a
-    // short directive, never the file body); the agent grounds via OK MCP.
     const fetchImpl = makeFetch(200);
     const payload: HandoffPayload = { ...BASE_PAYLOAD, target: 'claude-cowork' };
     const result = await dispatchHandoff(payload, { fetch: fetchImpl });
@@ -96,8 +81,6 @@ describe('dispatchHandoff — codex', () => {
     expect(body.url).toContain('prompt=');
     // precedent #25 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
-    // Codex doesn't need workspacePath — `path=` in the URL carries it for the
-    // recipe; the workspacePath body field is cursor-only.
     expect(body.workspacePath).toBeUndefined();
   });
 });
@@ -181,9 +164,6 @@ describe('dispatchHandoff — runtime exhaustiveness guard', () => {
     'pi',
     'antigravity',
   ] as const)('terminal-only target %s is refused by the deep-link dispatcher (defensive)', async (target) => {
-    // No production caller routes terminal-only targets here (excluded from
-    // VISIBLE_TARGETS); the case exists so a programmatic dispatch fails
-    // loudly instead of hitting the exhaustiveness fallback.
     const result = await dispatchHandoff({ ...BASE_PAYLOAD, target });
     expect(result.ok).toBe(false);
     if (result.ok) return;

@@ -52,8 +52,6 @@ describe('runSeed — happy path', () => {
       expect(existsSync(join(testDir, folder.path))).toBe(true);
     }
     expect(existsSync(join(testDir, 'log.md'))).toBe(true);
-    // Folder defaults now land at nested `<folder>/.ok/frontmatter.yml`
-    // (`config.yml folders:` write path retired).
     for (const folder of STARTER_FOLDERS) {
       const fmPath = join(testDir, folder.path, '.ok', 'frontmatter.yml');
       expect(existsSync(fmPath)).toBe(true);
@@ -73,7 +71,6 @@ describe('runSeed — happy path', () => {
     const result = await runSeed({ cwd: testDir, confirmStream: no() });
     expect(result.status).toBe('cancelled');
     expect(result.exitCode).toBe(0);
-    // No changes applied
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
@@ -97,21 +94,16 @@ describe('runSeed — --dry-run', () => {
     const result = await runSeed({ cwd: testDir, pack: 'worldbuilding', dryRun: true });
     expect(result.status).toBe('dry-run');
     const pack = STARTER_PACKS.worldbuilding;
-    // The dry-run message carries each folder's authored "why" (rationale), so
-    // the reader can adapt the pattern — not just a file tree to clone.
     for (const folder of pack.folders) {
       expect(result.message).toContain(folder.description);
     }
-    expect(result.message.toLowerCase()).toContain('adapt'); // anti-clone framing
-    // …and still writes nothing.
+    expect(result.message.toLowerCase()).toContain('adapt');
     for (const folder of pack.folders) {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
   });
 
   test('previews in an uninitialized dir without requiring `ok init`', async () => {
-    // No scaffoldOkDir — the whole point of a dry-run is to preview a pack
-    // before adopting it. The prerequisite gate must not block this path.
     const result = await runSeed({ cwd: testDir, pack: 'knowledge-base', dryRun: true });
     expect(result.status).toBe('dry-run');
     expect(result.exitCode).toBe(0);
@@ -122,8 +114,6 @@ describe('runSeed — --dry-run', () => {
   });
 
   test('returns no-op (not dry-run) when the directory is already fully seeded', async () => {
-    // The already-seeded guard fires before the dry-run branch — pin that
-    // ordering so callers branching on `status === 'dry-run'` stay correct.
     scaffoldOkDir(testDir);
     await runSeed({ cwd: testDir, yes: true });
     const result = await runSeed({ cwd: testDir, dryRun: true });
@@ -144,15 +134,9 @@ describe('runSeed — no-op', () => {
   });
 
   test('is NOT a no-op when a pack skill was deleted from a project that has an agent folder', async () => {
-    // A project whose pack skill was deleted has every folder yet no skill.
-    // Re-seeding must re-author it, not report "already seeded, nothing to do".
-    // The agent folder stays: it is what lets OK author a skill at all, so
-    // deleting it would make re-authoring impossible (next test covers that).
     scaffoldOkDir(testDir);
     mkdirSync(join(testDir, '.claude'), { recursive: true });
     await runSeed({ cwd: testDir, yes: true });
-    // Pack skills land in-place (editor skill dirs) with the legacy `.ok/skills`
-    // store still honored — clear both so the skill is truly gone.
     rmSync(join(testDir, '.claude', 'skills'), { recursive: true, force: true });
     rmSync(join(testDir, OK_DIR, 'skills'), { recursive: true, force: true });
 
@@ -161,7 +145,6 @@ describe('runSeed — no-op', () => {
     const pending = preview.plan?.packSkills?.filter((s) => s.pending) ?? [];
     expect(pending.length).toBeGreaterThan(0);
 
-    // …and the promised work actually happens: the skill is re-authored.
     const applied = await runSeed({ cwd: testDir, yes: true });
     expect(applied.status).toBe('applied');
     for (const skill of pending) {
@@ -170,9 +153,6 @@ describe('runSeed — no-op', () => {
   });
 
   test('with no agent folder, pack skills are not pending and re-runs stay a no-op', async () => {
-    // OK never creates an agent home, so a harness-free project can never
-    // receive pack skills. Reporting them pending promised work apply always
-    // declines, which made every `ok seed` re-run claim it applied something.
     scaffoldOkDir(testDir);
     await runSeed({ cwd: testDir, yes: true });
 
@@ -180,16 +160,11 @@ describe('runSeed — no-op', () => {
     expect(second.status).toBe('no-op');
     expect(second.plan?.packSkills?.some((s) => s.pending)).toBe(false);
     expect(second.plan?.packSkillHomeRefusal).toBe('no-agent-folder');
-    // Honest, not merely stable: it says the skills were not installed and why.
     expect(second.message).toContain('skills were not installed');
     expect(second.message).toContain('.claude/');
   });
 
   test('an agent folder symlinked outside the project gets the symlink-specific guidance', async () => {
-    // The second refusal class. Its guidance differs from the no-agent-folder
-    // one — "create the folder your agent uses" is wrong advice here, the
-    // folder exists and points out of the repo — so the run must reach the
-    // user with the symlink wording, not the generic one.
     scaffoldOkDir(testDir);
     const outside = mkdtempSync(join(tmpdir(), 'ok-seed-outside-'));
     try {
@@ -201,7 +176,6 @@ describe('runSeed — no-op', () => {
       expect(result.plan?.packSkillHomeRefusal).toBe('home-escapes-project');
       expect(result.message).toContain('symlink pointing outside the project');
       expect(result.message).not.toContain('no agent folder for them');
-      // Refused, not quietly redirected: nothing was authored through the link.
       expect(readdirSync(join(outside, 'skills'))).toEqual([]);
     } finally {
       rmSync(outside, { recursive: true, force: true });
@@ -228,7 +202,6 @@ describe('runSeed — --root', () => {
       expect(existsSync(join(testDir, folder.path))).toBe(false);
     }
     expect(existsSync(join(testDir, 'brain', 'log.md'))).toBe(true);
-    // Each starter folder under `brain/` gets its nested .ok/frontmatter.yml.
     for (const folder of STARTER_FOLDERS) {
       const fmPath = join(testDir, 'brain', folder.path, '.ok', 'frontmatter.yml');
       expect(existsSync(fmPath)).toBe(true);
@@ -241,7 +214,6 @@ describe('runSeed — --root', () => {
     writeFileSync(join(testDir, 'knowledge', '.keep'), '', 'utf-8');
     const result = await runSeed({ cwd: testDir, root: 'knowledge', yes: true });
     expect(result.status).toBe('applied');
-    // Pre-existing user file is untouched.
     expect(existsSync(join(testDir, 'knowledge', '.keep'))).toBe(true);
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, 'knowledge', folder.path))).toBe(true);
@@ -272,7 +244,6 @@ describe('runSeed — --root', () => {
     for (const folder of STARTER_FOLDERS) {
       expect(existsSync(join(testDir, 'work', folder.path))).toBe(true);
       expect(existsSync(join(testDir, 'personal', folder.path))).toBe(true);
-      // Each root has its own per-folder nested frontmatter.
       expect(existsSync(join(testDir, 'work', folder.path, '.ok', 'frontmatter.yml'))).toBe(true);
       expect(existsSync(join(testDir, 'personal', folder.path, '.ok', 'frontmatter.yml'))).toBe(
         true,
@@ -292,7 +263,6 @@ describe('runSeed — path argument', () => {
   test('operates on explicit path rather than cwd', async () => {
     scaffoldOkDir(testDir);
     const previousCwd = process.cwd();
-    // Move process cwd somewhere else to ensure explicit cwd wins
     const otherDir = mkdtempSync(join(tmpdir(), 'other-'));
     try {
       process.chdir(otherDir);

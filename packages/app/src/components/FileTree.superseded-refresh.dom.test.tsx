@@ -1,27 +1,3 @@
-/**
- * Superseded documents-refresh contract: a refresh that is
- * superseded (aborted) after the 200 headers arrive but before the body is
- * fully read must NOT publish UI state — no terminal "Documents response did
- * not match expected shape." error, and the loading skeleton / previous tree
- * stays until a non-superseded refresh definitively completes.
- *
- * Production failure mode (reproduced in real Chromium against the real
- * server): during a long initial load the server's warmup CC1 `files` nudge —
- * or a user refocusing the window — fires `scheduler.request()` while the
- * first `/api/documents` fetch is mid-body-read; the scheduler aborts the
- * in-flight run, `res.json()` rejects with an AbortError, and the laundered
- * `{ok: true, body: null}` paints the terminal shape error over the skeleton.
- *
- * Bun's fetch buffers bodies eagerly, so the race cannot be produced through
- * a real fetch here: the mocked `/api/documents` returns a Response over a
- * ReadableStream that errors with an AbortError when the request's signal
- * aborts — the exact rejection Chromium's streaming fetch produces.
- *
- * Harness mirrors `FileTree.showall-truncation.dom.test.tsx` (mount the real
- * FileTree; mock `@pierre/trees/react` to render the `header` prop so the
- * `role="alert"` banner surface is observable).
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -30,19 +6,11 @@ function PassThrough({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
 
-// --- mutable per-test state ---
-// The mocked listing responds with buffered JSON (not NDJSON), so the docs
-// refresh takes the buffered `parseServerResponse` branch — the bug path this
-// suite pins — even though the client always requests the disk-walk listing.
 let mergedConfig: unknown = null;
-// Per-test queue of `/api/documents` responders, consumed in call order.
 const documentsFetchPlan: Array<
   (signal: AbortSignal | null | undefined) => Response | Promise<Response>
 > = [];
 let documentsCallCount = 0;
-// Resolver for the deferred trailing re-run response (set by
-// `deferredDocumentsResponse`, fired by the test once it has asserted the
-// superseded run published nothing).
 let resolveTrailingDocuments: ((body: unknown) => void) | null = null;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -52,24 +20,11 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/**
- * A 200 whose body never arrives until the request's own AbortSignal fires,
- * at which point the body read rejects with an error named 'AbortError' —
- * Chromium streaming-fetch semantics for an abort landing after headers,
- * mid-body-read.
- */
 function abortableBodyResponse(signal: AbortSignal | null | undefined): Response {
   const res = new Response(null, {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
-  // A real undici/browser `fetch` aborted mid-body-read rejects the body promise
-  // with an abort error that is `instanceof Error` with `name === 'AbortError'`
-  // (a real `DOMException`, which extends `Error` in those runtimes). jsdom's
-  // global `DOMException` does NOT extend `Error`, so constructing one here would
-  // slip past the src's `err instanceof Error && err.name === 'AbortError'` abort
-  // guard and launder the cancel into the terminal shape error. Reject with a
-  // plain `Error` carrying the abort name to reproduce the production shape.
   Object.defineProperty(res, 'json', {
     configurable: true,
     value: () =>
@@ -84,12 +39,6 @@ function abortableBodyResponse(signal: AbortSignal | null | undefined): Response
   return res;
 }
 
-/**
- * An NDJSON 200 that emits one entry line immediately, then — like a real
- * streaming fetch — rejects the body read with an 'AbortError' when the
- * request's signal fires. Lets a test paint the first incremental batch, then
- * supersede the run mid-stream.
- */
 function ndjsonFirstEntryThenAbort(
   signal: AbortSignal | null | undefined,
   firstLine: string,
@@ -139,13 +88,9 @@ function makeFetchMock() {
     if (url === '/api/workspace') {
       return jsonResponse({ contentDir: '/tmp/ok', pathSeparator: '/', symlinkResolved: true });
     }
-    // Any other endpoint the mount touches.
     return jsonResponse({ ok: true });
   });
 }
-
-// --- module mocks (mirrors the FileTree.showall-truncation dom-test set so
-// the component mounts; @pierre/trees/react renders the header surface). ---
 
 class StubItem {
   expanded = false;
@@ -304,7 +249,6 @@ vi.doMock('@pierre/trees', () => ({
 }));
 vi.doMock('@pierre/trees/react', () => ({
   useFileTree: () => ({ model }),
-  // RENDER the header — the role=alert error banner lives there.
   FileTree: ({ header }: { header?: ReactNode }) => (
     <div data-testid="fake-pierre-tree" role="tree">
       {header}
@@ -340,36 +284,22 @@ describe('FileTree superseded documents refresh', () => {
     render(<FileTree />);
 
     await waitFor(() => expect(documentsCallCount).toBe(1));
-    // First refresh in flight (headers arrived, body pending) → skeleton.
     expect(screen.getByRole('status', { name: /loading files/i })).toBeTruthy();
 
-    // Supersede the in-flight refresh — the same scheduler path a CC1
-    // `files` nudge or a window refocus takes. The scheduler aborts run A's
-    // controller mid-body-read.
     window.dispatchEvent(new Event('focus'));
 
-    // Run A settles; the scheduler's trailing re-run issues fetch #2.
     await waitFor(() => expect(documentsCallCount).toBe(2));
 
-    // The superseded run must not have published any UI state: no terminal
-    // error, no flash of the empty state, skeleton still up.
     expect(screen.queryByText(/did not match expected shape/i)).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(/no files yet/i)).toBeNull();
     expect(screen.getByRole('status', { name: /loading files/i })).toBeTruthy();
 
-    // Only the trailing (non-superseded) run drives the next UI state.
     resolveTrailingDocuments?.({ documents: [docEntry('notes/a')] });
     await screen.findByTestId('fake-pierre-tree');
     expect(screen.queryByText(/did not match expected shape/i)).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
 
-    // The abort guard gates the console surface too: a superseded run is a
-    // deliberate cancel, not a transport failure worth a per-supersede
-    // `[FileTree] fetch failed:` warn. The spy record is append-only, so this
-    // catches a leaked warn even where a later UI transition would mask the
-    // point-in-time queries above. (`[FileTree] /api/workspace fetch failed:`
-    // is a different prefix and stays out of the filter.)
     const fetchFailedWarns = consoleWarnSpy.mock.calls.filter(
       (args) => typeof args[0] === 'string' && args[0].includes('[FileTree] fetch failed:'),
     );
@@ -385,16 +315,12 @@ describe('FileTree superseded documents refresh', () => {
     render(<FileTree />);
     await screen.findByTestId('fake-pierre-tree');
 
-    // Start refresh run 2 (nothing in flight → runs immediately).
     window.dispatchEvent(new Event('focus'));
     await waitFor(() => expect(documentsCallCount).toBe(2));
 
-    // Supersede run 2 mid-body-read; the trailing run 3 follows.
     window.dispatchEvent(new Event('focus'));
     await waitFor(() => expect(documentsCallCount).toBe(3));
 
-    // The superseded run must not have painted the header error banner or
-    // torn down the previously-loaded tree.
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText(/did not match expected shape/i)).toBeNull();
     expect(screen.getByTestId('fake-pierre-tree')).toBeTruthy();
@@ -412,11 +338,6 @@ describe('FileTree superseded documents refresh', () => {
   });
 
   test('NDJSON: a superseded mid-stream refresh drops its batch; the fresh listing wins', async () => {
-    // Exercises the incremental-paint abort guard: run 1 streams one entry
-    // (the first batch paints additively), then a refocus supersedes it. The
-    // scheduler aborts run 1 — its body read rejects with AbortError, so its
-    // completion reconcile never runs — and run 2's authoritative splice prunes
-    // the stale row the aborted stream painted.
     documentsFetchPlan.push(
       (signal) => ndjsonFirstEntryThenAbort(signal, `${JSON.stringify(docEntry('stale'))}\n`),
       () => jsonResponse({ documents: [docEntry('fresh')], truncated: false }),
@@ -432,7 +353,6 @@ describe('FileTree superseded documents refresh', () => {
     await waitFor(() => expect([...model.items.keys()]).toEqual(['fresh.md']));
     expect(model.items.has('stale.md')).toBe(false);
 
-    // A superseded run is a deliberate cancel, not a fetch failure.
     const supersededWarns = consoleWarnSpy.mock.calls.filter(
       (args) => typeof args[0] === 'string' && args[0].includes('[FileTree] fetch failed:'),
     );

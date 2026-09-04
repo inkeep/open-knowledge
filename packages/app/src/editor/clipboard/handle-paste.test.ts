@@ -1,30 +1,3 @@
-/**
- * Branch-routing tests for the WYSIWYG paste dispatcher.
- *
- * The dispatcher is a priority-ordered series of guards:
- *   0. Cmd+Shift+V escape hatch
- *   0. Cursor-in-codeBlock short-circuit
- *   0. Lone-URL step: single-URL payloads linkify (over-selection keeps
- *      the selected text; cursor converts GFM shapes via the markdown
- *      parse); everything else falls through
- *   A. vscode-editor-data → fenced code block
- *   B. text/x-gfm → MarkdownManager.parse
- *   B. Markdown-first tiebreak: plain (markdown-shaped) + html → mdManager.parse(plain).
- *      Runs ahead of Branch C so OK→OK and cross-PM-editor pastes route
- *      through the canonical text/plain markdown bytes.
- *   C. data-pm-slice → PM native parseFromClipboard (return false). Reached
- *      only when the markdown-first tiebreak above did not fire.
- *   D. Generic HTML → shared htmlToMdast pipeline
- *   E. text/plain only → markdown-first if threshold hit, else verbatim
- *
- * Each test arranges a DataTransfer + empty doc and asserts which branch
- * fired, via the dispatcher's return value and its side effects on the
- * fake view. We use a narrow fake EditorView since the real one requires
- * a full schema + document; the dispatcher only touches a small surface
- * (`state.selection`, `state.schema.nodes.codeBlock`, `state.schema.text`,
- * `state.tr.*`, `dispatch`).
- */
-
 import * as actualCore from '@inkeep/open-knowledge-core';
 import { LinkFidelity, MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, type Extensions } from '@tiptap/core';
@@ -35,7 +8,6 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { GfmAutolink } from '../gfm-autolink-plugin.ts';
 import { flushMicrotasksAndTimers, installDomGlobals } from '../walk-currency-test-harness.ts';
 
-// Mock the shared pipeline so tests don't exercise the full rehype stack.
 vi.doMock('@inkeep/open-knowledge-core', () => {
   return {
     ...actualCore,
@@ -44,12 +16,8 @@ vi.doMock('@inkeep/open-knowledge-core', () => {
   };
 });
 
-// Mock sonner to no-op toasts — we don't assert on them here.
 vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
-// The dispatcher imports the mocked `@inkeep/open-knowledge-core`; bind it after
-// the mock is registered so the stubbed htmlToMdast/mdastToMarkdown take effect
-// (the mock facade only rewrites imports resolved after the doMock call).
 let createHandlePaste: typeof import('./handle-paste.ts').createHandlePaste;
 beforeAll(async () => {
   ({ createHandlePaste } = await import('./handle-paste.ts'));
@@ -74,7 +42,6 @@ function fakeMdManager() {
   };
 }
 
-// Fake PM view: only the fields the dispatcher reads.
 // biome-ignore lint/suspicious/noExplicitAny: narrow fake view for unit test
 function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
   const dispatch = vi.fn(() => {});
@@ -83,7 +50,6 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
       slice: (_f: number, _t: number) => 'CODE-SLICE',
     })),
   };
-  // Simulated $from $node chain: if inCodeBlock, one node at depth is named 'codeBlock'.
   const $from = {
     depth: 1,
     node: (_d: number) => ({ type: { name: opts.inCodeBlock ? 'codeBlock' : 'paragraph' } }),
@@ -97,9 +63,6 @@ function fakeView(opts: { inCodeBlock?: boolean } = {}): any {
         // biome-ignore lint/suspicious/noExplicitAny: fake schema for unit test
         nodeFromJSON: (json: any) => ({
           slice: (_f: number, _t: number) => ({ json, size: 10, content: { size: 10 } }),
-          // fakeMdManager parses to a single non-list block; model the fragment
-          // shape applyJsonSlice's list-splice check reads (childCount + forEach)
-          // so it recognizes "not all lists" and takes the closed-slice path.
           content: {
             size: 10,
             childCount: 1,
@@ -157,7 +120,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     const view = fakeView({ inCodeBlock: true });
     const evt = fakeDT({ 'text/plain': 'raw code', 'text/html': '<b>bold</b>' });
     expect(paste(view, evt)).toBe(true);
-    // Plain text was dispatched, not parsed as markdown or HTML.
     expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
   });
 
@@ -185,7 +147,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     });
     const view = fakeView();
     const evt = fakeDT({
-      // Newline + fence char would break out of the fence — dispatcher must reject.
       'vscode-editor-data': '{"mode":"ts\\n```evil"}',
       'text/plain': 'code',
     });
@@ -197,40 +158,20 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
   });
 
   test('Branch A: malformed vscode-editor-data JSON falls through to a later branch', () => {
-    // The dispatcher's catch contract: when `JSON.parse` throws on
-    // malformed VS Code metadata, `tryBranchA` returns false (not throws),
-    // emits structured telemetry, and the dispatcher continues to the next
-    // branch. Without this contract, every paste from a misbehaving VS
-    // Code extension would die with an uncaught throw and lose the user's
-    // content. Pin the behavior so a refactor can't silently remove the
-    // catch.
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
       mdManager: fakeMdManager() as any,
     });
     const view = fakeView();
     const evt = fakeDT({
-      // Truncated / non-JSON metadata — `JSON.parse` throws.
       'vscode-editor-data': '{not json',
       'text/plain': 'fallback content',
     });
-    // Returns true because a later branch (Branch E text/plain markdown
-    // tiebreak — `fallback content` is plain prose so isMarkdown returns
-    // false → CM6-default verbatim insert via Branch E) handles the
-    // payload. The exact branch isn't load-bearing here — the test pins
-    // that the catch path returned false so the dispatcher could continue
-    // (i.e., the throw didn't escape).
     expect(paste(view, evt)).toBe(true);
-    // Branch A's codeBlock.create must NOT have been called — the throw
-    // happened before dispatch.
     expect(view.state.schema.nodes.codeBlock.create).not.toHaveBeenCalled();
   });
 
   test('Branch B: a throwing mdManager.parse falls through instead of escaping', () => {
-    // tryBranchMarkdown shares the parse->apply path with Branch E and the
-    // lone-URL cursor branch; its catch contract (return false, dispatcher
-    // continues) is as load-bearing as Branch A's. A narrowed/removed catch
-    // would lose the user's clipboard content with an uncaught throw.
     const throwingMd = {
       parse: vi.fn(() => {
         throw new Error('parse exploded');
@@ -256,7 +197,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     const evt = fakeDT({ 'text/plain': 'https://example.com' });
     expect(paste(view, evt)).toBe(true);
     expect(throwingMd.parse).toHaveBeenCalled();
-    // The URL still reached the doc via a later branch's dispatch.
     expect(view.dispatch).toHaveBeenCalled();
   });
 
@@ -292,7 +232,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
       mdManager: md as any,
     });
     const view = fakeView();
-    // isMarkdown signal count ≥ threshold via heading + list + code.
     const markdownPlain = '# H\n\n- a\n- b\n\n```\ncode\n```\n';
     const evt = fakeDT({
       'text/plain': markdownPlain,
@@ -314,8 +253,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
       'text/html': '<p>rich <b>html</b></p>',
     });
     expect(paste(view, evt)).toBe(true);
-    // Branch D calls mdManager.parse with the markdown that htmlToMdast +
-    // mdastToMarkdown produced (the mocked stub returns '**bold**').
     expect(md.parse).toHaveBeenCalledWith('**bold**');
   });
 
@@ -342,7 +279,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
     const view = fakeView();
     const evt = fakeDT({ 'text/plain': 'hello world, plain prose' });
     expect(paste(view, evt)).toBe(true);
-    // Prose below threshold — no parse call, plain-text dispatch instead.
     expect(md.parse).not.toHaveBeenCalled();
     expect(view.state.tr.replaceSelectionWith).toHaveBeenCalled();
   });
@@ -363,13 +299,6 @@ describe('WYSIWYG paste dispatcher — branch routing', () => {
 
 describe('WYSIWYG paste dispatcher — markdown-first tiebreak ordering (D5/D13)', () => {
   test('OK→OK <img/> JSX paste: markdown-first wins over Branch C data-pm-slice', () => {
-    // OK copy of `<img src="x.png" />` writes both text/plain (canonical
-    // markdown-shaped via lowercase-JSX-with-attr) AND text/html (with
-    // PM's auto-attached data-pm-slice). Pre-reorder, Branch C would catch
-    // first → return false → PM parseFromClipboard → TipTap Image extension
-    // parseDOM (priority 50) silently flips to image node. Post-reorder,
-    // markdown-first fires and routes through mdManager.parse so descriptor
-    // identity is preserved.
     const md = fakeMdManager();
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
@@ -385,7 +314,6 @@ describe('WYSIWYG paste dispatcher — markdown-first tiebreak ordering (D5/D13)
   });
 
   test('OK→OK <Callout> JSX paste: markdown-first wins over Branch C', () => {
-    // Capitalized JSX signal in the heuristic catches `<Callout>` shape.
     const md = fakeMdManager();
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
@@ -402,10 +330,6 @@ describe('WYSIWYG paste dispatcher — markdown-first tiebreak ordering (D5/D13)
   });
 
   test('Cross-PM-editor: markdown-canonical text/plain routes through markdown path even with PM slice', () => {
-    // Linear/Outline/BlockNote canonical markdown text/plain. Branch C
-    // would also handle this correctly today, but markdown-first preserves
-    // the canonical bytes more directly (no PM-tree round-trip through
-    // parseFromClipboard).
     const md = fakeMdManager();
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
@@ -421,8 +345,6 @@ describe('WYSIWYG paste dispatcher — markdown-first tiebreak ordering (D5/D13)
   });
 
   test('Branch C still fires when text/plain is non-markdown prose (no false-positive on heuristic)', () => {
-    // OK→OK paste of plain prose (no markdown signals) → markdown-first
-    // does not fire → Branch C catches → PM handles natively.
     const md = fakeMdManager();
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
@@ -453,9 +375,6 @@ describe('WYSIWYG paste dispatcher — lone-URL routing', () => {
   });
 
   test('lone GFM URL wins over a text/html sibling (browser link-copy shape)', () => {
-    // A browser URL copy carries an <a> wrapper in text/html; without the
-    // lone-URL step it would take Branch D's html pipeline. The step runs
-    // first so the bytes come from the markdown parse of the plain URL.
     const md = fakeMdManager();
     const paste = createHandlePaste({
       // biome-ignore lint/suspicious/noExplicitAny: narrow fake md manager
@@ -544,8 +463,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
       element: host,
       content,
       extensions: [
-        // StarterKit v3 bundles its own Link; drop it so the fidelity mark
-        // (which carries `linkStyle`) is the only `link` in the schema.
         StarterKit.configure({ link: false }),
         LinkFidelity.configure({ autolink: false }),
         ...extraExtensions,
@@ -558,8 +475,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
     return paste(editor.view, fakeDT(data));
   }
 
-  /** Select `text` by content offset — valid for single-paragraph fixtures
-   *  (the +1 crosses the paragraph's opening boundary). */
   function selectText(editor: Editor, text: string): void {
     const idx = editor.state.doc.textContent.indexOf(text);
     if (idx < 0) throw new Error(`selectText: "${text}" not in doc`);
@@ -612,7 +527,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
       expect(marks).toHaveLength(1);
       expect(marks[0]?.text).toBe('docs');
       expect(marks[0]?.attrs.href).toBe('https://inkeep.com');
-      // Default style — serializes as [docs](https://inkeep.com).
       expect(marks[0]?.attrs.linkStyle).toBe('inline');
     } finally {
       editor.destroy();
@@ -641,7 +555,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
       selectText(editor, 'docs');
       pasteInto(editor, { 'text/plain': 'javascript:alert(1)' });
       expect(linkMarks(editor)).toHaveLength(0);
-      // Fall-through = ordinary replace: the string is text, never an href.
       expect(editor.state.doc.textContent).toBe('read the javascript:alert(1) today');
     } finally {
       editor.destroy();
@@ -666,8 +579,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
       editor.commands.setTextSelection({ from: 2, to: 8 });
       pasteInto(editor, { 'text/plain': 'https://inkeep.com' });
       expect(linkMarks(editor)).toHaveLength(0);
-      // The fall-through is the normal paste path: the cross-block selection
-      // is replaced by the URL as plain text — content delivered, not dropped.
       expect(editor.state.doc.textContent).toContain('https://inkeep.com');
     } finally {
       editor.destroy();
@@ -690,10 +601,6 @@ describe('WYSIWYG paste dispatcher — lone-URL linkification (real editor)', ()
   });
 
   test('pasted prose ending in a URL + space is never linkified by the typed-autolink plugin', async () => {
-    // The verbatim Branch E insert looks exactly like "typed a URL then a
-    // boundary" to the autolink plugin's changed-range scan. The dispatcher
-    // stamps its transactions with preventAutolink so paste output is never
-    // re-scanned as typing — pasted prose stays byte-identical.
     const editor = makeRealEditor('<p></p>', [
       GfmAutolink.configure({ isActiveEditor: () => true }),
     ]);

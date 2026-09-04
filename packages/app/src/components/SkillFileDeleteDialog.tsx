@@ -14,13 +14,6 @@ export interface SkillFileDeleteTarget {
   filePath: string;
 }
 
-/**
- * Confirm and delete ONE bundle file inside a skill (`references/**`,
- * `scripts/**`, …). The skill itself survives; only the named file goes, so the
- * confirmation names the file rather than the skill. Deleting an editable `.md`
- * reference also tears down its live doc server-side, so the open tab is evicted
- * here rather than left pointing at a doc that no longer exists.
- */
 export function SkillFileDeleteDialog({
   target,
   onOpenChange,
@@ -44,9 +37,6 @@ export function SkillFileDeleteDialog({
       toast.error(t`Couldn't delete file: ${result.error}`);
       return;
     }
-    // The endpoint reports a miss rather than failing, so a path that addressed
-    // nothing would otherwise read as a successful delete while the file is
-    // still on disk. Say so instead, and leave the tab alone.
     if (!result.existed) {
       toast.error(t`${filePath} is no longer in this skill`);
       onOpenChange(false);

@@ -19,9 +19,6 @@ import { useOpenKnowledgeSkills } from '@/hooks/use-openknowledge-skills';
 import { usePopularSkills } from '@/hooks/use-popular-skills';
 import { searchSkills } from '@/lib/skills-api';
 
-// Suggested topics for the default (pre-search) state. skills.sh has no
-// trending endpoint and rejects empty queries, so instead of a blank screen we
-// offer one-click searches. Each chip just seeds the search box.
 const TOPICS: ReadonlyArray<{ label: ReturnType<typeof msg>; query: string }> = [
   { label: msg`Design`, query: 'design' },
   { label: msg`Git & PRs`, query: 'git' },
@@ -35,15 +32,6 @@ const TOPICS: ReadonlyArray<{ label: ReturnType<typeof msg>; query: string }> = 
   { label: msg`Security`, query: 'security' },
 ];
 
-/**
- * Explore tab — discover and preview skills from skills.sh. Clicking a result
- * opens its read-only preview, which is where Install lives; a result already in
- * the project opens its real doc instead. Search runs through `searchSkills` (the
- * keyless proxy, with a degraded GitHub fallback when skills.sh is unreachable)
- * and is debounced; a result's `source` is the skills.sh catalog identifier used
- * for detail routing. Sub-2-char queries show the popular list, or suggested-topic
- * chips when that comes back empty.
- */
 export function ExploreSkills({
   scope,
   onNavigate,
@@ -56,18 +44,8 @@ export function ExploreSkills({
   const [results, setResults] = useState<SkillSearchResult[]>([]);
   const [degraded, setDegraded] = useState(false);
   const [state, setState] = useState<'idle' | 'searching' | 'error'>('idle');
-  // Installs first: skills.sh relevance order interleaves near-dead listings with
-  // widely-used ones on the same fuzzy match, so the install count is the more
-  // useful default signal. Relevance stays one click away.
   const [sortBy, setSortBy] = useState<'relevance' | 'installs'>('installs');
-  // Exclusive with searching, not a topic chip that stacks into the query: this
-  // list comes from a different upstream (our repo, not the directory search),
-  // so any search input takes the grid back to results.
   const [showOurs, setShowOurs] = useState(false);
-  // Popular skills for the blank state, so Discover isn't an empty box before you
-  // type. Shared cache with the Skills home's shelf, so opening this modal from
-  // that page does not refetch. Best-effort — an empty result (fetch/parse
-  // failure) just falls back to the topic chips.
   const { skills: popular } = usePopularSkills();
   const {
     skills: ours,
@@ -90,8 +68,6 @@ export function ExploreSkills({
         if (!res.ok) {
           setState('error');
           setResults([]);
-          // Clear the fallback banner: a failed search has no ranking signal, so
-          // a stale `degraded: true` from a prior GitHub-fallback hit must not linger.
           setDegraded(false);
           return;
         }
@@ -108,16 +84,11 @@ export function ExploreSkills({
 
   const q = query.trim();
 
-  // Client-side sort over the current results. skills.sh returns relevance
-  // order; "Most installed" reorders by install count (nulls — the degraded
-  // GitHub fallback carries none — sort last).
   const shown =
     sortBy === 'installs'
       ? [...results].sort((a, b) => (b.installs ?? -1) - (a.installs ?? -1))
       : results;
 
-  // Every grid below is the same component with a different list; only the label
-  // and the loading announcement change.
   const grid = (props: Omit<ComponentProps<typeof SkillDirectoryGrid>, 'scope' | 'onNavigate'>) => (
     <SkillDirectoryGrid scope={scope} onNavigate={onNavigate} {...props} />
   );
@@ -139,7 +110,7 @@ export function ExploreSkills({
             aria-label={t`Search skills`}
           />
         </InputGroup>
-        {/* Sort sits beside the search, but only once there are results to sort. */}
+        {}
         {q.length >= 2 && state === 'idle' && results.length > 0 ? (
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'relevance' | 'installs')}>
             <SelectTrigger className="h-9! w-40 shrink-0" aria-label={t`Sort skills`}>
@@ -155,11 +126,7 @@ export function ExploreSkills({
           </Select>
         ) : null}
       </div>
-      {/* Topic chips are MULTI-SELECT search terms, not one-shot seeds: each
-          toggles its word in/out of the search box, so several stack into one
-          query (`design git test`). The box stays the single source of truth,
-          so typing and chips compose. Active = the word is a token in the box.
-          Single line: overflow horizontally with the fade-mask, scrollbar hidden. */}
+      {}
       {/* biome-ignore lint/a11y/useSemanticElements: a filter-chip row is a
           button cluster, not a form-control set; <fieldset>/<legend> would impose
           form chrome. role="group" on a div is the shape the rest of the app uses. */}
@@ -228,8 +195,6 @@ export function ExploreSkills({
             })
           )
         ) : q.length < 2 ? (
-          // Popular skills populate the blank state (best-effort; empty on a scrape
-          // failure, in which case the persistent topic chips above are the fallback).
           popular.length > 0 ? (
             grid({
               results: popular,
@@ -253,11 +218,7 @@ export function ExploreSkills({
           })
         )}
       </div>
-      {/* Credit the discovery API — results (and install counts) come from skills.sh.
-          The line is bottom-flush (the flex-1 list above pushes it down), so it has
-          12px above (`gap-3`) but 24px below (the dialog's `p-6`). `-mb-1.5` bleeds
-          it 6px into that bottom padding — same edge-bleed trick as DialogFooter —
-          so it reads 18px/18px, vertically centered, with the footer no thicker. */}
+      {}
       <p className="-mb-3.5 shrink-0 text-center text-[11px] text-muted-foreground/80">
         <Trans>
           Skill discovery powered by{' '}
