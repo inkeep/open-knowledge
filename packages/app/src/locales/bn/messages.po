@@ -3253,14 +3253,6 @@ msgstr "যার সঙ্গে যুক্ত"
 msgid "Connected to GitHub"
 msgstr "GitHub-এর সঙ্গে যুক্ত হয়েছে"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12878,6 +12870,10 @@ msgstr "এই ওয়ার্কট্রির সিঙ্ক “স্ব
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "এই ওয়ার্কট্রির সিঙ্ক “ম্যানুয়াল”-এ সেট করা, যা {project} থেকে উত্তরাধিকারসূত্রে পাওয়া। Settings → Sync-এ এটি বদলান।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "সিঙ্ক হতে স্বাভাবিকের চেয়ে বেশি সময় লাগছে — আপনার পরিবর্তনগুলি এই ডিভাইসে নিরাপদে সংরক্ষিত আছে।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"

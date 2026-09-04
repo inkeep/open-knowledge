@@ -2493,6 +2493,7 @@
     "Vlc75q": ["Keep file deleted"],
     "VmJT51": ["Loading your reports"],
     "VmXASo": ["(symlink)"],
+    "VpRSfQ": ["Sync is taking longer than usual — your changes are safe on this device."],
     "VsaI0G": [["folderCount", "plural", { "one": ["folder"], "other": ["folders"] }]],
     "VuxVSP": ["Start source completion"],
     "VxLvKE": ["Revert to installed version"],
@@ -2579,9 +2580,6 @@
     "X3MMeA": ["None of these problems have an automatic fix."],
     "X59Fx2": ["Couldn't open this document in Slidev."],
     "X7ShnN": ["Open agents panel"],
-    "X7fxS9": [
-      "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-    ],
     "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
@@ -4020,7 +4018,6 @@
     "n4vt3Q": ["Download app"],
     "n5Vy3l": ["Opened on branch ", ["branch"]],
     "n5n_vi": ["Private repository"],
-    "n6N-xC": ["Connected, but your edits aren't reaching the server yet."],
     "n6hXUm": [
       "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
     ],

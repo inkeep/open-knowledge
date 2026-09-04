@@ -31,6 +31,20 @@ These carry through every locale byte-for-byte:
 - **Command names, flags, and machine-readable output** — the CLI surface is permanently
   English so scripts keep working under a non-C locale.
 
+## Registers
+
+Two adjectives recur across the connection and sync notices, and both invite a stronger
+rendering than the English carries. Settle them here rather than per-PR.
+
+- **safe** (as in *your changes are safe on this device*) may render as *safely saved* or
+  *safely stored* where the bare adjective reads stilted — `ko` 안전하게 보관됩니다, `zh-Hans`
+  已安全保存, `zh-Hant` 已安全儲存, `ar` محفوظة بأمان, `bn` নিরাপদে সংরক্ষিত, `ur` محفوظ. The
+  stronger form is accurate: edits are durable in IndexedDB plus the replay outbox before any
+  notice mentions them. Locales where the weaker adjective reads naturally (`es` a salvo,
+  `fr` en sécurité, `hi` सुरक्षित, `id` aman, `pt-BR` seguras) keep it.
+- **lost** (as in *Connection lost*) is the connection, never the user's work. No locale may
+  render it in a way that could read as content loss.
+
 ## The nouns
 
 | Term | `es` | `fr` | `pt-BR` | `id` |

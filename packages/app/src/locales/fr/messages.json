@@ -2928,6 +2928,9 @@
     "Vlc75q": ["Laisser le fichier supprimé"],
     "VmJT51": ["Chargement de vos rapports"],
     "VmXASo": ["(lien symbolique)"],
+    "VpRSfQ": [
+      "La synchronisation prend plus de temps que d'habitude — vos modifications sont en sécurité sur cet appareil."
+    ],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["dossier"], "many": ["dossiers"], "other": ["dossiers"] }]
     ],
@@ -3034,9 +3037,6 @@
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
-    "X7fxS9": [
-      "Connecté, mais vos modifications n'atteignent pas encore le serveur. Redémarrez-le si cela continue."
-    ],
     "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
@@ -4690,7 +4690,6 @@
     "n4vt3Q": ["Télécharger l’application"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
-    "n6N-xC": ["Connecté, mais vos modifications n'atteignent pas encore le serveur."],
     "n6hXUm": [
       "La synchronisation automatique récupère, tire et pousse périodiquement les commits vers votre dépôt git distant, afin que vos modifications restent synchronisées entre vos machines."
     ],

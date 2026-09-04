@@ -17,7 +17,8 @@ vi.mock('sonner', () => ({
 let relaunchInFlightFlag = false;
 vi.mock('@/lib/relaunch-store', () => ({ useRelaunchInFlight: () => relaunchInFlightFlag }));
 
-import { useSyncToasts } from './use-sync-toasts';
+import { FORCE_SYNC_INTERVAL_MS } from '@/editor/provider-pool';
+import { SYNC_CATCHUP_GRACE_MS, useSyncToasts } from './use-sync-toasts';
 
 const messages = (spy: typeof warning): string[] => spy.mock.calls.map((c) => String(c[0]));
 
@@ -32,6 +33,22 @@ function setBridge(singleFile: boolean) {
 }
 
 const lastWarning = () => warning.mock.calls.at(-1) as [string, { action?: unknown }] | undefined;
+
+type Phase = 'connecting' | 'connected' | 'synced' | 'disconnected';
+
+interface OutageToastOptions {
+  action?: unknown;
+  duration?: number;
+  onDismiss?: () => void;
+  onAutoClose?: () => void;
+}
+
+const lastOutageToast = () => warning.mock.calls.at(-1) as [string, OutageToastOptions] | undefined;
+
+const renderToasts = (initial: Phase = 'synced') =>
+  renderHook(({ s, doc }: { s: Phase; doc: string }) => useSyncToasts(s, doc), {
+    initialProps: { s: initial, doc: 'a.md' },
+  });
 
 describe('useSyncToasts — disconnect grace downgrade', () => {
   beforeEach(() => {
@@ -131,7 +148,7 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     expect(optimistic?.[1]).toMatchObject({ id: 'sync-status', duration: Infinity });
   });
 
-  test('a reconnected socket that never re-syncs (pre-grace) gets the accurate stalled copy AND its Restart button', () => {
+  test('a reconnected socket that never re-syncs gets the catching-up copy AND its Restart button', () => {
     setBridge(true);
     const { rerender } = renderHook(
       ({ s }: { s: 'synced' | 'connected' | 'disconnected' }) => useSyncToasts(s, 'doc.md'),
@@ -146,7 +163,7 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     expect(dismiss).not.toHaveBeenCalled();
     expect(messages(warning).some((m) => m.includes('server stopped'))).toBe(false);
     const last = lastWarning();
-    expect(String(last?.[0])).toContain("aren't reaching the server");
+    expect(String(last?.[0])).toMatch(/taking longer than usual/i);
     expect(last?.[1]?.action).toBeDefined();
   });
 
@@ -167,8 +184,8 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
 
     expect(dismiss).not.toHaveBeenCalled();
     const last = lastWarning();
-    expect(String(last?.[0])).toContain("aren't reaching the server");
-    expect(String(last?.[0])).toMatch(/restart it/i);
+    expect(String(last?.[0])).toMatch(/taking longer than usual/i);
+    expect(String(last?.[0])).not.toMatch(/restart it/i);
     expect(last?.[1]?.action).toBeDefined();
     expect(last?.[1]).toMatchObject({ id: 'sync-status', duration: Infinity });
   });
@@ -252,8 +269,9 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
 
     act(() => rerender({ s: 'connected' }));
     expect(dismiss).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(8_000));
     const last = lastWarning();
-    expect(String(last?.[0])).toContain("aren't reaching the server");
+    expect(String(last?.[0])).toMatch(/taking longer than usual/i);
     expect(String(last?.[0])).not.toMatch(/restart it/i);
     expect(last?.[1]?.action).toBeUndefined();
   });
@@ -329,7 +347,7 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     act(() => rerender({ s: 'connected', doc: 'b.md' }));
     act(() => vi.advanceTimersByTime(30_000));
     const last = lastWarning();
-    expect(String(last?.[0])).toContain("aren't reaching the server");
+    expect(String(last?.[0])).toMatch(/taking longer than usual/i);
     expect(last?.[1]?.action).toBeDefined();
   });
 
@@ -401,7 +419,7 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     expect(messages(warning).some((m) => m.includes('keep this tab open'))).toBe(false);
   });
 
-  test('reopening a document directly at `connected` after a non-document hop replaces the standing claim with the stalled copy', () => {
+  test('reopening a document directly at `connected` after a non-document hop replaces the standing claim with the catching-up copy', () => {
     setBridge(true);
     const { rerender } = renderHook(
       ({
@@ -421,8 +439,9 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
 
     act(() => rerender({ s: 'connected', doc: 'b.md' }));
     expect(dismiss).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(8_000));
     const last = lastWarning();
-    expect(String(last?.[0])).toContain("aren't reaching the server");
+    expect(String(last?.[0])).toMatch(/taking longer than usual/i);
     expect(last?.[1]?.action).toBeDefined();
   });
 
@@ -656,5 +675,240 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     act(() => vi.advanceTimersByTime(30_000));
 
     expect(messages(warning).some((m) => m.includes('server stopped'))).toBe(false);
+  });
+});
+
+describe('useSyncToasts — the transport-up, document-unsynced claim', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    warning.mockClear();
+    success.mockClear();
+    dismiss.mockClear();
+    relaunchInFlightFlag = false;
+    Object.defineProperty(window, 'okDesktop', { configurable: true, value: undefined });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test('a healthy reconnect handshake raises no warning at all', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(2_000));
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(warning).not.toHaveBeenCalled();
+
+    act(() => rerender({ s: 'synced', doc: 'a.md' }));
+    expect(success).toHaveBeenCalledWith('Reconnected', expect.anything());
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  test('the claim waits out a grace before it is asserted', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(7_999));
+    expect(warning).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  test('a socket that re-syncs inside the grace never asserts the claim', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(7_000));
+    act(() => rerender({ s: 'synced', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(warning).not.toHaveBeenCalled();
+    expect(success).toHaveBeenCalledWith('Reconnected', expect.anything());
+  });
+
+  test('the claim stands for as long as the stall does — it never goes silent on a true condition', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    warning.mockClear();
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(lastOutageToast()?.[1]?.duration).toBe(Number.POSITIVE_INFINITY);
+
+    act(() => vi.advanceTimersByTime(600_000));
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(String(lastOutageToast()?.[0])).toMatch(/taking longer than usual/i);
+  });
+
+  test('the claim is retired by the reconnect edge, not by a clock', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(String(lastOutageToast()?.[0])).toMatch(/taking longer than usual/i);
+    success.mockClear();
+
+    act(() => rerender({ s: 'synced', doc: 'a.md' }));
+    expect(success).toHaveBeenCalledWith('Reconnected', expect.anything());
+  });
+
+  test('a doc switch while the claim stands does not re-arm a second grace', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: 'b.md' }));
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  test('the copy neither claims lost edits nor prescribes a restart', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    warning.mockClear();
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+
+    const message = String(lastOutageToast()?.[0]);
+    expect(message).not.toMatch(/aren't reaching the server/i);
+    expect(message).not.toMatch(/restart it/i);
+    expect(message).toMatch(/taking longer than usual/i);
+  });
+
+  test('dismissing the claim retires it for good — it does not re-raise itself', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+
+    const onDismiss = lastOutageToast()?.[1]?.onDismiss;
+    expect(typeof onDismiss).toBe('function');
+    act(() => onDismiss?.());
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: 'b.md' }));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  test('a dismissal is scoped to the episode — a later outage can raise the claim again', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+    act(() => lastOutageToast()?.[1]?.onDismiss?.());
+
+    act(() => rerender({ s: 'synced', doc: 'a.md' }));
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    warning.mockClear();
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+
+    expect(String(lastOutageToast()?.[0])).toMatch(/taking longer than usual/i);
+  });
+
+  test('the genuine outage notices carry no dismiss handler — only the claim is opt-out-able', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    expect(lastOutageToast()?.[1]?.onDismiss).toBeUndefined();
+    expect(lastOutageToast()?.[1]?.onAutoClose).toBeUndefined();
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(String(lastOutageToast()?.[0])).toContain('server stopped');
+    expect(lastOutageToast()?.[1]?.onDismiss).toBeUndefined();
+  });
+
+  test('dismissing "Connection lost" still lets the worse "server stopped" news through', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    warning.mockClear();
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(String(lastOutageToast()?.[0])).toContain('server stopped');
+  });
+
+  test('unmounting mid-grace cancels the pending claim (no toast from a dead hook)', () => {
+    const { rerender, unmount } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(4_000));
+    warning.mockClear();
+
+    unmount();
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  test('a relaunch that lands mid-grace cancels the pending claim', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(4_000));
+    warning.mockClear();
+
+    relaunchInFlightFlag = true;
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(warning).not.toHaveBeenCalled();
+    expect(dismiss).toHaveBeenCalledWith('sync-status');
+  });
+
+  test('leaving the document mid-grace discards the clock — a reopen gets a full fresh grace', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(10_000));
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(7_000));
+    warning.mockClear();
+
+    act(() => rerender({ s: 'connected', doc: null as unknown as string }));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(warning).not.toHaveBeenCalled();
+
+    act(() => rerender({ s: 'connected', doc: 'b.md' }));
+    act(() => vi.advanceTimersByTime(7_999));
+    expect(warning).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(String(lastOutageToast()?.[0])).toMatch(/taking longer than usual/i);
+  });
+
+  test('the grace is derived from the pool resync interval, not a bare literal', () => {
+    expect(SYNC_CATCHUP_GRACE_MS).toBeGreaterThan(FORCE_SYNC_INTERVAL_MS);
+  });
+
+  test('the genuine outage notices stay unbounded, and so does the claim', () => {
+    const { rerender } = renderToasts();
+    act(() => rerender({ s: 'disconnected', doc: 'a.md' }));
+    expect(String(lastOutageToast()?.[0])).toContain('keep this tab open');
+    expect(lastOutageToast()?.[1]?.duration).toBe(Number.POSITIVE_INFINITY);
+
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(String(lastOutageToast()?.[0])).toContain('server stopped');
+    expect(lastOutageToast()?.[1]?.duration).toBe(Number.POSITIVE_INFINITY);
+
+    act(() => rerender({ s: 'connected', doc: 'a.md' }));
+    act(() => vi.advanceTimersByTime(8_000));
+    expect(String(lastOutageToast()?.[0])).toMatch(/taking longer than usual/i);
+    expect(lastOutageToast()?.[1]?.duration).toBe(Number.POSITIVE_INFINITY);
   });
 });

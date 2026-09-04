@@ -3253,14 +3253,6 @@ msgstr "Terhubung ke"
 msgid "Connected to GitHub"
 msgstr "Terhubung ke GitHub"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server."
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12878,6 +12870,10 @@ msgstr "Sinkronisasi worktree ini disetel ke Otomatis (hanya Pull), diwarisi dar
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "Sinkronisasi worktree ini disetel ke Manual, diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "Sinkronisasi memakan waktu lebih lama dari biasanya — perubahan Anda aman di perangkat ini."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"

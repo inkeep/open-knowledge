@@ -3257,14 +3257,6 @@ msgstr "Connected to"
 msgid "Connected to GitHub"
 msgstr "Connected to GitHub"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "Connected, but your edits aren't reaching the server yet."
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12882,6 +12874,10 @@ msgstr "Sync is set to Auto (Pull only) for this worktree, inherited from {proje
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "Sync is taking longer than usual — your changes are safe on this device."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"

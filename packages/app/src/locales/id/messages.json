@@ -2511,6 +2511,9 @@
     "Vlc75q": ["Biarkan berkas terhapus"],
     "VmJT51": ["Memuat laporan Anda"],
     "VmXASo": ["(symlink)"],
+    "VpRSfQ": [
+      "Sinkronisasi memakan waktu lebih lama dari biasanya — perubahan Anda aman di perangkat ini."
+    ],
     "VsaI0G": [["folderCount", "plural", { "other": ["folder"] }]],
     "VuxVSP": ["Mulai pelengkapan sumber"],
     "VxLvKE": ["Kembalikan ke versi yang terpasang"],
@@ -2603,9 +2606,6 @@
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
-    "X7fxS9": [
-      "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
-    ],
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
@@ -4058,7 +4058,6 @@
     "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
-    "n6N-xC": ["Terhubung, tetapi suntingan Anda belum sampai ke server."],
     "n6hXUm": [
       "Sinkronisasi otomatis secara berkala melakukan fetch, pull, dan push commit ke repositori git remote Anda agar suntingan Anda tetap selaras antarkomputer."
     ],

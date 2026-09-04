@@ -3257,14 +3257,6 @@ msgstr "منسلک ہے"
 msgid "Connected to GitHub"
 msgstr "GitHub سے منسلک"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔ اگر یہ جاری رہے تو اسے دوبارہ چلائیں۔"
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12882,6 +12874,10 @@ msgstr "اس ورک ٹری کی مطابقت پذیری «خودکار (صرف �
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "اس ورک ٹری کی مطابقت پذیری «دستی» پر سیٹ ہے، جو {project} سے وراثت میں ملی۔ اسے ترتیبات ← مطابقت پذیری میں بدلیں۔"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "ہم آہنگی معمول سے زیادہ وقت لے رہی ہے — آپ کی تبدیلیاں اس ڈیوائس پر محفوظ ہیں۔"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
