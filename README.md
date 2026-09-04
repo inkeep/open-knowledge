@@ -80,6 +80,24 @@ Public pull requests or issues are welcome!
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
+## Running Desktop With Browser Access
+
+`pnpm --dir packages/desktop run dev` starts the desktop app but serves no browser client. `electron-vite dev` sets `ELECTRON_RENDERER_URL`; the window manager then sends the utility process no `reactShellDistDir`, so the server boots with the `http` and `ws` capabilities but not `ui`, and nothing is mounted at `/`.
+
+To reach the same server from a browser, build the renderer and launch Electron on the built output instead:
+
+```bash
+pnpm run build:desktop
+pnpm --dir packages/desktop exec electron out/main/index.js
+```
+
+The server now serves `out/renderer/` at `/`. Its address is in the boot log — `[boot] listening on http://127.0.0.1:<port>` — and `GET /api/config` returns the same port alongside the `collabUrl` the renderer connects to. The port is the open project's `server.port` from its `.ok/config.yml` when set, and an ephemeral port otherwise; it belongs to the project the app has open, not to this repo.
+
+Two things to expect:
+
+- **No HMR.** The renderer is a static bundle, so a renderer change needs `pnpm run build:desktop` again. This is inherent — HMR needs the dev server whose presence is what disables browser serving.
+- **`ELECTRON_RUN_AS_NODE`.** Terminals inside VS Code inherit `ELECTRON_RUN_AS_NODE=1`, which makes the Electron binary run as plain Node and fail at the first import: `SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'`. Launch with `env -u ELECTRON_RUN_AS_NODE` there.
+
 ## License
 
 OpenKnowledge is licensed under [GNU General Public License v3.0 or later](./LICENSE), an OSI-Approved open source license.
