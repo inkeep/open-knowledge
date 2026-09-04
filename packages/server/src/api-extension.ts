@@ -187,7 +187,6 @@ import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
-  agentWritePreDrain,
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
@@ -460,7 +459,6 @@ import {
   type RenameLogEntry,
   resolveDocPathAtCommit,
 } from './rename-log.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
@@ -494,6 +492,7 @@ import { reportSkillInstall } from './skills-sh-install-report.ts';
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 let _hintEmittedCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
 function hintEmittedCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
@@ -3458,7 +3457,6 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          agentWritePreDrain(session.dc.document, `${content}\n`, 'append');
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             applyAgentMarkdownWrite(session.dc.document, `${content}\n`, 'append');
@@ -3615,7 +3613,6 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          agentWritePreDrain(session.dc.document, body.markdown, position);
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             writeDivergence = applyAgentMarkdownWrite(session.dc.document, body.markdown, position);
@@ -3916,7 +3913,6 @@ export function createApiExtension(
                 colorSeed,
                 clientName,
               );
-              agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
               try {
                 session.dc.document.transact(() => {
                   const beforeBlocks = snapshotBlocks(session.dc.document);

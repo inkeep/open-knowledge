@@ -30,7 +30,6 @@ import { splitPayloadFrontmatter } from './payload-frontmatter.ts';
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
-import type { YjsStackItemShape } from './agent-activity.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
@@ -46,8 +45,8 @@ import { getLogger } from './logger.ts';
 import { mdManager } from './md-manager.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
-import { getPreDrainController, type PairedWriteOrigin } from './server-observers.ts';
 import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 export type { AgentWriteContentDivergence };
 
@@ -124,19 +123,6 @@ export async function prepareAgentMarkdownParse(
   const composed = composeAgentWrite(document.getText('source').toString(), markdown, position);
   if (composed === undefined) return undefined;
   return precomputeParse(composed.newContent, embedResolver);
-}
-
-export function agentWritePreDrain(
-  document: Document,
-  markdown: string,
-  position: 'append' | 'prepend' | 'replace' | 'patch',
-): void {
-  const controller = getPreDrainController(document as unknown as Y.Doc);
-  if (!controller) return;
-  if (composeAgentWrite(document.getText('source').toString(), markdown, position) === undefined) {
-    return;
-  }
-  controller.preDrain({ kind: 'agent-write', writeKind: position });
 }
 
 export function applyAgentMarkdownWrite(
@@ -383,13 +369,6 @@ function applyAgentUndoInner(
       : scope === 'count'
         ? Math.min(Math.max(0, count ?? 0), um.undoStack.length)
         : um.undoStack.length;
-
-  if (framesToPop === 1 && um.undoStack.length > 0) {
-    getPreDrainController(document as unknown as Y.Doc)?.preDrain({
-      kind: 'agent-undo',
-      stackItem: um.undoStack[um.undoStack.length - 1] as unknown as YjsStackItemShape,
-    });
-  }
 
   let undone = false;
   document.transact(() => {

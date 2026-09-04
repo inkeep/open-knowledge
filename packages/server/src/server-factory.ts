@@ -190,7 +190,6 @@ import {
 import { startManagedArtifactWatcher } from './managed-artifact-watcher.ts';
 import { recoverPendingManagedRename } from './managed-rename-journal.ts';
 import type { NativeTomlMcpEditor } from './mcp-config-reconciler.ts';
-import { mdManager, schema } from './md-manager.ts';
 import {
   incrementBatch,
   incrementBranchSwitch,
@@ -224,7 +223,6 @@ import {
 } from './rename-log.ts';
 import { acquireServerLock, markServerLockDraining, releaseServerLock } from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
 import {
   installServerWorkloadGauges,
   registerAgentSessionCountsProvider,
@@ -258,6 +256,7 @@ import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extensio
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 export interface ServerOptions {
   ingressPolicy?: IngressPolicy;
@@ -1937,9 +1936,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       warn: (message) =>
         log.warn({ message }, '[config] could not read project config for bridge guards'),
     });
-    const deferGuardEnabled = bridgeGuardConfig.value.bridge.deferGuard.enabled;
-    const fixedPointBackstopEnabled = bridgeGuardConfig.value.bridge.fixedPoint.enabled;
-    const preDrainEnabled = bridgeGuardConfig.value.bridge.preDrain.enabled;
     lossRing = bridgeGuardConfig.value.lossCapture.enabled
       ? new LossCaptureRing({
           projectDir,
@@ -1957,22 +1953,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       sessionManager.attachBridgeLossReporter(bridgeLossReporter);
     }
 
-    hocuspocus.configuration.extensions.push(
-      createServerObserverExtension({
-        mdManager,
-        schema,
-        shadowRef,
-        contentRoot,
-        getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
-        resolveEmbed,
-        resolveSize,
-        deferGuardEnabled,
-        lossDetectorEnabled: bridgeGuardConfig.value.bridge.lossDetector.enabled,
-        fixedPointBackstopEnabled,
-        preDrainEnabled,
-        lossRing,
-      }),
-    );
+    hocuspocus.configuration.extensions.push(createServerObserverExtension());
 
     hocuspocus.configuration.extensions.push(createSyncHandshakeSpanExtension());
 

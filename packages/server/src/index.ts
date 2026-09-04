@@ -467,18 +467,7 @@ export {
   updateServerLockPort,
   waitForServerLockDrain,
 } from './server-lock.ts';
-export {
-  createServerObserverExtension,
-  type ServerObserverExtensionOptions,
-} from './server-observer-extension.ts';
-export {
-  isPairedWriteOrigin,
-  OBSERVER_SYNC_ORIGIN,
-  type ObserverDispatchKind,
-  type PairedWriteOrigin,
-  type SetupServerObserversOpts,
-  setupServerObservers,
-} from './server-observers.ts';
+export { createServerObserverExtension } from './server-observer-extension.ts';
 export {
   buildWipTree,
   type CheckpointGcResult,
@@ -628,3 +617,8 @@ export {
 } from './tolerance-telemetry-writer.ts';
 export { trustSystemCertificates } from './trust-system-ca.ts';
 export { PROTOCOL_VERSION, RUNTIME_VERSION, STATE_SCHEMA_VERSION } from './version-constants.ts';
+export {
+  isPairedWriteOrigin,
+  OBSERVER_SYNC_ORIGIN,
+  type PairedWriteOrigin,
+} from './write-origins.ts';

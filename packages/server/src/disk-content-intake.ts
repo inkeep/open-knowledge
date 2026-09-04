@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 export const FILE_WATCHER_ORIGIN = {
   source: 'local',
