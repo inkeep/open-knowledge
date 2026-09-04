@@ -1261,7 +1261,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === toDocName,
       );
       const canonicalTreePath = docNameToTreePath(toDocName, destination?.docExt ?? source.docExt);
-      model.move(toDocName, canonicalTreePath);
+      if (model.getItem(canonicalTreePath) == null) {
+        model.move(toDocName, canonicalTreePath);
+      }
       lastCanonical = canonicalTreePath;
       reconciledCount += 1;
     }

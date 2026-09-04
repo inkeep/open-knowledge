@@ -53,7 +53,11 @@ export {
   setPluginEnabled,
   waitForSettingsPanel,
 } from './settings.ts';
-export { createFileViaSidebar, createFolderViaSidebar, sidebarFileButton } from './sidebar.ts';
+export {
+  createFileViaSidebar,
+  createFolderViaSidebar,
+  expectActiveEditorTab,
+} from './sidebar.ts';
 export {
   getSelectedItemSnapshot,
   type SelectedItemSnapshot,

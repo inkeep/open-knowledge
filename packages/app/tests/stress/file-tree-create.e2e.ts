@@ -7,6 +7,7 @@ import {
   createFileViaSidebar,
   createFolderViaSidebar,
   expect,
+  expectActiveEditorTab,
   test,
 } from './_helpers';
 
@@ -110,10 +111,6 @@ async function visibleSidebarItemByPath(page: Page, path: string) {
 
 function editorTabButton(page: Page, name: string) {
   return page.getByRole('main').getByRole('button', { name, exact: true });
-}
-
-function activeEditorTabButton(page: Page, name: string) {
-  return page.locator('[data-active-tab="true"]').getByRole('button', { name, exact: true });
 }
 
 async function selectAllSidebarItems(page: Page, focusItemName: string) {
@@ -822,15 +819,11 @@ test.describe('FileTree sidebar create', () => {
 
       await folderItem.click();
       await expect(page).toHaveURL(new RegExp(`#/${name}/$`));
-      await expect(activeEditorTabButton(page, `${name}/`)).toBeVisible({
-        timeout: 10_000,
-      });
+      await expectActiveEditorTab(page, `${name}/`, { timeout: 10_000 });
 
       await fileItem.click();
       await expect(page).toHaveURL(new RegExp(`#/${name}$`));
-      await expect(activeEditorTabButton(page, `${name}.md`)).toBeVisible({
-        timeout: 10_000,
-      });
+      await expectActiveEditorTab(page, `${name}.md`, { timeout: 10_000 });
 
       expect(existsSync(join(workerServer.contentDir, name))).toBe(true);
       expect(statSync(join(workerServer.contentDir, name)).isDirectory()).toBe(true);
