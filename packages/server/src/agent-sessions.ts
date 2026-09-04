@@ -19,8 +19,6 @@
  */
 import type { DirectConnection, Document, Hocuspocus } from '@hocuspocus/server';
 import {
-  applyPatchToFm,
-  detectFmRegion,
   parseFrontmatterYaml,
   prependFrontmatter,
   sourceBlockSnapshot,
@@ -33,18 +31,8 @@ export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
 import type { YjsStackItemShape } from './agent-activity.ts';
-import {
-  composeAndWriteRawBody,
-  deriveFragmentFromYtext,
-  type PrecomputedParse,
-  replaceRawBody,
-} from './bridge-intake.ts';
-import {
-  type BridgeDeriveLossReporter,
-  DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
-  type DeriveLossDetectOptions,
-} from './bridge-loss-detector.ts';
-import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
+import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
+import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
 import {
@@ -82,9 +70,8 @@ export interface AgentDirectConnection extends DirectConnection {
  * `skipStoreHooks: false` — persistence SHOULD fire after agent writes so
  * content reaches disk through the normal debounce pipeline.
  *
- * `paired: true` — the caller atomically writes BOTH Y.XmlFragment and Y.Text
- * inside one `doc.transact(..., AGENT_WRITE_ORIGIN)` block (see
- * `applyAgentMarkdownWrite` below). The `satisfies PairedWriteOrigin`
+ * `paired: true` — retained on the origin marker so `isPairedWriteOrigin`
+ * still classifies agent writes. The `satisfies PairedWriteOrigin`
  * annotation forces the literal to carry the marker; the compile-time gate
  * catches omissions before they reach runtime.
  */
@@ -114,17 +101,14 @@ function docNameToFile(docName: string): string {
  * body but wants the minimal item-preserving delta, so it deliberately does
  * NOT take the atomic primitive (which would churn the whole doc per surgical
  * edit and widen the concurrent-edit residue surface to the whole document).
- * Y.Text receives the composed bytes verbatim (no
- * canonicalization); XmlFragment derives via `parse(body)` →
- * `updateYFragment` (structural diff preserves user-content Items at matching
- * positions); both writes are atomic inside the caller's outer transact.
+ * Y.Text receives the composed bytes verbatim (no canonicalization),
+ * inside the caller's outer transact.
  *
  * Atomicity boundary: caller MUST wrap this in
  * `session.dc.document.transact(fn, session.origin)`. The per-session frozen
  * origin (precedent #24) is what makes this work for `Y.UndoManager`
- * attribution + the paired-write origin guard in server-observers.
+ * attribution.
  *
- * @see PRECEDENTS.md precedent #11(a) (item-preserving cross-CRDT sync)
  * @see PRECEDENTS.md precedent #38 (Y.Text-is-truth contract)
  */
 export async function prepareAgentMarkdownParse(
@@ -140,32 +124,6 @@ export async function prepareAgentMarkdownParse(
   const composed = composeAgentWrite(document.getText('source').toString(), markdown, position);
   if (composed === undefined) return undefined;
   return precomputeParse(composed.newContent, embedResolver);
-}
-
-export async function prepareFrontmatterPatchParse(
-  document: Document,
-  patch: Parameters<typeof applyPatchToFm>[1],
-): Promise<PrecomputedParse | undefined> {
-  const snapshot = document.getText('source').toString();
-  const { fenced, body } = detectFmRegion(snapshot);
-  const result = applyPatchToFm(fenced, patch);
-  if (!result.ok || result.nextFenced === fenced) return undefined;
-  const needsFenceSeparator = fenced === '' && body !== '' && !body.startsWith('\n');
-  return precomputeParse(result.nextFenced + (needsFenceSeparator ? '\n' : '') + body);
-}
-
-export interface AgentWriteLossDetect {
-  reporter: BridgeDeriveLossReporter;
-  writerId: string | null;
-}
-
-export function agentWriteLossDetect(session: {
-  bridgeLossReporter?: BridgeDeriveLossReporter;
-  agentId: string;
-}): AgentWriteLossDetect | undefined {
-  return session.bridgeLossReporter
-    ? { reporter: session.bridgeLossReporter, writerId: session.agentId }
-    : undefined;
 }
 
 export function agentWritePreDrain(
@@ -185,12 +143,6 @@ export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-  precomputed?: PrecomputedParse,
-  lossDetect?: AgentWriteLossDetect,
 ): AgentWriteContentDivergence | undefined {
   if (isDocInConflict(document)) {
     throw new DocInConflictError({ file: docNameToFile(document.name) });
@@ -205,14 +157,7 @@ export function applyAgentMarkdownWrite(
       },
     },
     () => {
-      const divergence = applyAgentMarkdownWriteInner(
-        document,
-        markdown,
-        position,
-        embedResolver,
-        precomputed,
-        lossDetect,
-      );
+      const divergence = applyAgentMarkdownWriteInner(document, markdown, position);
       if (divergence !== undefined) {
         setActiveSpanAttributes({
           'agent.content_divergent': true,
@@ -290,12 +235,6 @@ function applyAgentMarkdownWriteInner(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-  precomputed?: PrecomputedParse,
-  lossDetect?: AgentWriteLossDetect,
 ): AgentWriteContentDivergence | undefined {
   try {
     const ytext = document.getText('source');
@@ -305,20 +244,6 @@ function applyAgentMarkdownWriteInner(
       return;
     }
     const { existingFm, finalFm, newContent } = composed;
-
-    const detect: DeriveLossDetectOptions | undefined =
-      lossDetect && shouldRunPairedIntakeDetection(AGENT_WRITE_ORIGIN.context.origin)
-        ? {
-            report: (obs) =>
-              lossDetect.reporter(
-                document.name,
-                obs,
-                lossDetect.writerId,
-                DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
-              ),
-            baselineFullMd: currentYText,
-          }
-        : undefined;
 
     if (finalFm !== existingFm) {
       const parsed = parseFrontmatterYaml(unwrapFrontmatterFences(finalFm));
@@ -340,9 +265,9 @@ function applyAgentMarkdownWriteInner(
     }
 
     if (position === 'replace') {
-      replaceRawBody(document, newContent, embedResolver, precomputed, detect);
+      replaceRawBody(document, newContent);
     } else {
-      composeAndWriteRawBody(document, newContent, 'agent', embedResolver, precomputed, detect);
+      composeAndWriteRawBody(document, newContent, 'agent');
     }
 
     const actualYText = document.getText('source').toString();
@@ -374,17 +299,13 @@ function applyAgentMarkdownWriteInner(
  * anti-pattern.
  *
  * Calls session.um.undo() INSIDE an outer doc.transact(..., session.undoOrigin)
- * so Y.js merges the UM's internal transaction into the outer. The whole
- * operation fires under undoOrigin (paired: true) → Observer A/B short-circuit.
+ * so Y.js merges the UM's internal transaction into the outer.
  *
  * After undo, Y.Text holds the user's intended post-undo bytes (precedent
- * #38). XmlFragment derives via `parseWithFallback(body)` →
- * `updateYFragment` so the structural diff preserves user-content Items at
- * matching positions. NO canonicalize-write-back step: re-serializing the
- * fragment and applying that to ytext would defeat the contract by
- * canonicalizing user-typed source-form bytes (e.g. `__foo__` → `**foo**`,
- * `:---:` table widths, ATX trailing hashes). Post-undo bridge invariant
- * divergence (if any) is detected by Observer B's watchdog.
+ * #38) and nothing further is written. NO canonicalize-write-back step:
+ * re-serializing the document and applying that to ytext would defeat the
+ * contract by canonicalizing user-typed source-form bytes (e.g. `__foo__` →
+ * `**foo**`, `:---:` table widths, ATX trailing hashes).
  *
  * scope 'last': undo one UM stack item.
  * scope 'session': undo entire UM stack.
@@ -399,9 +320,9 @@ function applyAgentMarkdownWriteInner(
  * the bridge fuzzer + conversion-PBT suite that guards against the bug-A class:
  *
  *   (1) Y.Text-is-truth composition (precedent #38). Y.UndoManager has
- *       already mutated ytext to its desired post-undo state; XmlFragment
- *       derives via parse(ytext). Do NOT re-canonicalize ytext from the
- *       fragment — that defeats the contract.
+ *       already mutated ytext to its desired post-undo state, and that IS
+ *       the result. Do NOT re-canonicalize ytext from a re-serialized
+ *       document — that defeats the contract.
  *   (2) Fires under per-session `session.undoOrigin`, distinct from
  *       `session.origin`. The UM is constructed with
  *       `captureTransaction: tr => tr.origin !== session.undoOrigin` so
@@ -426,10 +347,6 @@ function applyAgentMarkdownWriteInner(
 export function applyAgentUndo(
   session: SessionRecord,
   scope: 'last' | 'session' | 'count',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
   count?: number,
 ): boolean {
   const undoDoc = session.dc.document;
@@ -445,7 +362,7 @@ export function applyAgentUndo(
       },
     },
     () => {
-      const undone = applyAgentUndoInner(session, scope, embedResolver, count);
+      const undone = applyAgentUndoInner(session, scope, count);
       setActiveSpanAttributes({ 'agent.undo_effective': undone });
       return undone;
     },
@@ -455,10 +372,6 @@ export function applyAgentUndo(
 function applyAgentUndoInner(
   session: SessionRecord,
   scope: 'last' | 'session' | 'count',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
   count?: number,
 ): boolean {
   const { dc, um, undoOrigin } = session;
@@ -479,20 +392,11 @@ function applyAgentUndoInner(
   }
 
   let undone = false;
-  const reporter = session.bridgeLossReporter;
-  const detect: DeriveLossDetectOptions | undefined =
-    reporter && shouldRunPairedIntakeDetection(undoOrigin.context.origin)
-      ? {
-          report: (obs) => reporter(session.docName, obs, session.agentId),
-          baselineFullMd: document.getText('source').toString(),
-        }
-      : undefined;
   document.transact(() => {
     for (let i = 0; i < framesToPop && um.undoStack.length > 0; i++) {
       um.undo();
       undone = true;
     }
-    if (undone) deriveFragmentFromYtext(document, embedResolver, detect);
   }, undoOrigin);
 
   log.debug(

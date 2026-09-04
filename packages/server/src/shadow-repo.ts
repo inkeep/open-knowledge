@@ -674,7 +674,7 @@ export type InMemoryCheckpointParams = (
       contents: string;
       label: string;
       branch?: string;
-      metadata: { copies: number; fragmentChildren: number };
+      metadata: { copies: number; fragmentChildren?: number };
     }
   | {
       kind: 'persistence-divergence-realign';

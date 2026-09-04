@@ -480,13 +480,12 @@ describe('resolveWriterFromOrigin', () => {
 });
 
 describe('captureDocSnapshotForPersistence', () => {
-  test('returns sv and json together, both reflecting doc state at call time', () => {
+  test('returns the state vector for the doc at call time', () => {
     const doc = new Y.Doc();
-    doc.getXmlFragment('default');
+    doc.getText('source').insert(0, 'hello');
 
     const snapshot = captureDocSnapshotForPersistence(doc);
     expect(snapshot.sv).toBeInstanceOf(Uint8Array);
-    expect(snapshot.json).toBeDefined();
     expect(snapshot.sv.byteLength).toBeGreaterThan(0);
     doc.destroy();
   });
@@ -521,7 +520,7 @@ describe('captureDocSnapshotForPersistence', () => {
     peer.destroy();
   });
 
-  test('helper is uninterruptible — sv and json reflect the same instant', () => {
+  test('helper is uninterruptible — the sv reflects a single instant', () => {
     const doc = new Y.Doc();
     const text = doc.getText('source');
     for (let i = 0; i < 100; i++) {

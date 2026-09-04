@@ -3,8 +3,9 @@
  *
  * Walks every `<doc>.transact(fn, origin)` call site in `packages/server/src/`
  * via ts-morph and asserts that paired-write origins route through one of
- * the three sanctioned sibling primitives in `bridge-intake.ts`:
- * `composeAndWriteRawBody`, `replaceRawBody`, `deriveFragmentFromYtext`.
+ * the two sanctioned sibling primitives in `bridge-intake.ts`
+ * (`composeAndWriteRawBody`, `replaceRawBody`) or through the
+ * `Y.UndoManager`, which is itself the writer on the agent-undo path.
  *
  * Why structural, not textual: the STOP rule "paired-write origins must call
  * a sanctioned primitive" had only a sentence backing it. Past
@@ -14,7 +15,7 @@
  *
  * Allowlists are typed `Set<string>` literals colocated with the test (not
  * out-of-band). Adding a new entry forces explicit classification: any new
- * origin name that doesn't match one of the three buckets fails loudly with
+ * origin name that doesn't match one of the buckets fails loudly with
  * a message naming the file:line and the unrecognized origin.
  */
 
@@ -29,11 +30,14 @@ import {
 } from 'ts-morph';
 import { beforeAll, describe, expect, test } from 'vitest';
 
-const SANCTIONED_PRIMITIVES = new Set<string>([
-  'composeAndWriteRawBody',
-  'replaceRawBody',
-  'deriveFragmentFromYtext',
-]);
+const SANCTIONED_PRIMITIVES = new Set<string>(['composeAndWriteRawBody', 'replaceRawBody']);
+
+/*
+ * WARN: `undo` is sanctioned ONLY because `Y.UndoManager.undo()` writes
+ * `Y.Text` itself — it is the write, not a bypass of one. Do not widen this
+ * set to admit any other bare method name.
+ */
+const SANCTIONED_WRITER_METHODS = new Set<string>(['undo']);
 
 const TRANSITIVE_PRIMITIVE_CALLERS = new Set<string>([
   'applyDiskContentToDoc',
@@ -156,7 +160,11 @@ function bodyCallsSanctionedPrimitive(body: Node | undefined): {
         ? callee.getName()
         : null;
     if (calleeName === null) return;
-    if (SANCTIONED_PRIMITIVES.has(calleeName) || TRANSITIVE_PRIMITIVE_CALLERS.has(calleeName)) {
+    if (
+      SANCTIONED_PRIMITIVES.has(calleeName) ||
+      TRANSITIVE_PRIMITIVE_CALLERS.has(calleeName) ||
+      SANCTIONED_WRITER_METHODS.has(calleeName)
+    ) {
       matched = true;
       matchedName = calleeName;
       traversal.stop();
@@ -220,12 +228,13 @@ describe('paired-write enforcement', () => {
             `${relative(SERVER_SRC_DIR, file)}:${call.line} — paired-write origin "${call.originExpr}" ` +
               `does not route through any sanctioned primitive ` +
               `(${[...SANCTIONED_PRIMITIVES, ...TRANSITIVE_PRIMITIVE_CALLERS].join(', ')}). ` +
-              `Refactor to call composeAndWriteRawBody / replaceRawBody / deriveFragmentFromYtext.`,
+              `Refactor to call composeAndWriteRawBody / replaceRawBody.`,
           );
         } else {
           const known =
             SANCTIONED_PRIMITIVES.has(matchedName ?? '') ||
-            TRANSITIVE_PRIMITIVE_CALLERS.has(matchedName ?? '');
+            TRANSITIVE_PRIMITIVE_CALLERS.has(matchedName ?? '') ||
+            SANCTIONED_WRITER_METHODS.has(matchedName ?? '');
           if (!known) {
             failures.push(
               `${relative(SERVER_SRC_DIR, file)}:${call.line} — internal classifier bug: ` +
@@ -243,7 +252,7 @@ describe('paired-write enforcement', () => {
     }
   });
 
-  test('all three sanctioned primitives are exported from bridge-intake.ts', () => {
+  test('both sanctioned primitives are exported from bridge-intake.ts', () => {
     const project = new Project({
       skipFileDependencyResolution: true,
       skipLoadingLibFiles: true,

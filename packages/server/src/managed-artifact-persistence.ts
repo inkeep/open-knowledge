@@ -266,7 +266,7 @@ export function loadManagedArtifactDoc(
   }
 
   document.transact(() => {
-    applyDiskContentToDoc(document, raw, undefined, documentName);
+    applyDiskContentToDoc(document, raw);
     document.getMap('lifecycle').set(LINEAGE_EPOCH_KEY, crypto.randomUUID());
   }, FILE_WATCHER_ORIGIN);
 
@@ -375,10 +375,10 @@ export async function storeManagedArtifactDoc(
         }
         if (disk !== null && disk !== lkg && disk !== content) {
           incrementManagedArtifactReconcile();
-          const detect = ctx.beforeReconcileDivergence?.(document, documentName, content, disk);
+          ctx.beforeReconcileDivergence?.(document, documentName, content, disk);
           await stashDiscardedEdit(documentName, content, ctx);
           document.transact(() => {
-            applyDiskContentToDoc(document, disk, undefined, documentName, undefined, detect);
+            applyDiskContentToDoc(document, disk);
           }, FILE_WATCHER_ORIGIN);
           ctx.setReconciledBase(documentName, disk);
           ctx.lkgCache.set(documentName, disk);
@@ -412,7 +412,7 @@ export function applyExternalManagedArtifactChange(
   const lkg = ctx.lkgCache.get(documentName);
   if (lkg !== undefined && lkg === raw) return 'no-op';
   document.transact(() => {
-    applyDiskContentToDoc(document, raw, undefined, documentName);
+    applyDiskContentToDoc(document, raw);
   }, FILE_WATCHER_ORIGIN);
   ctx.setReconciledBase(documentName, raw);
   ctx.lkgCache.set(documentName, raw);

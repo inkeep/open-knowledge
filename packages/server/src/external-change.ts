@@ -9,12 +9,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
-  type BridgeDeriveLossReporter,
-  DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
-  type DeriveLossDetectOptions,
-} from './bridge-loss-detector.ts';
-import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
-import {
   isConfigDoc,
   isEditableTextDoc,
   isExcalidrawDoc,
@@ -50,19 +44,15 @@ export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
  *      edit-surface telemetry counter (FM lives in the YAML region of
  *      Y.Text — no Y.Map metadata cache)
  *   3. Routes through `composeAndWriteRawBody` inside
- *      `document.transact(..., FILE_WATCHER_ORIGIN)`: Y.Text receives the
- *      disk bytes verbatim via `applyFastDiff`; XmlFragment derives via
- *      `parse(body) → updateYFragment` (the post-write watchdog asserts
- *      the bridge invariant)
+ *      `document.transact(..., FILE_WATCHER_ORIGIN)`, where Y.Text
+ *      receives the disk bytes verbatim via `applyFastDiff`
  *   4. Emits the FM-change telemetry counter when the captured FM
  *      differs from the disk content's FM
  *   5. Records the file-system contributor and advances reconciledBase to
  *      the raw disk bytes
  *
- * `FILE_WATCHER_ORIGIN` carries `context.paired: true` and
- * `skipStoreHooks: true` — the paired marker opts the bridge observers'
- * paired-write fast-paths in; skipStoreHooks prevents persistence feedback
- * loops.
+ * `FILE_WATCHER_ORIGIN` carries `skipStoreHooks: true`, which prevents
+ * persistence feedback loops.
  *
  * Throws on parse failure — callers choose their own error strategy.
  * `BridgeInvariantViolationError` re-throws past every soft-recovery layer
@@ -73,9 +63,6 @@ export function applyExternalChange(
   hocuspocus: Hocuspocus,
   docName: string,
   content: string,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  resolveSize?: (basename: string, sourcePath: string) => number | null,
-  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): void {
   if (
     isSystemDoc(docName) ||
@@ -94,23 +81,9 @@ export function applyExternalChange(
   const priorFm = stripFrontmatter(currentSource).frontmatter;
   const { frontmatter: nextFm } = stripFrontmatter(content);
 
-  const detect: DeriveLossDetectOptions | undefined =
-    bridgeLossReporter && shouldRunPairedIntakeDetection(FILE_WATCHER_ORIGIN.context.origin)
-      ? {
-          report: (obs) =>
-            bridgeLossReporter(
-              docName,
-              obs,
-              FILE_SYSTEM_WRITER.id,
-              DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
-            ),
-          baselineFullMd: currentSource,
-        }
-      : undefined;
-
   try {
     document.transact(() => {
-      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize, detect);
+      applyDiskContentToDoc(document, content);
     }, FILE_WATCHER_ORIGIN);
   } catch (err) {
     durabilityState.setReconciledBase(docName, document.getText('source').toString());
@@ -143,21 +116,10 @@ export function applyExternalChange(
 export function createExternalChangeHandler(
   durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  resolveSize?: (basename: string, sourcePath: string) => number | null,
-  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): (docName: string, content: string) => Promise<void> {
   return async (docName: string, content: string): Promise<void> => {
     try {
-      applyExternalChange(
-        durabilityState,
-        hocuspocus,
-        docName,
-        content,
-        resolveEmbed,
-        resolveSize,
-        bridgeLossReporter,
-      );
+      applyExternalChange(durabilityState, hocuspocus, docName, content);
       getLogger('file-watcher').info({ docName }, 'applied external change');
     } catch (err) {
       if (
@@ -201,8 +163,6 @@ export function reconcileDiskBeforeAgentWrite(
   hocuspocus: Hocuspocus,
   docName: string,
   contentDir: string,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): ReconcileBeforeWriteResult {
   if (
     isSystemDoc(docName) ||
@@ -297,15 +257,7 @@ export function reconcileDiskBeforeAgentWrite(
     case 'clean':
     case 'merged': {
       const ingest = outcome.kind === 'clean' ? diskContent : outcome.newContent;
-      applyExternalChange(
-        durabilityState,
-        hocuspocus,
-        docName,
-        ingest,
-        resolveEmbed,
-        undefined,
-        bridgeLossReporter,
-      );
+      applyExternalChange(durabilityState, hocuspocus, docName, ingest);
       if (outcome.kind === 'merged') {
         durabilityState.setReconciledBase(docName, diskContent);
       }

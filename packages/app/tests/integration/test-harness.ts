@@ -43,11 +43,7 @@ import {
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
-import {
-  ORIGIN_TEXT_TO_TREE,
-  ORIGIN_TREE_TO_TEXT,
-  setupObservers,
-} from '../../src/editor/observers';
+import { ORIGIN_TEXT_TO_TREE, ORIGIN_TREE_TO_TEXT } from '../../src/editor/observers';
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
@@ -272,14 +268,6 @@ export async function createTestClient(
 
   await waitForSync(provider);
 
-  const observerCleanup = setupObservers({
-    doc,
-    xmlFragment: fragment,
-    ytext,
-    mdManager,
-    schema,
-  });
-
   const watcherDetach = options?.skipInvariantWatcher
     ? undefined
     : attachBridgeInvariantWatcher(doc);
@@ -304,7 +292,6 @@ export async function createTestClient(
     },
     cleanup: async () => {
       watcherDetach?.();
-      observerCleanup();
       try {
         await testReset(port, resolvedDocName);
       } catch {}

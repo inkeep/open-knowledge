@@ -3,7 +3,6 @@ import type * as Y from 'yjs';
 import {
   type AgentDirectConnection,
   AgentSessionManager,
-  type AgentWriteLossDetect,
   agentWritePreDrain,
   applyAgentMarkdownWrite,
   applyAgentUndo,
@@ -83,10 +82,6 @@ export async function createWiredPreDrainRig(
   rig.editFragment(WIRED_BASE);
   rig.settle(1);
 
-  const lossDetect: AgentWriteLossDetect | undefined = opts.reporter
-    ? { reporter: opts.reporter, writerId: 'agent-1' }
-    : undefined;
-
   return {
     rig,
     doc: rig.doc,
@@ -96,17 +91,17 @@ export async function createWiredPreDrainRig(
     agentWrite: (markdown, position) => {
       rig.advancePastFreshness();
       document.transact(() => {
-        applyAgentMarkdownWrite(document, markdown, position, undefined, undefined, lossDetect);
+        applyAgentMarkdownWrite(document, markdown, position);
       }, session.origin);
     },
     agentWriteWithPreDrain: (markdown, position) => {
       rig.advancePastFreshness();
       agentWritePreDrain(document, markdown, position);
       document.transact(() => {
-        applyAgentMarkdownWrite(document, markdown, position, undefined, undefined, lossDetect);
+        applyAgentMarkdownWrite(document, markdown, position);
       }, session.origin);
     },
-    agentUndo: (scope = 'last', count) => applyAgentUndo(session as never, scope, undefined, count),
+    agentUndo: (scope = 'last', count) => applyAgentUndo(session as never, scope, count),
     stageUnpropagatedKeystroke: () => {
       rig.externalYtextEdit('poke', (yt) => yt.insert(yt.length, '\nTrailing note.\n'));
       rig.echoFragmentEdit(rig.ytext.toString(), WIRED_STALE_LINE, WIRED_PENDING_LINE, {

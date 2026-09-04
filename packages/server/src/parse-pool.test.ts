@@ -7,7 +7,7 @@ import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { applyAgentMarkdownWrite, prepareAgentMarkdownParse } from './agent-sessions.ts';
-import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
+import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { mdManager, schema } from './md-manager.ts';
 import {
   _overrideParseTaskTimeoutForTests,
@@ -221,17 +221,6 @@ describe('bridge-intake byte-identity guard', () => {
     }, TEST_ORIGIN);
     expect(withStale.getText('source').toString()).toBe(raw);
     expect(fragmentJson(withStale)).toBe(fragmentJson(control));
-  });
-
-  test('a byte-matching precompute is honored (observable via a divergent parse)', () => {
-    const raw = '# Real\n\nreal body\n';
-    const divergent = mdManager.parseWithFallback('# Marker heading only\n');
-    const doc = new Y.Doc();
-    doc.transact(() => {
-      replaceRawBody(doc, raw, undefined, { rawContent: raw, parsedJson: divergent });
-    }, TEST_ORIGIN);
-    expect(doc.getText('source').toString()).toBe(raw);
-    expect(fragmentJson(doc)).toContain('Marker heading only');
   });
 });
 

@@ -55,7 +55,7 @@ describe('onLoadDocument seed guard', () => {
     writeFileSync(path, DISK, 'utf-8');
   }
 
-  test('control: a doc empty on BOTH surfaces still seeds from disk', async () => {
+  test('control: an empty doc still seeds from disk', async () => {
     writeDisk();
     const persistence = create({ contentDir: tmpDir, projectDir: tmpDir, gitEnabled: false });
     const document = new Y.Doc();
@@ -63,16 +63,14 @@ describe('onLoadDocument seed guard', () => {
     await loadDocument(persistence, document, docName);
 
     expect(document.getText('source').toString()).toBe(DISK);
-    expect(document.getXmlFragment('default').length).toBeGreaterThan(0);
   });
 
-  test('a doc holding Y.Text bytes with an underived fragment is NOT re-seeded', async () => {
+  test('a doc already holding Y.Text bytes is NOT re-seeded', async () => {
     writeDisk();
     const persistence = create({ contentDir: tmpDir, projectDir: tmpDir, gitEnabled: false });
     const document = new Y.Doc();
-    const live = '# live\n\nTyped in source mode, fragment never derived.\n';
+    const live = '# live\n\nTyped in source mode.\n';
     document.getText('source').insert(0, live);
-    expect(document.getXmlFragment('default').length).toBe(0);
 
     await loadDocument(persistence, document, docName);
 

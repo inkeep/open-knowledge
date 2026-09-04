@@ -1,46 +1,36 @@
 /**
- * Unit tests for the three sibling write-side primitives in
+ * Unit tests for the two sibling write-side primitives in
  * `bridge-intake.ts` — the shared substrate of the Y.Text-is-truth
- * contract (precedent #38). Each primitive owns one paired-write
- * semantics and gets its own `describe` block here:
+ * contract (precedent #38). Each primitive owns one write semantics and
+ * gets its own `describe` block here:
  *
  *   - `composeAndWriteRawBody` — file-watcher + agent-write semantics
- *     (parse → ytext-first applyFastDiff → fragment derive). Item-
- *     preserving via character-level DMP.
- *   - `replaceRawBody` — rollback semantics (parse → ytext-first FULL
- *     OVERWRITE delete/insert → fragment derive). The non-incremental
- *     replacement is the load-bearing signal to Y.UndoManager that this
- *     is a rollback, not an edit; DMP-based diff would over-preserve
- *     Items the user explicitly rolled back.
- *   - `deriveFragmentFromYtext` — agent-undo semantics (NO ytext write;
- *     UM.undo() has already mutated ytext to the post-undo state, this
- *     primitive only re-derives the fragment).
+ *     (line-aligned applyFastDiff). Item-preserving via character-level
+ *     DMP.
+ *   - `replaceRawBody` — rollback semantics (FULL OVERWRITE
+ *     delete/insert). The non-incremental replacement is the
+ *     load-bearing signal to Y.UndoManager that this is a rollback, not
+ *     an edit; DMP-based diff would over-preserve Items the user
+ *     explicitly rolled back.
  *
- * Properties exercised across the three blocks:
+ * Properties exercised across both blocks:
  *   - Y.Text receives raw bytes verbatim (no canonicalization)
- *   - XmlFragment derives from `parse(body)` via updateYFragment
- *   - Both writes are atomic inside the caller's outer transact
- *   - Write order is ytext-first then fragment
+ *   - The write lands inside the caller's outer transact, under the
+ *     caller's origin
  *   - Whitespace-meaningful bytes (leading/trailing newlines) survive
  *   - Source-form delimiters (`__foo__` not `**foo**`) survive
- *   - No primitive calls doc.transact() itself (caller-wrap is mandatory)
- *   - The primitive distinguishing-features hold under regression
- *     (replaceRawBody = full overwrite; deriveFragmentFromYtext = zero
- *     ytext writes)
+ *   - Neither primitive calls doc.transact() itself (caller-wrap is
+ *     mandatory)
+ *   - `replaceRawBody`'s full-overwrite distinguishing-feature holds
+ *     under regression
  */
 
-import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { ROLLBACK_ORIGIN } from './api-extension.ts';
-import {
-  composeAndWriteRawBody,
-  deriveFragmentFromYtext,
-  replaceRawBody,
-} from './bridge-intake.ts';
+import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
 import { FILE_WATCHER_ORIGIN } from './external-change.ts';
-import { mdManager, schema } from './md-manager.ts';
 
 describe('composeAndWriteRawBody — primitive contract', () => {
   let doc: Y.Doc;
@@ -118,45 +108,6 @@ describe('composeAndWriteRawBody — primitive contract', () => {
     expect(doc.getText('source').toString()).toBe(content);
   });
 
-  test('XmlFragment derives from parse(body) — fragment matches structural form', () => {
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, '# Heading\n\nbody\n', 'agent');
-    }, FILE_WATCHER_ORIGIN);
-
-    const xmlFragment = doc.getXmlFragment('default');
-    expect(xmlFragment.length).toBeGreaterThan(0);
-    expect(xmlFragment.length).toBe(2);
-  });
-
-  test('XmlFragment does NOT contain frontmatter content', () => {
-    const content = '---\ntitle: Test\n---\n# Heading\n';
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, content, 'agent');
-    }, FILE_WATCHER_ORIGIN);
-
-    const xmlFragment = doc.getXmlFragment('default');
-    const xmlString = xmlFragment.toString();
-    expect(xmlString).not.toContain('title: Test');
-    expect(xmlString).not.toContain('---');
-  });
-
-  test('bridge invariant holds: normalizeBridge(ytext) === normalizeBridge(serialize(fragment) + fm)', () => {
-    const content = '---\ntitle: Test\n---\n# Heading\n\nbody\n';
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, content, 'agent');
-    }, FILE_WATCHER_ORIGIN);
-
-    const ytext = doc.getText('source').toString();
-    const xmlFragment = doc.getXmlFragment('default');
-    const fragmentBody = mdManager.serialize(
-      yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON(),
-    );
-    const { frontmatter } = stripFrontmatter(ytext);
-    const fragmentFull = `${frontmatter}${fragmentBody}`;
-
-    expect(normalizeBridge(ytext)).toBe(normalizeBridge(fragmentFull));
-  });
-
   test('idempotent — second call with same content does not mutate Y.Text', () => {
     const content = '# Heading\n\nbody\n';
     doc.transact(() => {
@@ -202,32 +153,11 @@ describe('composeAndWriteRawBody — primitive contract', () => {
     expect(tx).toBe(1);
   });
 
-  test('Y.Text is mutated before XmlFragment (write-order contract per FR-30)', () => {
-    const events: string[] = [];
-    const xmlFragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-    xmlFragment.observeDeep(() => events.push('xml'));
-    ytext.observe(() => events.push('ytext'));
-
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, '# Test\n', 'agent');
-    }, FILE_WATCHER_ORIGIN);
-
-    expect(events.length).toBeGreaterThanOrEqual(2);
-    expect(events.indexOf('ytext')).toBeLessThan(events.indexOf('xml'));
-  });
-
-  test('writes XmlFragment + Y.Text atomically inside one caller-wrap transact', () => {
-    let xmlObserved = false;
+  test('writes Y.Text inside the caller-wrap transact, under the caller origin', () => {
     let textObserved = false;
     let observedTxOrigin: unknown;
-    const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
 
-    xmlFragment.observeDeep((_events, transaction) => {
-      xmlObserved = true;
-      observedTxOrigin = transaction.origin;
-    });
     ytext.observe((_event, transaction) => {
       textObserved = true;
       observedTxOrigin = transaction.origin;
@@ -237,7 +167,6 @@ describe('composeAndWriteRawBody — primitive contract', () => {
       composeAndWriteRawBody(doc, '# Test\n', 'agent');
     }, FILE_WATCHER_ORIGIN);
 
-    expect(xmlObserved).toBe(true);
     expect(textObserved).toBe(true);
     expect(observedTxOrigin).toBe(FILE_WATCHER_ORIGIN);
   });
@@ -259,26 +188,6 @@ describe('composeAndWriteRawBody — primitive contract', () => {
     }).not.toThrow();
 
     expect(doc.getText('source').toString()).toBe('');
-  });
-
-  test('embedResolver context is threaded through to mdManager.parseWithFallback', () => {
-    let calledWithBasename = '';
-    let calledWithSourcePath = '';
-    const embedResolver = {
-      resolveEmbed: (basename: string, sourcePath: string): string | null => {
-        calledWithBasename = basename;
-        calledWithSourcePath = sourcePath;
-        return `/resolved/${basename}`;
-      },
-      sourcePath: 'docs/feature.md',
-    };
-
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, '![[photo.png]]\n', 'file-watcher', embedResolver);
-    }, FILE_WATCHER_ORIGIN);
-
-    expect(calledWithBasename).toBe('photo.png');
-    expect(calledWithSourcePath).toBe('docs/feature.md');
   });
 });
 
@@ -323,32 +232,6 @@ describe('replaceRawBody — primitive contract', () => {
     expect(doc.getText('source').toString()).toBe(content);
   });
 
-  test('XmlFragment derives from parse(body) — fragment matches structural form', () => {
-    doc.transact(() => {
-      replaceRawBody(doc, '# Heading\n\nbody paragraph\n');
-    }, ROLLBACK_ORIGIN);
-
-    const xmlFragment = doc.getXmlFragment('default');
-    const pmRoot = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema);
-    expect(pmRoot.firstChild?.type.name).toBe('heading');
-    expect(pmRoot.lastChild?.type.name).toBe('paragraph');
-  });
-
-  test('bridge invariant holds: normalizeBridge(ytext) === normalizeBridge(serialize(fragment) + fm)', () => {
-    const content = '---\ntitle: t\n---\n\n# H\n\nbody\n';
-    doc.transact(() => {
-      replaceRawBody(doc, content);
-    }, ROLLBACK_ORIGIN);
-
-    const ytext = doc.getText('source').toString();
-    const xmlFragment = doc.getXmlFragment('default');
-    const pmRoot = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema);
-    const serialized = mdManager.serialize(pmRoot.toJSON());
-    const { frontmatter } = stripFrontmatter(content);
-    const reconstituted = `${frontmatter}\n\n${serialized}`;
-    expect(normalizeBridge(ytext)).toBe(normalizeBridge(reconstituted));
-  });
-
   test('does not call doc.transact() — caller-wrap is mandatory for atomicity', () => {
     let tx = 0;
     doc.on('beforeTransaction', () => {
@@ -362,32 +245,11 @@ describe('replaceRawBody — primitive contract', () => {
     expect(tx).toBe(1);
   });
 
-  test('Y.Text is mutated before XmlFragment (write-order contract per FR-30 D4)', () => {
-    const events: string[] = [];
-    const xmlFragment = doc.getXmlFragment('default');
-    const ytext = doc.getText('source');
-    xmlFragment.observeDeep(() => events.push('xml'));
-    ytext.observe(() => events.push('ytext'));
-
-    doc.transact(() => {
-      replaceRawBody(doc, '# Test\n');
-    }, ROLLBACK_ORIGIN);
-
-    expect(events.length).toBeGreaterThanOrEqual(2);
-    expect(events.indexOf('ytext')).toBeLessThan(events.indexOf('xml'));
-  });
-
-  test('writes XmlFragment + Y.Text atomically inside one caller-wrap transact under ROLLBACK_ORIGIN', () => {
-    let xmlObserved = false;
+  test('writes Y.Text inside the caller-wrap transact, under ROLLBACK_ORIGIN', () => {
     let textObserved = false;
     let observedTxOrigin: unknown;
-    const xmlFragment = doc.getXmlFragment('default');
     const ytext = doc.getText('source');
 
-    xmlFragment.observeDeep((_events, transaction) => {
-      xmlObserved = true;
-      observedTxOrigin = transaction.origin;
-    });
     ytext.observe((_event, transaction) => {
       textObserved = true;
       observedTxOrigin = transaction.origin;
@@ -397,7 +259,6 @@ describe('replaceRawBody — primitive contract', () => {
       replaceRawBody(doc, '# Test\n');
     }, ROLLBACK_ORIGIN);
 
-    expect(xmlObserved).toBe(true);
     expect(textObserved).toBe(true);
     expect(observedTxOrigin).toBe(ROLLBACK_ORIGIN);
   });
@@ -459,46 +320,5 @@ describe('replaceRawBody — primitive contract', () => {
       }, ROLLBACK_ORIGIN);
     }).not.toThrow();
     expect(doc.getText('source').toString()).toBe('');
-  });
-});
-
-describe('deriveFragmentFromYtext — primitive contract', () => {
-  let doc: Y.Doc;
-
-  beforeEach(() => {
-    doc = new Y.Doc();
-  });
-
-  test('writes ZERO bytes to Y.Text — distinguishing-feature pin', () => {
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, '# Heading\n\nbody\n', 'file-watcher');
-    }, FILE_WATCHER_ORIGIN);
-
-    let textMutations = 0;
-    const observer = (): void => {
-      textMutations++;
-    };
-    const ytext = doc.getText('source');
-    ytext.observe(observer);
-
-    doc.transact(() => {
-      deriveFragmentFromYtext(doc);
-    }, FILE_WATCHER_ORIGIN);
-
-    ytext.unobserve(observer);
-    expect(textMutations).toBe(0);
-  });
-
-  test('preserves Y.Text bytes verbatim across the call', () => {
-    const seed = '# Heading\n\nbody\n';
-    doc.transact(() => {
-      composeAndWriteRawBody(doc, seed, 'file-watcher');
-    }, FILE_WATCHER_ORIGIN);
-
-    doc.transact(() => {
-      deriveFragmentFromYtext(doc);
-    }, FILE_WATCHER_ORIGIN);
-
-    expect(doc.getText('source').toString()).toBe(seed);
   });
 });

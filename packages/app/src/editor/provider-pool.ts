@@ -1,16 +1,12 @@
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   addsBlankLines,
-  composeWithDerivedBody,
   LINEAGE_EPOCH_KEY,
-  MarkdownManager,
   normalizeBridge,
   randomUUID,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { HocuspocusAuthRejectionReason } from '@inkeep/open-knowledge-server';
-import { getSchema } from '@tiptap/core';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { buildAuthToken } from '../lib/auth-token';
 import { readNumericOverride } from '../lib/perf/env-override';
@@ -28,18 +24,15 @@ import {
   UNKNOWN_BRANCH_SENTINEL,
 } from './client-persistence';
 import { appendTraceContextToCollabUrl } from './collab-otel';
-import { sharedExtensions } from './extensions/shared.ts';
 import { isSystemDoc } from './is-system-doc';
 import { getMountId } from './mount-id-registry';
-import { setupObservers } from './observers';
-import { projectionBindingEnabled } from './projection-binding';
 import {
   consumeReplayOutboxEntry,
   ReplayOutboxTimeoutError,
   readReplayOutboxEntry,
   writeReplayOutboxEntry,
 } from './replay-outbox';
-import { BridgeSetupError, invalidateSyncPromise, rejectSyncPromise } from './sync-promise';
+import { invalidateSyncPromise } from './sync-promise';
 
 export const TAB_REPLAY_ORIGIN = Object.freeze({ kind: 'tab-replay' } as const);
 
@@ -94,7 +87,6 @@ interface PoolEntryBase {
 interface ActivePoolEntry extends PoolEntryBase {
   kind: 'active';
   persistence: ClientPersistenceProvider | null;
-  observerCleanup: (() => void) | null;
   observerFireCounterCleanup: (() => void) | null;
   pendingRecycleTimer: ReturnType<typeof setTimeout> | null;
   persistenceAttachOwned: boolean;
@@ -105,7 +97,6 @@ interface ActivePoolEntry extends PoolEntryBase {
 interface TearingDownPoolEntry extends PoolEntryBase {
   kind: 'tearing-down';
   persistence: null;
-  observerCleanup: null;
   observerFireCounterCleanup: null;
   pendingRecycleTimer: null;
   serverDrivenCloseReauthInFlight: false;
@@ -151,19 +142,12 @@ function installProviderObserverCounter(doc: Y.Doc, docName: string): () => void
 
 type PoolChangeCallback = () => void;
 
-let editorSchema: ReturnType<typeof getSchema> | null = null;
-
-function getEditorSchema(): ReturnType<typeof getSchema> {
-  editorSchema ??= getSchema(sharedExtensions);
-  return editorSchema;
-}
-
 const RECYCLE_DEBOUNCE_MS = 4_000;
 const CLEAR_DATA_TIMEOUT_MS = 10_000;
 
 function hasMaterializedLocalContent(doc: Y.Doc): boolean {
   try {
-    return doc.getText('source').length > 0 || doc.getXmlFragment('default').length > 0;
+    return doc.getText('source').length > 0;
   } catch {
     return false;
   }
@@ -1010,7 +994,6 @@ export class ProviderPool {
       lastServerSyncedSV: null,
       lastServerSyncedContent: null,
       lastDiskAckedSV: null,
-      observerCleanup: null,
       observerFireCounterCleanup: installProviderObserverCounter(provider.document, docName),
       syncState: 'connecting',
       docName,
@@ -1051,27 +1034,6 @@ export class ProviderPool {
       entry.serverDrivenCloseReauthAttempts = 0;
       this.markServerRestartRecoverySynced(docName);
       this.notify();
-
-      if (!entry.observerCleanup) {
-        try {
-          const doc = provider.document;
-          const mdMgr = new MarkdownManager({ extensions: sharedExtensions });
-          entry.observerCleanup = setupObservers({
-            doc,
-            xmlFragment: doc.getXmlFragment('default'),
-            ytext: doc.getText('source'),
-            mdManager: mdMgr,
-            schema: getEditorSchema(),
-            onSyncError: (direction, error) => {
-              console.warn(`[Sync] ${direction} failed for ${docName}:`, error.message);
-            },
-          });
-        } catch (err) {
-          console.error(`[ProviderPool] setupObservers init failed for ${docName}:`, err);
-          entry.bridgeSetupFailed = true;
-          rejectSyncPromise(docName, new BridgeSetupError(docName, err));
-        }
-      }
     };
     const onDisconnect = () => {
       if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
@@ -1656,57 +1618,31 @@ export class ProviderPool {
     try {
       Y.applyUpdate(replica, fullState);
       const oursYtext = replica.getText('source').toString();
-      const { frontmatter: oursFm, body: oursYtextBody } = stripFrontmatter(oursYtext);
+      const { body: oursYtextBody } = stripFrontmatter(oursYtext);
       const theirs = provider.document.getText('source').toString();
       const { body: theirsBody } = stripFrontmatter(theirs);
       const theirsNorm = normalizeBridge(theirsBody);
       const matchesServer = (body: string): boolean =>
         normalizeBridge(body) === theirsNorm && !addsBlankLines(theirsBody, body);
       const ytextClean = matchesServer(oursYtextBody);
-      let ours: string;
-      let surface: 'fragment' | 'ytext';
-      if (projectionBindingEnabled()) {
-        if (base === null) {
-          this.emitStructuredClientRecoveryEvent({
-            event: 'ok-buffer-replay-diverged',
-            ...this.recoveryTelemetryBase(docName),
-          });
-          return false;
-        }
-        const { body: baseBody } = stripFrontmatter(base);
-        if (matchesServer(baseBody) === false) {
-          this.emitStructuredClientRecoveryEvent({
-            event: 'ok-buffer-replay-diverged',
-            ...this.recoveryTelemetryBase(docName),
-          });
-          return false;
-        }
-        if (ytextClean) return true;
-        ours = oursYtext;
-        surface = 'ytext';
-      } else {
-        const fragJson = yXmlFragmentToProseMirrorRootNode(
-          replica.getXmlFragment('default'),
-          getEditorSchema(),
-        ).toJSON();
-        const mdMgr = new MarkdownManager({ extensions: sharedExtensions });
-        const oursFragBody = mdMgr.serialize(fragJson);
-        const fragClean = matchesServer(oursFragBody);
-        if (ytextClean && fragClean) return true;
-        if (ytextClean) {
-          ours = composeWithDerivedBody(oursFm, oursFragBody).md;
-          surface = 'fragment';
-        } else if (fragClean) {
-          ours = oursYtext;
-          surface = 'ytext';
-        } else {
-          this.emitStructuredClientRecoveryEvent({
-            event: 'ok-buffer-replay-diverged',
-            ...this.recoveryTelemetryBase(docName),
-          });
-          return false;
-        }
+      if (base === null) {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-diverged',
+          ...this.recoveryTelemetryBase(docName),
+        });
+        return false;
       }
+      const { body: baseBody } = stripFrontmatter(base);
+      if (matchesServer(baseBody) === false) {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-diverged',
+          ...this.recoveryTelemetryBase(docName),
+        });
+        return false;
+      }
+      if (ytextClean) return true;
+      const ours = oursYtext;
+      const surface = 'ytext';
       if (ours !== theirs) {
         const maxScan = Math.min(ours.length, theirs.length);
         let prefix = 0;
@@ -2065,7 +2001,6 @@ export class ProviderPool {
   private destroyEntry(entry: PoolEntry): void {
     if (entry.kind === 'tearing-down') return;
 
-    const observerCleanup = entry.observerCleanup;
     const observerFireCounterCleanup = entry.observerFireCounterCleanup;
     const persistence = entry.persistence;
     const pendingRecycleTimer = entry.pendingRecycleTimer;
@@ -2074,7 +2009,6 @@ export class ProviderPool {
     const torn = entry as unknown as TearingDownPoolEntry;
     torn.kind = 'tearing-down';
     torn.persistence = null;
-    torn.observerCleanup = null;
     torn.observerFireCounterCleanup = null;
     torn.pendingRecycleTimer = null;
     torn.serverDrivenCloseReauthInFlight = false;
@@ -2084,11 +2018,6 @@ export class ProviderPool {
 
     invalidateSyncPromise(docName);
     this.fireEvict(docName);
-    try {
-      observerCleanup?.();
-    } catch (err) {
-      console.warn(`[ProviderPool] observer cleanup threw for ${docName}:`, err);
-    }
     try {
       observerFireCounterCleanup?.();
     } catch (err) {

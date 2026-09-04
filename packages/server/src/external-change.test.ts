@@ -223,15 +223,17 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       const conn = await hp.openDirectConnection(docName);
 
       const doc = getDoc(conn);
-      const originalGetXmlFragment = doc.getXmlFragment.bind(doc);
-      doc.getXmlFragment = () => {
-        throw new Error('synthetic getXmlFragment failure');
-      };
-
       doc.getText('source').insert(0, '# Original\n');
       const textBefore = doc.getText('source').toString();
 
+      const originalGetText = doc.getText.bind(doc);
+      doc.getText = () => {
+        throw new Error('synthetic getText failure');
+      };
+
       await expect(handler(docName, '# Content\n')).resolves.toBeUndefined();
+
+      doc.getText = originalGetText;
 
       expect(errorSpy).toHaveBeenCalled();
       const callArgs = errorSpy.mock.calls[0] ?? [];
@@ -240,7 +242,6 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
 
       expect(doc.getText('source').toString()).toBe(textBefore);
 
-      doc.getXmlFragment = originalGetXmlFragment;
       await conn.disconnect();
     } finally {
       errorSpy.mockRestore();
@@ -256,8 +257,8 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       const conn = await hp.openDirectConnection(docName);
 
       const doc = getDoc(conn);
-      const originalGetXmlFragment = doc.getXmlFragment.bind(doc);
-      doc.getXmlFragment = () => {
+      const originalGetText = doc.getText.bind(doc);
+      doc.getText = () => {
         throw new BridgeInvariantViolationError({
           site: 'observer-b',
           docName,
@@ -272,9 +273,9 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
         BridgeInvariantViolationError,
       );
 
+      doc.getText = originalGetText;
       expect(errorSpy).not.toHaveBeenCalled();
 
-      doc.getXmlFragment = originalGetXmlFragment;
       await conn.disconnect();
     } finally {
       errorSpy.mockRestore();
@@ -292,8 +293,8 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
       const conn = await hp.openDirectConnection(docName);
 
       const doc = getDoc(conn);
-      const originalGetXmlFragment = doc.getXmlFragment.bind(doc);
-      doc.getXmlFragment = () => {
+      const originalGetText = doc.getText.bind(doc);
+      doc.getText = () => {
         throw new BridgeMergeContentLossError({
           baseline: 'base',
           userText: 'user',
@@ -309,9 +310,9 @@ describe('createExternalChangeHandler — error-swallowing factory', () => {
         BridgeMergeContentLossError,
       );
 
+      doc.getText = originalGetText;
       expect(errorSpy).not.toHaveBeenCalled();
 
-      doc.getXmlFragment = originalGetXmlFragment;
       await conn.disconnect();
     } finally {
       console.error = originalError;

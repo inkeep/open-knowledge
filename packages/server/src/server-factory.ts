@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
 import { Hocuspocus, IncomingMessage, MessageType } from '@hocuspocus/server';
 import {
@@ -118,7 +118,6 @@ import {
   DerivedDocumentIndex,
   type DerivedDocumentIndexBranchTransition,
 } from './derived-document-index.ts';
-import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import {
   canonicalDocName,
   docNameToRelativePath,
@@ -137,11 +136,7 @@ import {
   SemanticSearchService,
   secretsFilePath,
 } from './embeddings/index.ts';
-import {
-  applyExternalChange,
-  FILE_WATCHER_ORIGIN,
-  serializeYDocSource,
-} from './external-change.ts';
+import { applyExternalChange, serializeYDocSource } from './external-change.ts';
 import {
   assertNeverDiskEvent,
   contentHash,
@@ -2024,15 +2019,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   const applyToDoc = (docName: string, content: string): void =>
-    applyExternalChange(
-      durabilityState,
-      hocuspocus,
-      docName,
-      content,
-      resolveEmbed,
-      resolveSize,
-      bridgeLossReporter,
-    );
+    applyExternalChange(durabilityState, hocuspocus, docName, content);
 
   function clearLifecycleConflict(document: Document): void {
     if (!isDocInConflict(document)) return;
@@ -2047,47 +2034,6 @@ export function createServer(options: ServerOptions): ServerInstance {
     lifecycleMap.delete('status');
     lifecycleMap.delete('reason');
   }
-
-  const rerenderDocsReferencingAssetBasename = (assetBasename: string): void => {
-    if (!assetBasename) return;
-    const needle = `[[${assetBasename}]]`;
-    for (const [docName] of hocuspocus.documents) {
-      if (isReservedForUserTree(docName)) continue;
-      const document = hocuspocus.documents.get(docName);
-      if (!document) continue;
-      const source = document.getText('source').toString();
-      if (!source.includes(needle)) continue;
-      try {
-        document.transact(() => {
-          applyDiskContentToDoc(document, source, resolveEmbed, docName);
-        }, FILE_WATCHER_ORIGIN);
-      } catch (err) {
-        log.error(
-          { err, docName, assetBasename },
-          `[asset-event] failed to re-render ${docName} for asset basename ${assetBasename}`,
-        );
-      }
-    }
-  };
-
-  let pendingAssetRerenderBasenames: Set<string> | null = null;
-  const scheduleAssetRerender = (assetBasename: string): void => {
-    if (!assetBasename) return;
-    if (pendingAssetRerenderBasenames === null) {
-      pendingAssetRerenderBasenames = new Set();
-      setImmediate(() => {
-        const toRender = pendingAssetRerenderBasenames;
-        pendingAssetRerenderBasenames = null;
-        if (!toRender) return;
-        try {
-          for (const b of toRender) rerenderDocsReferencingAssetBasename(b);
-        } catch (err) {
-          log.error({ err, basenames: [...toRender] }, '[asset-event] dedup rerender pass crashed');
-        }
-      });
-    }
-    pendingAssetRerenderBasenames.add(assetBasename);
-  };
 
   function diskEventLabel(event: DiskEvent): string {
     switch (event.kind) {
@@ -2363,13 +2309,11 @@ export function createServer(options: ServerOptions): ServerInstance {
         case 'asset-create': {
           basenameIndex.add(event.relativePath);
           signalChannel('files');
-          scheduleAssetRerender(basename(event.relativePath));
           break;
         }
         case 'asset-delete': {
           basenameIndex.remove(event.relativePath);
           signalChannel('files');
-          scheduleAssetRerender(basename(event.relativePath));
           break;
         }
         case 'folder-create':

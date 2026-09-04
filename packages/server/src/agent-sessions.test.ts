@@ -368,7 +368,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     }
     expect(session.um.undoStack.length).toBe(4);
 
-    const undone = applyAgentUndo(session, 'count', undefined, 2);
+    const undone = applyAgentUndo(session, 'count', 2);
     expect(undone).toBe(true);
     expect(session.um.undoStack.length).toBe(2);
   });
@@ -382,7 +382,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     session.dc.document.transact(() => ytext.insert(0, 'y'), session.origin);
     expect(session.um.undoStack.length).toBe(2);
 
-    expect(applyAgentUndo(session, 'count', undefined, 99)).toBe(true);
+    expect(applyAgentUndo(session, 'count', 99)).toBe(true);
     expect(session.um.undoStack.length).toBe(0);
   });
 
@@ -392,7 +392,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     session.dc.document.transact(() => ytext.insert(0, 'z'), session.origin);
     expect(session.um.undoStack.length).toBe(1);
 
-    expect(applyAgentUndo(session, 'count', undefined, 0)).toBe(false);
+    expect(applyAgentUndo(session, 'count', 0)).toBe(false);
     expect(session.um.undoStack.length).toBe(1);
   });
 
@@ -401,42 +401,6 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     expect(session.um.undoStack.length).toBe(0);
     expect(applyAgentUndo(session, 'session')).toBe(false);
     expect(applyAgentUndo(session, 'last')).toBe(false);
-  });
-
-  test('post-undo XmlFragment uses embedResolver for `![[file]]` refs', async () => {
-    const session = await manager.getSession('doc-resolve.md', 'agent-resolve');
-    const xmlFragment = session.dc.document.getXmlFragment('default');
-    const ytext = session.dc.document.getText('source');
-
-    const embedResolver = {
-      resolveEmbed: (basename: string) =>
-        basename === 'photo.png' ? 'attachments/photo.png' : null,
-      sourcePath: 'doc-resolve.md',
-    };
-
-    session.dc.document.transact(() => {
-      applyAgentMarkdownWrite(session.dc.document, '![[photo.png]]\n', 'replace', embedResolver);
-    }, session.origin);
-    session.um.stopCapturing();
-
-    session.dc.document.transact(() => {
-      applyAgentMarkdownWrite(session.dc.document, '# Heading\n', 'replace', embedResolver);
-    }, session.origin);
-
-    expect(ytext.toString()).toContain('# Heading');
-
-    const undone = applyAgentUndo(session, 'last', embedResolver);
-    expect(undone).toBe(true);
-
-    const schema = getSchema(sharedExtensions);
-    const pmJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
-    const node = pmJson.content?.[0] as
-      | { type?: string; attrs?: { componentName?: string; props?: Record<string, unknown> } }
-      | undefined;
-    expect(node?.type).toBe('jsxComponent');
-    expect(node?.attrs?.componentName).toBe('WikiEmbedImage');
-    expect(node?.attrs?.props?.src).toBe('/attachments/photo.png');
-    expect(node?.attrs?.props?.target).toBe('photo.png');
   });
 });
 

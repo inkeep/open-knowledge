@@ -280,7 +280,7 @@ describe('store/load round-trip', () => {
     expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
   });
 
-  test('load seeds Y.Text + XmlFragment from disk (paired-write)', () => {
+  test('load seeds Y.Text from disk', () => {
     const ctx = makeCtx();
     const path = managedArtifactAbsPath(docName, ctx);
     mkdirSync(resolve(path, '..'), { recursive: true });
@@ -288,7 +288,6 @@ describe('store/load round-trip', () => {
     const doc = new Y.Doc();
     loadManagedArtifactDoc(doc, docName, ctx);
     expect(doc.getText('source').toString()).toBe(SRC);
-    expect(doc.getXmlFragment('default').length).toBeGreaterThan(0);
     expect(reconciled.get(docName)).toBe(SRC);
   });
 

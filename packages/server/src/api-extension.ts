@@ -187,13 +187,10 @@ import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
-  agentWriteLossDetect,
   agentWritePreDrain,
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
-  prepareAgentMarkdownParse,
-  prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
 import {
@@ -326,7 +323,7 @@ import {
   ManagedRenameSourceNotFoundError,
   ManagedRenameSourceTypeMismatchError,
 } from './apply-managed-rename.ts';
-import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
+import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import {
@@ -454,7 +451,6 @@ import {
   incrementSummariesTruncated,
 } from './metrics.ts';
 import { createMultipartParser, type MultipartParser } from './multipart.ts';
-import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { openPluginBaselines } from './plugin-skill-baseline.ts';
 import {
@@ -589,9 +585,8 @@ export const ROLLBACK_ORIGIN = {
  * and so server observers can resolve `context.paired` without importing the
  * object transitively.
  *
- * `paired: true` — the caller atomically writes BOTH XmlFragment (via
- * `updateYFragment`) and Y.Text (via `applyFastDiff`) inside one transact
- * block. `satisfies PairedWriteOrigin` is the compile-time gate.
+ * `paired: true` — retained so server observers still classify the write.
+ * `satisfies PairedWriteOrigin` is the compile-time gate.
  */
 export const MANAGED_RENAME_ORIGIN = {
   source: 'local' as const,
@@ -1583,7 +1578,6 @@ export function createApiExtension(
     localOpCliArgs = ['open-knowledge'],
     authStreamHeartbeatMs,
     projectDir,
-    getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
     savedThemeLockTimeoutMs,
@@ -2368,7 +2362,7 @@ export function createApiExtension(
       if (result.rewrites === 0) {
         return;
       }
-      composeAndWriteRawBody(document, result.markdown, 'managed-rename', false);
+      composeAndWriteRawBody(document, result.markdown, 'managed-rename');
     }, MANAGED_RENAME_ORIGIN);
     return result;
   }
@@ -2423,7 +2417,7 @@ export function createApiExtension(
       if (result.rewrites === 0) {
         return;
       }
-      composeAndWriteRawBody(document, result.markdown, 'managed-rename', false);
+      composeAndWriteRawBody(document, result.markdown, 'managed-rename');
     }, MANAGED_RENAME_ORIGIN);
     return result;
   }
@@ -2693,14 +2687,7 @@ export function createApiExtension(
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(
-            durabilityState,
-            hocuspocus,
-            sourceDocName,
-            contentDir,
-            undefined,
-            getBridgeLossReporter?.(),
-          );
+          reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, sourceDocName, contentDir);
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
           }
@@ -2895,14 +2882,7 @@ export function createApiExtension(
               }
             }
 
-            reconcileDiskBeforeAgentWrite(
-              durabilityState,
-              hocuspocus,
-              docName,
-              contentDir,
-              undefined,
-              getBridgeLossReporter?.(),
-            );
+            reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, docName, contentDir);
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
               snapshotContents.set(docName, content);
@@ -3451,8 +3431,6 @@ export function createApiExtension(
           hocuspocus,
           docName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
         );
 
         const timestamp = new Date().toISOString();
@@ -3483,16 +3461,7 @@ export function createApiExtension(
           agentWritePreDrain(session.dc.document, `${content}\n`, 'append');
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
-            applyAgentMarkdownWrite(
-              session.dc.document,
-              `${content}\n`,
-              'append',
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-                : undefined,
-              undefined,
-              agentWriteLossDetect(session),
-            );
+            applyAgentMarkdownWrite(session.dc.document, `${content}\n`, 'append');
 
             const changedBlocks =
               changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
@@ -3620,18 +3589,6 @@ export function createApiExtension(
           hocuspocus,
           resolvedDocName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
-        );
-
-        const writeMdEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-          : undefined;
-        const writeMdPrecomputed = await prepareAgentMarkdownParse(
-          session.dc.document,
-          body.markdown,
-          position,
-          writeMdEmbedResolver,
         );
 
         const timestamp = new Date().toISOString();
@@ -3661,14 +3618,7 @@ export function createApiExtension(
           agentWritePreDrain(session.dc.document, body.markdown, position);
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
-            writeDivergence = applyAgentMarkdownWrite(
-              session.dc.document,
-              body.markdown,
-              position,
-              writeMdEmbedResolver,
-              writeMdPrecomputed,
-              agentWriteLossDetect(session),
-            );
+            writeDivergence = applyAgentMarkdownWrite(session.dc.document, body.markdown, position);
 
             const changedBlocks =
               changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
@@ -3956,18 +3906,6 @@ export function createApiExtension(
                 hocuspocus,
                 resolvedDocName,
                 contentDir,
-                options.resolveEmbed,
-                getBridgeLossReporter?.(),
-              );
-
-              const entryEmbedResolver = options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                : undefined;
-              const entryPrecomputed = await prepareAgentMarkdownParse(
-                session.dc.document,
-                entry.markdown,
-                entry.position ?? 'append',
-                entryEmbedResolver,
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
@@ -3986,9 +3924,6 @@ export function createApiExtension(
                     session.dc.document,
                     entry.markdown,
                     entry.position ?? 'append',
-                    entryEmbedResolver,
-                    entryPrecomputed,
-                    agentWriteLossDetect(session),
                   );
 
                   const changedBlocks =
@@ -4181,11 +4116,7 @@ export function createApiExtension(
           hocuspocus,
           resolvedDocName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
         );
-
-        const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
 
         const timestamp = new Date().toISOString();
 
@@ -4231,20 +4162,13 @@ export function createApiExtension(
                 }
 
                 if (result.nextFenced !== currentFenced) {
-                  // primitive (precedent #38, bridge-intake.ts) so paired-
                   const needsFenceSeparator =
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
                   const newFull = composeWithDerivedFrontmatter(
                     result.nextFenced,
                     (needsFenceSeparator ? '\n' : '') + currentBody,
                   ).md;
-                  composeAndWriteRawBody(
-                    session.dc.document,
-                    newFull,
-                    'agent',
-                    undefined,
-                    fmPatchPrecomputed,
-                  );
+                  composeAndWriteRawBody(session.dc.document, newFull, 'agent');
                   recordFrontmatterEditSurface('mcp-write');
                   bodyMutated = true;
                 }
@@ -4437,35 +4361,7 @@ export function createApiExtension(
           hocuspocus,
           docName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
         );
-
-        const patchEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-          : undefined;
-        let patchPrecomputed: PrecomputedParse | undefined;
-        {
-          const preSnapshot = session.dc.document.getText('source').toString();
-          const { frontmatter: preFm, body: preBody } = stripFrontmatter(preSnapshot);
-          const preFull = prependFrontmatter(preFm, preBody);
-          const prePos =
-            offset == null
-              ? preFull.indexOf(find)
-              : preFull.slice(offset, offset + find.length) === find
-                ? offset
-                : -1;
-          if (prePos !== -1 && prePos >= preFm.length) {
-            const guessFull =
-              preFull.slice(0, prePos) + replace + preFull.slice(prePos + find.length);
-            patchPrecomputed = await prepareAgentMarkdownParse(
-              session.dc.document,
-              stripFrontmatter(guessFull).body,
-              'patch',
-              patchEmbedResolver,
-            );
-          }
-        }
 
         const timestamp = new Date().toISOString();
 
@@ -4539,14 +4435,7 @@ export function createApiExtension(
 
             const { body: newBody } = stripFrontmatter(newFull);
             const beforeBlocks = snapshotBlocks(session.dc.document);
-            patchDivergence = applyAgentMarkdownWrite(
-              session.dc.document,
-              newBody,
-              'patch',
-              patchEmbedResolver,
-              patchPrecomputed,
-              agentWriteLossDetect(session),
-            );
+            patchDivergence = applyAgentMarkdownWrite(session.dc.document, newBody, 'patch');
 
             const changedBlocks =
               changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
@@ -4799,14 +4688,7 @@ export function createApiExtension(
             mode: 'writing',
             ts: Date.now(),
           });
-          undone = applyAgentUndo(
-            session,
-            scope,
-            options.resolveEmbed
-              ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-              : undefined,
-            count,
-          );
+          undone = applyAgentUndo(session, scope, count);
           if (undone) {
             recordContributor(
               docName,
@@ -5342,13 +5224,9 @@ export function createApiExtension(
         }
 
         // (precedent #38 — Y.Text-is-truth) which performs the full ytext
-        const rollbackEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-          : undefined;
-        const rollbackPrecomputed = await precomputeParse(markdown, rollbackEmbedResolver);
         let rollbackDivergence: AgentWriteContentDivergence | undefined;
         document.transact(() => {
-          replaceRawBody(document, markdown, rollbackEmbedResolver, rollbackPrecomputed);
+          replaceRawBody(document, markdown);
           rollbackDivergence = evaluateContentDivergence(
             document.getText('source').toString(),
             markdown,
@@ -10820,16 +10698,7 @@ export function createApiExtension(
               ts: Date.now(),
             });
             session.dc.document.transact(() => {
-              applyAgentMarkdownWrite(
-                session.dc.document,
-                fixed,
-                'patch',
-                options.resolveEmbed
-                  ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                  : undefined,
-                undefined,
-                agentWriteLossDetect(session),
-              );
+              applyAgentMarkdownWrite(session.dc.document, fixed, 'patch');
             }, session.origin);
 
             if (actor.kind !== 'anonymous') {
