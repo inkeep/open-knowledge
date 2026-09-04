@@ -6,6 +6,7 @@ import {
   deriveEditorClipOptions,
   deriveEditorShiftOptions,
   deriveEditorSizeOptions,
+  editorVisibleBand,
 } from './editor-visible-region';
 
 function renderEditorInScroller(): { editor: Editor; scroller: HTMLElement } {
@@ -258,5 +259,40 @@ describe('deriveEditorSizeOptions', () => {
     floating.style.maxWidth = '123px';
     deriveEditorSizeOptions(preMountEditor())().apply({ elements: { floating } });
     expect(floating.style.maxWidth).toBe('');
+  });
+});
+
+function stubRect(el: HTMLElement, top: number, bottom: number): void {
+  el.getBoundingClientRect = () => new DOMRect(0, top, 0, bottom - top);
+}
+
+describe('editorVisibleBand', () => {
+  test('keeps both insets for a pre-mount editor', () => {
+    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    const band = editorVisibleBand(preMountEditor());
+    expect(band.top).toBe(TOOLBAR_HEIGHT);
+    expect(band.bottom).toBe(window.innerHeight - COMPOSER_HEIGHT_PX);
+  });
+
+  test('insets the container box by the toolbar and composer bands', () => {
+    const { editor, scroller } = renderEditorInScroller();
+    stubRect(scroller, 0, 800);
+    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    const band = editorVisibleBand(editor);
+    expect(band.top).toBe(TOOLBAR_HEIGHT);
+    expect(band.bottom).toBe(800 - COMPOSER_HEIGHT_PX);
+  });
+
+  test('collapses rather than inverting when the insets exceed the pane', () => {
+    const { editor, scroller } = renderEditorInScroller();
+    stubRect(scroller, 0, 200);
+    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
+    document.documentElement.style.setProperty(
+      '--conflict-footer-height',
+      `${CONFLICT_FOOTER_HEIGHT_PX}px`,
+    );
+    const band = editorVisibleBand(editor);
+    expect(band.bottom).toBeGreaterThanOrEqual(band.top);
+    expect(band.bottom).toBe(band.top);
   });
 });

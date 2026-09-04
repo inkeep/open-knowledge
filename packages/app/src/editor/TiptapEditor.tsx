@@ -50,6 +50,7 @@ import { mark } from '@/lib/perf';
 import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
+import { changedRangeIsOnScreen } from './agent-follow-scroll';
 import { applyLintFixes } from './apply-lint-fix.ts';
 import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
@@ -99,6 +100,7 @@ import {
 } from './source-editor-navigation';
 import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
+import { editorVisibleBand } from './utils/editor-visible-region';
 import { getEditorView } from './utils/get-editor-view';
 import { walkCurrencyExtension } from './walk-currency-extension';
 
@@ -904,25 +906,41 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       if (!loadFollowFilePref()) return;
       if (document.visibilityState !== 'visible') return;
       if (view.hasFocus()) return;
-      const scrollToChange = (): void => {
-        const sv = liveView();
-        if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
-        if (isScrollRestoreSuppressed(docName)) return;
+      const elementAtPos = (sv: PMEditorView, pos: number): HTMLElement | null => {
         try {
-          const docSize = sv.state.doc.content.size;
-          const pos = Math.max(0, Math.min(Math.floor((from + to) / 2), docSize - 1));
           const domRef = sv.domAtPos(pos);
           const node = domRef.node;
           const raw =
             node.nodeType === Node.TEXT_NODE
               ? node.parentElement
               : (node.childNodes[domRef.offset] ?? node);
-          const el = raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
-          if (el == null) return;
-          const rect = el.getBoundingClientRect();
-          if (rect.top >= 0 && rect.bottom <= window.innerHeight) return;
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        } catch {}
+          return raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
+        } catch {
+          return null;
+        }
+      };
+      const scrollToChange = (): void => {
+        const sv = liveView();
+        if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
+        if (isScrollRestoreSuppressed(docName)) return;
+        const docSize = sv.state.doc.content.size;
+        const clamp = (pos: number): number => Math.max(0, Math.min(pos, docSize - 1));
+        let start: { top: number; bottom: number };
+        let end: { top: number; bottom: number };
+        try {
+          start = sv.coordsAtPos(clamp(from));
+          end = sv.coordsAtPos(clamp(to));
+        } catch {
+          return;
+        }
+        const range = {
+          top: Math.min(start.top, end.top),
+          bottom: Math.max(start.bottom, end.bottom),
+        };
+        if (changedRangeIsOnScreen(range, editorVisibleBand(editor))) return;
+        const target = elementAtPos(sv, clamp(Math.floor((from + to) / 2)));
+        if (target === null) return;
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
       };
       requestAnimationFrame(scrollToChange);
       followUpTimers.push(

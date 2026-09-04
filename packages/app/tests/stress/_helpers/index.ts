@@ -24,6 +24,7 @@ export {
   readSourceCaretHead,
   readWysiwygCaretHead,
   scrollWysiwygBlockToTop,
+  TOOLBAR_OVERLAP_PX,
   toggleMode,
   waitForLandingSettled,
 } from './landing.ts';

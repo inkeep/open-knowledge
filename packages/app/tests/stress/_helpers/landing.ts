@@ -8,7 +8,7 @@ const SCROLL_CONTAINER_SELECTOR = '[data-testid="editor-scroll-container"]';
 const WYSIWYG_SELECTOR = '.ProseMirror:not(.composer-prosemirror)';
 const SOURCE_SELECTOR = '.cm-editor';
 const CHUNK_WRAPPER_SELECTOR = `${WYSIWYG_SELECTOR} .ok-chunk-wrapper`;
-const TOOLBAR_OVERLAP_PX = 56;
+export const TOOLBAR_OVERLAP_PX = 56;
 
 const MODE_RADIO_NAME: Record<LandingMode, string> = {
   wysiwyg: 'Visual editor',
