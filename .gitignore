@@ -32,6 +32,11 @@ blob-report/
 .mirror-output/
 /test-doc.md
 
+# Local-only working notes for the single-CRDT migration. Not part of the public
+# mirror and deliberately kept out of branch history; see the archive branch
+# single-crdt-specs-archive for the versioned copy.
+/feature-specs/
+
 # Env files (keep .env.example committed)
 .env
 .env.local
