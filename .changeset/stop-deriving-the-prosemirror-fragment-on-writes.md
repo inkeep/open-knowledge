@@ -8,7 +8,13 @@ Every write used to land twice: once as the Markdown source, and again as a pars
 
 What you should notice is speed: large-document agent writes and rapid external file changes do less work per write. What you should not notice is any change in what reaches disk — the Markdown source has been the source of truth for the written bytes throughout, and that path is untouched.
 
-Two smaller consequences:
+Three smaller consequences:
 
+- **Rapid successive writes to one file can now share a single version-history
+  entry.** Saves are batched into a commit window, and the write path is now fast
+  enough that two writes landing back-to-back — an agent making two edits in a
+  row, say — often fall inside the same window. Nothing is lost: the file holds
+  the result of every write, and edits made seconds apart still get their own
+  entry. There are simply fewer, larger steps to step back through.
 - Version-history entries recorded before this release stay readable. Duplication-reset checkpoints minted from now on omit a fragment-size field that no longer has a value behind it.
 - `applyExternalChange`, `applyAgentMarkdownWrite`, `applyAgentUndo` and `createExternalChangeHandler` drop their now-unused embed-resolver, pre-parse and loss-reporter parameters. Only callers passing those trailing arguments are affected.
