@@ -405,7 +405,7 @@ describe('RecentlyRemovedDocs — cache lifecycle', () => {
     expect(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
   }, 30_000);
 
-  test.skip("active-tab end-to-end: server-side rename of an open doc fires authenticationFailed with 'rename-redirect:<newDocName>'", async () => {
+  test("active-tab end-to-end: server-side rename of an open doc fires authenticationFailed with 'rename-redirect:<newDocName>'", async () => {
     const { HocuspocusProvider } = await import('@hocuspocus/provider');
     const Y = await import('yjs');
 
@@ -430,8 +430,9 @@ describe('RecentlyRemovedDocs — cache lifecycle', () => {
         });
       });
 
+      let closed = false;
       provider.on('close', () => {
-        void provider.sendToken();
+        closed = true;
       });
 
       const rejectionPromise = new Promise<{ reason: string }>((resolve, reject) => {
@@ -446,6 +447,9 @@ describe('RecentlyRemovedDocs — cache lifecycle', () => {
       });
 
       expect((await renamePath(server.port, fromName, toName)).status).toBe(200);
+
+      await pollUntilAsync(async () => closed, 10_000);
+      await provider.sendToken();
 
       const failed = await rejectionPromise;
       const parsed = parseAuthRejectionWire(failed.reason);

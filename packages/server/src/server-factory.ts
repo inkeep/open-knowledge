@@ -2117,6 +2117,36 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
   }
 
+  const rescueUnflushedEditsBeforeTeardown = (
+    docName: string,
+    branch: string,
+    site: 'delete' | 'rename' | 'branch-switch',
+  ): boolean => {
+    const base = getReconciledBase(docName) ?? '';
+    const ours = serializeDoc(docName) ?? '';
+    const isDirty = ours !== base;
+    if (!isDirty || !shadowRef.current) return isDirty;
+    const shadowForCheckpoint = shadowRef.current;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
+        kind: 'external-change-rescue',
+        docName,
+        contents: ours,
+        label: `External change recovered @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { incomingDiskSha: '' },
+      })
+        .then(() => {
+          incrementRescueBuffer();
+          log.info({ docName, site }, `[reconcile] rescue checkpoint saved (${site}): ${docName}`);
+        })
+        .catch((e: unknown) => {
+          log.error({ docName, err: e }, `[reconcile] rescue checkpoint write failed: ${docName}`);
+        });
+    });
+    return isDirty;
+  };
+
   async function handleDiskEvent(event: DiskEvent): Promise<void> {
     try {
       switch (event.kind) {
@@ -2261,34 +2291,11 @@ export function createServer(options: ServerOptions): ServerInstance {
             return;
           }
 
-          const base = getReconciledBase(docName) ?? '';
-          const ours = serializeDoc(docName) ?? '';
-          const isDirty = ours !== base;
-
-          if (isDirty && shadowRef.current) {
-            const shadowForCheckpoint = shadowRef.current;
-            const branch = headWatcher?.getLastKnownBranch() ?? 'main';
-            queueMicrotask(() => {
-              saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-                kind: 'external-change-rescue',
-                docName,
-                contents: ours,
-                label: `External change recovered @ ${new Date().toISOString()}`,
-                branch,
-                metadata: { incomingDiskSha: '' },
-              })
-                .then(() => {
-                  incrementRescueBuffer();
-                  log.info({ docName }, `[reconcile] rescue checkpoint saved (delete): ${docName}`);
-                })
-                .catch((e: unknown) => {
-                  log.error(
-                    { docName, err: e },
-                    `[reconcile] rescue checkpoint write failed: ${docName}`,
-                  );
-                });
-            });
-          }
+          const isDirty = rescueUnflushedEditsBeforeTeardown(
+            docName,
+            headWatcher?.getLastKnownBranch() ?? 'main',
+            'delete',
+          );
 
           const lifecycleMap = document.getMap('lifecycle');
           lifecycleMap.set('status', 'deleted-upstream');
@@ -2315,21 +2322,70 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'rename': {
           const { oldDocName, newDocName, content } = event;
-          const document = hocuspocus.documents.get(oldDocName);
-
-          if (document) {
-            const lifecycleMap = document.getMap('lifecycle');
+          const freezeAsRenamed = (doc: Document): void => {
+            const lifecycleMap = doc.getMap('lifecycle');
             lifecycleMap.set('status', 'renamed');
             lifecycleMap.set('newPath', newDocName);
-          }
+          };
+          const loadedBeforeIndex = hocuspocus.documents.get(oldDocName);
+          const isDirty = loadedBeforeIndex
+            ? rescueUnflushedEditsBeforeTeardown(
+                oldDocName,
+                headWatcher?.getLastKnownBranch() ?? 'main',
+                'rename',
+              )
+            : false;
+          if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
 
           deleteReconciledBase(oldDocName);
           setReconciledBase(newDocName, content);
-          await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
 
-          log.info({ oldDocName, newDocName }, `[reconcile] rename: ${oldDocName} → ${newDocName}`);
+          log.info(
+            { oldDocName, newDocName, isDirty },
+            `[reconcile] rename: ${oldDocName} → ${newDocName} (dirty=${isDirty})`,
+          );
           signalChannel('files');
+          onUpstreamAdd(newDocName);
           onUpstreamRename(oldDocName, newDocName);
+
+          try {
+            await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
+          } catch (err) {
+            log.error(
+              { oldDocName, newDocName, err },
+              `[reconcile] rename: index update failed for ${oldDocName} → ${newDocName}; completing client teardown anyway`,
+            );
+          }
+
+          const document = hocuspocus.documents.get(oldDocName);
+          if (document && document !== loadedBeforeIndex) freezeAsRenamed(document);
+
+          const resident = hocuspocus.documents.get(newDocName);
+          if (resident && resident.getMap('lifecycle').get('status') === 'renamed') {
+            const residentLifecycle = resident.getMap('lifecycle');
+            residentLifecycle.delete('status');
+            residentLifecycle.delete('newPath');
+            applyToDoc(newDocName, content);
+            log.info(
+              { newDocName },
+              `[reconcile] rename: cleared stale renamed lifecycle on ${newDocName}`,
+            );
+          }
+
+          await sessionManager.closeAllForDoc(oldDocName);
+          const closedConnections = document?.getConnectionsCount() ?? 0;
+          /* WARN: the `delete` branch above and `captureAndCloseDocuments` pair their
+             close with `forceUnloadDocument`; this branch does not, so the frozen doc
+             stays resident under the old name and template-watcher-capabilities.test.ts
+             pins that residency. The destination clear above is what stops a move back
+             to this path from being served that stale frozen doc. */
+          hocuspocus.closeConnections(oldDocName);
+          if (closedConnections > 0) {
+            log.info(
+              { oldDocName, newDocName, closedConnections },
+              `[reconcile] rename: closed ${closedConnections} connection(s) on ${oldDocName}`,
+            );
+          }
           console.info(
             JSON.stringify({
               event: 'recently-removed-docs-populate',
@@ -3543,36 +3599,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                 try {
                   const filePath = safeContentPath(docName, contentDir);
                   if (!existsSync(filePath)) {
-                    const base = getReconciledBase(docName) ?? '';
-                    const ours = serializeDoc(docName) ?? '';
-                    const isDirty = ours !== base;
-
-                    if (isDirty && shadowRef.current) {
-                      const shadowForCheckpoint = shadowRef.current;
-                      queueMicrotask(() => {
-                        saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-                          kind: 'external-change-rescue',
-                          docName,
-                          contents: ours,
-                          label: `External change recovered @ ${new Date().toISOString()}`,
-                          branch: newBranch,
-                          metadata: { incomingDiskSha: '' },
-                        })
-                          .then(() => {
-                            incrementRescueBuffer();
-                            log.info(
-                              { docName },
-                              `[reconcile] rescue checkpoint saved on branch switch: ${docName}`,
-                            );
-                          })
-                          .catch((e: unknown) => {
-                            log.error(
-                              { docName, err: e },
-                              `[reconcile] rescue checkpoint write failed: ${docName}`,
-                            );
-                          });
-                      });
-                    }
+                    rescueUnflushedEditsBeforeTeardown(docName, newBranch, 'branch-switch');
 
                     const lifecycleMap = document.getMap('lifecycle');
                     lifecycleMap.set('status', 'deleted-upstream');

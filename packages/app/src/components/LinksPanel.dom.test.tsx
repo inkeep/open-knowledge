@@ -31,6 +31,7 @@ vi.doMock('@/editor/source-editor-navigation', () => ({
 
 vi.doMock('@/components/PageListContext', () => ({
   usePageList: () => ({
+    error: null,
     pages: new Set(['notes']),
     folderPaths: new Set<string>(),
     pagesBySlug: new Map<string, string>(),
@@ -45,6 +46,7 @@ const { LinksPanel } = await import('./LinksPanel');
 type FetchResult = { ok: boolean; status: number; body: unknown };
 
 let forwardLinksResult: FetchResult;
+let backlinksResult: FetchResult;
 const navEvents: LintNavDetail[] = [];
 
 function onNav(e: Event) {
@@ -92,12 +94,11 @@ beforeEach(() => {
   navEvents.length = 0;
   window.addEventListener(LINT_NAV_EVENT, onNav);
   forwardLinksResult = { ok: true, status: 200, body: forwardLinksBody() };
+  backlinksResult = { ok: true, status: 200, body: { docName: 'notes', backlinks: [] } };
   global.fetch = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.startsWith('/api/forward-links')) return fakeResponse(forwardLinksResult);
-    if (url.startsWith('/api/backlinks')) {
-      return fakeResponse({ ok: true, status: 200, body: { docName: 'notes', backlinks: [] } });
-    }
+    if (url.startsWith('/api/backlinks')) return fakeResponse(backlinksResult);
     return fakeResponse({ ok: false, status: 404, body: null });
   }) as unknown as typeof fetch;
 });
@@ -244,6 +245,46 @@ describe('LinksPanel Local files section', () => {
     };
     render(<LinksPanel docName="notes" />);
     expect((await screen.findAllByText('Local file index is not ready')).length).toBeGreaterThan(0);
+  });
+
+  test('a failed section drops its count while a healthy sibling keeps one', async () => {
+    backlinksResult = {
+      ok: false,
+      status: 503,
+      body: {
+        type: 'urn:ok:error:backlink-index-not-configured',
+        title: 'Backlink index is not ready',
+        status: 503,
+      },
+    };
+    render(<LinksPanel docName="notes" />);
+    await screen.findByText('Backlink index is not ready');
+
+    const countFor = (title: string) =>
+      screen.getByText(title).closest('button')?.querySelector('[data-slot="panel-count"]') ?? null;
+    expect(countFor('Backlinks')).toBeNull();
+    expect(countFor('Outgoing')?.textContent).toBe('0');
+  });
+
+  test('a section whose fetch failed shows no count beside its error', async () => {
+    forwardLinksResult = {
+      ok: false,
+      status: 503,
+      body: {
+        type: 'urn:ok:error:derived-index-unavailable',
+        title: 'Local file index is not ready',
+        status: 503,
+      },
+    };
+    render(<LinksPanel docName="notes" />);
+    await screen.findAllByText('Local file index is not ready');
+    await screen.findByText('No pages link here yet.');
+
+    const countFor = (title: string) =>
+      screen.getByText(title).closest('button')?.querySelector('[data-slot="panel-count"]') ?? null;
+    expect(countFor('Backlinks')?.textContent).toBe('0');
+    expect(countFor('Outgoing')).toBeNull();
+    expect(countFor('Local files')).toBeNull();
   });
 
   test('a partial response (no localTargets) is called out without hiding document relationships', async () => {

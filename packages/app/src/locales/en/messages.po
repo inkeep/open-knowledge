@@ -13827,6 +13827,11 @@ msgid "This page doesn't link to anything yet."
 msgstr "This page doesn't link to anything yet."
 
 #: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "This page is no longer at this path."
+
+#: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
 msgstr "This page references no local files or images."
 

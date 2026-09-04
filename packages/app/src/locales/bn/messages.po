@@ -13823,6 +13823,11 @@ msgid "This page doesn't link to anything yet."
 msgstr "এই পাতাটি এখনও কোনো কিছুর সঙ্গে লিংক করে না।"
 
 #: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "এই পৃষ্ঠাটি আর এই পাথে নেই।"
+
+#: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
 msgstr "এই পাতাটি কোনো স্থানীয় ফাইল বা ছবি উল্লেখ করে না।"
 
