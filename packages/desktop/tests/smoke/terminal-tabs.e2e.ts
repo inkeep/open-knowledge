@@ -240,11 +240,9 @@ test.describe('Terminal tabs — live Electron', () => {
       )
       .toBe(true);
     expect(pid2).not.toBe(pid1);
-    await expect
-      .poll(async () => (await readActiveText(page)).includes(`${marker1}=`), {
-        timeout: 15_000,
-      })
-      .toBe(false);
+    expect(await readActiveText(page), 'tab 1 output reached tab 2').not.toMatch(
+      new RegExp(`${marker1}=\\d+`),
+    );
   });
 
   test('closing a tab reaps only that shell; the survivor stays interactive', async ({
