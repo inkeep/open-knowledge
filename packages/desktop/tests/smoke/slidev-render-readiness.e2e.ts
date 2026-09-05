@@ -125,7 +125,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         },
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     try {
       await expect
         .poll(() => findEditor(app), { timeout: 30_000, message: 'editor window did not open' })
@@ -202,7 +202,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         },
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     try {
       await expect
         .poll(() => findEditor(app), { timeout: 30_000, message: 'editor window did not open' })

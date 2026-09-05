@@ -126,7 +126,7 @@ test.describe('Navigator size screenshots (dev-only)', () => {
     const { tmpHome, projectDir } = seedHome('shots');
     try {
       const app = await launchApp(tmpHome);
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
 
       const editor = await findWindow(app, 'editor');
       await editor.evaluate(async () => {

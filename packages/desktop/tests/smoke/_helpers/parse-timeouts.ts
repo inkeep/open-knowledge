@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { DEFAULT_LAUNCH_TIMEOUT_MS } from './launch-desktop';
+import { BOOT_LOG_CAP_MS } from './launch-readiness';
 
 const TIMEOUT_LITERAL_RE = /\btimeout:\s*(\d+(?:_\d+)*)/g;
 const LAUNCH_HELPER_CALL_RE = /\bdesktopLaunchOptions\(/;
+
+const READINESS_HELPER_CALL_RE = /\bwaitForWindowByMode\s*\(/g;
+
+const READINESS_CAPMS_RE = /\bcapMs:\s*(\d+(?:_\d+)*)/;
 const TOPASS_TIMEOUT_RE = /\.toPass\(\s*\{[^}]*timeout:\s*(\d+(?:_\d+)*)/g;
 const DEFAULT_TIMEOUT_ARG_RE = /\btimeoutMs\s*=\s*(\d+(?:_\d+)*)/g;
 const FUNCTION_HEADER_RE = /(?:^|\n)(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/g;
@@ -156,6 +161,26 @@ export function stripCommentsAndStrings(src: string): string {
   return out.join('');
 }
 
+export function extractReadinessBudgets(src: string): number[] {
+  const budgets: number[] = [];
+  for (const m of src.matchAll(READINESS_HELPER_CALL_RE)) {
+    const openIdx = src.indexOf('(', m.index ?? 0);
+    if (openIdx === -1) continue;
+    let depth = 1;
+    let i = openIdx + 1;
+    while (i < src.length && depth > 0) {
+      const c = src[i];
+      if (c === '(') depth += 1;
+      else if (c === ')') depth -= 1;
+      i += 1;
+    }
+    const args = src.slice(openIdx + 1, Math.max(openIdx + 1, i - 1));
+    const cap = args.match(READINESS_CAPMS_RE);
+    budgets.push(cap ? parseNumericLiteral(cap[1]) : BOOT_LOG_CAP_MS);
+  }
+  return budgets;
+}
+
 export function extractHelperBudgets(src: string): HelperBudget[] {
   const helpers: HelperBudget[] = [];
   for (const m of src.matchAll(FUNCTION_HEADER_RE)) {
@@ -178,10 +203,10 @@ export function extractHelperBudgets(src: string): HelperBudget[] {
     if (bodyOpenIdx === -1) continue;
     const bodyCloseIdx = findMatchingClose(src, bodyOpenIdx);
     if (bodyCloseIdx === -1) continue;
-    const body = src.slice(bodyOpenIdx + 1, bodyCloseIdx);
+    const body = stripCommentsAndStrings(src.slice(bodyOpenIdx + 1, bodyCloseIdx));
 
     const budgets: number[] = [];
-    for (const dm of argsBlock.matchAll(DEFAULT_TIMEOUT_ARG_RE)) {
+    for (const dm of stripCommentsAndStrings(argsBlock).matchAll(DEFAULT_TIMEOUT_ARG_RE)) {
       budgets.push(parseNumericLiteral(dm[1]));
     }
     for (const tm of body.matchAll(TIMEOUT_LITERAL_RE)) {
@@ -190,6 +215,7 @@ export function extractHelperBudgets(src: string): HelperBudget[] {
     if (LAUNCH_HELPER_CALL_RE.test(body)) {
       budgets.push(DEFAULT_LAUNCH_TIMEOUT_MS);
     }
+    budgets.push(...extractReadinessBudgets(body));
     const maxTimeoutMs = budgets.length > 0 ? Math.max(...budgets) : 0;
     if (maxTimeoutMs > 0) {
       helpers.push({ name, maxTimeoutMs });
@@ -219,6 +245,7 @@ export function extractTestEntries(src: string, helpers: HelperBudget[]): TestEn
     for (const tm of strippedForTimeouts.matchAll(TIMEOUT_LITERAL_RE)) {
       directTimeoutsMs.push(parseNumericLiteral(tm[1]));
     }
+    directTimeoutsMs.push(...extractReadinessBudgets(strippedForTimeouts));
     const toPassBudgetsMs: number[] = [];
     for (const tm of strippedForTimeouts.matchAll(TOPASS_TIMEOUT_RE)) {
       toPassBudgetsMs.push(parseNumericLiteral(tm[1]));

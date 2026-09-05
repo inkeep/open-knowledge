@@ -167,7 +167,7 @@ async function expectDeletedTargetMiss(
       timeout: 30_000,
     }),
   );
-  captureStderrFor(app, { cleanupDirs: [fixture.root, tmpHome] });
+  captureStderrFor(app, { home: tmpHome, cleanupDirs: [fixture.root, tmpHome] });
 
   const firstWindow = await app.firstWindow({ timeout: 15_000 });
   expect(firstWindow).toBeDefined();
@@ -259,7 +259,7 @@ test.describe('share-receive miss terminal smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome] });
     await app.firstWindow({ timeout: 15_000 });
 
     let dialogText = '';

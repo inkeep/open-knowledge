@@ -1,5 +1,8 @@
 import type { LanguagePreference } from '@inkeep/open-knowledge-core';
+import { BOOT_HEARTBEAT_EVENTS } from '../shared/boot-narration.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts';
+import type { DesktopLogger } from './desktop-logger.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { ShareNavigatorPayload } from './url-scheme.ts';
 import type { BrowserWindowLike, WindowManagerDeps } from './window-manager.ts';
@@ -13,10 +16,7 @@ function tryCloseNavigator(
   try {
     if (nav && nav.isDestroyed?.() !== true) nav.close?.();
   } catch (err) {
-    log('failed to close Navigator after project open', {
-      projectPath: context.projectPath,
-      err: err instanceof Error ? err.message : String(err),
-    });
+    log('failed to close Navigator after project open', { projectPath: context.projectPath, err });
   }
 }
 
@@ -39,7 +39,11 @@ export function beginNavigatorHandoff(navAtStart: BrowserWindowLike | null): Nav
   };
 }
 
-interface NavigatorDeps {
+interface NavigatorDeps extends BootHeartbeatDeps {
+  log: Pick<DesktopLogger, 'info' | 'warn'>;
+  flushLog: () => void;
+  setInterval: (cb: () => void, ms: number) => unknown;
+  clearInterval: (handle: unknown) => void;
   createWindow: WindowManagerDeps['createWindow'];
   rendererEntryPath: string;
   rendererDevUrl?: string | null;
@@ -70,17 +74,36 @@ export function createNavigatorWindow(deps: NavigatorDeps): BrowserWindowLike {
     const payload = deps.pendingPayload;
     registerPendingDelivery(window.webContents, 'ok:share:received', payload);
   }
-  const loadPromise = deps.rendererDevUrl
-    ? window.loadURL(deps.rendererDevUrl)
-    : window.loadFile(deps.rendererEntryPath);
-  loadPromise.catch((err: unknown) => {
-    console.warn(
-      JSON.stringify({
-        event: 'navigator-load-failed',
-        target: deps.rendererDevUrl ?? deps.rendererEntryPath,
-        message: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  });
+  const target = deps.rendererDevUrl ?? deps.rendererEntryPath;
+  const stopHeartbeat = startBootHeartbeat(
+    deps,
+    BOOT_HEARTBEAT_EVENTS.navigatorLoad,
+    '[navigator] still waiting for the navigator renderer to finish loading',
+    () => ({ target }),
+  );
+  let loadPromise: Promise<void>;
+  try {
+    loadPromise = deps.rendererDevUrl
+      ? window.loadURL(deps.rendererDevUrl)
+      : window.loadFile(deps.rendererEntryPath);
+  } catch (err) {
+    stopHeartbeat();
+    throw err;
+  }
+  loadPromise.then(
+    () => {
+      stopHeartbeat();
+      deps.log.info({ event: 'desktop-navigator-load-resolved', target }, '[navigator] loaded');
+      deps.flushLog();
+    },
+    (err: unknown) => {
+      stopHeartbeat();
+      deps.log.warn(
+        { event: 'desktop-navigator-load-failed', target, err },
+        '[navigator] load failed',
+      );
+      deps.flushLog();
+    },
+  );
   return window;
 }

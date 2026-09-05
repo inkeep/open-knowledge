@@ -48,7 +48,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();
@@ -123,7 +123,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=${encodeURIComponent(docName)}`;
@@ -242,7 +242,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     await app.firstWindow({ timeout: 15_000 });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=${encodeURIComponent(docName)}`;

@@ -49,7 +49,7 @@ test.describe('uninstall renderer chrome smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const editorWindow = await findWindowByPath(app, '/index.html');

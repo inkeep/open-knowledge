@@ -197,7 +197,7 @@ test.describe('terminal process restart', () => {
     test.setTimeout(240_000);
     const seed = seedRestartProfile();
     const firstApp = await launchRestartProfile(seed);
-    captureStderrFor(firstApp);
+    captureStderrFor(firstApp, { home: seed.tmpHome });
     const firstProcess = firstApp.process();
     const firstPage = await findEditorWindow(firstApp);
     await setWindowSize(firstApp, firstPage, 1900, 900);
@@ -234,7 +234,10 @@ test.describe('terminal process restart', () => {
     await quitAndWait(firstApp, firstProcess);
 
     const secondApp = await launchRestartProfile(seed);
-    captureStderrFor(secondApp, { cleanupDirs: [seed.tmpHome, seed.projectDir] });
+    captureStderrFor(secondApp, {
+      home: seed.tmpHome,
+      cleanupDirs: [seed.tmpHome, seed.projectDir],
+    });
     const secondPage = await findEditorWindow(secondApp);
     await setWindowSize(secondApp, secondPage, 1900, 900);
     await expect(secondPage.locator('#terminal-column')).toBeVisible({ timeout: 25_000 });

@@ -12,6 +12,7 @@ import { basename, join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -111,7 +112,8 @@ interface LaunchOpts {
 
 async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch(
+  return launchDesktopApp(
+    electron,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${s.userDataDir}`, deepLink],
@@ -126,23 +128,12 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
         OK_RECLAIM_DISABLE: '1',
       },
     }),
+    { home: s.tmpHome },
   );
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const mode = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (mode === 'editor') {
-        page = p;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor');
 }
 
 async function dispatchRendererMenuAction(
@@ -393,7 +384,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('default-on');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -406,7 +397,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('default-on-no-write');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -422,7 +413,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('opt-out', { optOut: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await revealTerminalSurface(app, page.getByRole('region', { name: 'Terminal disabled' }));
@@ -440,7 +431,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('toggle', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     expect(await viewTerminalLabel(app)).toBe('Show Terminal');
@@ -457,7 +448,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('placement-menu', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     await findEditorWindow(app);
 
     expect(await terminalPlacementLabel(app)).toBe('Move Terminal to right');
@@ -478,7 +469,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('header-placement', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -516,7 +507,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('divider-pointerleave', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -583,7 +574,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('rail-admission', { consent: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -637,7 +628,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('perf', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await waitForRendererResponsive(page);
@@ -664,7 +655,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('cmd', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -685,7 +676,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('resize-storm', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -729,7 +720,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('dock-controls', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -746,7 +737,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('dock-edges', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -763,7 +754,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('a11y', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -780,7 +771,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('escape', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -805,7 +796,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('ctrl-backtick', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -834,7 +825,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('inert', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -859,7 +850,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('resize', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -905,7 +896,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('exit', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -929,7 +920,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('claude-missing', { consent: true, pinRestrictedPath: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -960,7 +951,7 @@ test.describe('Docked terminal — live Electron', () => {
     });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -987,7 +978,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('reload-survival', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -1019,7 +1010,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('stage', { consent: true, fakeClaudeTui: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await page.evaluate(() => {

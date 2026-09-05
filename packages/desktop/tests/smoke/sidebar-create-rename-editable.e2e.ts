@@ -150,7 +150,7 @@ test.describe('Sidebar create and rename editability smoke', () => {
   }) => {
     const seed = seedProject('editable');
     const app = await launchApp(seed);
-    captureStderrFor(app, { cleanupDirs: [seed.tmpHome, seed.projectDir] });
+    captureStderrFor(app, { home: seed.tmpHome, cleanupDirs: [seed.tmpHome, seed.projectDir] });
 
     const page = await findEditorWindow(app, 'start');
     await expect(

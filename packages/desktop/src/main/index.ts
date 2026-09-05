@@ -120,6 +120,12 @@ import {
   shell,
   utilityProcess,
 } from 'electron';
+import {
+  BOOT_HEARTBEAT_EVENTS,
+  BOOT_HEARTBEAT_MAX_BEATS,
+  DESKTOP_BOOT_EVENT,
+  startupMarkLine,
+} from '../shared/boot-narration.ts';
 import type {
   ClaudeReadiness,
   CliReadiness,
@@ -159,6 +165,7 @@ import {
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
+import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts';
 import {
   describeDesktopLanguage,
   readStoredLanguagePreference,
@@ -940,7 +947,29 @@ function persistTerminalDockForWindow(
   appState = committed.state;
   return committed.result;
 }
-const startupWaterfall = new StartupWaterfall({ otelEnabled: false });
+const startupWaterfall = new StartupWaterfall({
+  otelEnabled: false,
+  onMark: ({ phase, elapsedMs }) => {
+    getLogger('startup').info(startupMarkLine(phase, elapsedMs), `startup ${phase}`);
+    flushDesktopLogger();
+  },
+});
+const bootHeartbeatDeps: Required<BootHeartbeatDeps> = {
+  log: getLogger('startup'),
+  flushLog: flushDesktopLogger,
+  setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+};
+
+const stopBootHeartbeat = startBootHeartbeat(
+  bootHeartbeatDeps,
+  BOOT_HEARTBEAT_EVENTS.boot,
+  '[startup] boot in progress',
+  () => ({ lastPhase: startupWaterfall.lastPhase ?? '(no phase marked yet)' }),
+  { maxBeats: BOOT_HEARTBEAT_MAX_BEATS },
+);
+app.on('will-quit', stopBootHeartbeat);
+
 let firstWindowShown = false;
 let waterfallDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -965,6 +994,7 @@ function emitStartupWaterfall(): void {
 function onFirstWindowShown(): void {
   if (firstWindowShown) return;
   firstWindowShown = true;
+  stopBootHeartbeat();
   startupWaterfall.mark('windowShown');
   if (startupWaterfall.readyToEmit) {
     emitStartupWaterfall();
@@ -1419,6 +1449,7 @@ function ensureWindowManager() {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
     log: getLogger('window-manager'),
+    flushLog: flushDesktopLogger,
     recordServerExit: (info) =>
       getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
     createKeepalive: createDesktopKeepaliveFactory({
@@ -1502,6 +1533,10 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     ),
     showGate,
     pendingPayload,
+    log: getLogger('navigator'),
+    flushLog: flushDesktopLogger,
+    setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
   });
 }
 
@@ -5634,7 +5669,7 @@ if (isDriverBootSmokeMode(process.env)) {
 function bootPrimaryInstance(): void {
   getRootDesktopLogger().info(
     {
-      event: 'desktop.boot',
+      event: DESKTOP_BOOT_EVENT,
       version: app.getVersion(),
       isPackaged: app.isPackaged,
       electronVersion: process.versions.electron,

@@ -6,6 +6,7 @@ import {
   type BrowserWindowLike,
   type EphemeralOpenIdentity,
   type ServerLockMetadataLike,
+  SPAWN_WAIT_HEARTBEAT_MS,
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
@@ -1109,5 +1110,54 @@ describe('restartServerForWindow (IPC routing seam)', () => {
 
     expect(attached).toHaveBeenCalledWith('/some/project', {});
     expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+  });
+});
+
+describe('spawn-wait heartbeat (the contract the smoke stall bound relies on)', () => {
+  test('narrates progress at least every SPAWN_WAIT_HEARTBEAT_MS while the lock is pending', async () => {
+    const env = buildEphemeralEnv();
+    const wm = new WindowManager(env.deps);
+    const lines: { event: string; atMs: number }[] = [];
+    let clock = 1_000_000;
+    let flushes = 0;
+    env.deps.flushLog = () => {
+      flushes += 1;
+    };
+    env.deps.log = {
+      info: (obj: Record<string, unknown>) => {
+        if (typeof obj.event === 'string') lines.push({ event: obj.event, atMs: clock });
+      },
+      warn: () => {},
+      error: () => {},
+      debug: () => {},
+    } as unknown as WindowManagerDeps['log'];
+    const realNow = Date.now;
+    Date.now = () => clock;
+    env.deps.setTimeout = ((cb: () => void) => {
+      clock += 50;
+      cb();
+      return null;
+    }) as unknown as WindowManagerDeps['setTimeout'];
+    env.deps.spawnLockPollDeadlineMs = 60_000;
+    const spawnAt = clock;
+    env.deps.readServerLock = () =>
+      clock - spawnAt >= 22_000
+        ? { pid: 4242, port: 51234, kind: 'interactive', url: 'http://127.0.0.1:51234' }
+        : null;
+    try {
+      await wm.createEphemeralWindow({
+        canonicalFilePath: FILE,
+        contentDir: PARENT,
+        docName: 'todo',
+      });
+    } finally {
+      Date.now = realNow;
+    }
+    expect(flushes).toBeGreaterThanOrEqual(4);
+    const beats = lines.filter((l) => l.event === 'desktop-spawn-wait-progress');
+    expect(beats.length).toBeGreaterThanOrEqual(4);
+    const stamps = [spawnAt, ...beats.map((b) => b.atMs)];
+    const gaps = stamps.slice(1).map((s, i) => s - (stamps[i] ?? 0));
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(SPAWN_WAIT_HEARTBEAT_MS + 200);
   });
 });

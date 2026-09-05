@@ -122,7 +122,7 @@ test.describe('BrowserWindow min-size smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject('happy');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findWindow(app, 'editor');
     const editorProbe = await readMinSizeFor(app, editor);

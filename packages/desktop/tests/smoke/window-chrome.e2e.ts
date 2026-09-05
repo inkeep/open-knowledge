@@ -97,7 +97,7 @@ test.describe('Windows/Linux window chrome smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     const winHandle: JSHandle = await app.browserWindow(editor);
@@ -136,7 +136,7 @@ test.describe('Editor header drag-region smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     const filesToggle = editor

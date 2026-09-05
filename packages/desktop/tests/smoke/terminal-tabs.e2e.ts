@@ -205,7 +205,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('two-shells');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -253,7 +253,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('close-one');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await openBareTab(page);
@@ -274,7 +274,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('rename-pin');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -296,7 +296,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('reorder-survive');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -340,7 +340,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('drag-survive');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -379,7 +379,7 @@ test.describe('Terminal tabs — live Electron', () => {
     const s = seed('reload-preserve');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 

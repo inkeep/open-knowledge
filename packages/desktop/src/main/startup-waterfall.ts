@@ -48,6 +48,8 @@ export interface WaterfallPayload {
 export interface StartupWaterfallOptions {
   otelEnabled: boolean;
   flushDeadlineMs?: number;
+  onMark?: (mark: { phase: WaterfallPhase; elapsedMs: number }) => void;
+  now?: () => number;
 }
 
 function round(n: number): number {
@@ -75,14 +77,37 @@ export class StartupWaterfall {
   private emitted = false;
   otelEnabled: boolean;
   readonly flushDeadlineMs: number;
+  private readonly onMark:
+    | ((mark: { phase: WaterfallPhase; elapsedMs: number }) => void)
+    | undefined;
+  private readonly startedAtMs: number;
 
   constructor(opts: StartupWaterfallOptions) {
     this.otelEnabled = opts.otelEnabled;
     this.flushDeadlineMs = opts.flushDeadlineMs ?? 1500;
+    this.onMark = opts.onMark;
+    this.startedAtMs = (opts.now ?? Date.now)();
+  }
+
+  get lastPhase(): WaterfallPhase | undefined {
+    let latest: WaterfallPhase | undefined;
+    let latestAt = Number.NEGATIVE_INFINITY;
+    for (const [phase, at] of this.marks) {
+      if (at >= latestAt) {
+        latestAt = at;
+        latest = phase;
+      }
+    }
+    return latest;
   }
 
   mark(phase: WaterfallPhase, atMs: number = Date.now()): void {
-    if (!this.marks.has(phase)) this.marks.set(phase, atMs);
+    if (this.marks.has(phase)) return;
+    this.marks.set(phase, atMs);
+    const origin = this.marks.get('appReady') ?? this.startedAtMs;
+    try {
+      this.onMark?.({ phase, elapsedMs: round(atMs - origin) });
+    } catch {}
   }
 
   ingestServerBoot(boot: ServerBootTimings | undefined): void {
