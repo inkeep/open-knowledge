@@ -29,9 +29,21 @@
  *      easing token
  *  11. Static value imports of the DEV ACP thread harness, which would
  *      defeat the dynamic-import gate that keeps it out of production
+ *  12. Remote placeholder-image hosts anywhere under
+ *      tests/{stress,visual,a11y} — every `.ts`, not just `*.e2e.ts`,
+ *      because entry 6 channels shared logic into `_helpers/` and the stub
+ *      this rule replaced lived exactly there. Local fixtures decode
+ *      deterministically; remote ones flake offline.
+ *      Host-scoped deliberately, not lazily. The three hosts are the ones
+ *      this repo actually contains in image-source position (docs' img
+ *      reference, CM6-ELEMENTS.md, showcase/), not a guess at vendors; and
+ *      an image-source-scoped predicate would miss the spellings that carry
+ *      a host here, while redding the specs that put a reserved-name URL in
+ *      genuine image-source position, where the decode is either irrelevant
+ *      or required to fail — see the self-test below, which pins both halves
  */
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -52,27 +64,33 @@ interface FileLines {
   lines: string[];
 }
 
-function listE2eFiles(): FileLines[] {
-  const all: FileLines[] = [];
-  for (const dir of E2E_DIRS) {
-    let entries: string[];
+const unreadableScanDirs: string[] = [];
+
+function listE2eTsFiles(): FileLines[] {
+  const out: FileLines[] = [];
+  function walk(dir: string) {
+    let entries: Dirent[];
     try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      unreadableScanDirs.push(`${relative(REPO_ROOT, dir)} (${reason})`);
+      return;
     }
-    for (const name of entries) {
-      if (!name.endsWith('.e2e.ts')) continue;
-      const absPath = join(dir, name);
-      const source = readFileSync(absPath, 'utf-8');
-      all.push({
-        path: relative(REPO_ROOT, absPath),
-        absPath,
-        lines: source.split('\n'),
-      });
+    for (const entry of entries) {
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('.ts')) continue;
+      const source = readFileSync(abs, 'utf-8');
+      out.push({ path: relative(REPO_ROOT, abs), absPath: abs, lines: source.split('\n') });
     }
   }
-  return all;
+  for (const dir of E2E_DIRS) walk(dir);
+  return out;
 }
 
 function listAppSrcTsFiles(): FileLines[] {
@@ -117,6 +135,10 @@ function findSpawnIsolationViolations(
   return violations;
 }
 
+function isRemoteImageHost(line: string): boolean {
+  return /\b(picsum\.photos|images\.unsplash\.com|via\.placeholder\.com)\b/i.test(line);
+}
+
 function isStaticDevHarnessImport(line: string): boolean {
   return /^\s*(?:import|export)\s+(?!type\b)[^;]*from\s+['"][^'"]*dev-thread-harness['"]/.test(
     line,
@@ -139,10 +161,28 @@ function collectMatches(
 }
 
 describe('E2E STOP rule — zero allowlist', () => {
-  const e2eFiles = listE2eFiles();
+  const e2eTsFiles = listE2eTsFiles();
+  const e2eFiles = e2eTsFiles.filter((file) => file.path.endsWith('.e2e.ts'));
 
   test('there are E2E files to check (sanity)', () => {
+    expect(
+      unreadableScanDirs,
+      'a scan directory could not be read at any depth — the bans below would silently skip its files',
+    ).toEqual([]);
+    expect(e2eTsFiles.length).toBeGreaterThan(0);
     expect(e2eFiles.length).toBeGreaterThan(0);
+    for (const dir of E2E_DIRS) {
+      const tsFromDir = e2eTsFiles.filter((file) => file.absPath.startsWith(`${dir}/`));
+      expect(
+        tsFromDir.length,
+        `no *.ts under ${relative(REPO_ROOT, dir)} — renamed, moved, or emptied?`,
+      ).toBeGreaterThan(0);
+      const fromDir = e2eFiles.filter((file) => file.absPath.startsWith(`${dir}/`));
+      expect(
+        fromDir.length,
+        `no *.e2e.ts under ${relative(REPO_ROOT, dir)} — renamed, moved, or emptied?`,
+      ).toBeGreaterThan(0);
+    }
   });
 
   test('no page.waitForTimeout( in tests/{stress,visual,a11y}/*.e2e.ts (AC-3)', () => {
@@ -498,6 +538,31 @@ describe('E2E STOP rule — zero allowlist', () => {
         `Selection-halo transition uses bare \`ease-out\` — use \`var(--ease-out-strong)\` for consistency with the repo's 7 other transitions (round-2 review fix, commit 4e9d96a5):\n${violations.join('\n')}`,
       );
     }
+  });
+
+  test('no remote placeholder-image hosts in tests/{stress,visual,a11y} (PRD-8532)', () => {
+    const violations = collectMatches(e2eTsFiles, isRemoteImageHost);
+    if (violations.length > 0) {
+      throw new Error(
+        `Remote placeholder-image host found — write a local fixture under tests/stress/_fixtures and wait with waitForImageDecoded (from the ./_helpers barrel) instead:\n${violations.join('\n')}`,
+      );
+    }
+  });
+
+  test('remote-image-host rule fires on planted hosts and not on adjacent negatives', () => {
+    expect(isRemoteImageHost('<img src="https://picsum.photos/200" alt="remote" />')).toBe(true);
+    expect(isRemoteImageHost('![alt](https://via.placeholder.com/50)')).toBe(true);
+    expect(isRemoteImageHost('src="https://IMAGES.UNSPLASH.COM/photo-1" />')).toBe(true);
+    expect(isRemoteImageHost("const REMOTE_IMAGE_HOSTS = ['picsum.photos'];")).toBe(true);
+    expect(isRemoteImageHost("await page.route('**://picsum.photos/**', handler);")).toBe(true);
+    expect(isRemoteImageHost("await srcInput.fill('https://picsum.photos/200');")).toBe(true);
+
+    expect(isRemoteImageHost('<img src="https://example.com/safe.png" alt="safe" />')).toBe(false);
+    expect(isRemoteImageHost('![remote](https://invalid.invalid/missing.png)')).toBe(false);
+    expect(isRemoteImageHost('<img src="/real-shot.png" alt="local" />')).toBe(false);
+    expect(isRemoteImageHost("const url = 'https://unsplash.com/photos/abc';")).toBe(false);
+    expect(isRemoteImageHost("const s = 'notpicsum.photosly';")).toBe(false);
+    expect(isRemoteImageHost("const s = 'picsumXphotos';")).toBe(false);
   });
 
   test('predev routes i18n compile through the OK_TEST_SKIP_I18N_COMPILE guard (not a direct compile)', () => {

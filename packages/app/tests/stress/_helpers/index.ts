@@ -17,6 +17,7 @@ export {
   type WorkerServer,
 } from './fixtures.ts';
 export { waitForGraphSimulationSettled } from './graph.ts';
+export { waitForImageDecoded } from './image.ts';
 export {
   assertLanded,
   injectForcedEstimateError,
@@ -34,7 +35,6 @@ export {
   waitForActiveProviderSynced,
 } from './provider.ts';
 export { escapeRegExp } from './regexp.ts';
-export { stubRemoteImages } from './remote-image-stub.ts';
 export { matchIsWithinReadableScrollport } from './scrollport.ts';
 export {
   checkCollabSync,

@@ -1,14 +1,25 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Page } from '@playwright/test';
-import { expect, stubRemoteImages, test } from './_helpers';
+import { expect, test, waitForImageDecoded } from './_helpers';
+
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '_fixtures');
 
 interface ApiSeed {
   seedDocs: (docs: Array<{ name: string; markdown: string }>) => Promise<void>;
 }
 
-async function setupDoc(page: Page, api: ApiSeed, markdown: string): Promise<string> {
+async function setupDoc(
+  page: Page,
+  api: ApiSeed,
+  markdown: string,
+  writeAsset?: () => void,
+): Promise<string> {
   const docName = `grip-${randomUUID().slice(0, 8)}`;
   await api.seedDocs([{ name: docName, markdown }]);
+  writeAsset?.();
   await page.goto(`/#/${docName}`);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await page.waitForFunction(() => Boolean(window.__activeEditor), null, { timeout: 5_000 });
@@ -24,7 +35,14 @@ async function hoverBlockAndGetGripBox(
   const box = await target.boundingBox();
   if (!box) throw new Error(`no boundingBox for ${selector}`);
 
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  const hoverY = box.y + box.height / 2;
+  const viewport = page.viewportSize();
+  if (viewport && hoverY >= viewport.height) {
+    throw new Error(
+      `hover point for ${selector} is off-screen (y=${hoverY}, viewport height ${viewport.height}) — the block renders taller than the window, so mouse.move never reaches it`,
+    );
+  }
+  await page.mouse.move(box.x + box.width / 2, hoverY);
 
   const grip = page.locator('.ok-drag-grip');
   await expect(grip).toBeVisible({ timeout: 5_000 });
@@ -152,9 +170,26 @@ test('AC22: grip click NodeSelects an Accordion (composite)', async ({ page, api
   await expect(wrapper).toHaveAttribute('data-selected', 'true');
 });
 
-test('AC22: grip click NodeSelects an img (self-closing leaf)', async ({ page, api }) => {
-  await stubRemoteImages(page);
-  await setupDoc(page, api, '<img src="https://picsum.photos/200" alt="test image" />\n\nafter\n');
+test('AC22: grip click NodeSelects an img (self-closing leaf)', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  const name = `grip-image-${randomUUID().slice(0, 8)}.png`;
+  await setupDoc(
+    page,
+    api,
+    `<img src="/${name}" alt="test image" width="200" height="200" />\n\nafter\n`,
+    () => {
+      writeFileSync(
+        join(workerServer.contentDir, name),
+        readFileSync(join(FIXTURES_DIR, 'real-shot.png')),
+      );
+    },
+  );
+  const image = page.getByRole('img', { name: 'test image', exact: true });
+  await expect(image).toBeVisible();
+  await waitForImageDecoded(image);
   await resetSelectionToDocStart(page);
 
   const gripBox = await hoverBlockAndGetGripBox(

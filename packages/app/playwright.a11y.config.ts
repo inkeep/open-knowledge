@@ -1,6 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
-import { resolveWorkerCount } from './playwright.config.ts';
+import { EXPECT_TIMEOUT_MS, resolveWorkerCount } from './playwright.config.ts';
 
 /**
  * A11y Playwright config — per-worker fixture isolation (same shape as
@@ -42,6 +42,7 @@ export default defineConfig({
   testDir: './tests/a11y',
   testMatch: /.*\.e2e\.ts$/,
   timeout: 120_000,
+  expect: { timeout: EXPECT_TIMEOUT_MS },
   retries: isCI ? 2 : 0,
   failOnFlakyTests: false,
   forbidOnly: isCI,
