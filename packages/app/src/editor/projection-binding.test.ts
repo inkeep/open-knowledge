@@ -651,3 +651,43 @@ describe('projection binding — a rebuild that changes no bytes', () => {
     rig.destroy();
   });
 });
+
+describe('projection binding — a document the MDX parser rejects', () => {
+  const BROKEN = 'Above.\n\n</Callout>\n\nBelow.\n';
+
+  it('mounts instead of throwing, showing the body as one raw block', () => {
+    const rig = createRig(BROKEN);
+    expect(rig.editor.state.doc.childCount).toBe(1);
+    expect(rig.editor.state.doc.child(0).type.name).toBe('rawMdxFallback');
+    expect(rig.ytext.toString()).toBe(BROKEN);
+    rig.destroy();
+  });
+
+  it('still applies an external write, so the document does not wedge', () => {
+    const rig = createRig(BROKEN);
+    rig.ydoc.transact(() => {
+      rig.ytext.insert(rig.ytext.length, 'Appended while broken.\n');
+    }, 'agent');
+    expect(rig.editor.state.doc.child(0).textContent).toContain('Appended while broken.');
+    rig.destroy();
+  });
+
+  it('recovers the real document when the source is repaired', () => {
+    const rig = createRig(BROKEN);
+    rig.ydoc.transact(() => {
+      rig.ytext.delete(0, rig.ytext.length);
+      rig.ytext.insert(0, 'Above.\n\nBelow.\n');
+    }, 'repair');
+    expect(rig.editor.state.doc.childCount).toBe(2);
+    expect(rig.editor.state.doc.child(0).type.name).toBe('paragraph');
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Above.');
+    rig.destroy();
+  });
+
+  it('does not rewrite the rejected bytes when an edit lands elsewhere', () => {
+    const rig = createRig(BROKEN);
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
+    expect(rig.ytext.toString()).toBe(`Preamble.\n\n${BROKEN}`);
+    rig.destroy();
+  });
+});

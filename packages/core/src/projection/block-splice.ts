@@ -34,7 +34,7 @@ export interface Projection {
 
 export function buildProjection(source: string, md: MarkdownManager): Projection {
   const { frontmatter, body } = stripFrontmatter(source);
-  const { doc, map } = md.parseWithSourceMap(body);
+  const { doc, map } = md.parseWithSourceMapOrFallback(body);
   return { source, bodyOffset: frontmatter.length, doc, map };
 }
 

@@ -317,3 +317,44 @@ describe('rebaseProjection', () => {
     expect(rebaseProjection(projection, after, changed as never, splice as never)).toBeNull();
   });
 });
+
+describe('buildProjection — a document the MDX parser rejects', () => {
+  const BROKEN = 'Above.\n\n</Callout>\n\nBelow.\n';
+
+  it('degrades to a single raw block instead of throwing', () => {
+    const projection = buildProjection(BROKEN, md);
+    expect(projection.doc.childCount).toBe(1);
+    expect(projection.doc.child(0).type.name).toBe('rawMdxFallback');
+    expect(projection.doc.child(0).textContent).toBe(BROKEN);
+    expect(projection.doc.child(0).attrs.reason).toContain('closing slash');
+  });
+
+  it('maps the raw block over the whole body so a splice cannot land off-range', () => {
+    const projection = buildProjection(BROKEN, md);
+    expect(projection.map.blocks).toHaveLength(1);
+    expect(projection.map.blockRangeToSourceRange(0, 1)).toEqual({
+      from: 0,
+      to: BROKEN.length,
+    });
+    expect(projection.map.sourceLength).toBe(BROKEN.length);
+  });
+
+  it('round-trips the rejected bytes verbatim', () => {
+    const projection = buildProjection(BROKEN, md);
+    expect(md.serialize(projection.doc.toJSON())).toBe(BROKEN);
+  });
+
+  it('keeps frontmatter out of the body it boxes', () => {
+    const withFm = `---\ntitle: T\n---\n\n${BROKEN}`;
+    const projection = buildProjection(withFm, md);
+    expect(withFm.slice(projection.bodyOffset)).toBe(projection.doc.child(0).textContent);
+    expect(projection.doc.child(0).textContent).toContain('</Callout>');
+    expect(projection.map.sourceLength).toBe(withFm.length - projection.bodyOffset);
+  });
+
+  it('recovers a normal projection once the source parses again', () => {
+    const repaired = buildProjection('Above.\n\nBelow.\n', md);
+    expect(repaired.doc.childCount).toBe(2);
+    expect(repaired.doc.child(0).type.name).toBe('paragraph');
+  });
+});

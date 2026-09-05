@@ -55,6 +55,7 @@ import {
 } from '../bridge/structural-freshness.ts';
 import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
+import { incrementWholeDocFallback } from '../metrics/parse-health.ts';
 import { createRegistry } from '../registry/index.ts';
 import type { PropDef } from '../registry/types.ts';
 import type {
@@ -75,9 +76,11 @@ import {
   serializeMd,
 } from './pipeline.ts';
 import {
+  buildBlockSourceMap,
   buildPmSourceMap,
   createSourceMapRecorder,
   type PmSourceMap,
+  type PmSourceSpan,
   type SourceMapRecorderHolder,
   withSourceMapRecording,
 } from './pm-source-map.ts';
@@ -189,6 +192,45 @@ export class MarkdownManager {
     } finally {
       this.parseCtx.current = {};
     }
+  }
+
+  parseWithSourceMapOrFallback(
+    markdown: string,
+    opts?: ParseContext,
+  ): { doc: PmNode; map: PmSourceMap } {
+    try {
+      return this.parseWithSourceMap(markdown, opts);
+    } catch (err) {
+      incrementWholeDocFallback();
+      return this.rawFallbackWithSourceMap(markdown, err);
+    }
+  }
+
+  private rawFallbackWithSourceMap(
+    markdown: string,
+    err: unknown,
+  ): { doc: PmNode; map: PmSourceMap } {
+    const reason = err instanceof Error ? err.message : String(err ?? 'unknown parse failure');
+    const doc = this.schema.nodeFromJSON({
+      type: 'doc',
+      content: [
+        {
+          type: 'rawMdxFallback',
+          attrs: { reason, originalSpan: { start: 0, end: markdown.length } },
+          content: markdown.length > 0 ? [{ type: 'text', text: markdown }] : [],
+        },
+      ],
+    }) as PmNode;
+    const block: PmSourceSpan = {
+      from: 0,
+      to: doc.content.size,
+      sourceStart: 0,
+      sourceEnd: markdown.length,
+      type: 'rawMdxFallback',
+      depth: 1,
+      mapped: true,
+    };
+    return { doc, map: buildBlockSourceMap([block], markdown.length, doc.content.size) };
   }
 
   parseToMdast(markdown: string): MdastRoot {
