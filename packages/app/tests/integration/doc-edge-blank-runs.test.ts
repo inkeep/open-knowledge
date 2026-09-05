@@ -180,6 +180,28 @@ describe('doc-edge blank runs on the CRDT path', () => {
     }
   });
 
+  test('a block applied at the end of a blank run lands below the run, not above it', async () => {
+    const clients = await seedDocument('hello\n');
+    try {
+      const a = clients[0];
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(8)]);
+      const run = 'hello\n\n\n\n\n\n\n\n\n';
+      await settle(() => clients.every((c) => c.ytext.toString() === run), 6000);
+      expect(a.ytext.toString()).toBe(run);
+
+      editProjectionBlocks(a, (blocks) => [
+        ...blocks.slice(0, 8),
+        schema.node('heading', { level: 1 }, schema.text('Head')),
+      ]);
+
+      const expected = 'hello\n\n\n\n\n\n\n\n\n# Head\n';
+      await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
+      await expectEverywhereExactly(clients, expected, 7, 10_000);
+    } finally {
+      for (const c of clients) await c.cleanup();
+    }
+  });
+
   test('CONTROL: an interior blank run still reaches the source bytes unchanged', async () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {

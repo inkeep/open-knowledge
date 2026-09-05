@@ -3,6 +3,7 @@ import { sharedExtensions } from '../extensions/shared.ts';
 import { loadLargeRealistic } from '../markdown/fixtures/index.ts';
 import { MarkdownManager } from '../markdown/index.ts';
 import {
+  alignProjectionToDoc,
   applySplice,
   buildProjection,
   changedProjectionBlocks,
@@ -356,5 +357,137 @@ describe('buildProjection — a document the MDX parser rejects', () => {
     const repaired = buildProjection('Above.\n\nBelow.\n', md);
     expect(repaired.doc.childCount).toBe(2);
     expect(repaired.doc.child(0).type.name).toBe('paragraph');
+  });
+});
+
+describe('computeBlockSplice — a block landing in a blank run', () => {
+  function kids(doc: Projection['doc']) {
+    const out = [];
+    for (let i = 0; i < doc.childCount; i++) out.push(doc.child(i));
+    return out;
+  }
+
+  function blank(projection: Projection) {
+    return projection.doc.type.schema.node('paragraph');
+  }
+
+  function block(projection: Projection, markdown: string) {
+    return projection.doc.type.schema.nodeFromJSON(md.parse(markdown)).child(0);
+  }
+
+  function docOf(projection: Projection, children: unknown[]) {
+    return projection.doc.type.schema.topNodeType.create(projection.doc.attrs, children as never);
+  }
+
+  function advance(projection: Projection, after: Projection['doc']): Projection {
+    const changed = changedProjectionBlocks(projection.doc, after);
+    if (changed === null) return alignProjectionToDoc(projection, after);
+    const splice = computeBlockSplice(projection, after, md, changed);
+    expect(splice).not.toBeNull();
+    const source = applySplice(projection.source, splice as never);
+    const rebased = rebaseProjection(projection, after, changed, splice as never);
+    if (rebased !== null) return rebased;
+    const rebuilt = buildProjection(source, md);
+    return rebuilt.doc.childCount === after.childCount
+      ? { ...rebuilt, doc: after }
+      : alignProjectionToDoc(rebuilt, after);
+  }
+
+  function pressEnter(projection: Projection, times: number): Projection {
+    let out = projection;
+    for (let i = 0; i < times; i++) out = advance(out, docOf(out, [...kids(out.doc), blank(out)]));
+    return out;
+  }
+
+  function expectTableHolds(projection: Projection) {
+    expect(projection.map.blocks).toHaveLength(projection.doc.childCount);
+    expect(buildProjection(projection.source, md).doc.childCount).toBe(projection.doc.childCount);
+  }
+
+  it('writes the block below the blank run that precedes it, not above it', () => {
+    const seeded = pressEnter(buildProjection('hello\n', md), 8);
+    expect(seeded.source).toBe('hello\n\n\n\n\n\n\n\n\n');
+    expect(seeded.doc.childCount).toBe(9);
+
+    const after = advance(
+      seeded,
+      docOf(seeded, [...kids(seeded.doc).slice(0, 8), block(seeded, '# \n')]),
+    );
+    expect(after.source).toBe('hello\n\n\n\n\n\n\n\n\n#\n');
+    expectTableHolds(after);
+
+    const typed = advance(
+      after,
+      docOf(after, [...kids(after.doc).slice(0, 8), block(after, '# Head\n')]),
+    );
+    expect(typed.source).toBe('hello\n\n\n\n\n\n\n\n\n# Head\n');
+    expectTableHolds(typed);
+  });
+
+  it('splits the run around a block inserted inside it', () => {
+    const seeded = pressEnter(buildProjection('hello\n', md), 8);
+    const children = kids(seeded.doc);
+    const after = advance(
+      seeded,
+      docOf(seeded, [...children.slice(0, 4), block(seeded, '# \n'), ...children.slice(5)]),
+    );
+    expect(after.source).toBe('hello\n\n\n\n\n#\n\n\n\n\n');
+    expectTableHolds(after);
+  });
+
+  it('keeps an interior run above a paragraph written over one of its blanks', () => {
+    const seeded = buildProjection('Above.\n\n\n\nBelow.\n', md);
+    const children = kids(seeded.doc);
+    const after = advance(
+      seeded,
+      docOf(seeded, [...children.slice(0, 2), block(seeded, 'New.\n'), ...children.slice(3)]),
+    );
+    expect(after.source).toBe('Above.\n\n\nNew.\n\nBelow.\n');
+    expectTableHolds(after);
+  });
+
+  it('materialises a held trailing blank once a block lands after it', () => {
+    const seeded = pressEnter(buildProjection('Hello.\n', md), 1);
+    expect(seeded.source).toBe('Hello.\n');
+    const after = advance(seeded, docOf(seeded, [...kids(seeded.doc), block(seeded, 'Tail.\n')]));
+    expect(after.source).toBe('Hello.\n\n\nTail.\n');
+    expectTableHolds(after);
+  });
+
+  it('places the block from the run it can see when the table holds the blanks at one offset', () => {
+    const seeded = buildProjection('hello\n', md);
+    const held = alignProjectionToDoc(
+      seeded,
+      docOf(seeded, [...kids(seeded.doc), blank(seeded), blank(seeded), blank(seeded)]),
+    );
+    expect(held.map.blocks).toHaveLength(4);
+    expect(held.map.blocks.slice(1).every((b) => b.sourceStart === b.sourceEnd)).toBe(true);
+
+    const after = advance(
+      held,
+      docOf(held, [...kids(held.doc).slice(0, 3), block(held, '# Head\n')]),
+    );
+    expect(after.source).toBe('hello\n\n\n\n# Head\n');
+    expectTableHolds(after);
+  });
+
+  it('leaves a leading blank run held, which is a separate gap', () => {
+    const seeded = buildProjection('Above.\n\nBelow.\n', md);
+    const after = advance(
+      seeded,
+      docOf(seeded, [blank(seeded), blank(seeded), ...kids(seeded.doc)]),
+    );
+    expect(after.source).toBe('Above.\n\nBelow.\n');
+  });
+
+  it('leaves an insertion with no blank run in play on its old anchor', () => {
+    const seeded = buildProjection('Above.\n\nBelow.\n', md);
+    const children = kids(seeded.doc);
+    const after = advance(
+      seeded,
+      docOf(seeded, [children[0], block(seeded, 'Mid.\n'), children[1]]),
+    );
+    expect(after.source).toBe('Above.\n\nMid.\n\nBelow.\n');
+    expectTableHolds(after);
   });
 });

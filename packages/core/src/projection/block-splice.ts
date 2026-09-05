@@ -183,6 +183,11 @@ export function computeBlockSplice(
     return { from: shift(bounds.from), to: shift(bounds.to), text };
   }
 
+  if (text !== '') {
+    const anchored = blankRunAnchoredSplice(projection.doc, blocks, body, range, text, shift);
+    if (anchored !== null) return anchored;
+  }
+
   const anchor = insertionAnchor(body, blocks, range.before.from);
 
   if (text === '') {
@@ -251,6 +256,41 @@ function blankRunGapSplice(
     );
   }
   return null;
+}
+
+/* STOP: a held blank paragraph spells no bytes, so its span cannot anchor a write on its own.
+   Rewriting the whole run region between the nearest blocks that do spell bytes is what keeps
+   the block index and the source offset in agreement; anchoring on the last block with bytes
+   writes the new content above the run instead of into it. */
+function blankRunAnchoredSplice(
+  before: PmNode,
+  blocks: readonly PmSourceSpan[],
+  body: string,
+  range: ChangedBlocks,
+  text: string,
+  shift: (offset: number) => number,
+): SourceSplice | null {
+  let runStart = range.before.from;
+  while (runStart > 0 && isBlankParagraph(before.child(runStart - 1))) runStart--;
+  let runEnd = range.before.to;
+  while (runEnd < before.childCount && isBlankParagraph(before.child(runEnd))) runEnd++;
+  if (runStart === range.before.from && runEnd === range.before.to) return null;
+
+  const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
+  if (prev === undefined || prev.sourceEnd <= prev.sourceStart) return null;
+  const next = runEnd < blocks.length ? blocks[runEnd] : undefined;
+
+  const from = lineEnd(body, prev.sourceEnd);
+  const to = next === undefined ? body.length : lineStart(body, next.sourceStart);
+  if (to < from) return null;
+
+  const lead = range.before.from - runStart;
+  const trail = runEnd - range.before.to;
+  const tail =
+    next !== undefined
+      ? '\n'.repeat(trail + 2)
+      : '\n'.repeat(trail >= MIN_WRITTEN_TRAILING_EMPTIES ? trail + 1 : 1);
+  return { from: shift(from), to: shift(to), text: `${'\n'.repeat(lead + 2)}${text}${tail}` };
 }
 
 function gapWrite(
