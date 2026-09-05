@@ -797,3 +797,97 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     expect(alarm).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
   });
 });
+
+describe('macOS signing stays on the workflow-staged keychain', () => {
+  const desktopBuild = read('desktop-build.yml');
+  const PREPARE = 'Prepare signing keychain (CSC_KEYCHAIN)';
+  const EXPORT = 'echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"';
+  const runBody = (step) => {
+    const start = step.indexOf('run: |');
+    const end = step.indexOf(EXPORT);
+    if (start === -1 || end === -1) throw new Error('staging step lost its run body or export');
+    return step.slice(start, end + EXPORT.length);
+  };
+  const releasePrepare = workflowStep(desktopRelease, 'desktop-release.yml', PREPARE);
+  const buildPrepare = workflowStep(desktopBuild, 'desktop-build.yml', PREPARE);
+  const releasePackager = workflowStep(
+    desktopRelease,
+    'desktop-release.yml',
+    'Build + sign + notarize DMG/ZIP',
+  );
+  const buildPackager = workflowStep(
+    desktopBuild,
+    'desktop-build.yml',
+    'Package DMG (${{ steps.signmode.outputs.mode }})',
+  );
+
+  test('the twin staging steps carry the same run body', () => {
+    expect(runBody(releasePrepare)).toEqual(runBody(buildPrepare));
+  });
+
+  test('the staging step authenticates the partition list with the keychain password', () => {
+    for (const step of [releasePrepare, buildPrepare]) {
+      const partitionCall = runBody(step)
+        .replace(/\\\n\s+/g, ' ')
+        .split('\n')
+        .find((line) => line.includes('set-key-partition-list'));
+      expect(partitionCall).toBeDefined();
+      expect(partitionCall).toContain('-k "$KEYCHAIN_PASSWORD"');
+      expect(partitionCall).not.toContain('CSC_KEY_PASSWORD');
+      expect(step).toContain(EXPORT);
+    }
+  });
+
+  test('the staging step runs before the packager in both workflows', () => {
+    for (const [source, packager] of [
+      [desktopRelease, 'Build + sign + notarize DMG/ZIP'],
+      [desktopBuild, 'Package DMG ('],
+    ]) {
+      const names = stepNames(source);
+      expect(indexOfStep(names, PREPARE)).toBeGreaterThan(-1);
+      expect(indexOfStep(names, PREPARE)).toBeLessThan(indexOfStep(names, packager));
+    }
+  });
+
+  test('neither packager step receives CSC_LINK or CSC_KEY_PASSWORD', () => {
+    for (const step of [releasePackager, buildPackager]) {
+      expect(step).not.toMatch(/^\s+CSC_LINK:/m);
+      expect(step).not.toMatch(/^\s+CSC_KEY_PASSWORD:/m);
+    }
+  });
+
+  test('the release job tears the keychain down before the smoke gate', () => {
+    const names = stepNames(desktopRelease);
+    const teardown = indexOfStep(names, 'Remove signing keychain');
+    expect(teardown).toBeGreaterThan(indexOfStep(names, 'Build + sign + notarize DMG/ZIP'));
+    expect(teardown).toBeLessThan(indexOfStep(names, 'Smoke the packaged DMG'));
+  });
+});
+
+describe('the macOS artifact is attested signed before it can ship', () => {
+  const desktopBuild = read('desktop-build.yml');
+  const ATTEST = 'Attest the signed macOS app';
+
+  test('the attestation sits between the packager and the smoke gate on the release path', () => {
+    const names = stepNames(desktopRelease);
+    const attest = indexOfStep(names, ATTEST);
+    expect(attest).toBeGreaterThan(indexOfStep(names, 'Build + sign + notarize DMG/ZIP'));
+    expect(attest).toBeLessThan(indexOfStep(names, 'Smoke the packaged DMG'));
+    const step = workflowStep(desktopRelease, 'desktop-release.yml', ATTEST);
+    expect(stepLevelIfConditions(step)).toEqual([]);
+  });
+
+  test('both workflows check the Developer ID chain, hardened runtime, and the stapled ticket', () => {
+    for (const [source, name] of [
+      [desktopRelease, 'desktop-release.yml'],
+      [desktopBuild, 'desktop-build.yml'],
+    ]) {
+      const step = workflowStep(source, name, ATTEST);
+      expect(step).toContain('codesign --verify --deep --strict');
+      expect(step).toContain("'Authority=Developer ID Application'");
+      expect(step).toContain('runtime');
+      expect(step).toContain('xcrun stapler validate "$APP"');
+      expect(step).toContain('No .app found under dist-desktop to attest');
+    }
+  });
+});
