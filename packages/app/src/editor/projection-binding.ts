@@ -24,7 +24,6 @@ export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
   'okProjectionBinding',
 );
 
-/** The shared UndoManager backing this editor, for extensions that must group their own writes. */
 export function projectionUndoManager(state: EditorState): Y.UndoManager | null {
   return projectionBindingKey.getState(state)?.undoManager ?? null;
 }

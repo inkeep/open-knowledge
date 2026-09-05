@@ -19,8 +19,6 @@ const MENU_PAUSE_MS = 600;
 const pauseAtTheMenu = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, MENU_PAUSE_MS));
 
-/* The shipping SlashCommand extension drives its own window, so displace it: this suite
-   exercises the window itself, with the trigger and the command applied by hand. */
 const InertSlashCommand = Extension.create({ name: 'slashCommand' });
 
 function mountRig(): ProjectionEditorRig {
