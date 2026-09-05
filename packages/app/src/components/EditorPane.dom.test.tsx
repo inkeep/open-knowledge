@@ -193,6 +193,7 @@ vi.doMock('./SessionsHost', () => ({
     onTerminalPlacementChange,
     reserveRightRevealTabGutter,
     visible,
+    onVisibleChange,
     launch,
     threadLaunch,
   }: {
@@ -203,6 +204,7 @@ vi.doMock('./SessionsHost', () => ({
     onTerminalPlacementChange?: (placement: 'bottom' | 'right') => void;
     reserveRightRevealTabGutter?: boolean;
     visible?: boolean;
+    onVisibleChange?: (visible: boolean) => void;
     launch?: { nonce: number; stagePaste?: string } | null;
     threadLaunch?: { nonce: number; agentId?: string; prompt?: string | null } | null;
   }) => {
@@ -219,7 +221,11 @@ vi.doMock('./SessionsHost', () => ({
         data-thread-launch-nonce={threadLaunch ? String(threadLaunch.nonce) : 'none'}
         data-thread-launch-agent={threadLaunch?.agentId ?? 'none'}
       >
-        {surface === 'terminal-dock' ? (
+        {surface === 'agents-panel' ? (
+          <button type="button" onClick={() => onVisibleChange?.(true)}>
+            mock SessionsHost requests reveal
+          </button>
+        ) : (
           <>
             <button type="button" onClick={() => onTerminalPlacementChange?.('right')}>
               Move mock Terminal right
@@ -228,7 +234,7 @@ vi.doMock('./SessionsHost', () => ({
               Move mock Terminal bottom
             </button>
           </>
-        ) : null}
+        )}
       </div>
     );
   },
@@ -766,6 +772,17 @@ describe('EditorPane session-panel wiring', () => {
 
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('true');
     expect(terminalOpenedCalls).toHaveLength(0);
+  });
+
+  test('a SessionsHost reveal request opens the agents panel', async () => {
+    const user = userEvent.setup();
+    await renderEditorPane();
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('false');
+
+    await user.click(screen.getByRole('button', { name: 'mock SessionsHost requests reveal' }));
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
   });
 
   test('desktop: a reload re-expands an agents panel that was open before it', async () => {
