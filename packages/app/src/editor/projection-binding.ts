@@ -11,12 +11,23 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Extension, type JSONContent } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { type EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
-const projectionBindingKey = new PluginKey('okProjectionBinding');
+export interface ProjectionBindingPluginState {
+  undoManager: Y.UndoManager;
+}
+
+export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
+  'okProjectionBinding',
+);
+
+/** The shared UndoManager backing this editor, for extensions that must group their own writes. */
+export function projectionUndoManager(state: EditorState): Y.UndoManager | null {
+  return projectionBindingKey.getState(state)?.undoManager ?? null;
+}
 
 interface ProjectionBindingOptions {
   ytext: Y.Text;
@@ -24,6 +35,7 @@ interface ProjectionBindingOptions {
   initial: Projection;
   stats?: ProjectionBindingState;
   origin: unknown;
+  undoManager: Y.UndoManager;
 }
 
 /* STOP: one delete plus one insert, so changed lines land as a single fresh contiguous run.
@@ -95,8 +107,12 @@ interface ProjectionBindingState {
 function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   const { ytext, md, origin } = options;
 
-  return new Plugin({
+  return new Plugin<ProjectionBindingPluginState>({
     key: projectionBindingKey,
+    state: {
+      init: () => ({ undoManager: options.undoManager }),
+      apply: (_tr, value) => value,
+    },
     view(view) {
       let projection = options.initial;
       let destroyed = false;
@@ -213,14 +229,16 @@ export interface ProjectionBinding {
 }
 
 export function createProjectionBinding(
-  options: Omit<ProjectionBindingOptions, 'initial' | 'origin'> & { origin?: unknown },
+  options: Omit<ProjectionBindingOptions, 'initial' | 'origin' | 'undoManager'> & {
+    origin?: unknown;
+  },
 ): ProjectionBinding {
   const origin = options.origin ?? PROJECTION_WRITE_ORIGIN;
   const initial = buildProjection(options.ytext.toString(), options.md);
   const stats: ProjectionBindingState = { projection: initial, rebuilds: 1, writes: 0 };
   const undoManager = sharedUndoManagerFor(options.ytext);
   if (origin !== PROJECTION_WRITE_ORIGIN) undoManager.addTrackedOrigin(origin);
-  const plugin = projectionBindingPlugin({ ...options, origin, initial, stats });
+  const plugin = projectionBindingPlugin({ ...options, origin, initial, stats, undoManager });
   return {
     projection: initial,
     stats,
