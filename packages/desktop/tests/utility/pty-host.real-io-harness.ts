@@ -11,7 +11,6 @@ import {
 import {
   buildCwdFileProofCommand,
   createPtyHostProbe,
-  INPUT_READY_RESET,
   waitForCondition,
   waitForEvaluatedInput,
   waitForShellReady,
@@ -59,13 +58,13 @@ async function waitForWindowsInputReady(
   label: string,
 ): Promise<void> {
   const probe = buildInputReadyProbe();
-  const attempts = await waitForEvaluatedInput(
+  const readyMs = await waitForEvaluatedInput(
     host.streamOf(ptyId),
     (data) => host.send({ type: 'input', ptyId, data }),
-    { input: `${probe.command}\r`, marker: probe.marker, reset: INPUT_READY_RESET },
+    { input: `${probe.command}\r`, marker: probe.marker },
     label,
   );
-  console.log(`INPUT_READY ${label} attempts=${attempts}`);
+  console.log(`INPUT_READY ${label} readyMs=${readyMs}`);
 }
 
 async function waitForInteractiveShellReady(

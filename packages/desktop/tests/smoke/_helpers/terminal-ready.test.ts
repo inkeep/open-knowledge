@@ -46,6 +46,32 @@ describe('terminal smoke shell readiness', () => {
     expect(resets).toEqual([1]);
   });
 
+  test('holds the Windows reset clear of the pty-create window where U+0003 kills the shell', async () => {
+    const MEASURED_SAFE_RESET_MS = 1_000;
+    const TIMER_SLACK_MS = 10;
+    const startedAt = Date.now();
+    let text = 'PowerShell 7.6.5';
+    let resetAtMs: number | null = null;
+
+    await waitForShellReady(
+      () => Promise.resolve(text),
+      (command) => {
+        if (resetAtMs !== null) text += `\r\n${evaluateArithmeticProbe(command)}`;
+        return Promise.resolve();
+      },
+      {
+        platform: 'win32',
+        timeout: 10_000,
+        resetTerminalInput: () => {
+          resetAtMs ??= Date.now() - startedAt;
+          return Promise.resolve();
+        },
+      },
+    );
+
+    expect(resetAtMs).toBeGreaterThan(MEASURED_SAFE_RESET_MS - TIMER_SLACK_MS);
+  });
+
   test('observes delayed Windows output before cancelling a successful probe', async () => {
     let command = '';
     let readsAfterSend = 0;

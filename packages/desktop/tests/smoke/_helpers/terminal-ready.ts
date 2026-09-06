@@ -32,6 +32,7 @@ export async function waitForShellReady(
     await expect(async () => {
       if ((await readTerminalText()).includes(marker)) return;
 
+      // STOP: this reset must not land within a second of pty create; U+0003 written there kills the shell with STATUS_CONTROL_C_EXIT no matter how much output it has already drawn, so the settle phase and interval ahead of it are load-bearing.
       if (attempted) {
         await resetTerminalInput();
       }

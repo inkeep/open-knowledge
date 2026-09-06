@@ -1,9 +1,8 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { PtyProcessLike, PtySpawnOptions, SpawnPty } from '../../src/utility/pty-host.ts';
 import {
   buildCwdFileProofCommand,
   createPtyHostProbe,
-  INPUT_READY_RESET,
   type PtyStream,
   waitForCondition,
   waitForEvaluatedInput,
@@ -275,114 +274,81 @@ const INPUT_READY_MARKER = 'OK_INPUT_READY_deadbeef_42_READY';
 const INPUT_READY_PROBE = {
   input: 'Write-Output "OK_INPUT_READY_deadbeef_$((6*7))_READY"\r',
   marker: INPUT_READY_MARKER,
-  reset: INPUT_READY_RESET,
 } as const;
-const INPUT_READY_FAST = { timeoutMs: 60, intervalMs: 5, attempts: 5 } as const;
-const INPUT_READY_EXHAUSTED = new RegExp(
-  `timeout waiting for: input ready[\\s\\S]*gave up after ${INPUT_READY_FAST.attempts} attempts`,
-  'u',
-);
+const INPUT_READY_FAST = { timeoutMs: 200, intervalMs: 5 } as const;
+const SLOW_EVALUATION_MS = 120;
+const READINESS_CEILING_MS = 16_000;
 
 function driveEvaluatingShell(
   stream: FakeStream,
-  options: { swallowFirst: number; evaluates?: boolean; corruptsLine?: boolean },
-): { sent: string[]; send: (data: string) => void } {
+  options: { evaluatesAfterMs?: number; evaluates?: boolean } = {},
+): { sent: string[]; send: (data: string) => void; dispose: () => void } {
   const sent: string[] = [];
-  let swallowed = 0;
-  let partialLine = false;
+  const timers: ReturnType<typeof setTimeout>[] = [];
   return {
     sent,
+    dispose: () => {
+      for (const timer of timers) clearTimeout(timer);
+    },
     send: (data) => {
       sent.push(data);
-      if (data === INPUT_READY_RESET) {
-        partialLine = false;
-        return;
-      }
+      if (options.evaluates === false) return;
       const typed = data.replace(/\r$/u, '');
       const output = evaluateFakePowerShellCommand(typed);
       if (output === null) return;
-      if (swallowed < options.swallowFirst) {
-        swallowed += 1;
-        if (options.corruptsLine === true) partialLine = true;
-        return;
-      }
-      if (options.evaluates === false) return;
-      if (partialLine) return;
-      stream.emit(`${typed}\r\n${output}\r\n`);
+      timers.push(
+        setTimeout(() => stream.emit(`${typed}\r\n${output}\r\n`), options.evaluatesAfterMs ?? 0),
+      );
     },
   };
 }
 
 describe('evaluated-input readiness', () => {
-  test('pins the line reset as a real ETX rather than an empty string', () => {
-    expect(INPUT_READY_PROBE.reset).toBe('\u0003');
+  test('returns the elapsed milliseconds a single probe took to be evaluated', async () => {
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream, { evaluatesAfterMs: SLOW_EVALUATION_MS });
+    try {
+      const readyMs = await waitForEvaluatedInput(
+        stream,
+        shell.send,
+        INPUT_READY_PROBE,
+        'input ready',
+        { timeoutMs: 5_000, intervalMs: 5 },
+      );
+      expect(readyMs).toBeGreaterThanOrEqual(SLOW_EVALUATION_MS);
+      expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
+    } finally {
+      shell.dispose();
+    }
   });
 
-  test('sends once when the shell evaluates the first probe', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 0 });
-    const attempts = await waitForEvaluatedInput(
-      stream,
-      shell.send,
-      INPUT_READY_PROBE,
-      'input ready',
-      INPUT_READY_FAST,
-    );
-    expect(attempts).toBe(1);
-    expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
-  });
-
-  test('recovers when a console still initializing swallows the first keystrokes', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 2 });
-    const attempts = await waitForEvaluatedInput(
-      stream,
-      shell.send,
-      INPUT_READY_PROBE,
-      'input ready',
-      INPUT_READY_FAST,
-    );
-    expect(attempts).toBe(3);
-    expect(stream.read()).toContain(INPUT_READY_MARKER);
-    expect(shell.sent).toEqual([
-      INPUT_READY_PROBE.input,
-      INPUT_READY_PROBE.input,
-      INPUT_READY_PROBE.reset,
-      INPUT_READY_PROBE.input,
-    ]);
-  });
-
-  test('recovers a wholly dropped probe by re-sending, without a reset', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 1 });
-    const attempts = await waitForEvaluatedInput(
-      stream,
-      shell.send,
-      INPUT_READY_PROBE,
-      'input ready',
-      INPUT_READY_FAST,
-    );
-    expect(attempts).toBe(2);
-    expect(shell.sent).toEqual([INPUT_READY_PROBE.input, INPUT_READY_PROBE.input]);
-  });
-
-  test('needs the reset when a dropped probe left a partial line', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 1, corruptsLine: true });
-    const attempts = await waitForEvaluatedInput(
-      stream,
-      shell.send,
-      INPUT_READY_PROBE,
-      'input ready',
-      INPUT_READY_FAST,
-    );
-    expect(attempts).toBe(3);
-    expect(shell.sent).toEqual([
-      INPUT_READY_PROBE.input,
-      INPUT_READY_PROBE.input,
-      INPUT_READY_PROBE.reset,
-      INPUT_READY_PROBE.input,
-    ]);
+  test('defaults to the 16 second ceiling the four four-second attempts used to spend', async () => {
+    vi.useFakeTimers();
+    try {
+      const stream = createFakeStream();
+      const shell = driveEvaluatingShell(stream, { evaluates: false });
+      let outcome: 'pending' | 'resolved' | 'rejected' = 'pending';
+      const pending = waitForEvaluatedInput(
+        stream,
+        shell.send,
+        INPUT_READY_PROBE,
+        'input ready',
+      ).then(
+        () => {
+          outcome = 'resolved';
+        },
+        () => {
+          outcome = 'rejected';
+        },
+      );
+      await vi.advanceTimersByTimeAsync(READINESS_CEILING_MS - 1_000);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1_100);
+      expect(outcome).toBe('rejected');
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('a shell that only echoes the probe never reports ready', async () => {
@@ -395,37 +361,23 @@ describe('evaluated-input readiness', () => {
         'input ready',
         INPUT_READY_FAST,
       ),
-    ).rejects.toThrow(INPUT_READY_EXHAUSTED);
+    ).rejects.toThrow(/timeout waiting for: input ready/u);
     expect(stream.read()).toContain('Write-Output');
     expect(stream.read()).not.toContain(INPUT_READY_MARKER);
   });
 
-  test('a shell that never evaluates fails once the attempt budget is spent', async () => {
+  test('a shell that never evaluates times out having written the probe once', async () => {
     const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 0, evaluates: false });
+    const shell = driveEvaluatingShell(stream, { evaluates: false });
     await expect(
       waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', INPUT_READY_FAST),
-    ).rejects.toThrow(INPUT_READY_EXHAUSTED);
-    expect(shell.sent.filter((data) => data === INPUT_READY_PROBE.input)).toHaveLength(
-      INPUT_READY_FAST.attempts,
-    );
-  });
-
-  test('falls back to the module attempt budget when the caller omits one', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 0, evaluates: false });
-    await expect(
-      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
-        timeoutMs: INPUT_READY_FAST.timeoutMs,
-        intervalMs: INPUT_READY_FAST.intervalMs,
-      }),
-    ).rejects.toThrow(/gave up after 4 attempts/u);
-    expect(shell.sent.filter((data) => data === INPUT_READY_PROBE.input)).toHaveLength(4);
+    ).rejects.toThrow(/timeout waiting for: input ready/u);
+    expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
   });
 
   test('rejects a probe whose own echo would satisfy it', async () => {
     const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 0 });
+    const shell = driveEvaluatingShell(stream);
     await expect(
       waitForEvaluatedInput(
         stream,
@@ -438,28 +390,18 @@ describe('evaluated-input readiness', () => {
     expect(shell.sent).toEqual([]);
   });
 
-  test('chains the underlying wait failure as the cause', async () => {
+  test('a dead shell short-circuits instead of waiting out the budget', async () => {
     const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 0, evaluates: false });
-    const error = await waitForEvaluatedInput(
-      stream,
-      shell.send,
-      INPUT_READY_PROBE,
-      'input ready',
-      INPUT_READY_FAST,
-    ).catch((thrown: unknown) => thrown as Error);
-    expect(error).toBeInstanceOf(Error);
-    expect(error.cause).toBeInstanceOf(Error);
-    expect((error.cause as Error).message).toMatch(/timeout waiting for: input ready/u);
-  });
-
-  test('a dead shell short-circuits instead of burning the attempt budget', async () => {
-    const stream = createFakeStream();
-    const shell = driveEvaluatingShell(stream, { swallowFirst: 99 });
+    const shell = driveEvaluatingShell(stream, { evaluates: false });
     stream.fail('exited (code 1, signal none)');
+    const startedAt = Date.now();
     await expect(
-      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', INPUT_READY_FAST),
+      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
+        timeoutMs: 5_000,
+        intervalMs: 5,
+      }),
     ).rejects.toThrow(/shell failed before input ready/u);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
     expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
   });
 });
