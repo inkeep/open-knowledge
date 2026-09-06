@@ -268,6 +268,13 @@ export function computeBlockSplice(
   };
 }
 
+function blankParagraphInRange(doc: PmNode, range: { from: number; to: number }): boolean {
+  for (let i = range.from; i < range.to && i < doc.childCount; i++) {
+    if (isBlankParagraph(doc.child(i))) return true;
+  }
+  return false;
+}
+
 function isBlankParagraph(node: PmNode): boolean {
   return node.type.name === 'paragraph' && node.content.size === 0;
 }
@@ -346,7 +353,13 @@ function blankRunAnchoredSplice(
   while (runStart > 0 && isBlankParagraph(before.child(runStart - 1))) runStart--;
   let runEnd = range.before.to;
   while (runEnd < before.childCount && isBlankParagraph(before.child(runEnd))) runEnd++;
-  if (runStart === range.before.from && runEnd === range.before.to) return null;
+  /* STOP: the run not reaching past the changed range does NOT mean there is nothing to
+     reclaim. A lone blank paragraph between two written blocks is a zero-width span, so it
+     owns no bytes to replace, yet the blank LINE spelling it is still in the source. Bailing
+     here whenever the run did not grow sent that case to insertionAnchor, which inserts
+     without consuming and leaves the blank line behind the text that replaced it. */
+  const replacesBlank = blankParagraphInRange(before, range.before);
+  if (runStart === range.before.from && runEnd === range.before.to && !replacesBlank) return null;
 
   const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
   if (prev !== undefined && prev.sourceEnd <= prev.sourceStart) return null;

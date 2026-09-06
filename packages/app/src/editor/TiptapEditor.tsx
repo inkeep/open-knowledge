@@ -13,7 +13,6 @@ import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent } from '@tiptap/react';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { type FC, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SelectionAnnouncer } from '@/components/editor/SelectionAnnouncer';
@@ -63,7 +62,7 @@ import { useDocumentContext } from './DocumentContext';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
-import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
+import { getEditorSourceMode, setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
@@ -78,12 +77,16 @@ import {
   AGENT_INSERT_FLASH_ACTIVATION_MS,
   AGENT_INSERT_FLASH_MS,
   agentInsertFlashKey,
-  blockRangeToPositions,
-  computeChangedRange,
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
+import { createRemoteCaretsPlugin } from './plugins/remote-carets';
 import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
-import { createProjectionBinding, type ProjectionBinding } from './projection-binding';
+import {
+  createProjectionBinding,
+  liveProjection,
+  type ProjectionBinding,
+} from './projection-binding';
+import { blockRangeToPmRange, createFullPrecisionResolver } from './projection-coordinates';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -220,6 +223,22 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
     }),
     SkillPathLinks.configure({ docName: provider.configuration.name ?? '' }),
     projection.extension,
+    Extension.create({
+      name: 'collaborationCursor',
+      addProseMirrorPlugins() {
+        const awareness = provider.awareness;
+        if (!awareness) return [];
+        const { editor } = this;
+        return [
+          createRemoteCaretsPlugin({
+            ytext: provider.document.getText('source'),
+            awareness,
+            md: getProjectionMarkdownManager(),
+            isActive: () => !getEditorSourceMode(editor),
+          }),
+        ];
+      },
+    }),
     Extension.create({
       name: 'imageUploadDecoration',
       addProseMirrorPlugins() {
@@ -846,49 +865,55 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       );
     };
 
-    const onTransaction = ({ transaction }: { transaction: PMTransaction }) => {
-      if (!transaction.docChanged) return;
-      const syncMeta = transaction.getMeta(ySyncPluginKey) as
-        | { isChangeOrigin?: boolean }
-        | undefined;
-      if (syncMeta?.isChangeOrigin !== true) return;
-      if (!hasNewEntries(activityMap, Date.now() - AGENT_INSERT_FLASH_MS)) return;
-      if (docName !== activeDocName) return;
-      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_MS);
-      if (fresh !== null && fresh.key === lastAgentFlashKeyRef.current) return;
-      const range = computeChangedRange(transaction.before, transaction.doc);
-      if (range === null) return;
-      const view = liveView();
-      if (view == null) return;
-      if (fresh !== null) lastAgentFlashKeyRef.current = fresh.key;
-      flashAndScroll(view, range.from, range.to);
-    };
-    editor.on('transaction', onTransaction);
+    const resolveFullPrecision = createFullPrecisionResolver(getProjectionMarkdownManager());
 
-    const replayFromEntry = (): void => {
+    const flashEntry = (withinMs: number): void => {
       if (disposed || docName !== activeDocName) return;
       const view = liveView();
       if (view == null) return;
-      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_ACTIVATION_MS);
+      const fresh = freshestFlashEntry(activityMap, Date.now() - withinMs);
       if (fresh === null || fresh.key === lastAgentFlashKeyRef.current) return;
       const blocks = fresh.entry.changedBlocks;
       if (blocks === undefined) return;
-      const range = blockRangeToPositions(view.state.doc, blocks.from, blocks.to);
+      const projection = liveProjection(view.state);
+      if (projection === null) return;
+      const range = blockRangeToPmRange(
+        resolveFullPrecision(projection),
+        getProjectionMarkdownManager(),
+        blocks.from,
+        blocks.to,
+      );
       if (range === null) return;
       lastAgentFlashKeyRef.current = fresh.key;
       flashAndScroll(view, range.from, range.to);
     };
+
+    const replayFromEntry = (): void => flashEntry(AGENT_INSERT_FLASH_ACTIVATION_MS);
     const activationRaf = requestAnimationFrame(replayFromEntry);
     const onSynced = (): void => {
       requestAnimationFrame(replayFromEntry);
     };
     provider.on('synced', onSynced);
 
+    /* STOP: the write and its `agent-flash` entry land in one Y transaction, so this observer
+       can run before the Y.Text observer has re-projected the document. The rAF hop is what
+       makes `liveProjection` the post-write projection rather than the pre-write one. */
+    let liveRaf: number | null = null;
+    const onActivity = (): void => {
+      if (liveRaf !== null) cancelAnimationFrame(liveRaf);
+      liveRaf = requestAnimationFrame(() => {
+        liveRaf = null;
+        flashEntry(AGENT_INSERT_FLASH_MS);
+      });
+    };
+    activityMap.observe(onActivity);
+
     return () => {
       disposed = true;
-      editor.off('transaction', onTransaction);
+      activityMap.unobserve(onActivity);
       provider.off('synced', onSynced);
       cancelAnimationFrame(activationRaf);
+      if (liveRaf !== null) cancelAnimationFrame(liveRaf);
       if (sweepTimeout !== null) clearTimeout(sweepTimeout);
       for (const timer of followUpTimers) clearTimeout(timer);
       editor.unregisterPlugin(agentInsertFlashKey);
@@ -1079,7 +1104,12 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       awareness.setLocalState(null);
       return;
     }
+    /* STOP: this is a whole-object write and `cursor` is written by someone else -- the remote
+       caret plugin here, and yCollab in the source editor. Spreading the existing state is what
+       keeps a caret alive across a mode flip; replacing the object drops the field and the peer
+       loses the caret until its owner next moves. */
     awareness.setLocalState({
+      ...awareness.getLocalState(),
       user: buildAwarenessUser({ principal, identity }),
       mode: isSourceMode ? 'source' : 'wysiwyg',
     });

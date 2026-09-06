@@ -406,6 +406,39 @@ describe('computeBlockSplice — a block landing in a blank run', () => {
     expect(buildProjection(projection.source, md).doc.childCount).toBe(projection.doc.childCount);
   }
 
+  it('reclaims the blank line spelling a lone interior blank once it gains content', () => {
+    const before = buildProjection('hello\n\n\nhello\n', md);
+    expect(before.doc.childCount).toBe(3);
+    expect(before.map.blocks[1]?.sourceStart).toBe(before.map.blocks[1]?.sourceEnd);
+
+    const after = docOf(before, [
+      before.doc.child(0),
+      block(before, 'error\n'),
+      before.doc.child(2),
+    ]);
+    const changed = changedProjectionBlocks(before.doc, after);
+    const splice = computeBlockSplice(before, after, md, changed);
+    expect(splice).not.toBeNull();
+    expect(applySplice(before.source, splice as never)).toBe('hello\n\nerror\n\nhello\n');
+  });
+
+  it('leaves a blank on each side of an interior blank run that only partly fills', () => {
+    const before = buildProjection('hello\n\n\n\nhello\n', md);
+    expect(before.doc.childCount).toBe(4);
+
+    const after = docOf(before, [
+      before.doc.child(0),
+      block(before, 'error\n'),
+      before.doc.child(2),
+      before.doc.child(3),
+    ]);
+    const changed = changedProjectionBlocks(before.doc, after);
+    const splice = computeBlockSplice(before, after, md, changed);
+    expect(splice).not.toBeNull();
+    const written = applySplice(before.source, splice as never);
+    expect(buildProjection(written, md).doc.childCount).toBe(after.childCount);
+  });
+
   it('writes the block below the blank run that precedes it, not above it', () => {
     const seeded = pressEnter(buildProjection('hello\n', md), 8);
     expect(seeded.source).toBe('hello\n\n\n\n\n\n\n\n\n');

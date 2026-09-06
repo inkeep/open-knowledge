@@ -447,9 +447,21 @@ describe('the extension list services the projection, never a fragment binding',
     }).map((extension) => extension.name);
     expect(names).toContain('okProjectionBinding');
     expect(names).not.toContain('collaboration');
-    expect(names).not.toContain('collaborationCursor');
     expect(names).not.toContain('bindingStalenessGuard');
     expect(names).not.toContain('walkCurrency');
+    cleanup();
+  });
+
+  it('carries a collaborationCursor that renders remote carets off the projection, not ySync', () => {
+    const { provider, ydoc, cleanup } = makeProvider();
+    const projection = createProjectionBinding({ ytext: ydoc.getText('source'), md });
+    const names = buildExtensionList({
+      provider,
+      clipboard: fakeClipboard,
+      ctorStart: 0,
+      projection,
+    }).map((extension) => extension.name);
+    expect(names).toContain('collaborationCursor');
     cleanup();
   });
 });

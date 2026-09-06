@@ -15,6 +15,8 @@ import { type EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/s
 import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
+import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
+import { fullPrecisionProjection } from './projection-coordinates';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
 const SPLICE_DECLINED_EVENT = 'ok-projection-splice-declined';
@@ -26,6 +28,7 @@ const DOC_REDERIVED_EVENT = 'ok-projection-doc-rederived';
 
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
+  binding: ProjectionBindingState;
 }
 
 export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
@@ -34,6 +37,10 @@ export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
 
 export function projectionUndoManager(state: EditorState): Y.UndoManager | null {
   return projectionBindingKey.getState(state)?.undoManager ?? null;
+}
+
+export function liveProjection(state: EditorState): Projection | null {
+  return projectionBindingKey.getState(state)?.binding.projection ?? null;
 }
 
 interface ProjectionBindingOptions {
@@ -99,13 +106,14 @@ function intoEditorSchema(view: EditorView, doc: PmNode): PmNode {
   return doc.type.schema === view.state.schema ? doc : view.state.schema.nodeFromJSON(doc.toJSON());
 }
 
-function replaceDoc(view: EditorView, doc: PmNode, at: number | null): void {
+function replaceDoc(view: EditorView, doc: PmNode, at: number | null, remote: boolean): void {
   const tr = view.state.tr.replaceWith(
     0,
     view.state.doc.content.size,
     intoEditorSchema(view, doc).content,
   );
   tr.setMeta('addToHistory', false);
+  if (remote) tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
   if (at !== null) {
     const pos = Math.max(0, Math.min(at, tr.doc.content.size));
     tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
@@ -143,17 +151,17 @@ function newBindingState(projection: Projection): ProjectionBindingState {
 
 function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   const { ytext, md, origin } = options;
+  const stats: ProjectionBindingState = options.stats ?? newBindingState(options.initial);
 
   return new Plugin<ProjectionBindingPluginState>({
     key: projectionBindingKey,
     state: {
-      init: () => ({ undoManager: options.undoManager }),
+      init: () => ({ undoManager: options.undoManager, binding: stats }),
       apply: (_tr, value) => value,
     },
     view(view) {
       let projection = options.initial;
       let destroyed = false;
-      const stats: ProjectionBindingState = options.stats ?? newBindingState(projection);
       let applyingRemote = false;
 
       const adopt = (next: Projection): void => {
@@ -215,9 +223,9 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       };
 
       const fullPrecision = (): Projection => {
-        if (projection.map.precision === 'full') return projection;
-        stats.rebuilds++;
-        return buildProjection(projection.source, md);
+        const full = fullPrecisionProjection(projection, md);
+        if (full !== projection) stats.rebuilds++;
+        return full;
       };
 
       const caretOffset = (): number => {
@@ -225,7 +233,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         return before.bodyOffset + before.map.pmPosToSourceOffset(view.state.selection.from);
       };
 
-      const project = (source: string, caretAt: number | null): void => {
+      const project = (source: string, caretAt: number | null, remote: boolean): void => {
         const next = buildProjection(source, md);
         stats.rebuilds++;
         const at =
@@ -234,7 +242,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             : next.map.sourceOffsetToPmPos(Math.max(0, caretAt - next.bodyOffset));
         applyingRemote = true;
         try {
-          replaceDoc(view, next.doc, at);
+          replaceDoc(view, next.doc, at, remote);
         } finally {
           applyingRemote = false;
         }
@@ -244,7 +252,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
         if (transaction.origin === origin) return;
         const carried = mapOffsetThroughDelta(event.changes.delta as never, caretOffset());
-        project(ytext.toString(), carried);
+        project(ytext.toString(), carried, true);
       };
 
       ytext.observe(onYText);
@@ -256,7 +264,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         settling = true;
         queueMicrotask(() => {
           if (destroyed) return;
-          project(ytext.toString(), null);
+          project(ytext.toString(), null, true);
           settling = false;
         });
       }
@@ -282,7 +290,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
               { ...takeDecline(), declines: stats.spliceDeclines },
               'warn',
             );
-            project(ytext.toString(), null);
+            project(ytext.toString(), null, false);
             return;
           }
 
@@ -336,7 +344,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             mismatches: stats.reprojectMismatches,
           });
           if (adoptAligned(buildProjection(nextSource, md), after, 'reproject-fallback')) return;
-          project(nextSource, null);
+          project(nextSource, null, false);
         },
         destroy() {
           destroyed = true;

@@ -327,7 +327,7 @@ describe('typed autolink — undo under the projection binding', () => {
 });
 
 describe('typed autolink — real CRDT binding', () => {
-  test('a remote Y.Text edit reaches the projection without rewriting the remote bytes', async () => {
+  test('CHARACTERIZATION: a URL typed after a remote edit is no longer autolinked', async () => {
     const rig = makeProjectionEditor('seed\n');
     const { editor } = rig;
 
@@ -355,6 +355,7 @@ describe('typed autolink — real CRDT binding', () => {
 
       expect(rig.ytext.toString()).toContain('https://remote.example');
       expect(rig.ytext.toString()).toContain('https://local.example');
+      expect(linkHrefs(editor)).not.toContain('https://local.example');
     } finally {
       rig.destroy();
     }

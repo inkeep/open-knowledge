@@ -509,21 +509,11 @@
   }
 }
 
-/* Agent flash — surgical, survives ProseMirror reconciliation.
-   The data-agent-flash-state attribute lives on the React wrapper (stable across PM updates).
-   Targets only the last 3 blocks (append) or first 3 blocks (prepend) — covers most agent writes.
-   Uses :nth-last-child / :nth-child to scope the flash without touching PM-managed DOM.
-   The append half counts `of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)` because
-   both are widget decorations that render as a direct .ProseMirror child at the document end.
-   Counting either would shift the append flash one block up while it is showing. CSS cannot
-   import OK_TRAILING_AFFORDANCE_CLASS from editor/extensions/trailing-affordance.ts, so this
-   list is the one place carrying the names literally; globals.test.ts pins them together.
-
-   The append and prepend halves are separate rules on purpose rather than one comma-joined
-   prelude. A selector list is invalidated as a whole, so on a UA that cannot parse `of S` the
-   prepend half would lose its flash too, though it uses no Selectors L4 syntax of its own.
-
-   Staggered entry (30ms per block) via animation-delay for a cascading feel on multi-block writes. */
+/* Agent flash — the position-accurate inline decoration below is the only thing that
+   paints an agent write. The block-guessing wash that used to live here (last 3 children on
+   append, first 3 on prepend, chosen by substring-matching "prepend" in a description string)
+   is gone: it washed whichever blocks sat at the document edge regardless of where the write
+   landed, which is the defect it was measured producing. */
 
 /* Position-accurate agent-insert flash — inline decoration class applied by
    the agent-insert-flash PM plugin to the exact ranges a remote agent write
@@ -560,65 +550,6 @@
 /* Reduced motion — static terracotta accent bar, no movement or background sweep. */
 @media (prefers-reduced-motion: reduce) {
   .ok-landing-flash {
-    animation: none;
-    box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
-  }
-}
-
-[data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation: agent-flash 2s var(--ease-out-strong) forwards;
-  position: relative;
-}
-[data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(-n + 3) {
-  animation: agent-flash 2s var(--ease-out-strong) forwards;
-  position: relative;
-}
-
-/* Stagger — second affected block fires 30ms after first, third at 60ms */
-[data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(2 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation-delay: 30ms;
-}
-[data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(1 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation-delay: 0ms;
-}
-[data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(1) {
-  animation-delay: 0ms;
-}
-[data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(2) {
-  animation-delay: 30ms;
-}
-[data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(3) {
-  animation-delay: 60ms;
-}
-
-/* Reduced motion — keep opacity/color transition for comprehension, remove movement.
-   Static terracotta left accent bar fades in and out, no transform, no background tint. */
-@media (prefers-reduced-motion: reduce) {
-  [data-agent-flash-state="editing"][data-agent-flash-position="append"]
-    .ProseMirror
-    > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-    animation: none;
-    box-shadow: inset 3px 0 0 var(--color-agent);
-    transition: box-shadow 2s ease;
-  }
-  [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-    .ProseMirror
-    > *:nth-child(-n + 3) {
     animation: none;
     box-shadow: inset 3px 0 0 var(--color-agent);
     transition: box-shadow 2s ease;
@@ -5681,20 +5612,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
   }
 }
 
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="append"]
-  .ProseMirror
-  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
-  animation-name: agent-flash-dark;
-}
-.dark
-  [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
-  .ProseMirror
-  > *:nth-child(-n + 3) {
-  animation-name: agent-flash-dark;
-}
-
-.dark [data-presence-badge="agent"][data-presence-mode="editing"] {
+.dark .dark .dark [data-presence-badge="agent"][data-presence-mode="editing"] {
   animation-name: agent-breathing-dark;
 }
 
@@ -6169,6 +6087,14 @@ html.electron-mode [data-slot="sidebar-inner"] {
    auto's paint containment would otherwise clip the chrome to the wrapper's box,
    hiding it entirely. */
 .ProseMirror .ok-chunk-wrapper.node-codeBlock {
+  content-visibility: visible;
+}
+
+/* A remote caret's name label sits above its own line, outside the wrapper's box, so the
+   wrapper's paint containment clips it away and the caret shows with no name on it. Same
+   opt-out, same reason as `.node-codeBlock` above; the class is applied as a node decoration
+   only to a block that currently hosts a peer's caret, so nothing else loses cv:auto. */
+.ProseMirror .ok-chunk-wrapper.ok-remote-caret-host {
   content-visibility: visible;
 }
 
