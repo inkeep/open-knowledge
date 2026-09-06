@@ -26,9 +26,9 @@ const GPU_PROCESS_TYPE = 'GPU';
 
 const GPU_DUMP_PROCESS_TYPE = 'gpu-process';
 
-const GPU_CRASH_INVITE_THRESHOLD = 3;
+export const GPU_CRASH_INVITE_THRESHOLD = 3;
 
-const GPU_CRASH_WINDOW_MS = 5 * 60_000;
+export const GPU_CRASH_WINDOW_MS = 5 * 60_000;
 
 const INVITE_SUPERSEDE_AFTER_MS = 5 * 60_000;
 
@@ -36,7 +36,7 @@ const MAX_ACKED_EVENT_IDS = 50;
 
 const DECLINED_DEATH_DUMP_MATCH_MS = 30_000;
 
-const MAX_DECLINED_DEATHS = 20;
+export const MAX_DECLINED_DEATHS = 600;
 
 const MINIDUMP_SCAN_DEPTH = 3;
 
@@ -496,13 +496,17 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       const unnamedNearDeclineCount = freshDumps.filter(
         (d) => d.declined.read === 'unnamed',
       ).length;
-      if (unnamedNearDeclineCount > 0) {
+      const annotationParseFailedCount = freshDumps.filter(
+        (d) => d.declined.read === 'parse-failed',
+      ).length;
+      if (unnamedNearDeclineCount > 0 || annotationParseFailedCount > 0) {
         deps.logger.info(
           {
-            event: 'crash-detection.dump-beside-decline-unnamed',
-            count: unnamedNearDeclineCount,
+            event: 'crash-detection.dump-beside-decline-unclassified',
+            unnamed: unnamedNearDeclineCount,
+            parseFailed: annotationParseFailedCount,
           },
-          'a minidump beside a declined death named no process type, so it still arms',
+          'a minidump beside a declined death could not be classified against it, so it still arms',
         );
       }
       if (foreignDumpCount > 0 || unreadableDumpCount > 0 || nonCrashDumpCount > 0) {
