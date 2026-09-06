@@ -31,6 +31,7 @@ type RelaunchFailedCb = (info: { version: string; message?: string; downloadUrl?
 type WhatsNewCb = (info: { version: string; releaseUrl: string }) => void;
 type WhatsNewDismissedCb = (info: { version: string }) => void;
 type StuckHintCb = (info: { downloadUrl: string }) => void;
+type ManualCheckCb = (info: { phase: 'started' | 'settled' }) => void;
 
 interface FakeBridge {
   onUpdateDownloaded: ReturnType<typeof vi.fn>;
@@ -40,6 +41,7 @@ interface FakeBridge {
   onWhatsNew: ReturnType<typeof vi.fn>;
   onWhatsNewDismissed: ReturnType<typeof vi.fn>;
   onUpdateStuckHint: ReturnType<typeof vi.fn>;
+  onUpdateManualCheck: ReturnType<typeof vi.fn>;
   update: {
     relaunchNow: ReturnType<typeof vi.fn>;
     dismissWhatsNew: ReturnType<typeof vi.fn>;
@@ -56,6 +58,7 @@ interface FakeBridge {
   _whatsNew?: WhatsNewCb;
   _whatsNewDismissed?: WhatsNewDismissedCb;
   _stuckHint?: StuckHintCb;
+  _manualCheck?: ManualCheckCb;
   _downloadedUnsub: ReturnType<typeof vi.fn>;
   _relaunchingUnsub: ReturnType<typeof vi.fn>;
   _fetchingLatestUnsub: ReturnType<typeof vi.fn>;
@@ -63,6 +66,7 @@ interface FakeBridge {
   _whatsNewUnsub: ReturnType<typeof vi.fn>;
   _whatsNewDismissedUnsub: ReturnType<typeof vi.fn>;
   _stuckHintUnsub: ReturnType<typeof vi.fn>;
+  _manualCheckUnsub: ReturnType<typeof vi.fn>;
 }
 
 function makeFakeBridge(): FakeBridge {
@@ -74,6 +78,7 @@ function makeFakeBridge(): FakeBridge {
     _whatsNewUnsub: vi.fn(() => {}),
     _whatsNewDismissedUnsub: vi.fn(() => {}),
     _stuckHintUnsub: vi.fn(() => {}),
+    _manualCheckUnsub: vi.fn(() => {}),
     onUpdateDownloaded: vi.fn(() => {}),
     onUpdateRelaunching: vi.fn(() => {}),
     onUpdateFetchingLatest: vi.fn(() => {}),
@@ -81,6 +86,7 @@ function makeFakeBridge(): FakeBridge {
     onWhatsNew: vi.fn(() => {}),
     onWhatsNewDismissed: vi.fn(() => {}),
     onUpdateStuckHint: vi.fn(() => {}),
+    onUpdateManualCheck: vi.fn(() => {}),
     update: {
       relaunchNow: vi.fn(() => Promise.resolve(undefined)),
       dismissWhatsNew: vi.fn(() => Promise.resolve(undefined)),
@@ -118,6 +124,10 @@ function makeFakeBridge(): FakeBridge {
   b.onUpdateStuckHint = vi.fn((cb: StuckHintCb) => {
     b._stuckHint = cb;
     return b._stuckHintUnsub;
+  });
+  b.onUpdateManualCheck = vi.fn((cb: ManualCheckCb) => {
+    b._manualCheck = cb;
+    return b._manualCheckUnsub;
   });
   return b;
 }
@@ -189,29 +199,177 @@ describe('appendErrorDetail', () => {
 });
 
 describe('attachUpdateSubscribers — registration', () => {
-  test('subscribes to all six update channels on the bridge', () => {
+  test('subscribes to all eight update channels on the bridge', () => {
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
     expect(bridge.onUpdateDownloaded).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateRelaunching).toHaveBeenCalledTimes(1);
+    expect(bridge.onUpdateFetchingLatest).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateRelaunchFailed).toHaveBeenCalledTimes(1);
     expect(bridge.onWhatsNew).toHaveBeenCalledTimes(1);
     expect(bridge.onWhatsNewDismissed).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateStuckHint).toHaveBeenCalledTimes(1);
+    expect(bridge.onUpdateManualCheck).toHaveBeenCalledTimes(1);
   });
 
-  test('returns a single unsubscribe closure that detaches ALL six listeners', () => {
+  test('returns a single unsubscribe closure that detaches all eight listeners', () => {
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice);
     unsubscribe();
     expect(bridge._downloadedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._relaunchingUnsub).toHaveBeenCalledTimes(1);
+    expect(bridge._fetchingLatestUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._relaunchFailedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._whatsNewUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._whatsNewDismissedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._stuckHintUnsub).toHaveBeenCalledTimes(1);
+    expect(bridge._manualCheckUnsub).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Notice F — ok:update:manual-check', () => {
+  test('repeated started events reuse the notice id and replace the pending expiry', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const unsubscribe = attachUpdateSubscribers(
+      castBridge(bridge),
+      addNotice,
+      dismissNotice,
+      undefined,
+      undefined,
+      15,
+    );
+    try {
+      bridge._manualCheck?.({ phase: 'started' });
+      bridge._manualCheck?.({ phase: 'started' });
+      expect(addNotice).toHaveBeenCalledTimes(2);
+      expect(addNotice.mock.calls.map(([notice]) => notice.id)).toEqual([
+        'update-checking',
+        'update-checking',
+      ]);
+      expect(dismissNotice).not.toHaveBeenCalled();
+      await new Promise((resolve) => setTimeout(resolve, 45));
+      expect(dismissNotice).toHaveBeenCalledExactlyOnceWith('update-checking');
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        '[update-notice] manual check notice expired without settled',
+        { ms: 15 },
+      );
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
+  });
+
+  test('unsubscribe clears the manual-check expiry timer', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bridge = makeFakeBridge();
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const unsubscribe = attachUpdateSubscribers(
+      castBridge(bridge),
+      () => {},
+      dismissNotice,
+      undefined,
+      undefined,
+      15,
+    );
+    try {
+      bridge._manualCheck?.({ phase: 'started' });
+      unsubscribe();
+      await new Promise((resolve) => setTimeout(resolve, 45));
+      expect(dismissNotice).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
+  });
+
+  test('started adds the fixed update-checking notice with translated copy and no action', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice);
+
+    bridge._manualCheck?.({ phase: 'started' });
+
+    expect(addNotice).toHaveBeenCalledTimes(1);
+    const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
+    expect(notice.id).toBe('update-checking');
+    expect(notice.body).toBe('Checking for updates…');
+    expect(notice.action).toBeUndefined();
+    expect(notice.priority).toBe(3);
+    unsubscribe();
+  });
+
+  test('settled dismisses the update-checking notice', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
+
+    bridge._manualCheck?.({ phase: 'started' });
+    bridge._manualCheck?.({ phase: 'settled' });
+
+    expect(dismissNotice).toHaveBeenCalledTimes(1);
+    expect(dismissNotice).toHaveBeenCalledWith('update-checking');
+  });
+
+  test('the safety timer warns and dismisses the notice without settled', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const unsubscribe = attachUpdateSubscribers(
+      castBridge(bridge),
+      addNotice,
+      dismissNotice,
+      undefined,
+      undefined,
+      15,
+    );
+    try {
+      bridge._manualCheck?.({ phase: 'started' });
+      expect(dismissNotice).not.toHaveBeenCalled();
+      await new Promise((resolve) => setTimeout(resolve, 45));
+      expect(dismissNotice).toHaveBeenCalledExactlyOnceWith('update-checking');
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        '[update-notice] manual check notice expired without settled',
+        { ms: 15 },
+      );
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
+  });
+
+  test('settled clears the safety timer', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissNotice = vi.fn<(id: string) => void>(() => {});
+    const unsubscribe = attachUpdateSubscribers(
+      castBridge(bridge),
+      addNotice,
+      dismissNotice,
+      undefined,
+      undefined,
+      15,
+    );
+    try {
+      bridge._manualCheck?.({ phase: 'started' });
+      bridge._manualCheck?.({ phase: 'settled' });
+      expect(dismissNotice).toHaveBeenCalledExactlyOnceWith('update-checking');
+      dismissNotice.mockClear();
+      await new Promise((resolve) => setTimeout(resolve, 45));
+      expect(dismissNotice).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+      warn.mockRestore();
+    }
   });
 });
 
@@ -557,7 +715,7 @@ describe('Notice B — ok:update:whats-new', () => {
     expect(notice.id).toBe('whats-new-0.3.1');
     expect(notice.action?.label).toBe(TOAST_B_ACTION);
     expect(notice.variant).toBe('success');
-    expect(notice.priority).toBe(3);
+    expect(notice.priority).toBe(4);
     notice.action?.onClick();
     expect(bridge.shell.openExternal).toHaveBeenCalledWith(releaseUrl);
   });
@@ -618,7 +776,13 @@ describe('Notice B — ok:update:whats-new', () => {
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice, 15);
     bridge._whatsNew?.({ version: '0.3.1', releaseUrl: 'https://example.com/r' });
     await new Promise((resolve) => setTimeout(resolve, 45));
+    expect(dismissNotice).toHaveBeenCalledExactlyOnceWith('whats-new-0.3.1');
     expect(bridge.update.dismissWhatsNew).toHaveBeenCalledWith('0.3.1');
+    bridge.update.dismissWhatsNew.mockClear();
+    const notice = addNotice.mock.calls[0]?.[0];
+    expect(notice?.onDismiss).toBeTypeOf('function');
+    notice?.onDismiss?.();
+    expect(bridge.update.dismissWhatsNew).toHaveBeenCalledExactlyOnceWith('0.3.1');
   });
 
   test('onWhatsNewDismissed echo clears the card by id without re-notifying main (no loop)', () => {
@@ -802,7 +966,8 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
 
 describe('pickActiveNotice', () => {
   const a: UpdateNotice = { id: 'a', body: 'A', priority: 2 };
-  const b: UpdateNotice = { id: 'b', body: 'B', priority: 3 };
+  const checking: UpdateNotice = { id: 'update-checking', body: 'Checking', priority: 3 };
+  const b: UpdateNotice = { id: 'b', body: 'B', priority: 4 };
   const c: UpdateNotice = { id: 'c', body: 'C', priority: 0 };
   const err: UpdateNotice = { id: 'err', body: 'Err', priority: 1, variant: 'error' };
 
@@ -822,23 +987,32 @@ describe('pickActiveNotice', () => {
     expect(pickActiveNotice([b, a])).toBe(a);
   });
 
-  test('relaunch-error (1) wins over A (2) and B (3) but not C (0)', () => {
+  test('checking ranks below update notices and above whats-new', () => {
+    expect(pickActiveNotice([b, checking])).toBe(checking);
+    expect(pickActiveNotice([b, checking, a])).toBe(a);
+    expect(pickActiveNotice([b, checking, err])).toBe(err);
+    expect(pickActiveNotice([b, checking, c])).toBe(c);
+  });
+
+  test('relaunch-error (1) wins over A (2) and B (4) but not C (0)', () => {
     expect(pickActiveNotice([a, b, err])).toBe(err);
     expect(pickActiveNotice([a, b, err, c])).toBe(c);
   });
 });
 
 describe('unsubscribe semantics', () => {
-  test('after unsubscribe, all six per-channel unsub closures fire', () => {
+  test('after unsubscribe, all eight per-channel unsub closures fire', () => {
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const unsubscribe = attachUpdateSubscribers(castBridge(bridge), addNotice);
     unsubscribe();
     expect(bridge._downloadedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._relaunchingUnsub).toHaveBeenCalledTimes(1);
+    expect(bridge._fetchingLatestUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._relaunchFailedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._whatsNewUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._whatsNewDismissedUnsub).toHaveBeenCalledTimes(1);
     expect(bridge._stuckHintUnsub).toHaveBeenCalledTimes(1);
+    expect(bridge._manualCheckUnsub).toHaveBeenCalledTimes(1);
   });
 });

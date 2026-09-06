@@ -1,4 +1,5 @@
 import type { OutgoingHttpHeaders } from 'node:http';
+import { MANUAL_CHECK_WATCHDOG_MS } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
@@ -87,6 +88,8 @@ export type DispatchKind =
   | 'relaunch-refresh-timed-out'
   | 'relaunch-awaited-in-flight-staging'
   | 'relaunch-double-invoke-blocked'
+  | 'check-now-already-pending'
+  | 'check-now-watchdog-fired'
   | 'toast-a-deferred-post-update-quiet'
   | 'toast-a-quiet-window-elapsed';
 
@@ -161,6 +164,9 @@ export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const UPDATE_CHECK_JITTER_MS = 5 * 60 * 1000;
 
 export const RELAUNCH_WATCHDOG_MS = 15_000;
+
+export const MANUAL_CHECK_TIMED_OUT_MESSAGE =
+  'The update check took too long to respond. Check your connection and try again.';
 
 export const STUCK_HINT_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -505,7 +511,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     logger.info('checking-for-update');
   };
 
-  let menuCheckPending = false;
+  let menuCheck: { watchdog: ReturnType<typeof setTimeout> } | null = null;
+
+  const settleMenuCheck = (result: CheckNowResult | null): void => {
+    if (menuCheck === null) return;
+    clock.clearTimeout(menuCheck.watchdog);
+    menuCheck = null;
+    broadcastToAllWindows('ok:update:manual-check', { phase: 'settled' });
+    if (result !== null) {
+      try {
+        showCheckNowResult?.(result);
+      } catch (err) {
+        logger.error('showCheckNowResult threw, check-now result dialog not shown', {
+          err,
+          result,
+        });
+      }
+    }
+  };
 
   let relaunchInFlight: {
     version: string;
@@ -636,21 +659,41 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   let activeWhatsNew: { version: string; releaseUrl: string; firedAt: number } | null = null;
 
   const runMenuDrivenCheck = (): Promise<unknown> => {
-    menuCheckPending = true;
+    broadcastToAllWindows('ok:update:manual-check', { phase: 'started' });
+    if (menuCheck !== null) {
+      logger.info('check-now already pending, re-acknowledged');
+      onDispatch?.('check-now-already-pending');
+      return Promise.resolve(undefined);
+    }
+    menuCheck = {
+      watchdog: clock.setTimeout(() => {
+        if (menuCheck === null) return;
+        logger.warn('check-now did not settle within the watchdog window', {
+          ms: MANUAL_CHECK_WATCHDOG_MS,
+        });
+        onDispatch?.('check-now-watchdog-fired');
+        settleMenuCheck({ kind: 'error', message: MANUAL_CHECK_TIMED_OUT_MESSAGE });
+      }, MANUAL_CHECK_WATCHDOG_MS),
+    };
     const checkPromise = updater.checkForUpdates();
-    void checkPromise.catch((err: unknown) => {
-      const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
-      const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
-      logFn('check-now checkForUpdates rejected', {
-        code,
-        err,
-        timestamp: now().toISOString(),
+    void checkPromise
+      .then(() => {
+        // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits its verdict event before its promise resolves, so a check still pending at resolve time produced no verdict; an inactive dev updater resolves the same way.
+        if (menuCheck !== null) {
+          logger.info('check-now resolved without a verdict');
+          settleMenuCheck(null);
+        }
+      })
+      .catch((err: unknown) => {
+        const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
+        const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
+        logFn('check-now checkForUpdates rejected', {
+          code,
+          err,
+          timestamp: now().toISOString(),
+        });
+        settleMenuCheck(buildCheckNowResultFromError(err, getAppVersion()));
       });
-      if (menuCheckPending) {
-        menuCheckPending = false;
-        showCheckNowResult?.(buildCheckNowResultFromError(err, getAppVersion()));
-      }
-    });
     return checkPromise;
   };
 
@@ -721,22 +764,21 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const onUpdateAvailableForMenuCheck = (info: { version?: string }): void => {
-    if (!menuCheckPending) return;
-    menuCheckPending = false;
+    if (menuCheck === null) return;
     if (classifyOffer(info.version) !== 'same-channel') {
-      showCheckNowResult?.({ kind: 'not-available', currentVersion: getAppVersion() });
+      settleMenuCheck({ kind: 'not-available', currentVersion: getAppVersion() });
       return;
     }
     const armedVersion = declinedForStagedVersion(info.version);
     if (armedVersion !== null) {
-      showCheckNowResult?.({
+      settleMenuCheck({
         kind: 'ready-to-install',
         currentVersion: getAppVersion(),
         stagedVersion: armedVersion,
       });
       return;
     }
-    showCheckNowResult?.({
+    settleMenuCheck({
       kind: 'available',
       currentVersion: getAppVersion(),
       latestVersion: typeof info.version === 'string' ? info.version : 'unknown',
@@ -747,13 +789,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     logger.info('update-not-available', { version: info.version });
     markCheckSucceeded();
     settleCheckWaiters('settled');
-    if (menuCheckPending) {
-      menuCheckPending = false;
-      showCheckNowResult?.({
-        kind: 'not-available',
-        currentVersion: getAppVersion(),
-      });
-    }
+    settleMenuCheck({
+      kind: 'not-available',
+      currentVersion: getAppVersion(),
+    });
   };
 
   const onDownloadProgress = (info: { percent?: number; bytesPerSecond?: number }): void => {
@@ -872,10 +911,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         offerManualInstallFallback(failedVersion, 'linux-manual-fallback-after-error');
       }
     }
-    if (menuCheckPending) {
-      menuCheckPending = false;
-      showCheckNowResult?.(buildCheckNowResultFromError(err, getAppVersion()));
-    }
+    settleMenuCheck(buildCheckNowResultFromError(err, getAppVersion()));
     maybeFireStuckHint();
   };
 
@@ -1439,6 +1475,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         clock.clearTimeout(quietWindowTimer);
         quietWindowTimer = null;
       }
+      settleMenuCheck(null);
       settleCheckWaiters('settled');
       stagingInFlight = null;
       settleStagingWaiters(false);

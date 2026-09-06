@@ -48,6 +48,7 @@ import type {
   OkThemeSource,
   OkUpdateDownloadedInfo,
   OkUpdateFetchingLatestInfo,
+  OkUpdateManualCheckInfo,
   OkUpdateRelaunchFailedInfo,
   OkUpdateRelaunchingInfo,
   OkUpdateStuckHintInfo,
@@ -393,6 +394,13 @@ const bridge: OkDesktopBridge = {
     // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:stuck-hint', listener);
     return () => ipcRenderer.removeListener('ok:update:stuck-hint', listener);
+  },
+
+  onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void) {
+    const listener = (_event: IpcRendererEvent, info: OkUpdateManualCheckInfo) => cb(info);
+    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    ipcRenderer.on('ok:update:manual-check', listener);
+    return () => ipcRenderer.removeListener('ok:update:manual-check', listener);
   },
 
   onDeepLink(

@@ -2578,6 +2578,10 @@ msgstr "正在檢查更新"
 msgid "Checking for updates on GitHub"
 msgstr "正在 GitHub 上檢查更新"
 
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "正在檢查更新…"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "正在檢查 GitHub 連線…"

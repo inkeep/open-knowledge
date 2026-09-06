@@ -260,6 +260,10 @@ export interface OkUpdateStuckHintInfo {
   readonly downloadUrl: string;
 }
 
+export interface OkUpdateManualCheckInfo {
+  readonly phase: 'started' | 'settled';
+}
+
 export type ShareTarget =
   | { readonly kind: 'doc'; readonly docPath: string }
   | { readonly kind: 'folder'; readonly folderPath: string };
@@ -900,6 +904,7 @@ export interface OkDesktopBridge {
   onWhatsNew(cb: (info: OkWhatsNewInfo) => void): OkUnsubscribe;
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
+  onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void): OkUnsubscribe;
   onDeepLink(
     cb: (evt: {
       doc: string;

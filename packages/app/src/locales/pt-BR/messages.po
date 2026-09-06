@@ -2574,6 +2574,10 @@ msgstr "Buscando atualizações"
 msgid "Checking for updates on GitHub"
 msgstr "Buscando atualizações no GitHub"
 
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "Buscando atualizações…"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "Verificando a conexão com o GitHub..."

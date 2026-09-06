@@ -2574,6 +2574,10 @@ msgstr "হালনাগাদ দেখা হচ্ছে"
 msgid "Checking for updates on GitHub"
 msgstr "GitHub-এ হালনাগাদ দেখা হচ্ছে"
 
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "হালনাগাদ দেখা হচ্ছে…"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
 msgstr "GitHub সংযোগ পরীক্ষা করা হচ্ছে…"

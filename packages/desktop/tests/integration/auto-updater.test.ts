@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import type { OutgoingHttpHeaders } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MANUAL_CHECK_WATCHDOG_MS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
 import {
   bootAutoUpdater,
@@ -12,6 +13,7 @@ import {
   type IpcMainLike,
   installReached,
   isClassifiedUpdaterError,
+  MANUAL_CHECK_TIMED_OUT_MESSAGE,
   POST_UPDATE_QUIET_MS,
   RELAUNCH_REFRESH_CHECK_MS,
   RELAUNCH_REFRESH_DOWNLOAD_MS,
@@ -103,6 +105,12 @@ function makeFakeWindow(captured: CapturedSend[]): SendTarget {
       },
     },
   };
+}
+
+function manualCheckPhases(rig: TestRig): Array<'started' | 'settled'> {
+  return rig.captured
+    .filter((entry) => entry.channel === 'ok:update:manual-check')
+    .map((entry) => (entry.payload as { phase: 'started' | 'settled' }).phase);
 }
 
 interface FakeClock {
@@ -2213,6 +2221,20 @@ describe('versionAtLeast (MMP compare)', () => {
 });
 
 describe('multi-window delivery: relaunch banner and "updated to" notice both reach every window', () => {
+  test('manual check started and settled phases reach every open window', async () => {
+    const { rig } = makeRig({ extraWindowCount: 2 });
+    expect(rig.windows).toHaveLength(3);
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-not-available', { version: '0.3.1' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const win of rig.windows) {
+      const phases = win
+        .filter((entry) => entry.channel === 'ok:update:manual-check')
+        .map((entry) => (entry.payload as { phase: 'started' | 'settled' }).phase);
+      expect(phases).toEqual(['started', 'settled']);
+    }
+  });
+
   test('ok:update:downloaded (relaunch banner) reaches every open window', () => {
     const { rig } = makeRig({ extraWindowCount: 2 });
     expect(rig.windows).toHaveLength(3);
@@ -2826,6 +2848,22 @@ describe('ok:update:check-now IPC handler', () => {
     expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 
+  test('a second invocation while pending re-acknowledges without starting another check', () => {
+    const { rig } = makeRig();
+    rig.updater.checkForUpdates = vi.fn(() => new Promise(() => {}));
+    rig.updater.checkForUpdates.mockClear();
+
+    rig.ipc.invoke('ok:update:check-now');
+    rig.ipc.invoke('ok:update:check-now');
+
+    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'started']);
+    expect(rig.dispatches.filter((kind) => kind === 'check-now-already-pending')).toEqual([
+      'check-now-already-pending',
+    ]);
+    expect(rig.logger.info).toHaveBeenCalledWith('check-now already pending, re-acknowledged');
+  });
+
   test('handler invocation does NOT gate on versionPendingInstall', () => {
     const { rig } = makeRig({ versionPendingInstall: null });
     rig.updater.checkForUpdates.mockClear();
@@ -2854,44 +2892,187 @@ describe('ok:update:check-now IPC handler', () => {
 });
 
 describe('check-now → showCheckNowResult feedback dispatch', () => {
-  test('update-not-available after menu-check fires not-available result', () => {
+  test.each([
+    'update-available',
+    'update-not-available',
+    'error',
+    'resolve',
+    'reject',
+  ] as const)('%s clears the manual watchdog and prevents a later timeout dialog', async (outcome) => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({ showCheckNowResult, isPackaged: false });
+    rig.updater.checkForUpdates = vi.fn(() =>
+      outcome === 'reject'
+        ? Promise.reject(new Error('network unavailable'))
+        : Promise.resolve(null),
+    );
+    rig.ipc.invoke('ok:update:check-now');
+    const watchdog = rig.clock.lastCallback;
+    const watchdogHandle = rig.clock.lastHandle;
+    expect(rig.clock.lastMs).toBe(MANUAL_CHECK_WATCHDOG_MS);
+    expect(watchdog).not.toBeNull();
+
+    if (outcome === 'error') rig.updater.emit('error', new Error('network unavailable'));
+    else if (outcome !== 'resolve' && outcome !== 'reject') {
+      rig.updater.emit(outcome, { version: '0.3.2' });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    expect(showCheckNowResult).toHaveBeenCalledTimes(outcome === 'resolve' ? 0 : 1);
+    showCheckNowResult.mockClear();
+    watchdog?.();
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+  });
+
+  test('destroy clears a pending manual watchdog without showing a dialog', () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig, handle } = makeRig({ showCheckNowResult, isPackaged: false });
+    rig.updater.checkForUpdates = vi.fn(() => new Promise(() => {}));
+    rig.ipc.invoke('ok:update:check-now');
+    const watchdog = rig.clock.lastCallback;
+    const watchdogHandle = rig.clock.lastHandle;
+    handle.destroy();
+    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    watchdog?.();
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+  });
+
+  test('a throwing result dialog does not escape the verdict event or prevent settlement', () => {
+    const dialogError = new Error('native dialog unavailable');
+    const { rig } = makeRig({
+      isPackaged: false,
+      showCheckNowResult: () => {
+        throw dialogError;
+      },
+    });
+    rig.ipc.invoke('ok:update:check-now');
+    const watchdogHandle = rig.clock.lastHandle;
+
+    expect(() => rig.updater.emit('update-not-available', { version: '0.3.1' })).not.toThrow();
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+    expect(rig.logger.error).toHaveBeenCalledWith(
+      'showCheckNowResult threw, check-now result dialog not shown',
+      { err: dialogError, result: { kind: 'not-available', currentVersion: '0.3.1' } },
+    );
+  });
+
+  test('the manual watchdog settles a hung check with an error and does not re-arm on re-click', () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({ showCheckNowResult, isPackaged: false });
+    rig.updater.checkForUpdates = vi.fn(() => new Promise(() => {}));
+
+    rig.ipc.invoke('ok:update:check-now');
+    expect(rig.clock.lastMs).toBe(MANUAL_CHECK_WATCHDOG_MS);
+    const watchdog = rig.clock.lastCallback;
+    const watchdogHandle = rig.clock.lastHandle;
+    expect(watchdog).not.toBeNull();
+    rig.ipc.invoke('ok:update:check-now');
+    expect(rig.clock.setTimeout).toHaveBeenCalledTimes(1);
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+
+    watchdog?.();
+    expect(manualCheckPhases(rig)).toEqual(['started', 'started', 'settled']);
+    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+    expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith({
+      kind: 'error',
+      message: MANUAL_CHECK_TIMED_OUT_MESSAGE,
+    });
+    expect(rig.logger.warn).toHaveBeenCalledWith(
+      'check-now did not settle within the watchdog window',
+      { ms: MANUAL_CHECK_WATCHDOG_MS },
+    );
+    expect(rig.dispatches).toContain('check-now-watchdog-fired');
+    rig.ipc.invoke('ok:update:check-now');
+    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'started', 'settled', 'started']);
+  });
+
+  test('a verdict-less check settles silently and allows another manual check', async () => {
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({ showCheckNowResult });
+    rig.updater.checkForUpdates = vi.fn(() => Promise.resolve(null));
+
+    rig.ipc.invoke('ok:update:check-now');
+    expect(manualCheckPhases(rig)).toEqual(['started']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+
+    rig.ipc.invoke('ok:update:check-now');
+    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled', 'started']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled', 'started', 'settled']);
+    expect(showCheckNowResult).not.toHaveBeenCalled();
+    expect(rig.logger.info).toHaveBeenCalledWith('check-now resolved without a verdict');
+  });
+
+  test('update-not-available after menu-check fires not-available result', async () => {
     const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ appVersion: '0.4.0-beta.13', showCheckNowResult });
+    let phasesAtDialog: Array<'started' | 'settled'> = [];
+    showCheckNowResult.mockImplementation(() => {
+      phasesAtDialog = manualCheckPhases(rig);
+    });
     rig.ipc.invoke('ok:update:check-now');
+    expect(manualCheckPhases(rig)).toEqual(['started']);
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.13' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(phasesAtDialog).toEqual(['started', 'settled']);
     expect(showCheckNowResult).toHaveBeenCalledTimes(1);
     expect(showCheckNowResult).toHaveBeenCalledWith({
       kind: 'not-available',
       currentVersion: '0.4.0-beta.13',
     });
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
   });
 
-  test('update-available after menu-check fires available result with versions', () => {
+  test('update-available after menu-check fires available result with versions', async () => {
     const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({
       appVersion: '0.4.0-beta.13',
       showCheckNowResult,
     });
+    let phasesAtDialog: Array<'started' | 'settled'> = [];
+    showCheckNowResult.mockImplementation(() => {
+      phasesAtDialog = manualCheckPhases(rig);
+    });
     rig.ipc.invoke('ok:update:check-now');
+    expect(manualCheckPhases(rig)).toEqual(['started']);
     rig.updater.emit('update-available', { version: '0.4.0-beta.14' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(phasesAtDialog).toEqual(['started', 'settled']);
     expect(showCheckNowResult).toHaveBeenCalledTimes(1);
     expect(showCheckNowResult).toHaveBeenCalledWith({
       kind: 'available',
       currentVersion: '0.4.0-beta.13',
       latestVersion: '0.4.0-beta.14',
     });
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
   });
 
-  test('error after menu-check fires error result with the message', () => {
+  test('error after menu-check fires error result with the message', async () => {
     const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
+    let phasesAtDialog: Array<'started' | 'settled'> = [];
+    showCheckNowResult.mockImplementation(() => {
+      phasesAtDialog = manualCheckPhases(rig);
+    });
     rig.ipc.invoke('ok:update:check-now');
+    expect(manualCheckPhases(rig)).toEqual(['started']);
     rig.updater.emit('error', new Error('network timeout'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(phasesAtDialog).toEqual(['started', 'settled']);
     expect(showCheckNowResult).toHaveBeenCalledTimes(1);
     expect(showCheckNowResult).toHaveBeenCalledWith({
       kind: 'error',
       message: 'network timeout',
     });
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
   });
 
   test('ERR_UPDATER_CHANNEL_FILE_NOT_FOUND routes to not-available (cascade-fallback path)', () => {
@@ -2931,6 +3112,7 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     const { rig } = makeRig({ showCheckNowResult });
     rig.updater.emit('update-not-available', { version: '0.4.0-beta.13' });
     expect(showCheckNowResult).not.toHaveBeenCalled();
+    expect(manualCheckPhases(rig)).toEqual([]);
   });
 
   test('subsequent events after dispatch do NOT re-fire (single-shot per check-now)', () => {
@@ -2947,12 +3129,19 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     const showCheckNowResult = vi.fn(() => {});
     const { rig } = makeRig({ showCheckNowResult });
     rig.updater.checkForUpdates = vi.fn(() => Promise.reject(new Error('feed not reachable')));
+    let phasesAtDialog: Array<'started' | 'settled'> = [];
+    showCheckNowResult.mockImplementation(() => {
+      phasesAtDialog = manualCheckPhases(rig);
+    });
     rig.ipc.invoke('ok:update:check-now');
+    expect(manualCheckPhases(rig)).toEqual(['started']);
     await new Promise((r) => setTimeout(r, 0));
+    expect(phasesAtDialog).toEqual(['started', 'settled']);
     expect(showCheckNowResult).toHaveBeenCalledWith({
       kind: 'error',
       message: 'feed not reachable',
     });
+    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
   });
 
   test('checkForUpdates synchronous reject with ERR_UPDATER_CHANNEL_FILE_NOT_FOUND routes to not-available', async () => {
