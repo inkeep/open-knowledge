@@ -48,27 +48,6 @@ export function comparableChildCount(doc: PmNode): number {
   return trailingEmpty === doc.childCount ? 0 : doc.childCount;
 }
 
-export function blockRangeToPositions(
-  doc: PmNode,
-  fromBlock: number,
-  toBlock: number,
-): { from: number; to: number } | null {
-  const childCount = doc.childCount;
-  const first = Math.max(0, Math.min(fromBlock, childCount));
-  const last = Math.max(first, Math.min(toBlock, childCount));
-  if (last <= first) return null;
-  let pos = 0;
-  for (let i = 0; i < first; i++) pos += doc.child(i).nodeSize;
-  const from = pos;
-  for (let i = first; i < last; i++) pos += doc.child(i).nodeSize;
-  const to = pos;
-  const size = doc.content.size;
-  const clampedFrom = Math.max(0, Math.min(from, size));
-  const clampedTo = Math.max(clampedFrom, Math.min(to, size));
-  if (clampedTo <= clampedFrom) return null;
-  return { from: clampedFrom, to: clampedTo };
-}
-
 export function lineStartOffsets(source: string): number[] {
   const offsets = [0];
   for (let i = 0; i < source.length; i++) {

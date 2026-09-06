@@ -355,6 +355,12 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   });
 }
 
+export const PROJECTION_BINDING_EXTENSION = 'okProjectionBinding';
+
+export interface ProjectionBindingExtensionOptions {
+  ytext: Y.Text;
+}
+
 export interface ProjectionBinding {
   content: JSONContent;
   extension: Extension;
@@ -379,8 +385,11 @@ export function createProjectionBinding(
     stats,
     undoManager,
     content: initial.doc.toJSON() as JSONContent,
-    extension: Extension.create({
-      name: 'okProjectionBinding',
+    extension: Extension.create<ProjectionBindingExtensionOptions>({
+      name: PROJECTION_BINDING_EXTENSION,
+      addOptions() {
+        return { ytext: options.ytext };
+      },
       addProseMirrorPlugins() {
         return [plugin];
       },
