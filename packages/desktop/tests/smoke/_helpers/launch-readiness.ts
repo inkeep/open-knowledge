@@ -297,6 +297,12 @@ export interface ReadySignalOptions<T> {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   readLog?: (home: string) => BootLogSnapshot;
+  startDeadline?: (ms: number) => ReadyDeadline;
+}
+
+export interface ReadyDeadline {
+  readonly expired: Promise<void>;
+  cancel(): void;
 }
 
 export interface ProbeErrorSummary {
@@ -346,6 +352,7 @@ function describeFailure(
   stallMs: number,
   snapshot: BootLogSnapshot,
   probeError: ProbeErrorSummary | undefined,
+  probePending: boolean,
 ): string {
   const phase = snapshot.lastEvent ?? '(no boot event recorded)';
   const state = classifyBootLog(snapshot);
@@ -357,7 +364,9 @@ function describeFailure(
           `(gave up after ${elapsedMs}ms). Main narrates every ${BOOT_LOG_HEARTBEAT_MS}ms from ` +
           'process start until the first window is shown, so this silence after phase ' +
           `${phase} means the app stopped making progress.`
-        : `${what} did not arrive within ${elapsedMs}ms, though the app kept logging boot activity.`;
+        : probePending
+          ? `${what} did not arrive within ${elapsedMs}ms.`
+          : `${what} did not arrive within ${elapsedMs}ms, though the app kept logging boot activity.`;
   const lines = [head, `Last main-process boot event: ${phase}`, describeBootLog(snapshot)];
   lines.push(
     probeError === undefined
@@ -365,6 +374,7 @@ function describeFailure(
       : `Probe threw on ${probeError.threwPolls} of ${probeError.totalPolls} polls; ` +
           `last: ${probeError.last}`,
   );
+  if (probePending) lines.push('The last probe had not answered when the cap fired.');
   if (snapshot.tail.length > 0) lines.push('', 'Boot log tail:', snapshot.tail);
   return lines.join('\n');
 }
@@ -393,6 +403,14 @@ export function giveUpReason(
   }
 }
 
+const DEADLINE_PASSED = Symbol('ready-signal-deadline-passed');
+
+function startTimerDeadline(ms: number): ReadyDeadline {
+  const reached = Promise.withResolvers<void>();
+  const timer = setTimeout(reached.resolve, ms);
+  return { expired: reached.promise, cancel: () => clearTimeout(timer) };
+}
+
 export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Promise<T> {
   const stallMs = options.stallMs ?? BOOT_LOG_STALL_MS;
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
@@ -400,6 +418,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   const now = options.now ?? (() => Date.now());
   const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const readLog = options.readLog ?? readBootLog;
+  const startDeadline = options.startDeadline ?? startTimerDeadline;
 
   const startedAt = now();
   let lastProgressAt = startedAt;
@@ -410,42 +429,76 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let threwPolls = 0;
   let totalPolls = 0;
 
-  for (;;) {
-    totalPolls += 1;
-    try {
-      const hit = await options.probe();
-      if (hit !== undefined) return hit;
-    } catch (error) {
-      lastProbeError = error instanceof Error ? error.message : String(error);
-      threwPolls += 1;
-    }
+  let capElapsed = false;
+  const deadline = startDeadline(capMs);
+  const capReached = deadline.expired.then((): typeof DEADLINE_PASSED => {
+    capElapsed = true;
+    return DEADLINE_PASSED;
+  });
+  let probePendingAtGiveUp = false;
 
-    snapshot = readLog(options.home);
-    if (snapshot.lineCount > cursor) {
-      cursor = snapshot.lineCount;
-      lastProgressAt = now();
-    }
+  try {
+    for (;;) {
+      if (!capElapsed) {
+        totalPolls += 1;
+        try {
+          const settled = await Promise.race([
+            options.probe().then((hit) => ({ hit })),
+            capReached,
+          ]);
+          if (settled === DEADLINE_PASSED) probePendingAtGiveUp = true;
+          else if (settled.hit !== undefined) return settled.hit;
+        } catch (error) {
+          lastProbeError = error instanceof Error ? error.message : String(error);
+          threwPolls += 1;
+        }
+      }
 
-    const probeError: ProbeErrorSummary | undefined =
-      lastProbeError === undefined ? undefined : { last: lastProbeError, threwPolls, totalPolls };
-    const elapsed = now() - startedAt;
-    const stallArmed =
-      explicitLiveness !== undefined
-        ? explicitLiveness === 'boot'
-        : !hasBootCompleted(snapshot.lines);
-    if (stallArmed && now() - lastProgressAt >= stallMs) {
-      throw new ReadySignalGiveUp(
-        describeFailure('stalled', options.what, elapsed, stallMs, snapshot, probeError),
-        giveUpReason('stall', snapshot),
-      );
+      snapshot = readLog(options.home);
+      if (snapshot.lineCount > cursor) {
+        cursor = snapshot.lineCount;
+        lastProgressAt = now();
+      }
+
+      const probeError: ProbeErrorSummary | undefined =
+        lastProbeError === undefined ? undefined : { last: lastProbeError, threwPolls, totalPolls };
+      const elapsed = now() - startedAt;
+      const stallArmed =
+        explicitLiveness !== undefined
+          ? explicitLiveness === 'boot'
+          : !hasBootCompleted(snapshot.lines);
+      if (stallArmed && now() - lastProgressAt >= stallMs) {
+        throw new ReadySignalGiveUp(
+          describeFailure(
+            'stalled',
+            options.what,
+            elapsed,
+            stallMs,
+            snapshot,
+            probeError,
+            probePendingAtGiveUp,
+          ),
+          giveUpReason('stall', snapshot),
+        );
+      }
+      if (capElapsed || elapsed >= capMs) {
+        throw new ReadySignalGiveUp(
+          describeFailure(
+            'cap',
+            options.what,
+            elapsed,
+            stallMs,
+            snapshot,
+            probeError,
+            probePendingAtGiveUp,
+          ),
+          giveUpReason('cap', snapshot),
+        );
+      }
+      await sleep(pollMs);
     }
-    if (elapsed >= capMs) {
-      throw new ReadySignalGiveUp(
-        describeFailure('cap', options.what, elapsed, stallMs, snapshot, probeError),
-        giveUpReason('cap', snapshot),
-      );
-    }
-    await sleep(pollMs);
+  } finally {
+    deadline.cancel();
   }
 }
 

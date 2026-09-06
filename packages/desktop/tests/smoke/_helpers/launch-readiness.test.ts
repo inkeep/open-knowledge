@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -748,8 +749,14 @@ describe('the recorded ready wait names which wait it measured', () => {
         markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
       ]),
     );
-    await expect(waitForWindowByMode(app, 'editor', { capMs: 300, pollMs: 60 })).rejects.toThrow();
+    const error = await waitForWindowByMode(app, 'editor', { capMs: 300, pollMs: 60 }).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(Error);
     expect(tryFirstWaitFor(app)?.reason).toBe('cap');
+    const message = (error as Error).message;
+    expect(message).toContain('though the app kept logging boot activity');
+    expect(message).not.toContain('The last probe had not answered');
   });
 });
 
@@ -986,5 +993,294 @@ describe('formatBootGapLine', () => {
       expect(line).toContain(`firstWaitReason=${reason}`);
       expect(line).toContain(reason === 'none' ? 'firstWaitGaveUp=false' : 'firstWaitGaveUp=true');
     }
+  });
+});
+
+describe('the cap bounds the wait itself, not only the gaps between polls', () => {
+  const RELEASE_AFTER_MS = 5_000;
+
+  function heldProbe<T>() {
+    const gate = Promise.withResolvers<T | undefined>();
+    let calls = 0;
+    return {
+      probe: async () => {
+        calls += 1;
+        return gate.promise;
+      },
+      hit: (value: T) => gate.resolve(value),
+      miss: () => gate.resolve(undefined),
+      calls: () => calls,
+    };
+  }
+
+  function timerDeadline(ms: number) {
+    const reached = Promise.withResolvers<void>();
+    const timer = setTimeout(reached.resolve, ms);
+    return { expired: reached.promise, cancel: () => clearTimeout(timer) };
+  }
+
+  function narratingHome(): string {
+    return seedHome([
+      JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:01.500Z'),
+    ]);
+  }
+
+  it('gives up at the cap while the probe is still pending', async () => {
+    const gate = heldProbe<string>();
+    let released = false;
+    const release = setTimeout(() => {
+      released = true;
+      gate.miss();
+    }, RELEASE_AFTER_MS);
+    const error = await waitForReadySignal<string>({
+      probe: gate.probe,
+      home: narratingHome(),
+      what: 'editor window',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).catch((e: unknown) => e);
+    clearTimeout(release);
+    gate.miss();
+    expect(released).toBe(false);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/did not arrive within \d+ms\./);
+    expect((error as Error).message).not.toContain('though the app kept logging boot activity');
+    expect((error as Error).message).toContain(
+      'The last probe had not answered when the cap fired.',
+    );
+    expect(gate.calls()).toBe(1);
+  });
+
+  it('discards a hit that arrives after the cap instead of reporting it as success', async () => {
+    const gate = heldProbe<string>();
+    let released = false;
+    const release = setTimeout(() => {
+      released = true;
+      gate.hit('late-editor-page');
+    }, RELEASE_AFTER_MS);
+    const outcome = await waitForReadySignal<string>({
+      probe: gate.probe,
+      home: narratingHome(),
+      what: 'editor window',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).then(
+      (value) => ({ resolvedWith: value }),
+      (error: unknown) => ({ rejectedWith: (error as Error).message }),
+    );
+    clearTimeout(release);
+    gate.hit('late-editor-page');
+    expect(released).toBe(false);
+    expect(outcome).not.toHaveProperty('resolvedWith');
+    expect(outcome).toMatchObject({ rejectedWith: expect.stringMatching(/did not arrive/) });
+  });
+
+  it('swallows a probe rejection that arrives after the cap, so no worker dies of it', () => {
+    const script = join(mkdtempSync(join(tmpdir(), 'ok-readiness-strict-')), 'late-rejection.mjs');
+    writeFileSync(
+      script,
+      [
+        'const { waitForReadySignal } = await import(process.argv[2]);',
+        'let fail = (error) => { throw error; };',
+        'const gate = new Promise((_resolve, reject) => { fail = reject; });',
+        "setTimeout(() => fail(new Error('renderer detached after the cap')), 250);",
+        'const error = await waitForReadySignal({',
+        '  probe: async () => gate,',
+        '  home: process.argv[3],',
+        "  what: 'editor window',",
+        '  capMs: 60,',
+        '  stallMs: 600_000,',
+        '  pollMs: 10,',
+        '}).catch((e) => e);',
+        "if (!(error instanceof Error)) { console.error('the wait did not give up'); process.exit(2); }",
+        'await new Promise((r) => setTimeout(r, 600));',
+        "console.log('survived');",
+      ].join('\n'),
+      'utf8',
+    );
+    const run = spawnSync(
+      process.execPath,
+      [
+        '--unhandled-rejections=strict',
+        script,
+        new URL('./launch-readiness.ts', import.meta.url).href,
+        narratingHome(),
+      ],
+      { encoding: 'utf8', timeout: 20_000 },
+    );
+    expect({
+      status: run.status,
+      stdout: run.stdout.trim(),
+      stderr: run.stderr.trim(),
+    }).toEqual({ status: 0, stdout: 'survived', stderr: '' });
+  });
+
+  it('records a give-up when the first window never answers, instead of no record at all', async () => {
+    let releaseStuck: () => void = () => {};
+    const stuck = {
+      evaluate: () =>
+        new Promise<string | undefined>((resolve) => {
+          releaseStuck = () => resolve('navigator');
+        }),
+    };
+    const ready = { evaluate: async () => 'editor' };
+    const app = { windows: () => [stuck, ready] };
+    rememberLaunchHome(app, narratingHome());
+    let released = false;
+    const release = setTimeout(() => {
+      released = true;
+      releaseStuck();
+    }, RELEASE_AFTER_MS);
+    const outcome = await waitForWindowByMode(app, 'editor', {
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).then(
+      (page) => ({ resolvedWith: page === ready ? 'ready-page' : 'stuck-page' }),
+      (error: unknown) => ({ rejectedWith: (error as Error).message }),
+    );
+    clearTimeout(release);
+    releaseStuck();
+    expect(released).toBe(false);
+    expect(outcome).not.toHaveProperty('resolvedWith');
+    expect(outcome).toMatchObject({ rejectedWith: expect.stringMatching(/did not arrive/) });
+    expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'cap', capMs: 80 });
+  });
+
+  it('lets the deadline end the wait even when the caller supplies a clock of its own', async () => {
+    const gate = heldProbe<string>();
+    let reachDeadline: () => void = () => {};
+    const outcome = waitForReadySignal<string>({
+      probe: gate.probe,
+      home: '/unused',
+      what: 'editor window',
+      capMs: 600_000,
+      stallMs: 600_000,
+      pollMs: 1,
+      now: () => 0,
+      readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.startup.serverSpawned' }),
+      startDeadline: () => ({
+        expired: new Promise<void>((resolve) => {
+          reachDeadline = resolve;
+        }),
+        cancel: () => {},
+      }),
+    }).then(
+      (value) => ({ resolvedWith: value }),
+      (error: unknown) => ({ rejectedWith: (error as Error).message }),
+    );
+    await Promise.resolve();
+    reachDeadline();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const settledOrStillWaiting = await Promise.race([
+      outcome,
+      new Promise<{ stillWaiting: true }>((resolve) => {
+        watchdog = setTimeout(() => resolve({ stillWaiting: true }), 2_000);
+      }),
+    ]);
+    clearTimeout(watchdog);
+    gate.hit('editor-page');
+    expect(settledOrStillWaiting).toMatchObject({
+      rejectedWith: expect.stringMatching(/did not arrive within 0ms/),
+    });
+  });
+
+  it('arms one deadline for the whole wait, not a fresh one per poll', async () => {
+    const gate = heldProbe<string>();
+    let polls = 0;
+    let armings = 0;
+    let released = false;
+    const release = setTimeout(() => {
+      released = true;
+      gate.miss();
+    }, RELEASE_AFTER_MS);
+    const error = await waitForReadySignal<string>({
+      probe: async () => (polls++ < 3 ? undefined : gate.probe()),
+      home: narratingHome(),
+      what: 'editor window',
+      capMs: 400,
+      stallMs: 600_000,
+      pollMs: 5,
+      startDeadline: (ms) => {
+        armings += 1;
+        return timerDeadline(ms);
+      },
+    }).catch((e: unknown) => e);
+    clearTimeout(release);
+    gate.miss();
+    expect({ released, armings }).toEqual({ released: false, armings: 1 });
+    expect(polls).toBeGreaterThan(1);
+    expect((error as Error).message).toContain(
+      'The last probe had not answered when the cap fired.',
+    );
+  });
+
+  it('reports a stall over a latched lap without claiming the probe was outstanding', async () => {
+    let clock = 0;
+    let sleeps = 0;
+    let probes = 0;
+    let reachDeadline: () => void = () => {};
+    const error = await waitForReadySignal<string>({
+      probe: async () => {
+        probes += 1;
+        throw new Error('Execution context was destroyed');
+      },
+      home: '/unused',
+      what: 'editor window',
+      capMs: 600_000,
+      stallMs: 150,
+      liveness: 'boot',
+      pollMs: 1,
+      now: () => clock,
+      sleep: () =>
+        new Promise((resolve) => {
+          sleeps += 1;
+          clock += 200;
+          if (sleeps === 1) reachDeadline();
+          setTimeout(resolve, 0);
+        }),
+      readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.startup.serverSpawned' }),
+      startDeadline: () => ({
+        expired: new Promise<void>((resolve) => {
+          reachDeadline = resolve;
+        }),
+        cancel: () => {},
+      }),
+    }).catch((e: unknown) => e);
+    const message = (error as Error).message;
+    expect(probes).toBe(1);
+    expect(message).toContain('Probe threw on 1 of 1 polls');
+    expect(message).toContain('logged no new boot activity for 150ms (gave up after 200ms)');
+    expect(message).not.toContain('The last probe had not answered');
+  });
+
+  it('discloses the pending probe even when a later-poll hang trips the stall clock first', async () => {
+    const gate = heldProbe<string>();
+    let polls = 0;
+    let released = false;
+    const release = setTimeout(() => {
+      released = true;
+      gate.miss();
+    }, RELEASE_AFTER_MS);
+    const error = await waitForReadySignal<string>({
+      probe: async () => (polls++ < 2 ? undefined : gate.probe()),
+      home: '/unused',
+      what: 'editor window',
+      capMs: 400,
+      stallMs: 120,
+      liveness: 'boot',
+      pollMs: 5,
+      readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.startup.serverSpawned' }),
+    }).catch((e: unknown) => e);
+    clearTimeout(release);
+    gate.miss();
+    const message = (error as Error).message;
+    expect(released).toBe(false);
+    expect(message).toMatch(/logged no new boot activity/);
+    expect(message).toContain('The last probe had not answered when the cap fired.');
   });
 });
