@@ -29,7 +29,21 @@ function groupsFixture(opts: {
       id: 'project',
       label: 'This project',
       enabled: projectEnabled,
-      items: [{ id: 'sync', label: 'Sync' }],
+      items: [
+        { id: 'sync', label: 'Sync' },
+        {
+          id: 'search',
+          label: 'Search',
+          subsections: [
+            {
+              id: 'performance',
+              label: 'Embedding request settings',
+              anchor: 'search.semantic.maxBatchSize',
+              keywords: ['batch', 'characters', 'timeout', 'embeddings', 'Ollama'],
+            },
+          ],
+        },
+      ],
     },
     { id: 'plugins', label: 'Plugins', enabled: true, items: pluginItems },
   ];
@@ -204,6 +218,21 @@ describe('buildSettingsSearchIndex + matchesCommandQuery', () => {
 
   test('a section is found by its label', () => {
     expect(find('Sync').some((e) => e.kind === 'section' && e.sectionId === 'sync')).toBe(true);
+  });
+
+  test.each([
+    'batch',
+    'characters',
+    'timeout',
+    'embeddings',
+    'Ollama',
+  ])('embedding performance is found by the %s keyword', (query) => {
+    expect(
+      find(query).some(
+        (entry) =>
+          entry.sectionId === 'search' && entry.targetField === 'search.semantic.maxBatchSize',
+      ),
+    ).toBe(true);
   });
 
   test('a query matching nothing returns no entries', () => {

@@ -185,7 +185,26 @@ export function SettingsDialogShell({
             { id: 'sharing', label: t`Config sharing`, anchor: 'section:sharing' },
           ] satisfies SidebarSubsection[],
         },
-        { id: 'search', label: t`Search` },
+        {
+          id: 'search',
+          label: t`Search`,
+          subsections: [
+            {
+              id: 'performance',
+              label: t`Embedding request settings`,
+              anchor: 'search.semantic.maxBatchSize',
+              keywords: [
+                'batch',
+                'characters',
+                'timeout',
+                'embeddings',
+                'requests',
+                'performance',
+                'Ollama',
+              ],
+            },
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),

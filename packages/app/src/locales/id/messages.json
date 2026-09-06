@@ -84,6 +84,9 @@
     ],
     "0NA4b3": ["Simpan versi saya"],
     "0NkNB5": [["0"], " bln lalu"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["Jumlah agen yang berjalan sudah maksimal"],
     "0TnCvC": ["Ganti nama ", ["0"]],
     "0WsUA2": [
@@ -802,6 +805,9 @@
     "9tJX8r": ["Berdasarkan makna"],
     "9uI_rE": ["Batalkan"],
     "9uRLEH": ["\"", ["name"], "\" tidak bisa dibuka — ia belum ada di keterampilan proyek ini."],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["Refaktor"],
     "9x-lMu": ["Di repositori ini — kolaborator mendapat salinan lewat git."],
     "9xCnv8": ["Sembunyikan Terminal"],
@@ -913,6 +919,7 @@
     "Bdha5y": ["Menerbitkan..."],
     "BeWTQy": ["Memuat paket awal"],
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
@@ -1453,6 +1460,7 @@
       "OpenKnowledge menyimpan konfigurasi dan berkas internalnya di dalam direktori <0>.ok</0> yang baru dibuat di folder akar proyek Anda."
     ],
     "Hrz9NY": ["Tautan wiki"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" diabaikan oleh git"],
     "HzVAoz": [
       "Pindahkan atau ganti nama berkas ini di dalam keterampilan — jalurnya tetap di bawah references/ atau scripts/."
@@ -2111,6 +2119,7 @@
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["Berkas ini dihapus di cabang masuk (konflik modify-delete)."],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
@@ -2187,6 +2196,9 @@
     ],
     "RO-yts": ["Gagal menonaktifkan pratinjau tautan — ", ["detail"]],
     "RO9IbI": ["Gagal mengembalikan: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["Antrekan pesan"],
     "RS98db": ["Ketik '/' untuk melihat perintah"],
     "RSqaSd": ["Akar proyek"],
@@ -2643,6 +2655,9 @@
     "XYZ7tp": ["Tidak terselesaikan"],
     "XYlJJT": ["Menyiapkan"],
     "XZkdtg": ["Ganti cabang"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["Tampilkan berkas tersembunyi"],
     "Xet9MX": ["Gagal memuat tautan balik"],
     "Xewl6B": ["Salinan lokal Anda tertinggal. Tarik perubahan terbaru, lalu buka tautannya lagi."],
@@ -3114,6 +3129,7 @@
     "cRm498": ["Belum ada berkas skema di proyek ini — buat satu untuk mulai memvalidasi."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Blok konten yang dapat dilipat (toggle gaya Notion)."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["Lompat ke sumber markdown untuk blok di posisi kursor, terpusat dan tersorot."],
     "cUK8lW": [["conflictCount", "plural", { "other": ["#", " konflik"] }]],
     "cUagXn": ["Tambahkan ke ", ["gitignorePath"]],
@@ -3802,10 +3818,8 @@
     "kNiQp6": ["Disematkan"],
     "kNqMMd": ["Folder"],
     "kPOw9O": ["Salin pesan"],
-    "kRTXGw": [
-      "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
-    ],
     "kSiB3X": ["Tidak dapat memindahkan ke ", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
     ],
@@ -3893,7 +3907,6 @@
     "lAiyU_": ["Hanya dokumen saat ini yang memakai <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Berlangganan..."],
     "lGs_bQ": ["Halaman <0>*</0>"],
-    "lHCR4I": ["Kosongkan bidang ini untuk kembali ke endpoint OpenAI bawaan."],
     "lHwYMr": ["Galat server: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Pakai hanya huruf, angka, <0>_</0>, dan <1>-</1>."],
     "lISYEX": ["Komentar itu tidak bisa dibuka kembali."],
@@ -4655,6 +4668,9 @@
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["Tentang"],
     "uyOQ4e": ["Tema disalin sebagai YAML base16"],
     "uynXup": [["tokens", "plural", { "other": ["token"] }]],
@@ -4898,6 +4914,7 @@
     "y6HGwM": ["Konflik tersisa: ", ["liveRemaining"], "."],
     "y8B54M": ["Prompt Anda tidak bisa dikirim — silakan coba lagi."],
     "yCX4jp": [" Pilihan Anda tidak dapat dipulihkan."],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["Selesaikan konflik pada ", ["files"], " sebelum menghapus."],
     "yEJ-sl": [
       "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (misalnya URL http:// polos, atau kode yang memakai eval). Konten di atas mungkin dirender tidak lengkap."
@@ -5033,6 +5050,7 @@
     "zo3Dl7": ["Tampilkan atau sembunyikan gambar mini"],
     "zpfN9p": ["Belum ada komentar. Pilih teks di dokumen untuk menambahkan satu."],
     "zq2eBA": ["Lihat di sumber"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "Frontmatter yang mengawali setiap dokumen yang dibuat dari templat ini. Nilainya berupa YAML — daftar ditulis <0>[a, b]</0>; <1>{",
       ["date"],

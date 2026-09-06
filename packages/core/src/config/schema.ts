@@ -54,6 +54,9 @@ const DEFAULT_LOSS_CAPTURE_MAX_BYTES = 12_582_912;
 
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
+export const DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE = 96;
+export const DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS = 96_000;
+export const DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS = 30_000;
 
 export const DEFAULT_SERVER_BIND: readonly string[] = Object.freeze(['127.0.0.1']);
 
@@ -797,11 +800,53 @@ export const ConfigSchema = z.looseObject({
                 'Optional hard cutoff: drop any "by meaning" match whose cosine similarity is below this value. Off by default (0) because retrieval is rank-based (the closest pages are returned regardless of absolute score) and the right cutoff is model-specific. Set it only to suppress weak matches for a specific provider/model whose cosine scale you know. Most setups should leave it unset and rely on the result-count cap.',
             })
             .optional(),
+          maxBatchSize: z
+            .number()
+            .int()
+            .positive()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Maximum number of document inputs sent in one embeddings request (default 96). This changes only transport batching, not document chunking or vector-cache identity. Most setups should keep the default.',
+            })
+            .default(DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE),
+          maxBatchChars: z
+            .number()
+            .int()
+            .positive()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Approximate maximum cumulative character budget per document embeddings request (default 96000). This changes only transport batching, not document chunking or vector-cache identity. Most setups should keep the default.',
+            })
+            .default(DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS),
+          docTimeoutMs: z
+            .number()
+            .int()
+            .positive()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Timeout in milliseconds for each document embeddings request (default 30000). Query timeout is unchanged. This transport setting does not change vector-cache identity. Most setups should keep the default.',
+            })
+            .default(DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS),
         })
         .default({
           enabled: false,
           baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
           model: DEFAULT_EMBEDDINGS_MODEL,
+          maxBatchSize: DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+          maxBatchChars: DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+          docTimeoutMs: DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
         }),
     })
     .default({
@@ -809,6 +854,9 @@ export const ConfigSchema = z.looseObject({
         enabled: false,
         baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
         model: DEFAULT_EMBEDDINGS_MODEL,
+        maxBatchSize: DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+        maxBatchChars: DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+        docTimeoutMs: DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
       },
     }),
   contentRules: z

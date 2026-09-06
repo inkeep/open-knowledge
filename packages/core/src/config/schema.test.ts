@@ -421,3 +421,50 @@ describe('server.* (canonical listener/exposure surface)', () => {
     }
   });
 });
+
+describe('search.semantic embedding transport tuning', () => {
+  test('accepts positive integer overrides and keeps the legacy defaults when absent', () => {
+    const configured = ConfigSchema.parse({
+      search: {
+        semantic: {
+          maxBatchSize: 2,
+          maxBatchChars: 16_000,
+          docTimeoutMs: 120_000,
+        },
+      },
+    }).search.semantic;
+    expect(configured.maxBatchSize).toBe(2);
+    expect(configured.maxBatchChars).toBe(16_000);
+    expect(configured.docTimeoutMs).toBe(120_000);
+
+    const defaults = ConfigSchema.parse({}).search.semantic;
+    expect(defaults.maxBatchSize).toBe(96);
+    expect(defaults.maxBatchChars).toBe(96_000);
+    expect(defaults.docTimeoutMs).toBe(30_000);
+  });
+
+  test.each([
+    'maxBatchSize',
+    'maxBatchChars',
+    'docTimeoutMs',
+  ] as const)('%s rejects zero, negative, fractional, and string values', (field) => {
+    for (const invalid of [0, -1, 1.5, '2']) {
+      expect(ConfigSchema.safeParse({ search: { semantic: { [field]: invalid } } }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  test.each([
+    'maxBatchSize',
+    'maxBatchChars',
+    'docTimeoutMs',
+  ] as const)('%s is project-local, non-agent-settable, and live-reloaded', (field) => {
+    expect(getLeafFieldMeta(ConfigSchema, ['search', 'semantic', field])).toMatchObject({
+      scope: 'project-local',
+      defaultScope: 'project-local',
+      agentSettable: false,
+      reload: 'live',
+    });
+  });
+});

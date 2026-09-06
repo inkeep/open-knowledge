@@ -130,6 +130,7 @@ import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
+  type LoadOpenAiEmbedderInput,
   loadOpenAiEmbedder,
   normalizeProviderId,
   type ResolvedSemanticConfig,
@@ -304,7 +305,7 @@ export interface ServerOptions {
   pullIntervalSeconds?: number;
   pushIntervalSeconds?: number;
   embeddingsKeyStore?: EmbeddingsKeyStore | null;
-  embedderLoader?: () => Promise<Embedder | null>;
+  embedderLoader?: (input: LoadOpenAiEmbedderInput) => Promise<Embedder | null>;
   singleDocRelPath?: string;
   ephemeral?: boolean;
   generatedIndexTestHooks?: {
@@ -615,6 +616,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
+  function semanticTransportFingerprint(cfg: ResolvedSemanticConfig): string {
+    return `${cfg.maxBatchSize}|${cfg.maxBatchChars}|${cfg.docTimeoutMs}`;
+  }
+
   let lastAppliedAttachmentFolderPath: string | undefined;
 
   function applyPersistedConfigToConsumers(
@@ -641,6 +646,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     semanticSearch.applyConfig({
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
+      transportFingerprint: semanticTransportFingerprint(semCfg),
     });
     if (configDocName === CONFIG_DOC_NAME_PROJECT) {
       try {
@@ -770,19 +776,24 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const initialSemanticConfig = readSemanticSearchConfig();
   const semanticSearch = new SemanticSearchService({
-    loadEmbedder:
-      options.embedderLoader ??
-      (() => {
-        const cfg = readSemanticSearchConfig();
-        return loadOpenAiEmbedder({
-          keyStore: options.embeddingsKeyStore ?? null,
-          projectDir,
-          config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
-        });
-      }),
+    loadEmbedder: () => {
+      const cfg = readSemanticSearchConfig();
+      const input: LoadOpenAiEmbedderInput = {
+        keyStore: options.embeddingsKeyStore ?? null,
+        projectDir,
+        config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
+        options: {
+          maxBatchSize: cfg.maxBatchSize,
+          maxBatchChars: cfg.maxBatchChars,
+          docTimeoutMs: cfg.docTimeoutMs,
+        },
+      };
+      return (options.embedderLoader ?? loadOpenAiEmbedder)(input);
+    },
     cacheDir: join(getLocalDir(projectDir), 'embeddings'),
     enabled: initialSemanticConfig.enabled,
     providerFingerprint: semanticProviderFingerprint(initialSemanticConfig),
+    transportFingerprint: semanticTransportFingerprint(initialSemanticConfig),
   });
 
   let loadedPrincipal: Principal | null = null;

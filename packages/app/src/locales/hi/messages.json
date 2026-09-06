@@ -84,6 +84,9 @@
     ],
     "0NA4b3": ["मेरा संस्करण रखें"],
     "0NkNB5": [["0"], " माह पहले"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["अधिकतम एजेंट पहले से चल रहे हैं"],
     "0TnCvC": [["0"], " का नाम बदलें"],
     "0WsUA2": [
@@ -777,6 +780,9 @@
     "9tJX8r": ["अर्थ के अनुसार"],
     "9uI_rE": ["पूर्ववत करें"],
     "9uRLEH": ["\"", ["name"], "\" नहीं खोली जा सकी — यह अभी प्रोजेक्ट की स्किल में नहीं है।"],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["पुनर्संरचना"],
     "9x-lMu": ["इस रिपॉज़िटरी में — सहयोगियों को git के ज़रिए कॉपी मिलती हैं।"],
     "9xCnv8": ["Terminal छिपाएँ"],
@@ -896,6 +902,7 @@
     "Bdha5y": ["प्रकाशित किया जा रहा है…"],
     "BeWTQy": ["स्टार्टर पैक लोड हो रहे हैं"],
     "BgV29F": ["दृश्य संपादक का खोज इनपुट फ़ोकस में"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" को इंस्टॉल किए गए संस्करण पर वापस ले लिया गया"],
     "BjitBo": [["0"], " डाउनलोड करें"],
     "BkGtRl": [
@@ -1399,6 +1406,7 @@
       "OpenKnowledge अपना कॉन्फ़िगरेशन और आंतरिक फ़ाइलें आपके प्रोजेक्ट के मूल फ़ोल्डर में नई बनी <0>.ok</0> निर्देशिका के भीतर रखता है।"
     ],
     "Hrz9NY": ["विकी लिंक"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" को git अनदेखा कर रहा है"],
     "HzVAoz": [
       "इस फ़ाइल को स्किल के भीतर हिलाएँ या इसका नाम बदलें — पथ references/ या scripts/ के अंतर्गत ही रहता है।"
@@ -2039,6 +2047,7 @@
     "QQbwzK": ["कोई एजेंट उपलब्ध नहीं।"],
     "QQghPu": ["Claude Desktop में इंस्टॉल करें"],
     "QR5SP1": ["टेम्पलेट बनाया गया"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["यह फ़ाइल आने वाली ब्रांच पर हटा दी गई थी (modify-delete विरोध)।"],
     "QWdKwH": ["हिलाएँ"],
     "QYTOaN": ["आप इसे बाद में <0>Settings → Sync</0> में बदल सकते हैं।"],
@@ -2119,6 +2128,9 @@
     ],
     "RO-yts": ["लिंक पूर्वावलोकन अक्षम करने में विफल — ", ["detail"]],
     "RO9IbI": ["वापस लेना विफल: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["संदेश कतार में लगाएँ"],
     "RS98db": ["कमांड देखने के लिए '/' टाइप करें"],
     "RSqaSd": ["प्रोजेक्ट रूट"],
@@ -2548,6 +2560,9 @@
     "XYZ7tp": ["अनसुलझा"],
     "XYlJJT": ["सेट अप किया जा रहा है"],
     "XZkdtg": ["ब्रांच बदलें"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["छिपी हुई फ़ाइलें दिखाएँ"],
     "Xet9MX": ["बैकलिंक लोड करने में विफल"],
     "Xewl6B": ["आपकी स्थानीय प्रति पीछे है। नवीनतम बदलाव खींचें, फिर लिंक दोबारा खोलें।"],
@@ -3005,6 +3020,7 @@
     "cRm498": ["इस प्रोजेक्ट में अभी कोई स्कीमा फ़ाइल नहीं — सत्यापन शुरू करने के लिए एक बनाएँ।"],
     "cSCbv3": ["बीटा"],
     "cT_pW4": ["संक्षिप्त किया जा सकने वाला सामग्री ब्लॉक (Notion-शैली टॉगल)।"],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["कर्सर वाले ब्लॉक के markdown स्रोत पर जाएँ, बीच में और उभारा हुआ।"],
     "cUK8lW": [["conflictCount", "plural", { "one": ["#", " टकराव"], "other": ["#", " टकराव"] }]],
     "cUagXn": [["gitignorePath"], " में जोड़ें"],
@@ -3651,10 +3667,8 @@
     "kNiQp6": ["पिन किए गए"],
     "kNqMMd": ["फ़ोल्डर"],
     "kPOw9O": ["संदेश कॉपी करें"],
-    "kRTXGw": [
-      "अर्थ-आधारित खोज को किसी भी OpenAI-संगत एम्बेडिंग एंडपॉइंट पर लगाएँ — कोई स्वयं-होस्ट किया सर्वर या कोई दूसरा प्रदाता। ऊपर दी API कुंजी उसी एंडपॉइंट के लिए है जो आप यहाँ सेट करते हैं।"
-    ],
     "kSiB3X": [["trashNoun"], " में नहीं ले जाया जा सका"],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
       "<0>Skills</0> नहीं दिख रहा? पहले <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> सक्षम करें।"
     ],
@@ -3741,7 +3755,6 @@
     "lAiyU_": ["केवल मौजूदा दस्तावेज़ <0>#", ["tag"], "</0> का उपयोग करता है।"],
     "lCC_D5": ["सदस्यता ली जा रही है…"],
     "lGs_bQ": ["पेज <0>*</0>"],
-    "lHCR4I": ["डिफ़ॉल्ट OpenAI एंडपॉइंट पर लौटने के लिए फ़ील्ड साफ़ करें।"],
     "lHwYMr": ["सर्वर त्रुटि: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["केवल अक्षर, अंक, <0>_</0> और <1>-</1> उपयोग करें।"],
     "lISYEX": ["उस टिप्पणी को फिर से नहीं खोला जा सका।"],
@@ -4483,6 +4496,9 @@
     "uoJF_D": ["इसे सेट अप करना या शुरू करना बहुत कठिन था"],
     "ur2XSb": ["दृश्य संपादक"],
     "uuoHOU": ["कमांड विफल।"],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["परिचय"],
     "uyOQ4e": ["थीम को base16 YAML के रूप में कॉपी किया गया"],
     "uynXup": [["tokens", "plural", { "one": ["टोकन"], "other": ["टोकन"] }]],
@@ -4723,6 +4739,7 @@
     "y6HGwM": ["शेष कॉन्फ़्लिक्ट: ", ["liveRemaining"], "।"],
     "y8B54M": ["आपका प्रॉम्प्ट नहीं भेजा जा सका — कृपया फिर कोशिश करें।"],
     "yCX4jp": [" आपका चयन बहाल नहीं किया जा सका।"],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["हटाने से पहले ", ["files"], " का विरोध हल करें।"],
     "yEJ-sl": [
       "पूर्वावलोकन उन संसाधनों को रोकता है जो उसके सुरक्षा नियमों पर खरे नहीं उतरते (उदाहरण के लिए सादे http:// URL, या eval का उपयोग करने वाला कोड)। ऊपर की सामग्री अधूरी रेंडर हो सकती है।"
@@ -4850,6 +4867,7 @@
     "zo3Dl7": ["थंबनेल चालू या बंद करें"],
     "zpfN9p": ["अभी कोई टिप्पणी नहीं। कोई जोड़ने के लिए दस्तावेज़ में पाठ चुनें।"],
     "zq2eBA": ["स्रोत में देखें"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "वह frontmatter जिससे इस टेम्पलेट से बना हर दस्तावेज़ शुरू होता है। मान YAML होते हैं — सूची <0>[a, b]</0> होती है; <1>{",
       ["date"],

@@ -98,6 +98,9 @@
     ],
     "0NA4b3": ["Manter minha versão"],
     "0NkNB5": ["há ", ["0"], " meses"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["Já está no número máximo de agentes em execução"],
     "0TnCvC": ["Renomear ", ["0"]],
     "0WsUA2": [
@@ -916,6 +919,9 @@
       ["name"],
       "\" — ela ainda não está entre as habilidades do projeto."
     ],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["Refatoração"],
     "9x-lMu": ["Neste repositório — colaboradores recebem cópias via git."],
     "9xCnv8": ["Ocultar o Terminal"],
@@ -1057,6 +1063,7 @@
     "Bdha5y": ["Publicando..."],
     "BeWTQy": ["Carregando pacotes iniciais"],
     "BgV29F": ["Campo de busca do editor visual em foco"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
@@ -1657,6 +1664,7 @@
       "O OpenKnowledge guarda sua configuração e seus arquivos internos em um diretório <0>.ok</0> recém-criado na pasta raiz do seu projeto."
     ],
     "Hrz9NY": ["Link wiki"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" é ignorado pelo git"],
     "HzVAoz": [
       "Mova ou renomeie este arquivo dentro da habilidade — o caminho continua sob references/ ou scripts/."
@@ -2373,6 +2381,7 @@
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["Este arquivo foi excluído no ramo recebido (conflito modify-delete)."],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
@@ -2461,6 +2470,9 @@
     ],
     "RO-yts": ["Falha ao desativar a pré-visualização de links — ", ["detail"]],
     "RO9IbI": ["Falha ao reverter: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["Colocar a mensagem na fila"],
     "RS98db": ["Digite '/' para ver os comandos"],
     "RSqaSd": ["Raiz do projeto"],
@@ -2990,6 +3002,9 @@
     "XYZ7tp": ["Não resolvido"],
     "XYlJJT": ["Configurando"],
     "XZkdtg": ["Trocar de ramo"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["Mostrar os arquivos ocultos"],
     "Xet9MX": ["Falha ao carregar os retrolinks"],
     "Xewl6B": ["Sua cópia local está atrasada. Traga as últimas alterações e abra o link de novo."],
@@ -3496,6 +3511,7 @@
     "cRm498": ["Ainda não há arquivos de esquema neste projeto — crie um para começar a validar."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Bloco de conteúdo recolhível (alternador no estilo Notion)."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["Ir para o código markdown do bloco onde está o cursor, centralizado e destacado."],
     "cUK8lW": [
       [
@@ -4263,10 +4279,8 @@
     "kNiQp6": ["Fixados"],
     "kNqMMd": ["Pasta"],
     "kPOw9O": ["Copiar a mensagem"],
-    "kRTXGw": [
-      "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
-    ],
     "kSiB3X": ["Não foi possível mover para ", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
       "Não vê <0>Habilidades</0>? Ative antes <1>Configurações <2/> Recursos <3/> Execução de código e criação de arquivos</1>."
     ],
@@ -4365,7 +4379,6 @@
     "lAiyU_": ["Só o documento atual usa <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Assinando..."],
     "lGs_bQ": ["Página <0>*</0>"],
-    "lHCR4I": ["Esvazie o campo para voltar ao endpoint padrão da OpenAI."],
     "lHwYMr": ["Erro do servidor: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Use apenas letras, dígitos, <0>_</0> e <1>-</1>."],
     "lISYEX": ["Não deu para reabrir esse comentário."],
@@ -5232,6 +5245,9 @@
     "uoJF_D": ["Foi difícil demais configurar ou começar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["O comando falhou."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["Sobre"],
     "uyOQ4e": ["Tema copiado como YAML base16"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "many": ["tokens"], "other": ["tokens"] }]],
@@ -5499,6 +5515,7 @@
     "y6HGwM": ["Conflitos restantes: ", ["liveRemaining"], "."],
     "y8B54M": ["Não deu para enviar seu prompt — tente de novo."],
     "yCX4jp": [" Não foi possível restaurar sua seleção."],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["Resolva o conflito em ", ["files"], " antes de excluir."],
     "yEJ-sl": [
       "A pré-visualização bloqueia recursos que não atendem às regras de segurança dela (por exemplo, URLs http:// sem criptografia ou código que usa eval). O conteúdo acima pode ser renderizado de forma incompleta."
@@ -5654,6 +5671,7 @@
     "zo3Dl7": ["Mostrar ou ocultar as miniaturas"],
     "zpfN9p": ["Ainda não há comentários. Selecione um texto no documento para adicionar um."],
     "zq2eBA": ["Ver no código"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "O frontmatter com que começa cada documento criado a partir deste modelo. Os valores são YAML — uma lista é <0>[a, b]</0>; <1>{",
       ["date"],

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Extension } from '@hocuspocus/server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { createConceptEmbedder } from './embeddings/index.ts';
+import { createConceptEmbedder, type LoadOpenAiEmbedderInput } from './embeddings/index.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
 
@@ -64,6 +64,7 @@ function makeRes(): { res: ServerResponse; captured: { status: number; body: str
 
 let tmpDir: string;
 let server: ServerInstance;
+let observedLoaderInput: LoadOpenAiEmbedderInput | undefined;
 
 async function callViaServer(
   srv: ServerInstance,
@@ -121,7 +122,7 @@ beforeAll(async () => {
   mkdirSync(join(tmpDir, '.ok', 'local'), { recursive: true });
   writeFileSync(
     join(tmpDir, '.ok', 'local', 'config.yml'),
-    'search:\n  semantic:\n    enabled: true\n',
+    'search:\n  semantic:\n    enabled: true\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: 120000\n',
     'utf-8',
   );
   writeFileSync(
@@ -142,7 +143,10 @@ beforeAll(async () => {
     skipStateManifestCheck: true,
     destroyTimeoutMs: 500,
     configHomedirOverride: tmpDir,
-    embedderLoader: () => Promise.resolve(embedder),
+    embedderLoader: (input) => {
+      observedLoaderInput = input;
+      return Promise.resolve(embedder);
+    },
   });
   await server.ready;
 });
@@ -185,6 +189,11 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(hiddenHit?.signals.vector, 'but a hidden dot-path is never embedded').toBeUndefined();
 
     expect(existsSync(join(tmpDir, '.ok', 'local', 'embeddings'))).toBe(true);
+    expect(observedLoaderInput?.options).toMatchObject({
+      maxBatchSize: 2,
+      maxBatchChars: 16_000,
+      docTimeoutMs: 120_000,
+    });
   }, 30_000);
 
   test('GET /api/semantic-status reports enabled + ready + capable + coverage', async () => {

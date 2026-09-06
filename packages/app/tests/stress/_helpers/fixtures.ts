@@ -18,6 +18,7 @@ import {
 import { removeAllDuringTeardown } from './teardown-fs.ts';
 
 export interface WorkerServer {
+  pid: number;
   port: number;
   baseURL: string;
   contentDir: string;
@@ -218,7 +219,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
 
-      await use({ port, baseURL, contentDir });
+      if (proc.pid === undefined) throw new Error('dev server process has no pid');
+      await use({ pid: proc.pid, port, baseURL, contentDir });
 
       try {
         await killGracefully(proc);

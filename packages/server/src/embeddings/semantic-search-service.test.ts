@@ -282,6 +282,47 @@ describe('SemanticSearchService', () => {
     expect(loads).toBe(2);
   });
 
+  test('applyConfig transport-fingerprint change re-loads only the embedder and reuses vectors', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-sem-transport-reload-'));
+    let loads = 0;
+    let documentInputs = 0;
+    try {
+      const svc = new SemanticSearchService({
+        loadEmbedder: () => {
+          loads += 1;
+          const inner = createConceptEmbedder({ concepts });
+          return Promise.resolve({
+            ...inner,
+            embed: (texts, options) => {
+              if (options.role === 'document') documentInputs += texts.length;
+              return inner.embed(texts, options);
+            },
+          });
+        },
+        cacheDir: dir,
+        enabled: true,
+        providerFingerprint: 'openai|model|auto',
+        transportFingerprint: '96|96000|30000',
+      });
+      await svc.embedCorpus(corpus);
+      const firstDocumentInputs = documentInputs;
+      expect(loads).toBe(1);
+      expect(firstDocumentInputs).toBeGreaterThan(0);
+
+      svc.applyConfig({
+        enabled: true,
+        providerFingerprint: 'openai|model|auto',
+        transportFingerprint: '2|16000|120000',
+      });
+      await svc.embedCorpus(corpus);
+
+      expect(loads).toBe(2);
+      expect(documentInputs).toBe(firstDocumentInputs);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('max chunk cosine roll-up: a buried passage still surfaces the doc', async () => {
     const svc = makeService({ enabled: true });
     const breadBlock = 'sourdough bread cold ferment dough recipe loaf crust. '.repeat(90);

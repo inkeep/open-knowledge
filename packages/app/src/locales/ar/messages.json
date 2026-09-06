@@ -106,6 +106,9 @@
     ],
     "0NA4b3": ["الاحتفاظ بنسختي"],
     "0NkNB5": ["قبل ", ["0"], " شهر"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["يعمل الحد الأقصى من الوكلاء بالفعل"],
     "0TnCvC": ["إعادة تسمية ", ["0"]],
     "0WsUA2": ["تم لصق المطالبة ولكن لم يتم إرسالها تلقائيًا. راجعها، ثم اضغط على Enter لإرسالها."],
@@ -906,6 +909,9 @@
     "9tJX8r": ["حسب المعنى"],
     "9uI_rE": ["تراجع"],
     "9uRLEH": ["تعذّر فتح «", ["name"], "» — ليست ضمن مهارات المشروع بعد."],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["إعادة هيكلة"],
     "9x-lMu": ["في هذا المستودع — يحصل المتعاونون على نسخ عبر git."],
     "9xCnv8": ["إخفاء Terminal"],
@@ -1056,6 +1062,7 @@
     "Bdha5y": ["يجري النشر..."],
     "BeWTQy": ["يجري تحميل حزم البداية"],
     "BgV29F": ["حقل بحث المحرر المرئي مركَّز عليه"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["تم التراجع بـ «", ["name"], "» إلى النسخة المثبتة"],
     "BjitBo": ["تنزيل ", ["0"]],
     "BkGtRl": [
@@ -1650,6 +1657,7 @@
       "يخزّن OpenKnowledge إعداداته وملفاته الداخلية داخل مجلد <0>.ok</0> يُنشأ حديثًا في مجلد جذر مشروعك."
     ],
     "Hrz9NY": ["رابط ويكي"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["يتجاهل git \"", ["0"], "\""],
     "HzVAoz": [
       "انقل هذا الملف أو أعد تسميته داخل المهارة — يبقى المسار تحت references/ أو scripts/."
@@ -2356,6 +2364,7 @@
     "QQbwzK": ["لا يوجد وكلاء متاحون."],
     "QQghPu": ["التثبيت في Claude Desktop"],
     "QR5SP1": ["أنشأ قالبًا"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["تم حذف هذا الملف على الفرع الوارد (تعارض تعديل/حذف)."],
     "QWdKwH": ["نقل"],
     "QYTOaN": ["يمكنك تغيير هذا لاحقًا من <0>الإعدادات ← المزامنة</0>."],
@@ -2454,6 +2463,9 @@
     ],
     "RO-yts": ["فشل تعطيل معاينات الروابط — ", ["detail"]],
     "RO9IbI": ["فشل التراجع: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["إضافة الرسالة إلى الطابور"],
     "RS98db": ["اكتب '/' لعرض الأوامر"],
     "RSqaSd": ["جذر المشروع"],
@@ -2998,6 +3010,9 @@
     "XYZ7tp": ["غير قابل للحل"],
     "XYlJJT": ["يجري الإعداد"],
     "XZkdtg": ["تبديل الفرع"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["إظهار الملفات المخفية"],
     "Xet9MX": ["فشل تحميل الروابط الخلفية"],
     "Xewl6B": ["نسختك المحلية متأخرة. اسحب أحدث التغييرات، ثم افتح الرابط مرة أخرى."],
@@ -3501,6 +3516,7 @@
     "cRm498": ["لا توجد ملفات مخططات في هذا المشروع بعد — أنشئ واحدًا لبدء التحقق."],
     "cSCbv3": ["بيتا"],
     "cT_pW4": ["كتلة محتوى قابلة للطي (تبديل بنمط Notion)."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["انتقل إلى مصدر Markdown للكتلة عند المؤشر، موسّطًا ومظللًا."],
     "cUK8lW": [
       [
@@ -4244,10 +4260,8 @@
     "kNiQp6": ["مثبّتة"],
     "kNqMMd": ["مجلد"],
     "kPOw9O": ["نسخ الرسالة"],
-    "kRTXGw": [
-      "وجّه البحث الدلالي إلى أي نقطة نهاية تضمينات متوافقة مع OpenAI — خادم ذاتي الاستضافة أو مزوّد آخر. مفتاح API أعلاه يخص أي نقطة نهاية تضبطها هنا."
-    ],
     "kSiB3X": ["تعذّر النقل إلى ", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
       "لا ترى <0>المهارات</0>؟ فعّل <1>الإعدادات <2/> القدرات <3/> تنفيذ الكود وإنشاء الملفات</1> أولًا."
     ],
@@ -4342,7 +4356,6 @@
     "lAiyU_": ["المستند الحالي وحده يستخدم <0>#", ["tag"], "</0>."],
     "lCC_D5": ["يجري الاشتراك..."],
     "lGs_bQ": ["الصفحة <0>*</0>"],
-    "lHCR4I": ["امسح الحقل للعودة إلى نقطة نهاية OpenAI الافتراضية."],
     "lHwYMr": ["خطأ في الخادم: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["استخدم الحروف والأرقام و<0>_</0> و<1>-</1> فقط."],
     "lISYEX": ["تعذّرت إعادة فتح ذلك التعليق."],
@@ -5244,6 +5257,9 @@
     "uoJF_D": ["كان إعداده أو البدء به صعبًا جدًا"],
     "ur2XSb": ["المحرر المرئي"],
     "uuoHOU": ["فشل الأمر."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["حول"],
     "uyOQ4e": ["تم نسخ السمة بتنسيق base16 YAML"],
     "uynXup": [
@@ -5525,6 +5541,7 @@
     "y6HGwM": ["التعارضات المتبقية: ", ["liveRemaining"], "."],
     "y8B54M": ["تعذّر إرسال موجّهك — يرجى المحاولة مرة أخرى."],
     "yCX4jp": [" تعذّرت استعادة تحديدك."],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["احسم التعارض في ", ["files"], " قبل الحذف."],
     "yEJ-sl": [
       "تحظر المعاينة الموارد التي لا تستوفي قواعد أمانها (مثل روابط http:// العادية، أو الكود الذي يستخدم eval). قد يُعرض المحتوى أعلاه على نحو ناقص."
@@ -5699,6 +5716,7 @@
     "zo3Dl7": ["تبديل الصور المصغّرة"],
     "zpfN9p": ["لا توجد تعليقات بعد. حدد نصًا في المستند لإضافة واحد."],
     "zq2eBA": ["العرض في المصدر"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "الـ frontmatter الذي يبدأ به كل مستند يُنشأ من هذا القالب. القيم بصيغة YAML — القائمة تُكتب <0>[a, b]</0>؛ و<1>{",
       ["date"],

@@ -1609,6 +1609,10 @@ msgstr "Ajoute ces fichiers"
 msgid "Adds these folders"
 msgstr "Ajoute ces dossiers"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr ""
+
 #: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -2523,6 +2527,10 @@ msgstr "Les modifications sont enregistrées automatiquement."
 msgid "Changes saved automatically."
 msgstr "Modifications enregistrées automatiquement."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "Rechercher les mises à jour"
@@ -2727,8 +2735,8 @@ msgid "Clear selection"
 msgstr "Effacer la sélection"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Clear the field to reset back to the default OpenAI endpoint."
-msgstr "Videz le champ pour revenir au point de terminaison OpenAI par défaut."
+msgid "Clear the field to reset to the default OpenAI endpoint."
+msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
 msgid "cleared folder properties"
@@ -5215,6 +5223,11 @@ msgid "Embed an image with optional alt text."
 msgstr "Intègre une image avec un texte alternatif facultatif."
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "Clé API des embeddings"
 
@@ -5383,6 +5396,10 @@ msgstr "Saisissez un nom pour ce thème."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "Saisissez un port entre 1 et 65535."
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a positive whole number."
+msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
@@ -5883,6 +5900,10 @@ msgstr "Échec de la mise à jour de l'emplacement des pièces jointes — {deta
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "Échec de la mise à jour des règles markdownlint"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr ""
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6706,6 +6727,10 @@ msgstr "Que pensez-vous d'OpenKnowledge ?"
 msgid "How does sharing work?"
 msgstr "Comment fonctionne le partage ?"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+msgstr ""
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "Comment les documents, fichiers et images locaux au projet manquants sont signalés dans Problèmes, les diagnostics de l’éditeur, les audits et les outils d’agent."
@@ -6960,6 +6985,10 @@ msgstr "La maintenance de l'index est restée désactivée car les paramètres d
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
 msgstr "{embedded} pages indexées sur {total}."
+
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
@@ -7513,6 +7542,10 @@ msgstr "Clair"
 msgid "Light, dark, or follow the OS."
 msgstr "Clair, sombre, ou suivre le système."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "ligne {displayLine}"
@@ -7834,6 +7867,10 @@ msgstr "Recherche de <0>{lookingForUrl}</0>."
 msgid "Lost connection to \"{docName}\"."
 msgstr "Connexion perdue avec « {docName} »."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "Conserver les index generated dans chaque dossier ?"
@@ -7941,6 +7978,10 @@ msgstr "{MAX_ATTACHMENTS} pièces jointes maximum"
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
 msgstr "Nombre maximal d'agents déjà en cours d'exécution"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr ""
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -10134,10 +10175,6 @@ msgstr "Veuillez saisir un e-mail valide."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Plugins"
 msgstr "Plugins"
-
-#: src/components/settings/SearchSection.tsx
-msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
-msgstr "Dirigez la recherche sémantique vers n'importe quel point de terminaison d'embeddings compatible OpenAI — un serveur auto-hébergé ou un autre fournisseur. La clé API ci-dessus vaut pour le point de terminaison que vous définissez ici."
 
 #: src/components/acp/working-status.ts
 msgid "Pondering…"
@@ -14660,6 +14697,10 @@ msgstr "Utilisez une origine http:// ou https://."
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
 msgstr "Utilisez une URL https:// — http:// n'est autorisé que pour localhost."
+
+#: src/components/settings/SearchSection.tsx
+msgid "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+msgstr ""
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

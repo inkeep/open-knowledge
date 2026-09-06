@@ -43,7 +43,7 @@ export function buildSettingsSearchIndex(input: {
           sectionId: item.id,
           label: sub.label,
           context: `${group.label} → ${item.label}`,
-          keywords: [group.label, item.label],
+          keywords: [group.label, item.label, ...(sub.keywords ?? [])],
           targetField: sub.anchor,
         });
       }

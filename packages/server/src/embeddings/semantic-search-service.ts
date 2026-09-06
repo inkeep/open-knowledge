@@ -42,6 +42,7 @@ export interface SemanticSearchServiceOptions {
   cacheDir: string | null;
   enabled?: boolean;
   providerFingerprint?: string;
+  transportFingerprint?: string;
 }
 
 export class SemanticSearchService {
@@ -50,6 +51,7 @@ export class SemanticSearchService {
 
   private enabled: boolean;
   private providerFingerprint: string;
+  private transportFingerprint: string;
   private capable = false;
   private ready = false;
   private embedder: Embedder | null = null;
@@ -65,6 +67,7 @@ export class SemanticSearchService {
     this.cacheDir = options.cacheDir;
     this.enabled = options.enabled ?? false;
     this.providerFingerprint = options.providerFingerprint ?? '';
+    this.transportFingerprint = options.transportFingerprint ?? '';
   }
 
   isEnabled(): boolean {
@@ -80,10 +83,21 @@ export class SemanticSearchService {
     };
   }
 
-  applyConfig(input: { enabled: boolean; providerFingerprint: string }): void {
+  applyConfig(input: {
+    enabled: boolean;
+    providerFingerprint: string;
+    transportFingerprint?: string;
+  }): void {
     if (input.providerFingerprint !== this.providerFingerprint) {
       this.providerFingerprint = input.providerFingerprint;
       this.dimsDriftResets = 0;
+      this.resetWarm();
+    }
+    if (
+      input.transportFingerprint !== undefined &&
+      input.transportFingerprint !== this.transportFingerprint
+    ) {
+      this.transportFingerprint = input.transportFingerprint;
       this.resetWarm();
     }
     if (input.enabled === this.enabled) return;

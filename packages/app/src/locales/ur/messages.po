@@ -1609,6 +1609,10 @@ msgstr "یہ فائلیں شامل کرتا ہے"
 msgid "Adds these folders"
 msgstr "یہ فولڈرز شامل کرتا ہے"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr ""
+
 #: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -2523,6 +2527,10 @@ msgstr "تبدیلیاں خودکار طور پر محفوظ ہو جاتی ہی�
 msgid "Changes saved automatically."
 msgstr "تبدیلیاں خودکار طور پر محفوظ ہو گئیں۔"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "اپ ڈیٹس دیکھیں"
@@ -2727,8 +2735,8 @@ msgid "Clear selection"
 msgstr "انتخاب صاف کریں"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Clear the field to reset back to the default OpenAI endpoint."
-msgstr "طے شدہ OpenAI اینڈ پوائنٹ پر واپس جانے کے لیے فیلڈ صاف کریں۔"
+msgid "Clear the field to reset to the default OpenAI endpoint."
+msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
 msgid "cleared folder properties"
@@ -5215,6 +5223,11 @@ msgid "Embed an image with optional alt text."
 msgstr "اختیاری متبادل متن کے ساتھ تصویر شامل کریں۔"
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "ایمبیڈنگز API کلید"
 
@@ -5383,6 +5396,10 @@ msgstr "اس تھیم کے لیے نام درج کریں۔"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "1 اور 65535 کے درمیان ایک پورٹ درج کریں۔"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a positive whole number."
+msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
@@ -5883,6 +5900,10 @@ msgstr "منسلکات کا مقام تازہ نہیں ہو سکا — {detail}"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "markdownlint کے قواعد تازہ نہیں ہو سکے"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr ""
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6706,6 +6727,10 @@ msgstr "OpenKnowledge آپ کو کیسا لگا؟"
 msgid "How does sharing work?"
 msgstr "اشتراک کیسے کام کرتا ہے؟"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+msgstr ""
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "گم شدہ پروجیکٹ-لوکل دستاویزات، فائلوں اور تصاویر کو مسائل، ایڈیٹر تشخیصات، آڈٹس اور ایجنٹ ٹولز میں کیسے رپورٹ کیا جاتا ہے۔"
@@ -6960,6 +6985,10 @@ msgstr "انڈیکس کی دیکھ بھال بند رہی کیونکہ پروج�
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
 msgstr "{total} میں سے {embedded} صفحات اشاریہ بند ہو گئے۔"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
@@ -7513,6 +7542,10 @@ msgstr "روشن"
 msgid "Light, dark, or follow the OS."
 msgstr "روشن، تاریک، یا OS کی پیروی۔"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "سطر {displayLine}"
@@ -7834,6 +7867,10 @@ msgstr "<0>{lookingForUrl}</0> تلاش کیا جا رہا ہے۔"
 msgid "Lost connection to \"{docName}\"."
 msgstr "«{docName}» سے رابطہ ختم ہو گیا۔"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "ہر فولڈر میں generated اشاریہ جات کو برقرار رکھیں؟"
@@ -7941,6 +7978,10 @@ msgstr "زیادہ سے زیادہ {MAX_ATTACHMENTS} منسلکات"
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
 msgstr "زیادہ سے زیادہ ایجنٹس پہلے ہی چل رہے ہیں"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr ""
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -10134,10 +10175,6 @@ msgstr "براہِ کرم درست ای میل درج کریں۔"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Plugins"
 msgstr "پلگ اِنز"
-
-#: src/components/settings/SearchSection.tsx
-msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
-msgstr "معنوی تلاش کو OpenAI سے ہم آہنگ کسی بھی ایمبیڈنگز اینڈ پوائنٹ کی طرف موڑیں — خود میزبان سرور یا کوئی دوسرا فراہم کنندہ۔ اوپر دی گئی API کلید اسی اینڈ پوائنٹ کے لیے ہے جو آپ یہاں مقرر کریں۔"
 
 #: src/components/acp/working-status.ts
 msgid "Pondering…"
@@ -14660,6 +14697,10 @@ msgstr "http:// یا https:// اوریجن استعمال کریں۔"
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
 msgstr "https:// والا URL استعمال کریں — http:// کی اجازت صرف localhost کے لیے ہے۔"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+msgstr ""
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

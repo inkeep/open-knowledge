@@ -77,6 +77,9 @@ A key set in a file more specific than its scope (a user-scope key in `.ok/confi
 | `search.semantic.model` | string | `"text-embedding-3-small"` | project-local | Embeddings model id. Must be served by the provider at `baseUrl`. Changing it re-embeds the corpus. |
 | `search.semantic.dimensions` | number | (auto) | project-local | Optional output vector size. Omit (recommended) and the size is detected from the endpoint's first response and reused across restarts — that is what lets a non-OpenAI model work without knowing its size up front. Set a smaller value to shrink the on-disk cache, trading a little quality; an endpoint that ignores the request parameter then fails loudly instead of silently. |
 | `search.semantic.similarityFloor` | number | (unset) | project-local | Optional hard cutoff (0–1): drops semantic matches whose cosine similarity is below it. Retrieval is rank-based, so most setups leave it unset; set it only for a provider/model whose cosine scale you know. |
+| `search.semantic.maxBatchSize` | positive integer | `96` | project-local | Maximum text chunks per indexing embeddings request. Lower values reduce peak memory use but require more requests. This changes transport batching only, not document chunking, vector identity, or the vector cache. Takes effect live for the next request. |
+| `search.semantic.maxBatchChars` | positive integer | `96000` | project-local | Approximate character budget per indexing embeddings request. A single chunk larger than the budget is still sent alone; this setting does not split chunks or invalidate cached vectors. Takes effect live for the next request. |
+| `search.semantic.docTimeoutMs` | positive integer (milliseconds) | `30000` | project-local | Timeout for each embeddings request while indexing the corpus. Search queries use a separate timeout. This transport setting takes effect live and does not invalidate cached vectors. |
 | `linkPreviews.enabled` | boolean | `true` | project-local | Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. Default on (set to `false` to opt out). **When on, hovering an external link sends that link's URL to the destination site** to fetch its preview metadata — outbound egress, one request per previewed link. Previews of links to other documents in the project are read from the local index with no network request and are always on. See [Link previews](#link-previews) below. |
 
 ## Removed keys
@@ -137,6 +140,20 @@ To turn it on (per project, per machine):
 1. Enable it for the project: the **Settings → This project → Search** toggle, or `ok embeddings enable`. Either sets `search.semantic.enabled: true` in project-local config (`<project>/.ok/local/config.yml`), picked up live by a running server; `ok embeddings disable` turns it off.
 2. Set the API key right there on the same screen (or `ok embeddings set-key` in the project). Keys are **per project** — one project's key is never shared with another unless both point at the same endpoint. A **localhost** endpoint (Ollama / LM Studio) needs no key at all — the field shows "not required". `ok embeddings list` shows every stored key (redacted); `ok embeddings clear-key` removes this project's.
 3. (Optional) point at your own OpenAI-compatible endpoint (a self-hosted Ollama / vLLM / LM Studio server, or another provider): open **Custom endpoint** in that same section, set the endpoint URL and the model id, and press **Test connection** — it runs one throwaway embed and reports either the detected vector size or the specific reason it failed. The same knobs are available from the CLI (`ok embeddings set-url <url>` / `clear-url`, `ok embeddings set-model <id>` / `clear-model`) and in project-local config (`search.semantic.baseUrl` / `model`). The vector size is detected automatically, so `dimensions` normally stays unset. Changing the endpoint or the model discards the cached vectors and re-embeds the corpus.
+4. (Optional) if a slow local model needs smaller requests or more time, open **Embedding request settings** and explicitly override the document batch count, character budget, or timeout. Most setups should keep the defaults (`96` / `96000` / `30000` ms). For example, one user might choose the following for a particularly slow local model — this is an override example, **not** a preset or general recommendation:
+
+   ```yaml
+   search:
+     semantic:
+       enabled: true
+       baseUrl: http://localhost:11434/v1
+       model: qwen3-embedding:4b
+       maxBatchSize: 2
+       maxBatchChars: 16000
+       docTimeoutMs: 120000
+   ```
+
+   These three controls only change HTTP request batching and the document-request timeout. They do not change chunking, query timeout, retries, vector identity, or the vector cache, so applying them live does not trigger a provider-change confirmation or a full re-embed.
 
 The first semantic search kicks off a background embed of the corpus (cents for a whole vault with `text-embedding-3-small`); vectors are cached incrementally under `.ok/local/` and only changed docs re-embed. If the key is missing, the provider errors, or you're offline, search degrades to lexical — it never blocks or errors. Because that degradation is quiet, **Test connection** is the way to tell a working custom endpoint apart from one that is failing. Each MCP `search` response reports embedding coverage so an agent knows when vectors are still filling in.
 

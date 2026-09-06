@@ -1,6 +1,9 @@
 import {
   checkEmbeddingsBaseUrl,
   DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   sleep as defaultSleep,
   isLoopbackEmbeddingsUrl,
 } from '@inkeep/open-knowledge-core';
@@ -100,9 +103,9 @@ export interface OpenAiEmbedderOptions {
 }
 
 const DEFAULTS = {
-  maxBatchSize: 96,
-  maxBatchChars: 96_000,
-  docTimeoutMs: 30_000,
+  maxBatchSize: DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+  maxBatchChars: DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  docTimeoutMs: DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
   queryTimeoutMs: 8_000,
   maxRetries: 4,
   backoffBaseMs: 500,

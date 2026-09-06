@@ -76,6 +76,9 @@
     ],
     "0NA4b3": ["保留我的版本"],
     "0NkNB5": [["0"], " 个月前"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["运行中的智能体已达上限"],
     "0TnCvC": ["重命名 ", ["0"]],
     "0WsUA2": ["提示词已粘贴，但未自动提交。请检查内容，然后按 Enter 发送。"],
@@ -718,6 +721,9 @@
     "9tJX8r": ["按语义"],
     "9uI_rE": ["撤销"],
     "9uRLEH": ["无法打开“", ["name"], "”——它还不在项目的技能里。"],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["重构"],
     "9x-lMu": ["位于此仓库中——协作者会通过 git 获得副本。"],
     "9xCnv8": ["隐藏 Terminal"],
@@ -821,6 +827,7 @@
     "Bdha5y": ["正在发布…"],
     "BeWTQy": ["正在加载入门包"],
     "BgV29F": ["可视化编辑器查找输入框已聚焦"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["已把“", ["name"], "”还原到已安装的版本"],
     "BjitBo": ["下载 ", ["0"]],
     "BkGtRl": ["在「编辑源码」面板或代码类属性字段中撤销、重做，或逐步回溯选区变化。"],
@@ -1266,6 +1273,7 @@
     "HqOPpj": ["Git 需要一个辅助工具（例如 git-lfs），但它未安装或找不到。请先安装再重试。"],
     "HqiZvw": ["OpenKnowledge 会把配置和内部文件保存在你项目根目录中新建的 <0>.ok</0> 目录里。"],
     "Hrz9NY": ["维基链接"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["git 已忽略“", ["0"], "”"],
     "HzVAoz": ["在技能内部移动或重命名这个文件——路径仍保持在 references/ 或 scripts/ 下。"],
     "HzVv6g": ["粘贴"],
@@ -1848,6 +1856,7 @@
     "QQbwzK": ["没有可用的智能体。"],
     "QQghPu": ["安装到 Claude Desktop"],
     "QR5SP1": ["已创建模板"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["此文件已在传入分支中删除（modify-delete 冲突）。"],
     "QWdKwH": ["移动"],
     "QYTOaN": ["之后可以在<0>「设置 → 同步」</0>中更改。"],
@@ -1914,6 +1923,9 @@
     ],
     "RO-yts": ["关闭链接预览失败——", ["detail"]],
     "RO9IbI": ["还原失败：", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["把消息加入队列"],
     "RS98db": ["输入“/”打开命令"],
     "RSqaSd": ["项目根目录"],
@@ -2319,6 +2331,9 @@
     "XYZ7tp": ["无法解析"],
     "XYlJJT": ["正在设置"],
     "XZkdtg": ["切换分支"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["显示隐藏文件"],
     "Xet9MX": ["加载反向链接失败"],
     "Xewl6B": ["你的本地副本落后了。请拉取最新改动，然后重新打开链接。"],
@@ -2728,6 +2743,7 @@
     "cRm498": ["这个项目还没有架构文件——创建一个即可开始校验。"],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["可折叠内容块（Notion 风格折叠）。"],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["跳到光标所在块的 markdown 源码，居中并高亮显示。"],
     "cUK8lW": [["conflictCount", "plural", { "other": ["#", " 处冲突"] }]],
     "cUagXn": ["添加到 ", ["gitignorePath"]],
@@ -3327,10 +3343,8 @@
     "kNiQp6": ["已置顶"],
     "kNqMMd": ["文件夹"],
     "kPOw9O": ["复制消息"],
-    "kRTXGw": [
-      "把语义搜索指向任何兼容 OpenAI 的嵌入端点——自建服务器或其他提供方均可。上方的 API 密钥用于你在这里设置的端点。"
-    ],
     "kSiB3X": ["无法移到", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": ["没看到<0>技能</0>？请先启用<1>设置 <2/> 功能 <3/> 代码执行与文件创建</1>。"],
     "kVS5tE": ["在每个文件夹中维护 generated 索引？"],
     "kVgQUA": ["删除此对话？"],
@@ -3407,7 +3421,6 @@
     "lAiyU_": ["只有当前文档使用 <0>#", ["tag"], "</0>。"],
     "lCC_D5": ["正在订阅…"],
     "lGs_bQ": ["页面 <0>*</0>"],
-    "lHCR4I": ["清空该字段即可恢复为默认的 OpenAI 端点。"],
     "lHwYMr": ["服务器错误：", ["status"], " ", ["statusText"]],
     "lI0Td2": ["只能使用字母、数字、<0>_</0> 和 <1>-</1>。"],
     "lISYEX": ["无法重新打开那条评论。"],
@@ -4064,6 +4077,9 @@
     "uoJF_D": ["设置或上手太麻烦了"],
     "ur2XSb": ["可视化编辑器"],
     "uuoHOU": ["命令执行失败。"],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["关于"],
     "uyOQ4e": ["主题已复制为 base16 YAML"],
     "uynXup": [["tokens", "plural", { "other": ["token"] }]],
@@ -4275,6 +4291,7 @@
     "y6HGwM": ["剩余冲突：", ["liveRemaining"], " 个。"],
     "y8B54M": ["无法发送你的提示词——请重试。"],
     "yCX4jp": [" 无法恢复你的选择。"],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["删除前请先解决 ", ["files"], " 上的冲突。"],
     "yEJ-sl": [
       "预览会拦截不符合其安全规则的资源（例如纯 http:// 的 URL，或使用了 eval 的代码）。上面的内容可能渲染不完整。"
@@ -4387,6 +4404,7 @@
     "zo3Dl7": ["切换缩略图"],
     "zpfN9p": ["还没有评论。在文档中选中文本即可添加。"],
     "zq2eBA": ["在源码中查看"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "用这个模板创建的每个文档都以这段 frontmatter 开头。值使用 YAML——列表写作 <0>[a, b]</0>；<1>{",
       ["date"],
