@@ -53,5 +53,3 @@ export interface DeriveLossDetectOptions {
   report: (obs: DeriveLossObservation) => void;
   baselineFullMd: string;
 }
-
-export const DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE = 'file-watcher-intake';

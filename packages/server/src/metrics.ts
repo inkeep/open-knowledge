@@ -406,14 +406,17 @@ export function incrementPersistenceDeferHold(): void {
   counters.persistenceDeferHold++;
 }
 
+/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
 export function incrementPersistenceReconcileLoss(): void {
   counters.persistenceReconcileLoss++;
 }
 
+/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
 export function incrementPersistenceReconcileLossCheckpointCreated(): void {
   counters.persistenceReconcileLossCheckpointCreated++;
 }
 
+/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
 export function incrementPersistenceReconcileLossDeduped(): void {
   counters.persistenceReconcileLossDeduped++;
 }
