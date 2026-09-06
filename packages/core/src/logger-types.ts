@@ -68,6 +68,30 @@ export interface ReportBundleSummary {
 export const BUG_REPORT_SCREENSHOT_ZIP_NAME = 'screenshot.png';
 export const BUG_REPORT_SCREENSHOT_ZIP_ENTRY = `extra/${BUG_REPORT_SCREENSHOT_ZIP_NAME}`;
 
+export const BUG_REPORT_ATTACHMENTS_ZIP_DIR = 'attachments';
+export const BUG_REPORT_ATTACHMENTS_ZIP_PREFIX = `extra/${BUG_REPORT_ATTACHMENTS_ZIP_DIR}/`;
+
+export const MAX_BUG_REPORT_ATTACHMENTS = 3;
+export const MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES = 3 * 1024 * 1024;
+
+export const BUG_REPORT_ATTACHMENT_CONTENT_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+] as const;
+
+export type OkImageAttachmentContentType = (typeof BUG_REPORT_ATTACHMENT_CONTENT_TYPES)[number];
+
+export const BUG_REPORT_ATTACHMENT_EXTENSIONS: Record<OkImageAttachmentContentType, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+export function isBugReportAttachmentEntry(name: string): boolean {
+  return name.startsWith(BUG_REPORT_ATTACHMENTS_ZIP_PREFIX);
+}
+
 export interface OkBugReportScreenshot {
   dataUrl: string;
   width: number;
@@ -83,11 +107,14 @@ export type OkBugReportCreateResult =
     }
   | { ok: false; error: string };
 
+export const BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH = 320;
+
 export interface OkBugReportSendMetadata {
   level: ReportBundleLevel;
   systemWide: boolean;
   projectSlug: string | null;
   note?: string;
+  email?: string;
 }
 
 export type OkBugReportSendFallbackReason = 'email-draft' | 'send-failed' | 'send-in-flight';

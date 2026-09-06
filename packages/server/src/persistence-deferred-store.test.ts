@@ -346,6 +346,34 @@ describe('quiescence gate — deferCount cleanup on disk-write error', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test('a store deferred by non-quiescence keeps the agent-write flag for the next store', async () => {
+    const docName = 'agent-write-flag-survives-defer';
+    const docPath = join(tmpDir, `${docName}.md`);
+    writeFileSync(docPath, 'initial\n', 'utf-8');
+
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+    });
+    const document = new Y.Doc();
+
+    await loadDocument(persistence, document, docName);
+    document.transact(() => replaceDocParagraph(document, 'edited body'), BROWSER_ORIGIN);
+    durabilityState.markAgentWriteStore(docName);
+
+    __setQuiescentOverrideForTests(document, false);
+    try {
+      await storeDocument(persistence, document, docName);
+      expect(readFileSync(docPath, 'utf-8')).toBe('initial\n');
+    } finally {
+      __setQuiescentOverrideForTests(document, undefined);
+    }
+
+    expect(durabilityState.consumeAgentWriteStore(docName)).toBe(true);
+    document.destroy();
+  });
+
   test('disk-write error in force-flush path resets deferCount so next cycle resumes the gate', async () => {
     const docName = 'force-flush-disk-error';
     const docPath = join(tmpDir, `${docName}.md`);

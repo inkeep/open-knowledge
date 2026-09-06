@@ -17,6 +17,7 @@ export {
   type WorkerServer,
 } from './fixtures.ts';
 export { waitForGraphSimulationSettled } from './graph.ts';
+export { waitForImageDecoded } from './image.ts';
 export {
   assertLanded,
   injectForcedEstimateError,
@@ -24,6 +25,7 @@ export {
   readSourceCaretHead,
   readWysiwygCaretHead,
   scrollWysiwygBlockToTop,
+  TOOLBAR_OVERLAP_PX,
   toggleMode,
   waitForLandingSettled,
 } from './landing.ts';
@@ -33,7 +35,6 @@ export {
   waitForActiveProviderSynced,
 } from './provider.ts';
 export { escapeRegExp } from './regexp.ts';
-export { stubRemoteImages } from './remote-image-stub.ts';
 export { matchIsWithinReadableScrollport } from './scrollport.ts';
 export {
   checkCollabSync,
@@ -53,7 +54,11 @@ export {
   setPluginEnabled,
   waitForSettingsPanel,
 } from './settings.ts';
-export { createFileViaSidebar, createFolderViaSidebar, sidebarFileButton } from './sidebar.ts';
+export {
+  createFileViaSidebar,
+  createFolderViaSidebar,
+  expectActiveEditorTab,
+} from './sidebar.ts';
 export {
   getSelectedItemSnapshot,
   type SelectedItemSnapshot,

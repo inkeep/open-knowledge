@@ -11,7 +11,13 @@ const ACTIVITY_MOUNT_LIMITS = [1, 3, 5, 10, 20] as const;
 const PEER_COUNTS = [0, 1, 3, 5] as const;
 const MEASUREMENT_WINDOW_MS = 10_000;
 const TARGET_DOC = 'AGENTS';
-const SWEEP_DOC_POOL = ['AGENTS', 'README', 'CLAUDE', 'STORIES', 'PROJECT'];
+const SWEEP_DOC_POOL = [
+  'AGENTS',
+  'README',
+  'CLAUDE',
+  'perf-fixtures/medium-doc',
+  'perf-fixtures/big-doc',
+];
 const WAIT_CONTENT_MS = 60_000;
 
 const HUMAN_PROFILE: TypingProfile = {

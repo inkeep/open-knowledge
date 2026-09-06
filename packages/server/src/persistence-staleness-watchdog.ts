@@ -7,6 +7,7 @@ import { getLogger } from './logger.ts';
 import {
   incrementPersistenceStalenessDetected,
   incrementPersistenceStalenessForcedStores,
+  incrementPersistenceStalenessForceStoreTimeouts,
   incrementPersistenceStalenessStoodDown,
 } from './metrics.ts';
 import { normalizedSourceForm } from './persistence.ts';
@@ -22,6 +23,7 @@ export class StructuralDiskReadError extends Error {
 
 const DEFAULT_STALENESS_GRACE_MS = 5 * 60_000;
 const DEFAULT_STALENESS_SWEEP_INTERVAL_MS = 60_000;
+const DEFAULT_FORCE_STORE_TIMEOUT_MS = 30_000;
 
 export interface StalenessWatchdogOptions {
   getLoadedDocuments: () => Iterable<readonly [string, Y.Doc]>;
@@ -32,7 +34,8 @@ export interface StalenessWatchdogOptions {
   now?: () => number;
   getBase: (documentName: string) => string | undefined;
   isBatchActive: () => boolean;
-  peekInFlight: (documentName: string) => string | undefined;
+  hasInFlight: (documentName: string) => boolean;
+  forceStoreTimeoutMs?: number;
   msSinceLastUserTx?: (doc: Y.Doc, nowMs: number) => number | null;
 }
 
@@ -40,6 +43,8 @@ export interface StalenessWatchdogHandle {
   sweep: () => Promise<void>;
   dispose: () => Promise<void>;
 }
+
+type SettleDisposition = 'resumed' | 'superseded' | 'watchdog-disposed';
 
 interface AttemptRecord {
   fingerprint: string;
@@ -54,7 +59,8 @@ export function createPersistenceStalenessWatchdog(
   const graceMs = options.graceMs ?? DEFAULT_STALENESS_GRACE_MS;
   const sweepIntervalMs = options.sweepIntervalMs ?? DEFAULT_STALENESS_SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
-  const { getBase, isBatchActive, peekInFlight } = options;
+  const forceStoreTimeoutMs = options.forceStoreTimeoutMs ?? DEFAULT_FORCE_STORE_TIMEOUT_MS;
+  const { getBase, isBatchActive, hasInFlight } = options;
   const msSinceLastUserTx = options.msSinceLastUserTx ?? getMsSinceLastUserTx;
 
   const attempts = new Map<string, AttemptRecord>();
@@ -86,6 +92,7 @@ export function createPersistenceStalenessWatchdog(
 
     const startedMs = now();
     let scanned = 0;
+    let skippedInFlight = 0;
     let divergent = 0;
     let forced = 0;
     let stoodDown = 0;
@@ -97,7 +104,10 @@ export function createPersistenceStalenessWatchdog(
       if (frozenDocLifecycleStatus(document) !== null) {
         continue;
       }
-      if (peekInFlight(documentName) !== undefined) continue;
+      if (hasInFlight(documentName)) {
+        skippedInFlight++;
+        continue;
+      }
 
       scanned++;
       const rawYText = document.getText('source').toString();
@@ -199,13 +209,66 @@ export function createPersistenceStalenessWatchdog(
       });
       incrementPersistenceStalenessForcedStores();
       forced++;
+      let pendingStore: Promise<void>;
       try {
-        await options.forceStore(document, documentName);
+        pendingStore = options.forceStore(document, documentName);
       } catch (err) {
+        pendingStore = Promise.reject(err);
+      }
+      const forceStoreOutcome = await raceForceStore(pendingStore).catch((err: unknown) => {
         log.error(
           { err, docName: documentName, staleForMs },
           `[persistence-staleness] Forced store failed for ${documentName}; will retry`,
         );
+        return 'failed' as const;
+      });
+      if (forceStoreOutcome === 'failed') continue;
+      if (forceStoreOutcome === 'timeout') {
+        incrementPersistenceStalenessForceStoreTimeouts();
+        log.error(
+          { docName: documentName, staleForMs, forceStoreTimeoutMs },
+          `[persistence-staleness] Forced store for ${documentName} did not settle within ${forceStoreTimeoutMs}ms; setting it aside until that store settles or its content changes, so the sweep stays live for other documents`,
+        );
+        const declinedRecord: AttemptRecord = {
+          fingerprint: candidate,
+          atMs: now(),
+          firstDetectedAtMs,
+          declined: true,
+        };
+        attempts.set(documentName, declinedRecord);
+        const resumeAfterSettle = (): SettleDisposition => {
+          if (disposed) return 'watchdog-disposed';
+          if (attempts.get(documentName) !== declinedRecord) return 'superseded';
+          attempts.set(documentName, { ...declinedRecord, declined: false });
+          return 'resumed';
+        };
+        void pendingStore
+          .then(
+            () => {
+              const disposition = resumeAfterSettle();
+              log.info(
+                {
+                  docName: documentName,
+                  disposition,
+                  settledAfterTimeoutMs: now() - declinedRecord.atMs,
+                },
+                `[persistence-staleness] Previously timed-out forced store for ${documentName} landed`,
+              );
+            },
+            (err: unknown) => {
+              const disposition = resumeAfterSettle();
+              log.warn(
+                {
+                  err,
+                  docName: documentName,
+                  disposition,
+                  settledAfterTimeoutMs: now() - declinedRecord.atMs,
+                },
+                `[persistence-staleness] Previously timed-out forced store for ${documentName} settled with an error`,
+              );
+            },
+          )
+          .catch(() => {});
         continue;
       }
       if (disposed) return;
@@ -238,12 +301,30 @@ export function createPersistenceStalenessWatchdog(
       if (!seen.has(name)) attempts.delete(name);
     }
 
-    const summary = { scanned, divergent, forced, stoodDown, elapsedMs: now() - startedMs };
+    const summary = {
+      scanned,
+      divergent,
+      forced,
+      stoodDown,
+      skippedInFlight,
+      elapsedMs: now() - startedMs,
+    };
     if (divergent > 0 || forced > 0 || stoodDown > 0) {
       log.info(summary, '[persistence-staleness] sweep complete');
     } else {
       log.debug(summary, '[persistence-staleness] sweep complete');
     }
+  }
+
+  async function raceForceStore(pendingStore: Promise<void>): Promise<'settled' | 'timeout'> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), forceStoreTimeoutMs);
+      timer.unref?.();
+    });
+    return Promise.race([pendingStore.then(() => 'settled' as const), deadline]).finally(() => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
   }
 
   function sweep(): Promise<void> {

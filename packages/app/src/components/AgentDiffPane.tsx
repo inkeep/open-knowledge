@@ -11,7 +11,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { type AgentDiffView, closeAgentDiff, setAgentDiffKept } from '@/lib/agent-diff-store';
-import { collectChangeAnchors, PROPERTY_CHANGE_ANCHOR_SELECTOR } from '@/lib/diff-change-nav';
+import {
+  collectChangeAnchors,
+  PROPERTY_CHANGE_ANCHOR_SELECTOR,
+  watchPierreShadowRoots,
+} from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { RENDERED_DIFF_CHANGE_SELECTOR } from '@/lib/rendered-diff/diff-decorations';
@@ -51,7 +55,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
   useEffect(() => {
     let cancelled = false;
     setResult({ status: 'loading', diff: '', before: '', after: '', properties: EMPTY_DELTA });
-    const key = `${docName}\0${keptCount}`;
+    const key = `${agentId}\0${docName}\0${keptCount}`;
     const cached = cache.get(key);
     if (cached !== undefined) {
       const parsed = JSON.parse(cached) as {
@@ -100,6 +104,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
 
     const scrollToFirstChange = (): void => {
       if (done) return;
+      shadowWatcher.sync();
       const el =
         container.querySelector<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR) ??
         container.querySelector<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR) ??
@@ -107,6 +112,7 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
       if (!el) return;
       done = true;
       observer?.disconnect();
+      shadowWatcher.disconnect();
       const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
     };
@@ -123,13 +129,19 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
       }, settleMs);
     };
 
+    const shadowWatcher = watchPierreShadowRoots(container, scheduleAfterSettle);
+
     observer = new MutationObserver(scheduleAfterSettle);
     observer.observe(container, { childList: true, subtree: true });
     scheduleAfterSettle();
 
-    const failsafe = setTimeout(() => observer?.disconnect(), 5000);
+    const failsafe = setTimeout(() => {
+      observer?.disconnect();
+      shadowWatcher.disconnect();
+    }, 5000);
     return () => {
       observer?.disconnect();
+      shadowWatcher.disconnect();
       if (settleTimer !== undefined) clearTimeout(settleTimer);
       if (rafId !== undefined) cancelAnimationFrame(rafId);
       clearTimeout(failsafe);
@@ -323,7 +335,11 @@ export function AgentDiffPane({ view, isPanelCollapsed, onTogglePanel }: AgentDi
                 </div>
               }
             >
-              <LazyActivityPanelDiffView diff={result.diff} viewType="unified" />
+              <LazyActivityPanelDiffView
+                before={result.before}
+                after={result.after}
+                cacheKey={`${agentId}@${docName}@v${keptCount}`}
+              />
             </Suspense>
           ))}
       </div>

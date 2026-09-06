@@ -47,7 +47,7 @@ function normalizeSolidusEscapes(content: string): string {
   return content.replace(/\\+\/?/g, (run) => {
     if (!run.endsWith('/')) return run;
     const backslashes = run.length - 1;
-    return '\\'.repeat(backslashes - (backslashes % 2)) + '/';
+    return `${'\\'.repeat(backslashes - (backslashes % 2))}/`;
   });
 }
 

@@ -8,7 +8,7 @@ const SCROLL_CONTAINER_SELECTOR = '[data-testid="editor-scroll-container"]';
 const WYSIWYG_SELECTOR = '.ProseMirror:not(.composer-prosemirror)';
 const SOURCE_SELECTOR = '.cm-editor';
 const CHUNK_WRAPPER_SELECTOR = `${WYSIWYG_SELECTOR} .ok-chunk-wrapper`;
-const TOOLBAR_OVERLAP_PX = 56;
+export const TOOLBAR_OVERLAP_PX = 56;
 
 const MODE_RADIO_NAME: Record<LandingMode, string> = {
   wysiwyg: 'Visual editor',
@@ -60,11 +60,14 @@ function parseMark(raw: RawMarkPayload | null): LandingMark {
 
 export async function waitForLandingSettled(
   page: Page,
-  opts?: { since?: number; timeout?: number },
+  opts: { since: number; timeout?: number },
 ): Promise<LandingMark> {
-  const since = opts?.since ?? 0;
+  const { since } = opts;
   await expect
-    .poll(() => landingMarkCount(page), { timeout: opts?.timeout ?? 10_000 })
+    .poll(() => landingMarkCount(page), {
+      message: `waitForLandingSettled: no terminal landing mark past ${since}; the mode switch either never started a landing or it was cancelled without one`,
+      timeout: opts.timeout ?? 10_000,
+    })
     .toBeGreaterThan(since);
 
   const raw = await page.evaluate(

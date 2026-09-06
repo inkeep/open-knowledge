@@ -452,7 +452,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     test.setTimeout(260_000);
     const s = seed();
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await widenEditorWindow(app, page, 1900, 900);
 
@@ -528,7 +528,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     test.setTimeout(290_000);
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await widenEditorWindow(app, page, 1900, 900);
 
@@ -612,9 +612,12 @@ test.describe('Terminal placement continuity — live Electron', () => {
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
+    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
+    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
     await expectCollapsedRailColumn(page, '#agents-column');
-    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
     await editorWindow.evaluate((windowHandle: unknown) => {
       const target = windowHandle as {
         setSize: (width: number, height: number, animate: boolean) => void;
@@ -630,7 +633,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   }) => {
     const s = seed();
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await openTerminal(app, page);

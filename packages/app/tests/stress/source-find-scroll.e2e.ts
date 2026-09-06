@@ -2,16 +2,17 @@ import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
   expect,
+  landingMarkCount,
   matchIsWithinReadableScrollport,
   test,
+  toggleMode,
   waitForActiveProviderSynced,
+  waitForLandingSettled,
 } from './_helpers';
 
 function uniqueDocName(label: string): string {
   return `test-source-find-${label}-${randomUUID().slice(0, 8)}`;
 }
-
-const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown source' });
 
 function visibleScrollContainer(page: Page) {
   return page.locator('[data-testid="editor-scroll-container"]:visible');
@@ -38,8 +39,9 @@ test('source-mode find scrolls an off-screen match into view', async ({ page, ap
     'Source Find Scroll',
   );
 
-  await sourceToggle(page).click();
-  await page.waitForSelector('.cm-content');
+  const before = await landingMarkCount(page);
+  await toggleMode(page, 'source');
+  await waitForLandingSettled(page, { since: before, timeout: 6_000 });
 
   const scrollContainer = visibleScrollContainer(page);
   await expect(scrollContainer).toHaveCount(1);

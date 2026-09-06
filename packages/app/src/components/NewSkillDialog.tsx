@@ -130,12 +130,7 @@ export function NewSkillDialog({
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button
-            variant="outline"
-            className="font-mono uppercase"
-            onClick={() => onOpenChange(false)}
-            disabled={busy}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             <Trans>Cancel</Trans>
           </Button>
           <Button onClick={submit} disabled={busy || !name.trim()}>

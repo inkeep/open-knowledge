@@ -64,13 +64,13 @@ test.describe('blank lines typed in the visual editor', () => {
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
     await expect.poll(() => countBlankParagraphs(page), { timeout: 10_000 }).toBe(3);
-    expect(await readSource(page)).toBe('Above.\n\n\n\n\nBelow.\n');
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe('Above.\n\n\n\n\nBelow.\n');
 
     await page.reload();
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
     await expect.poll(() => countBlankParagraphs(page), { timeout: 10_000 }).toBe(3);
-    expect(await readSource(page)).toBe('Above.\n\n\n\n\nBelow.\n');
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe('Above.\n\n\n\n\nBelow.\n');
   });
 });

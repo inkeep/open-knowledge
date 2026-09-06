@@ -407,12 +407,7 @@ function OpenSkillPluginBundleDialog({
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button
-            variant="outline"
-            className="font-mono uppercase"
-            disabled={busy}
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             <Trans>Cancel</Trans>
           </Button>
           <Button

@@ -27,26 +27,26 @@
  * cost within this window.
  *
  * Regression-gate invocation (canonical):
- *   OK_PERF_BIG_DOC=STORIES bun run perf:profile --scenario=cold-pool-warm
+ *   OK_PERF_BIG_DOC=perf-fixtures/medium-doc bun run perf:profile --scenario=cold-pool-warm
  *
- * STORIES is the designated reference doc (≈176 MarkView portals, fits
+ * perf-fixtures/medium-doc is the designated reference doc (≈176 MarkView portals, fits
  * the ≤200-view target band). Baseline: 541 ms. Target:
- * < 300 ms. Depends on doc-markers.ts entry for STORIES — without it the
+ * < 300 ms. Depends on doc-markers.ts entry for perf-fixtures/medium-doc — without it the
  * scenario falls through to a content-length heuristic that races against
  * still-Activity-mounted previous docs and produces pmLen numbers matching
  * the wrong editor.
  *
- * Default (BIG_DOC=PROJECT) is a 768-view stress case used for attribution
+ * Default (BIG_DOC=perf-fixtures/big-doc) is a 768-view stress case used for attribution
  * measurements and precedent #27 validation — informative but outside the
  * regression-gate target scope. Use it for "how bad was the worst case" and
- * the STORIES invocation for "does the current code still hit the gate."
+ * the perf-fixtures/medium-doc invocation for "does the current code still hit the gate."
  */
 
 import { markerFor } from '../lib/doc-markers.ts';
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
-const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
+const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'perf-fixtures/big-doc';
 const WARM_DOC = process.env.OK_PERF_SMALL_DOC ?? 'README';
 
 const EVICT_DOCS_DEFAULT = ['AGENTS', 'CLAUDE', 'README'];

@@ -64,12 +64,7 @@ export function AutoSyncOnboardingDialog({
         </DialogBody>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            className="uppercase font-mono"
-            onClick={() => persistChoice(false)}
-            disabled={writer === null}
-          >
+          <Button variant="outline" onClick={() => persistChoice(false)} disabled={writer === null}>
             <Trans>Keep disabled</Trans>
           </Button>
           <Button onClick={() => persistChoice(true)} disabled={writer === null}>

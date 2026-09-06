@@ -247,6 +247,8 @@ interface SessionsHostProps {
   readonly onRequestEditorFocus: () => void;
 }
 
+const TERMINAL_RESTORE_TIMEOUT_MS = 5_000;
+
 const TERMINAL_DOCK_KINDS: Record<Exclude<LauncherSelection['kind'], 'thread' | 'none'>, true> = {
   cli: true,
   terminal: true,
@@ -341,6 +343,10 @@ export function SessionsHost({
   const lastHandledThreadNonceRef = useRef<number | null>(null);
   const settingsShownForNonceRef = useRef<number | null>(null);
   const seedOwedRef = useRef(false);
+  const restoreAbandonedRef = useRef(false);
+  const restoreUnreadRef = useRef(false);
+  const persistDeclineLoggedRef = useRef(false);
+  const persistSuppressedRef = useRef<() => boolean>(() => false);
   const lastHandledCommandNonceRef = useRef<number | null>(null);
   const prevVisibleRef = useRef(isWindow ? false : visible);
   const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
@@ -369,9 +375,23 @@ export function SessionsHost({
     getAgentThreadClient().openArchivedThread(threadId);
   }
 
+  function dockPersistSuppressed(): boolean {
+    if (!persistsOrder) return true;
+    if (canRehydrate && !rehydrationSettled) return true;
+    if (restoreUnreadRef.current) {
+      if (!persistDeclineLoggedRef.current) {
+        persistDeclineLoggedRef.current = true;
+        console.warn(
+          '[terminal] dock persistence suppressed for this window: the restore did not complete, so the saved tab set is left untouched',
+        );
+      }
+      return true;
+    }
+    return false;
+  }
+
   function persistDockOrderNow() {
-    if (!persistsOrder) return;
-    if (canRehydrate && !rehydrationSettled) return;
+    if (dockPersistSuppressed()) return;
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessionsRef.current
       .map((session) => computePersistKey(session, ptyMap))
@@ -745,6 +765,7 @@ export function SessionsHost({
   const closeActiveRef = useRef(() => {});
 
   useEffect(() => {
+    persistSuppressedRef.current = dockPersistSuppressed;
     openSessionRef.current = openSession;
     seedOnRevealRef.current = seedOnReveal;
     dispatchAskAiRef.current = dispatchAskAi;
@@ -767,6 +788,7 @@ export function SessionsHost({
   useEffect(() => {
     if (!persistsOrder) return;
     if (!rehydrationSettled) return;
+    if (persistSuppressedRef.current()) return;
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessions
       .map((session) => computePersistKey(session, ptyMap))
@@ -897,7 +919,7 @@ export function SessionsHost({
       !threadLaunchPending &&
       !(hostThreads && hasInflightThreadLaunch())
     ) {
-      if (restoredVisibility) return;
+      if (restoredVisibility && !restoreAbandonedRef.current) return;
       seedOwedRef.current = !seedOnRevealRef.current();
       return;
     }
@@ -906,7 +928,7 @@ export function SessionsHost({
       seedOwedRef.current = false;
       return;
     }
-    if (effectiveDefaultAgent === null) return;
+    if (hostThreads && effectiveDefaultAgent === null) return;
     if (seedOnRevealRef.current()) seedOwedRef.current = false;
   }, [
     visible,
@@ -957,77 +979,141 @@ export function SessionsHost({
     if (rehydratedRef.current) return;
     rehydratedRef.current = true;
     let cancelled = false;
+    let abandoned = false;
+    const settle = () => {
+      if (!cancelled) setRehydrationSettled(true);
+    };
+    const restoreDeadline = window.setTimeout(() => {
+      abandoned = true;
+      console.warn(
+        `[terminal] dock restore exceeded its ${TERMINAL_RESTORE_TIMEOUT_MS}ms bound; cold-starting instead of waiting`,
+      );
+      restoreAbandonedRef.current = true;
+      restoreUnreadRef.current = true;
+      seedOwedRef.current = true;
+      settle();
+    }, TERMINAL_RESTORE_TIMEOUT_MS);
+    const finish = () => {
+      window.clearTimeout(restoreDeadline);
+      if (!abandoned) settle();
+    };
     void (async () => {
-      const { sessionOrder: persisted, terminalSnapshot: restartSnapshot } =
-        await readDockRestoreState(bridge, persistSurface);
-      if (!cancelled && persisted != null) {
-        reloadOrderRef.current = persisted.order;
-        pendingActiveKeyRef.current = persisted.activeKey;
-      }
-      let survivors:
-        | readonly {
-            ptyId: string;
-            customLabel: string | null;
-            ordinal: number | null;
-          }[]
-        | null = null;
       try {
-        survivors = (await bridge.terminal.list()) ?? [];
-      } catch (err) {
-        console.error('[terminal] reload session list() failed; preserving restart snapshot:', err);
-      }
-      if (cancelled) return;
-      if (survivors != null && survivors.length > 0) {
-        const order = reloadOrderRef.current;
-        const rankOf = (ptyId: string) => {
-          const i = order.indexOf(ptyId);
-          return i === -1 ? Number.POSITIVE_INFINITY : i;
-        };
-        const recovered: TerminalSessionDescriptor[] = survivors
-          .map((entry, index) => ({
+        const {
+          sessionOrder: persisted,
+          terminalSnapshot: restartSnapshot,
+          failed: restoreReadFailed,
+        } = await readDockRestoreState(bridge, persistSurface);
+        if (cancelled || abandoned) return;
+        if (restoreReadFailed) restoreUnreadRef.current = true;
+        if (persisted != null) {
+          reloadOrderRef.current = persisted.order;
+          pendingActiveKeyRef.current = persisted.activeKey;
+        }
+        let survivors:
+          | readonly {
+              ptyId: string;
+              customLabel: string | null;
+              ordinal: number | null;
+            }[]
+          | null = null;
+        try {
+          survivors = (await bridge.terminal.list()) ?? [];
+        } catch (err) {
+          restoreUnreadRef.current = true;
+          console.error(
+            `[terminal] reload session list() failed; the surviving shells are unknown: ${String(err)}`,
+          );
+        }
+        if (cancelled) return;
+        if (abandoned) {
+          const stranded = (survivors ?? []).map((entry) => entry.ptyId);
+          if (stranded.length > 0) {
+            console.warn(
+              `[terminal] dock restore was abandoned before list() resolved; these PTYs stay running unadopted: ${stranded.join(', ')}`,
+            );
+          }
+          return;
+        }
+        if (survivors != null && survivors.length > 0) {
+          const order = reloadOrderRef.current;
+          const rankOf = (ptyId: string) => {
+            const i = order.indexOf(ptyId);
+            return i === -1 ? Number.POSITIVE_INFINITY : i;
+          };
+          const recovered: TerminalSessionDescriptor[] = survivors
+            .map((entry, index) => ({
+              kind: 'terminal' as const,
+              commandId: null,
+              id: makeSessionId(index + 1),
+              launch: null,
+              title: null,
+              customLabel: entry.customLabel ?? null,
+              ordinal: entry.ordinal ?? index + 1,
+              adoptPtyId: entry.ptyId,
+            }))
+            .sort((a, b) => {
+              const ra = rankOf(a.adoptPtyId);
+              const rb = rankOf(b.adoptPtyId);
+              return ra === rb ? 0 : ra - rb;
+            });
+          sessionCounterRef.current = Math.max(
+            recovered.length,
+            ...recovered.map((r) => r.ordinal),
+          );
+          setSessions(recovered);
+        } else if (
+          survivors != null &&
+          restartSnapshot != null &&
+          restartSnapshot.tabs.length > 0
+        ) {
+          const recovered = restartSnapshot.tabs.map((entry, index) => ({
             kind: 'terminal' as const,
             commandId: null,
             id: makeSessionId(index + 1),
             launch: null,
             title: null,
-            customLabel: entry.customLabel ?? null,
-            ordinal: entry.ordinal ?? index + 1,
-            adoptPtyId: entry.ptyId,
-          }))
-          .sort((a, b) => {
-            const ra = rankOf(a.adoptPtyId);
-            const rb = rankOf(b.adoptPtyId);
-            return ra === rb ? 0 : ra - rb;
-          });
-        sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
-        setSessions(recovered);
-      } else if (survivors != null && restartSnapshot != null && restartSnapshot.tabs.length > 0) {
-        const recovered = restartSnapshot.tabs.map((entry, index) => ({
-          kind: 'terminal' as const,
-          commandId: null,
-          id: makeSessionId(index + 1),
-          launch: null,
-          title: null,
-          customLabel: entry.customLabel,
-          ordinal: entry.ordinal,
-          adoptPtyId: null,
-        }));
-        sessionCounterRef.current = Math.max(recovered.length, ...recovered.map((r) => r.ordinal));
-        pendingActiveKeyRef.current = null;
-        setSessions(recovered);
-        const active = recovered.find(
-          (session) => session.ordinal === restartSnapshot?.activeOrdinal,
+            customLabel: entry.customLabel,
+            ordinal: entry.ordinal,
+            adoptPtyId: null,
+          }));
+          sessionCounterRef.current = Math.max(
+            recovered.length,
+            ...recovered.map((r) => r.ordinal),
+          );
+          pendingActiveKeyRef.current = null;
+          setSessions(recovered);
+          const active = recovered.find(
+            (session) => session.ordinal === restartSnapshot?.activeOrdinal,
+          );
+          if (active != null) setActiveSessionId(active.id);
+        } else if (survivors != null) {
+          restoreAbandonedRef.current = true;
+          seedOwedRef.current = true;
+        }
+        window.setTimeout(() => {
+          if (!cancelled) pendingActiveKeyRef.current = null;
+        }, 9_000);
+        finish();
+      } catch (err) {
+        restoreUnreadRef.current = true;
+        restoreAbandonedRef.current = true;
+        seedOwedRef.current = true;
+        console.error(
+          `[terminal] dock rehydration failed; cold-starting: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
         );
-        if (active != null) setActiveSessionId(active.id);
+        finish();
       }
-      setRehydrationSettled(true);
-      window.setTimeout(() => {
-        if (!cancelled) pendingActiveKeyRef.current = null;
-      }, 9_000);
     })();
     return () => {
       cancelled = true;
+      abandoned = true;
+      window.clearTimeout(restoreDeadline);
       rehydratedRef.current = false;
+      restoreAbandonedRef.current = false;
+      restoreUnreadRef.current = false;
+      seedOwedRef.current = false;
+      persistDeclineLoggedRef.current = false;
     };
   }, [bridge, hostTerminals, persistSurface]);
 

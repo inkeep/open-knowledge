@@ -1546,6 +1546,10 @@ msgstr "Adicionar a {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Adicionar ao dicionário"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "Adicione até 3 capturas ou fotos suas, como uma caixa de diálogo do sistema, outro monitor ou uma foto do travamento feita com o celular. Elas não são ocultadas, então deixe de fora qualquer coisa que não deva ser compartilhada."
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Adicionar valor"
@@ -2005,7 +2009,7 @@ msgstr "Recurso: {title}"
 msgid "Attach a file"
 msgstr "Anexar um arquivo"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "Anexar imagens"
 
@@ -2015,6 +2019,7 @@ msgid "Attachments"
 msgstr "Anexos"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "Os anexos devem somar menos de 3 MB."
 
@@ -2576,6 +2581,10 @@ msgstr "Buscando atualizações"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
 msgstr "Buscando atualizações no GitHub"
+
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "Buscando atualizações…"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
@@ -3260,14 +3269,6 @@ msgstr "Conectado a"
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
 msgstr "Conectado ao GitHub"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "Conectado, mas suas edições ainda não estão chegando ao servidor."
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "Conectado, mas suas edições ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
@@ -7966,7 +7967,7 @@ msgstr "Regras do markdownlint"
 msgid "Match case"
 msgstr "Diferenciar maiúsculas"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "No máximo {MAX_ATTACHMENTS} anexos"
 
@@ -9138,6 +9139,7 @@ msgid "Only modified"
 msgstr "Somente os modificados"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "Só são aceitas imagens PNG, JPEG ou WebP."
 
@@ -9521,6 +9523,7 @@ msgid "Opening worktree"
 msgstr "Abrindo o worktree"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "Abrindo..."
 
@@ -10160,6 +10163,7 @@ msgid "Please enter a valid email address."
 msgstr "Digite um endereço de e-mail válido."
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "Digite um e-mail válido."
 
@@ -10723,6 +10727,7 @@ msgstr "Relevância"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -10757,7 +10762,7 @@ msgstr "Remover"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "Remover {0}"
 
@@ -12037,6 +12042,7 @@ msgid "Share URL"
 msgstr "URL de compartilhamento"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "Compartilhe seu e-mail para retorno"
 
@@ -12913,6 +12919,10 @@ msgstr "A sincronização deste worktree está em Automático (somente Pull), he
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "A sincronização deste worktree está em Manual, herdada de {project}. Altere em Configurações → Sincronização."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "A sincronização está demorando mais que o normal — suas alterações estão seguras neste dispositivo."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -13796,6 +13806,10 @@ msgstr "Isto é uma pré-visualização de {boldName}, detectada em {boldHarness
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "Isto é uma pré-visualização de {boldName}. Instale-a nos seus agentes."
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "Isto está demorando mais que o normal. Recarregar a janela costuma resolver."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"
 msgstr "Este não é um arquivo de tema comum"
@@ -13848,6 +13862,11 @@ msgstr "Esta página ainda não existe. Abra para criá-la no editor e recolher 
 #: src/components/LinksPanel.tsx
 msgid "This page doesn't link to anything yet."
 msgstr "Esta página ainda não aponta para nada."
+
+#: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "Esta página não está mais neste caminho."
 
 #: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
@@ -14199,6 +14218,7 @@ msgstr "Experimente um prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Tente de novo"
@@ -15134,6 +15154,7 @@ msgid "You can also manage this in Settings."
 msgstr "Você também pode gerenciar isto em Configurações."
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "Você pode anexar até {MAX_ATTACHMENTS} imagens."
 
@@ -15223,6 +15244,7 @@ msgid "You're subscribed!"
 msgstr "Assinatura confirmada!"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "voce@empresa.com"
@@ -15273,6 +15295,10 @@ msgstr "Sua sessão do GitHub expirou — entre de novo para verificar o acesso 
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "Faltam escopos obrigatórios no seu token do GitHub. Tente entrar de novo."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "Suas imagens"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

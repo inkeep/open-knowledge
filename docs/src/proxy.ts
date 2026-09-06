@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { markdownRewrite } from './lib/accept-negotiation';
+import { markdownHandlerForPage } from './lib/markdown-routes';
 
 const APEX_HOST = 'openknowledge.ai';
 const WWW_HOST = `www.${APEX_HOST}`;
@@ -15,6 +17,10 @@ export function proxy(request: NextRequest): NextResponse {
     url.hostname = APEX_HOST;
     return NextResponse.redirect(url, 308);
   }
+
+  const handler = markdownHandlerForPage(request.nextUrl.pathname);
+  const negotiated = markdownRewrite(request, handler);
+  if (negotiated) return negotiated;
 
   return NextResponse.next();
 }

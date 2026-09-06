@@ -39,6 +39,7 @@ export interface ReconciliationMetrics {
   persistenceStalenessDetected: number;
   persistenceStalenessForcedStores: number;
   persistenceStalenessStoodDown: number;
+  persistenceStalenessForceStoreTimeouts: number;
   collabSocketEpipeCount: number;
   collabSocketEconnresetCount: number;
   collabMessageTooLargeCount: number;
@@ -103,6 +104,7 @@ export interface ReconciliationMetrics {
   externalChangeHandlerErrors: number;
   reconcileOwnFlushSkips: number;
   reconcileInFlightFallthroughs: number;
+  inFlightFlushExpired: number;
   persistenceSanityCheckSerializeFailures: number;
   deferredStoreFailures: number;
   authRenameRedirectCount: number;
@@ -148,6 +150,7 @@ const counters: ReconciliationMetrics = {
   persistenceStalenessDetected: 0,
   persistenceStalenessForcedStores: 0,
   persistenceStalenessStoodDown: 0,
+  persistenceStalenessForceStoreTimeouts: 0,
   collabSocketEpipeCount: 0,
   collabSocketEconnresetCount: 0,
   collabMessageTooLargeCount: 0,
@@ -191,6 +194,7 @@ const counters: ReconciliationMetrics = {
   externalChangeHandlerErrors: 0,
   reconcileOwnFlushSkips: 0,
   reconcileInFlightFallthroughs: 0,
+  inFlightFlushExpired: 0,
   persistenceSanityCheckSerializeFailures: 0,
   deferredStoreFailures: 0,
   authRenameRedirectCount: 0,
@@ -470,6 +474,14 @@ export function incrementReconcileInFlightFallthroughs(): void {
   counters.reconcileInFlightFallthroughs++;
 }
 
+export function incrementInFlightFlushExpired(count: number): void {
+  counters.inFlightFlushExpired += count;
+}
+
+export function incrementPersistenceStalenessForceStoreTimeouts(): void {
+  counters.persistenceStalenessForceStoreTimeouts++;
+}
+
 export function incrementPersistenceSanityCheckSerializeFailures(): void {
   counters.persistenceSanityCheckSerializeFailures++;
 }
@@ -614,6 +626,7 @@ export function resetMetrics(): void {
   counters.persistenceStalenessDetected = 0;
   counters.persistenceStalenessForcedStores = 0;
   counters.persistenceStalenessStoodDown = 0;
+  counters.persistenceStalenessForceStoreTimeouts = 0;
   counters.collabSocketEpipeCount = 0;
   counters.collabSocketEconnresetCount = 0;
   counters.collabMessageTooLargeCount = 0;
@@ -657,6 +670,7 @@ export function resetMetrics(): void {
   counters.externalChangeHandlerErrors = 0;
   counters.reconcileOwnFlushSkips = 0;
   counters.reconcileInFlightFallthroughs = 0;
+  counters.inFlightFlushExpired = 0;
   counters.persistenceSanityCheckSerializeFailures = 0;
   counters.deferredStoreFailures = 0;
   counters.authRenameRedirectCount = 0;

@@ -150,7 +150,7 @@ test.describe('background-throttle smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject('happy');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findWindow(app, 'editor');
 

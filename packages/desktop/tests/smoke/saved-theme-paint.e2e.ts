@@ -166,7 +166,7 @@ test.describe('saved theme paint smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedThemeHome();
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     const editor = await findEditorWindow(app);
 
     await editor.emulateMedia({ colorScheme: 'light' });

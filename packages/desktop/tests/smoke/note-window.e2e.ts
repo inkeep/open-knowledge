@@ -174,7 +174,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('open');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -227,7 +227,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('handoff');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -288,7 +288,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('sync');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -311,7 +311,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('dedup');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -329,7 +329,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('menu');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -367,7 +367,7 @@ test.describe('Popped-out note window — live Electron', () => {
     const s = seed('cascade');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await openDocument(editor, 'start');
 
@@ -392,7 +392,7 @@ test.describe('Popped-out note window — live Electron', () => {
     track(s.tmpHome, s.projectDir);
 
     const first = await launchApp(s);
-    captureStderrFor(first, { cleanupDirs: [] });
+    captureStderrFor(first, { home: s.tmpHome, cleanupDirs: [] });
     const editor = await findWindowByMode(first, 'editor');
     await openDocument(editor, 'start');
     await popOutFrom(first, editor);
@@ -400,7 +400,7 @@ test.describe('Popped-out note window — live Electron', () => {
     await first.close();
 
     const second = await launchApp(s, { deepLink: false });
-    captureStderrFor(second, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(second, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
 
     const restored = await findWindowByMode(second, 'note', 30_000);
     expect(await restored.evaluate(() => window.okDesktop?.config.projectPath)).toBe(s.projectDir);

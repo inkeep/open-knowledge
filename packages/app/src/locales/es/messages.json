@@ -153,6 +153,7 @@
     "0t0bbC": ["No se pudo guardar la preferencia de sincronización: ", ["detail"]],
     "0uTHCg": ["Empieza un proyecto de OpenKnowledge."],
     "0wswKc": ["Línea horizontal que separa secciones."],
+    "0x9smA": ["Esta página ya no está en esta ruta."],
     "0xnQ_X": ["Las actualizaciones llegan solas"],
     "0xnmlQ": ["Nombre del repositorio"],
     "0ySP5u": ["Los cambios se guardan automáticamente en este tema."],
@@ -2315,6 +2316,9 @@
     "PMyJ9C": ["Todavía no hay sesión de edición"],
     "PPFQ3o": ["Se instaló \"", ["0"], "\" en ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" no existe."],
+    "PR0_fn": [
+      "Añade hasta 3 capturas o fotos tuyas, como un diálogo del sistema, otro monitor o una foto del bloqueo hecha con el móvil. No se censuran, así que deja fuera cualquier cosa que no deba compartirse."
+    ],
     "PR9FSv": ["Ir al siguiente resultado de búsqueda del editor visual."],
     "PRgIJh": ["No se pudo actualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
@@ -2910,6 +2914,9 @@
     "Vlc75q": ["Mantener el archivo eliminado"],
     "VmJT51": ["Cargando tus informes"],
     "VmXASo": ["(enlace simbólico)"],
+    "VpRSfQ": [
+      "La sincronización está tardando más de lo habitual: tus cambios están a salvo en este dispositivo."
+    ],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["carpeta"], "many": ["carpetas"], "other": ["carpetas"] }]
     ],
@@ -3014,9 +3021,6 @@
     "X3MMeA": ["Ninguno de estos problemas tiene arreglo automático."],
     "X59Fx2": ["No se pudo abrir este documento en Slidev."],
     "X7ShnN": ["Abrir el panel de agentes"],
-    "X7fxS9": [
-      "Conectado, pero tus ediciones aún no llegan al servidor. Reinícialo si esto continúa."
-    ],
     "X7u0xR": [["0"], " plantillas disponibles"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
@@ -3149,6 +3153,7 @@
     "YGIi_c": ["Reinstalar"],
     "YGNRB5": ["— excepto"],
     "YGt-0e": ["Leyendo…"],
+    "YHOIrR": ["Buscando actualizaciones…"],
     "YJ1BTp": ["Ya existe una habilidad con ese nombre."],
     "YJPN3F": ["Demasiado lento"],
     "YKLP_-": ["Plantilla renombrada"],
@@ -3955,6 +3960,7 @@
     "gITz7o": [
       "Mueve el cursor o amplía la selección con el mapa de teclas estándar de navegación del editor de código de CodeMirror."
     ],
+    "gJ5Yso": ["Esto está tardando más de lo habitual. Recargar la ventana suele solucionarlo."],
     "gJR87V": ["No se pudo crear la carpeta del proyecto. Elige otra carpeta."],
     "gKi-a_": ["Proyecto nuevo"],
     "gLCE2c": [
@@ -4662,7 +4668,6 @@
     "n4vt3Q": ["Descargar la aplicación"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
-    "n6N-xC": ["Conectado, pero tus ediciones aún no llegan al servidor."],
     "n6hXUm": [
       "La sincronización automática hace fetch, pull y push de commits a tu repositorio git remoto cada cierto tiempo para que tus ediciones sigan sincronizadas entre equipos."
     ],
@@ -5296,6 +5301,7 @@
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."
     ],
     "uUCrBv": ["enlace simbólico"],
+    "uV3EYs": ["Tus imágenes"],
     "uVbUP8": ["Ajustes…"],
     "uX85yl": [
       "Los archivos de configuración incluyen: <0>.ok/</0>, las configuraciones MCP de las herramientas de IA (<1>.mcp.json</1> y los archivos de cada herramienta). Tus habilidades no están incluidas: siguen a git como cualquier otro archivo del proyecto.<2/><3>Compartido</3> los guarda en git, así que quien clone el repositorio tendrá la misma configuración. <4/><5>Solo yo</5> los mantiene fuera de git (mediante <6>.git/info/exclude</6>)."

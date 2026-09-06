@@ -368,6 +368,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         onWhatsNew: () => () => {},
         onWhatsNewDismissed: () => () => {},
         onUpdateStuckHint: () => () => {},
+        onUpdateManualCheck: () => () => {},
         onDeepLink: () => () => {},
         onShareReceived: () => () => {},
         onServerVersionDrift: () => () => {},
@@ -477,6 +478,9 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           list: async () => ({ ok: true as const, reports: [] }),
           delete: async () => ({ ok: true as const }),
           onCrashDetected: () => () => {},
+        },
+        assetUpload: {
+          uploadImage: async () => ({ error: 'invalid-request' as const }),
         },
         navigator: {
           open: async () => {},

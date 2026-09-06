@@ -323,3 +323,52 @@ describe('AlertDialog surface classes', () => {
     ]);
   });
 });
+
+describe('AlertDialog footer typography', () => {
+  test('the footer carries the treatment for every button it contains', () => {
+    renderAlert();
+
+    const footer = document.querySelector('[data-slot="alert-dialog-footer"]');
+
+    expectVisualClassTokens(footer?.getAttribute('class'), [
+      '[&_button]:font-mono',
+      '[&_button]:uppercase',
+      '[&_[data-slot=button]]:font-mono',
+      '[&_[data-slot=button]]:uppercase',
+    ]);
+  });
+
+  test('renders the cancel and confirm choices in order inside the footer', () => {
+    renderAlert({
+      footer: (
+        <>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction>Delete</AlertDialogAction>
+        </>
+      ),
+    });
+
+    const footer = document.querySelector('[data-slot="alert-dialog-footer"]');
+    const buttons = [...(footer?.querySelectorAll('button') ?? [])];
+
+    expect(buttons.map((button) => button.textContent)).toEqual(['Cancel', 'Delete']);
+  });
+
+  test('footer choices do not re-declare the treatment the footer already supplies', () => {
+    renderAlert({
+      footer: (
+        <>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <Button variant="outline">Later</Button>
+        </>
+      ),
+    });
+
+    for (const label of ['Cancel', 'Later']) {
+      expectVisualClassTokensAbsent(screen.getByText(label).getAttribute('class'), [
+        'font-mono',
+        'uppercase',
+      ]);
+    }
+  });
+});

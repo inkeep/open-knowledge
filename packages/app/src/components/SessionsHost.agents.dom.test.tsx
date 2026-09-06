@@ -347,7 +347,17 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setOpenThreads([makeThread({ threadId: 't1', title: 'History', archived: true })]);
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(onVisibleChange).not.toHaveBeenCalledWith(true);
+    expect(onVisibleChange).not.toHaveBeenCalled();
+  });
+
+  test('a live thread already in the roster at first render does NOT auto-reveal the dock', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+    await screen.findByRole('tab', { name: /Pre-existing/ });
+
+    expect(onVisibleChange).not.toHaveBeenCalled();
   });
 
   test('the history menu reopens an archived conversation as a tab', async () => {

@@ -1550,6 +1550,10 @@ msgstr "{gitignorePath} میں شامل کریں"
 msgid "Add to Dictionary"
 msgstr "لغت میں شامل کریں"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "اپنی طرف سے زیادہ سے زیادہ 3 اسکرین شاٹ یا تصاویر شامل کریں، جیسے کوئی سسٹم ڈائیلاگ، دوسرا مانیٹر، یا ہینگ ہونے کے وقت فون سے لی گئی تصویر۔ انہیں چھپایا نہیں جاتا، اس لیے ایسا کچھ شامل نہ کریں جو شیئر نہیں کرنا۔"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "قدر شامل کریں"
@@ -2009,7 +2013,7 @@ msgstr "اثاثہ: {title}"
 msgid "Attach a file"
 msgstr "فائل منسلک کریں"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "تصاویر منسلک کریں"
 
@@ -2019,6 +2023,7 @@ msgid "Attachments"
 msgstr "منسلکات"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "منسلکات کا مجموعی حجم 3 MB سے کم ہونا چاہیے۔"
 
@@ -2580,6 +2585,10 @@ msgstr "اپ ڈیٹس دیکھے جا رہے ہیں"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
 msgstr "GitHub پر اپ ڈیٹس دیکھے جا رہے ہیں"
+
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "اپ ڈیٹس دیکھے جا رہے ہیں…"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
@@ -3264,14 +3273,6 @@ msgstr "منسلک ہے"
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
 msgstr "GitHub سے منسلک"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔ اگر یہ جاری رہے تو اسے دوبارہ چلائیں۔"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
@@ -7970,7 +7971,7 @@ msgstr "markdownlint کے قواعد"
 msgid "Match case"
 msgstr "حروف کی حالت ملائیں"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "زیادہ سے زیادہ {MAX_ATTACHMENTS} منسلکات"
 
@@ -9142,6 +9143,7 @@ msgid "Only modified"
 msgstr "صرف ترمیم شدہ"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "صرف PNG، JPEG یا WebP تصاویر کی اجازت ہے۔"
 
@@ -9525,6 +9527,7 @@ msgid "Opening worktree"
 msgstr "ورک ٹری کھولا جا رہا ہے"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "کھولا جا رہا ہے..."
 
@@ -10164,6 +10167,7 @@ msgid "Please enter a valid email address."
 msgstr "براہِ کرم درست ای میل پتہ درج کریں۔"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "براہِ کرم درست ای میل درج کریں۔"
 
@@ -10727,6 +10731,7 @@ msgstr "مطابقت"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -10761,7 +10766,7 @@ msgstr "ہٹائیں"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "{0} ہٹائیں"
 
@@ -12041,6 +12046,7 @@ msgid "Share URL"
 msgstr "شیئر URL"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "رابطے کے لیے اپنا ای میل شیئر کریں"
 
@@ -12917,6 +12923,10 @@ msgstr "اس ورک ٹری کی مطابقت پذیری «خودکار (صرف �
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "اس ورک ٹری کی مطابقت پذیری «دستی» پر سیٹ ہے، جو {project} سے وراثت میں ملی۔ اسے ترتیبات ← مطابقت پذیری میں بدلیں۔"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "ہم آہنگی معمول سے زیادہ وقت لے رہی ہے — آپ کی تبدیلیاں اس ڈیوائس پر محفوظ ہیں۔"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -13800,6 +13810,10 @@ msgstr "یہ {boldName} کا پیش منظر ہے، جو {boldHarness} میں {b
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "یہ {boldName} کا پیش منظر ہے۔ اسے اپنے ایجنٹس میں نصب کریں۔"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "اس میں معمول سے زیادہ وقت لگ رہا ہے۔ ونڈو کو دوبارہ لوڈ کرنے سے عام طور پر یہ ٹھیک ہو جاتا ہے۔"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"
 msgstr "یہ عام تھیم فائل نہیں ہے"
@@ -13852,6 +13866,11 @@ msgstr "یہ صفحہ ابھی موجود نہیں۔ ایڈیٹر میں صفح�
 #: src/components/LinksPanel.tsx
 msgid "This page doesn't link to anything yet."
 msgstr "یہ صفحہ ابھی کسی چیز سے لنک نہیں کرتا۔"
+
+#: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "یہ صفحہ اب اس راستے پر نہیں ہے۔"
 
 #: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
@@ -14203,6 +14222,7 @@ msgstr "کوئی پرامپٹ آزمائیں"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "دوبارہ کوشش کریں"
@@ -15138,6 +15158,7 @@ msgid "You can also manage this in Settings."
 msgstr "آپ اسے ترتیبات میں بھی سنبھال سکتے ہیں۔"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "آپ زیادہ سے زیادہ {MAX_ATTACHMENTS} تصاویر منسلک کر سکتے ہیں۔"
 
@@ -15227,6 +15248,7 @@ msgid "You're subscribed!"
 msgstr "آپ رکن بن گئے!"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
@@ -15277,6 +15299,10 @@ msgstr "آپ کا GitHub سیشن ختم ہو گیا — پُش کی رسائی 
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "آپ کے GitHub ٹوکن میں مطلوبہ دائرہ کار غائب ہیں۔ دوبارہ سائن اِن کر کے دیکھیں۔"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "آپ کی تصاویر"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

@@ -41,7 +41,7 @@ test.describe('okf per-rule toggle round-trip', () => {
       args: [MAIN_ENTRY, deepLink, `--user-data-dir=${userDataDir}`],
       timeout: 30_000,
     });
-    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
     await app.firstWindow({ timeout: 15_000 });
 
     const settingsPage = await (async () => {

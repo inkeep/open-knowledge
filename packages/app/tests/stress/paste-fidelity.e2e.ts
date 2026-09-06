@@ -127,7 +127,7 @@ test.describe('V1 paste baseline — text/plain content through WYSIWYG', () => 
   });
 });
 
-test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
+test.describe('Copy-side: select-all barrier and simulateCopyAndRead MIME map', () => {
   let docName: string;
 
   test.beforeEach(async ({ page, api }) => {
@@ -181,8 +181,64 @@ test.describe('Copy-side: simulateCopyAndRead captures MIME map', () => {
   });
 
   test('empty WYSIWYG selection copy → clipboard unchanged (FR-15)', async ({ page }) => {
-    const out = await simulateCopyAndRead(page, 'wysiwyg').catch(() => ({ plain: '', html: '' }));
-    expect(out.plain === '' || typeof out.plain === 'string').toBe(true);
+    const out = await simulateCopyAndRead(page, 'wysiwyg');
+    expect(out.plain).toBe('');
+  });
+
+  test('a persistent focus thief makes the select-all barrier throw instead of settling', async ({
+    page,
+  }) => {
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+    await pasteText(page, '# Thief\n\nBody that must not be silently lost.\n');
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('must not be silently');
+
+    await page.evaluate((sel) => {
+      const editor = document.querySelector<HTMLElement>(sel);
+      if (!editor) throw new Error('focus-thief fixture: WYSIWYG editor not found');
+      const thief = document.createElement('input');
+      thief.setAttribute('data-testid', 'focus-thief');
+      document.body.append(thief);
+      editor.addEventListener('focus', () => thief.focus());
+      thief.focus();
+    }, '.ProseMirror:not(.composer-prosemirror)');
+
+    await expect(
+      selectAllAndWaitForSelection(page, '.ProseMirror:not(.composer-prosemirror)', {
+        focusMs: 800,
+      }),
+    ).rejects.toThrow(/never took DOM focus/);
+  });
+
+  test('a swallowed select-all leaves a partial selection and makes the barrier throw', async ({
+    page,
+  }) => {
+    await page.click('.ProseMirror:not(.composer-prosemirror)');
+    await pasteText(page, '# Partial\n\nFirst body line.\n\nSecond body line.\n');
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain('Second body line');
+
+    await page.evaluate((sel) => {
+      const editor = document.querySelector<HTMLElement>(sel);
+      if (!editor) throw new Error('partial-selection fixture: WYSIWYG editor not found');
+      document.addEventListener(
+        'keydown',
+        (event) => {
+          if (event.key.toLowerCase() === 'a' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        },
+        true,
+      );
+      const active = window.__activeEditor;
+      if (!active) throw new Error('partial-selection fixture: window.__activeEditor not set');
+      active.chain().focus().setTextSelection({ from: 1, to: 5 }).run();
+    }, '.ProseMirror:not(.composer-prosemirror)');
+
+    await expect(
+      selectAllAndWaitForSelection(page, '.ProseMirror:not(.composer-prosemirror)', {
+        selectionMs: 800,
+      }),
+    ).rejects.toThrow(/left no full-document selection/);
   });
 });
 

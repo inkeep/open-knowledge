@@ -3,6 +3,7 @@ import { beginNavigatorHandoff, createNavigatorWindow } from '../../src/main/nav
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import type { ShareNavigatorPayload } from '../../src/main/url-scheme.ts';
 import type { BrowserWindowLike } from '../../src/main/window-manager.ts';
+import { SPAWN_WAIT_HEARTBEAT_MS } from '../../src/shared/boot-narration.ts';
 
 interface MockNav extends BrowserWindowLike {
   closeMock: ReturnType<typeof vi.fn>;
@@ -73,12 +74,12 @@ describe('navigator close path', () => {
       'failed to close Navigator after project open',
       expect.objectContaining({
         projectPath: '/path/to/proj',
-        err: 'Object has been destroyed',
+        err: expect.objectContaining({ message: 'Object has been destroyed' }),
       }),
     );
   });
 
-  test('stringifies non-Error throws so the log carries diagnostic signal', () => {
+  test('passes a non-Error throw through untouched, for the serializer to render', () => {
     const nav = makeNav({
       closeImpl: () => {
         throw 'native-string-throw';
@@ -220,6 +221,16 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
     };
   }
 
+  function silentNarration() {
+    return {
+      log: { info: () => {}, warn: () => {} },
+      flushLog: () => {},
+      setInterval: () => undefined,
+      clearInterval: () => {},
+      languagePreference: 'system' as const,
+    };
+  }
+
   function makeShowGate(): ShowGateRegistry {
     return {
       register: () => () => {},
@@ -243,6 +254,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
   test("cold path: pendingPayload registers webContents.once('dom-ready') BEFORE loadFile", () => {
     const win = makeNavWindow();
     createNavigatorWindow({
+      ...silentNarration(),
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
       appVersion: '9.9.9-test',
@@ -278,6 +290,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
   test('cold path: no pendingPayload → no ok:share:received event fires on dom-ready', () => {
     const win = makeNavWindow();
     createNavigatorWindow({
+      ...silentNarration(),
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
       appVersion: '9.9.9-test',
@@ -303,6 +316,7 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
       candidatePath: '/Users/me/playbooks/worktrees/wt-1',
     };
     createNavigatorWindow({
+      ...silentNarration(),
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
       appVersion: '9.9.9-test',
@@ -315,5 +329,96 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
       (c) => c[0] === 'ok:share:received',
     );
     expect(shareCall?.[1]).toEqual(payload);
+  });
+});
+
+describe('navigator boot narration (the phase consent-dialog waits over)', () => {
+  function makeShowGate(): ShowGateRegistry {
+    return {
+      register: () => () => {},
+      fireThemeApplied: () => {},
+    };
+  }
+
+  function harness(loadResult: Promise<void>) {
+    const intervals: { cb: () => void; ms: number; cleared: boolean }[] = [];
+    const lines: Record<string, unknown>[] = [];
+    let flushes = 0;
+    const win = {
+      focus: vi.fn(() => {}),
+      isDestroyed: vi.fn(() => false),
+      on: vi.fn(() => {}) as BrowserWindowLike['on'],
+      close: vi.fn(() => {}),
+      loadFile: vi.fn(() => loadResult),
+      loadURL: vi.fn(() => loadResult),
+      webContents: { send: vi.fn(() => {}), once: vi.fn(() => {}), isLoading: vi.fn(() => false) },
+    } as unknown as BrowserWindowLike;
+    const deps = {
+      createWindow: () => win,
+      rendererEntryPath: '/fake/index.html',
+      appVersion: '9.9.9-test',
+      showGate: makeShowGate(),
+      log: {
+        info: (obj: Record<string, unknown>) => {
+          lines.push({ ...obj, level: 'info' });
+        },
+        warn: (obj: Record<string, unknown>) => {
+          lines.push({ ...obj, level: 'warn' });
+        },
+      },
+      flushLog: () => {
+        flushes += 1;
+      },
+      setInterval: (cb: () => void, ms: number) => {
+        const rec = { cb, ms, cleared: false };
+        intervals.push(rec);
+        return rec;
+      },
+      clearInterval: (handle: unknown) => {
+        (handle as { cleared: boolean }).cleared = true;
+      },
+    };
+    return { deps, intervals, lines, flushes: () => flushes };
+  }
+
+  test('narrates while the navigator renderer is still loading, on the app cadence', () => {
+    let resolveLoad: (() => void) | undefined;
+    const h = harness(
+      new Promise<void>((r) => {
+        resolveLoad = r;
+      }),
+    );
+    createNavigatorWindow(h.deps);
+
+    const beat = h.intervals.find((i) => !i.cleared);
+    expect(beat).toBeDefined();
+    expect(beat?.ms).toBe(SPAWN_WAIT_HEARTBEAT_MS);
+    beat?.cb();
+    beat?.cb();
+    expect(h.lines.filter((l) => l.event === 'desktop-navigator-load-progress')).toHaveLength(2);
+    expect(h.flushes()).toBe(2);
+    resolveLoad?.();
+  });
+
+  test('stops narrating and records the terminal line once the renderer resolves', async () => {
+    const h = harness(Promise.resolve());
+    createNavigatorWindow(h.deps);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.intervals.every((i) => i.cleared)).toBe(true);
+    expect(h.lines.map((l) => l.event)).toContain('desktop-navigator-load-resolved');
+  });
+
+  test('a load failure reaches the boot log instead of only the console', async () => {
+    const h = harness(Promise.reject(new Error('ERR_FILE_NOT_FOUND')));
+    createNavigatorWindow(h.deps);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.intervals.every((i) => i.cleared)).toBe(true);
+    const failure = h.lines.find((l) => l.event === 'desktop-navigator-load-failed');
+    expect(failure).toMatchObject({ level: 'warn' });
+    expect((failure?.err as Error).message).toBe('ERR_FILE_NOT_FOUND');
+    const resolved = h.lines.find((l) => l.event === 'desktop-navigator-load-resolved');
+    expect(resolved).toBeUndefined();
   });
 });

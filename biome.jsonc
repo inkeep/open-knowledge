@@ -257,6 +257,20 @@
       "plugins": ["./biome-plugins/no-raw-html-interactive-element.grit"]
     },
     {
+      // @pierre/diffs render contract. Every construction site passes an
+      // explicit theme and renders unified. Scoped to production .tsx under
+      // packages/app/src; the fixture is opted in so its deliberate
+      // violations are what the plugin test counts.
+      "includes": [
+        "packages/app/src/**/*.tsx",
+        "!**/*.test.tsx",
+        "!**/*.dom.test.tsx",
+        "!**/*.test-helper.tsx",
+        "biome-plugins/__fixtures__/no-themeless-pierre-diff.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-themeless-pierre-diff.grit"]
+    },
+    {
       // Localization discipline — a shipped hardcoded string is a build-visible
       // defect, not a convention someone has to remember. Scoped to
       // packages/{app,desktop,plugin}/src, `.ts` included: the toast branch's
@@ -444,6 +458,9 @@
       "!packages/native-config/target",
       "!**/.next",
       "!**/.source",
+      // Second generated content build, emitted by the docs app's real-source
+      // vitest config in the Vite flavour `.source` must never hold.
+      "!**/.source-vitest",
       "!**/.turbo",
       "!**/tmp",
       "!**/test-results",

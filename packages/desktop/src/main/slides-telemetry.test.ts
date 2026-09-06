@@ -102,6 +102,8 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
     const failures: OkSlidesOpenResult[] = [
       { kind: 'open', ok: false, reason: 'timeout' },
       { kind: 'open', ok: false, reason: 'exited-early' },
+      { kind: 'open', ok: false, reason: 'load-failed' },
+      { kind: 'open', ok: false, reason: 'renderer-failed' },
       { kind: 'open', ok: false, reason: 'unsupported-server' },
       { kind: 'open', ok: false, reason: 'spawn-error' },
     ];
@@ -110,6 +112,8 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
     expect(counterAdds).toEqual([
       { value: 1, attributes: { 'ok.slides.reason': 'timeout' } },
       { value: 1, attributes: { 'ok.slides.reason': 'exited-early' } },
+      { value: 1, attributes: { 'ok.slides.reason': 'load-failed' } },
+      { value: 1, attributes: { 'ok.slides.reason': 'renderer-failed' } },
       { value: 1, attributes: { 'ok.slides.reason': 'unsupported-server' } },
       { value: 1, attributes: { 'ok.slides.reason': 'spawn-error' } },
     ]);

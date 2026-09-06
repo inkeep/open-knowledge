@@ -49,7 +49,7 @@ test.describe('uninstall project picker smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const picker = await findWindowByPath(app, '/uninstall.html');
@@ -98,7 +98,7 @@ test.describe('uninstall project picker smoke', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const picker = await findWindowByPath(app, '/uninstall.html');

@@ -13,7 +13,7 @@
 # Examples:
 #   # G2 regression-gate capture (canonical reference per V2 SPEC §11):
 #   packages/app/scripts/perf-prod.sh --scenario=cold-pool-warm \
-#     --env="OK_PERF_BIG_DOC=STORIES"
+#     --env="OK_PERF_BIG_DOC=perf-fixtures/medium-doc"
 #
 #   # G4 mode-toggle with 10 runs:
 #   packages/app/scripts/perf-prod.sh --scenario=mode-toggle --runs=10

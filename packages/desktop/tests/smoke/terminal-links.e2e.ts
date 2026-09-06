@@ -183,7 +183,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     const s = seed('url');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await stubOpenExternal(app);
     await openRunningTerminal(app, page);
@@ -203,7 +203,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     const s = seed('doc');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openRunningTerminal(app, page);
 

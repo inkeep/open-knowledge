@@ -154,6 +154,8 @@ describe('classifyDownloadOs', () => {
     expect(classifyDownloadOs('macOS')).toBe('macos');
     expect(classifyDownloadOs('Windows')).toBe('windows');
     expect(classifyDownloadOs('Linux')).toBe('linux');
+    expect(classifyDownloadOs('Chrome OS')).toBe('linux');
+    expect(classifyDownloadOs('Chromium OS')).toBe('linux');
   });
 
   test('mobile falls through to unknown — it cannot run the desktop app', () => {

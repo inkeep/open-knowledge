@@ -503,16 +503,12 @@ export function CloneDialog({
 
         <DialogFooter>
           {cloning ? (
-            <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+            <Button variant="outline" onClick={handleCancel}>
               <Trans>Cancel</Trans>
             </Button>
           ) : (
             <>
-              <Button
-                variant="outline"
-                className="font-mono uppercase"
-                onClick={() => handleClose(false)}
-              >
+              <Button variant="outline" onClick={() => handleClose(false)}>
                 <Trans>Cancel</Trans>
               </Button>
               <Button

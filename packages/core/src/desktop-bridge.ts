@@ -23,6 +23,7 @@ import type {
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
+  OkImageAttachmentContentType,
   ReportBundleLevel,
 } from './logger-types.ts';
 import type { LintPluginId } from './markdown/lint/types.ts';
@@ -257,6 +258,10 @@ export interface OkWhatsNewInfo {
 
 export interface OkUpdateStuckHintInfo {
   readonly downloadUrl: string;
+}
+
+export interface OkUpdateManualCheckInfo {
+  readonly phase: 'started' | 'settled';
 }
 
 export type ShareTarget =
@@ -707,8 +712,24 @@ export interface OkBugReportSendInput {
   zipPath: string;
   metadata: OkBugReportSendMetadata;
   includeScreenshot?: boolean;
+  includeAttachments?: boolean;
   traceparent?: string;
 }
+
+export interface OkBugReportAttachmentInput {
+  contentType: OkImageAttachmentContentType;
+  bytes: Uint8Array;
+}
+
+export interface OkAssetUploadRequest {
+  contentType: OkImageAttachmentContentType;
+  bytes: Uint8Array;
+  filename: string;
+}
+
+export type OkAssetUploadResult =
+  | { assetUrl: string }
+  | { error: 'invalid-request' | 'unconfigured' | 'mint' | 'upload' };
 
 export interface OkSharingStatusResult {
   readonly kind: 'status';
@@ -740,6 +761,9 @@ export type SlidevOpenFailureReason =
   | 'invalid-path'
   | 'spawn-error'
   | 'exited-early'
+  | 'cancelled'
+  | 'load-failed'
+  | 'renderer-failed'
   | 'timeout'
   | 'unsupported-server';
 
@@ -880,6 +904,7 @@ export interface OkDesktopBridge {
   onWhatsNew(cb: (info: OkWhatsNewInfo) => void): OkUnsubscribe;
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
+  onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void): OkUnsubscribe;
   onDeepLink(
     cb: (evt: {
       doc: string;
@@ -1043,6 +1068,7 @@ export interface OkDesktopBridge {
       note?: string;
       includeCrashDump?: boolean;
       includeScreenshot?: boolean;
+      attachments?: OkBugReportAttachmentInput[];
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;
@@ -1051,6 +1077,10 @@ export interface OkDesktopBridge {
     list(): Promise<OkBugReportListResult>;
     delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
+  };
+
+  assetUpload: {
+    uploadImage(request: OkAssetUploadRequest): Promise<OkAssetUploadResult>;
   };
 
   fs: {

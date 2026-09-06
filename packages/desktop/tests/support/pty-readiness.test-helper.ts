@@ -86,6 +86,9 @@ const DEFAULT_READY_INTERVAL_MS = 50;
 const DEFAULT_QUIET_SAMPLES = 20;
 const DEFAULT_READY_TIMEOUT_MS = 12_000;
 const RECEIVED_TAIL_CHARS = 400;
+const DEFAULT_INPUT_READY_ATTEMPTS = 4;
+const DEFAULT_INPUT_READY_TIMEOUT_MS = 4_000;
+const INPUT_READY_RESET_FROM_ATTEMPT = 2;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -140,6 +143,54 @@ export async function waitForShellReady(
       intervalMs: options.intervalMs ?? DEFAULT_READY_INTERVAL_MS,
     },
   );
+}
+
+export const INPUT_READY_RESET = '\u0003';
+
+export interface EvaluatedInputProbe {
+  input: string;
+  marker: string;
+  reset: string;
+}
+
+export interface EvaluatedInputOptions extends WaitOptions {
+  attempts?: number;
+}
+
+export async function waitForEvaluatedInput(
+  stream: PtyStream,
+  send: (data: string) => void,
+  probe: EvaluatedInputProbe,
+  label: string,
+  options: EvaluatedInputOptions = {},
+): Promise<number> {
+  if (probe.input.includes(probe.marker)) {
+    throw new Error(`readiness probe input must not contain its marker: ${probe.marker}`);
+  }
+  const attempts = options.attempts ?? DEFAULT_INPUT_READY_ATTEMPTS;
+  const waitOptions: WaitOptions = {
+    timeoutMs: options.timeoutMs ?? DEFAULT_INPUT_READY_TIMEOUT_MS,
+    ...(options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs }),
+  };
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt >= INPUT_READY_RESET_FROM_ATTEMPT) send(probe.reset);
+    send(probe.input);
+    try {
+      await waitForCondition(
+        stream,
+        () => stream.read().includes(probe.marker),
+        label,
+        waitOptions,
+      );
+      return attempt + 1;
+    } catch (error) {
+      lastError = error as Error;
+      if (stream.failure() !== null) throw lastError;
+    }
+  }
+  const detail = lastError?.message ?? `timeout waiting for: ${label}`;
+  throw new Error(`${detail} (gave up after ${attempts} attempts)`, { cause: lastError });
 }
 
 export function buildCwdFileProofCommand(platform: NodeJS.Platform, fileName: string): string {

@@ -3,8 +3,11 @@ export const SCOPE_STRATA = [
   { id: 'packages-tests', include: ['packages/**/tests/**/*.ts', 'packages/**/tests/**/*.tsx'] },
   { id: 'scripts', include: ['scripts/**/*.mjs'] },
   { id: 'github-scripts', include: ['.github/scripts/**/*.mjs'] },
-  { id: 'docs', include: ['docs/**/*.ts', 'docs/**/*.tsx'] },
-  { id: 'root-configs', include: ['*.ts'] },
+  {
+    id: 'docs',
+    include: ['docs/**/*.ts', 'docs/**/*.tsx', 'docs/**/*.mts', 'docs/**/*.cts'],
+  },
+  { id: 'root-configs', include: ['*.ts', '*.mts', '*.cts'] },
   { id: 'lint-plugins', include: ['lint-plugins/**/*.mjs'] },
 ];
 
@@ -20,6 +23,8 @@ export const SCOPE_EXCLUDE = [
   '**/*.fixture.tsx',
   '**/*.fixture.mjs',
   '**/*.d.ts',
+  '**/*.d.mts',
+  '**/*.d.cts',
   '**/fixtures/**',
   '**/__fixtures__/**',
   'knip.config.ts',

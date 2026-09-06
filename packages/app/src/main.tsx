@@ -21,6 +21,7 @@ import '@/lib/desktop-bridge-types';
 import { useHydrateRegisteredAgentMeta } from '@/lib/acp/catalog';
 import { installClientFetchWrapper } from '@/lib/client-fetch';
 import { installConsentListener } from '@/lib/consent-store';
+import { installContactEmailStore } from '@/lib/contact-email-store';
 import { installCrashInviteListener } from '@/lib/crash-invite-store';
 import { installFeedbackNudgeStore } from '@/lib/feedback-nudge-store';
 import { i18n } from '@/lib/i18n';
@@ -72,6 +73,8 @@ installOnboardingCardStore();
 installSubscribeCardStore();
 
 installFeedbackNudgeStore();
+
+installContactEmailStore();
 
 if (typeof window !== 'undefined' && window.okDesktop !== undefined) {
   installPointerPositionTracker();

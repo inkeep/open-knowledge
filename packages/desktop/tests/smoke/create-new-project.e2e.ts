@@ -139,7 +139,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -202,7 +202,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: subFolder });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -239,7 +239,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -300,7 +300,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: `${sub1}\x1f${sub2}` });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -388,7 +388,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);

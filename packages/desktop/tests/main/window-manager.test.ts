@@ -13,6 +13,7 @@ import {
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
+import { SPAWN_WAIT_HEARTBEAT_MS } from '../../src/shared/boot-narration.ts';
 
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
@@ -3842,5 +3843,74 @@ describe('WindowManager — show-gate integration', () => {
 
     const fiveSecondTimers = env.timers.filter((t) => t.ms === 5_000);
     expect(fiveSecondTimers).toHaveLength(0);
+  });
+});
+
+describe('boot heartbeats (the unpackaged path CI runs)', () => {
+  let env: TestEnv;
+  let intervals: { cb: () => void; ms: number; cleared: boolean }[];
+  let beats: Record<string, unknown>[];
+  let flushes: number;
+
+  beforeEach(() => {
+    env = buildEnv();
+    intervals = [];
+    beats = [];
+    flushes = 0;
+    env.deps.setInterval = ((cb: () => void, ms: number) => {
+      const rec = { cb, ms, cleared: false };
+      intervals.push(rec);
+      return rec;
+    }) as unknown as WindowManagerDeps['setInterval'];
+    env.deps.clearInterval = ((handle: unknown) => {
+      (handle as { cleared: boolean }).cleared = true;
+    }) as unknown as WindowManagerDeps['clearInterval'];
+    env.deps.flushLog = () => {
+      flushes += 1;
+    };
+    env.deps.log = {
+      info: (obj: Record<string, unknown>) => {
+        if (typeof obj.event === 'string' && obj.event.endsWith('-progress')) beats.push(obj);
+      },
+      warn: () => {},
+      error: () => {},
+      debug: () => {},
+    } as unknown as WindowManagerDeps['log'];
+  });
+
+  test('narrates while the forked utility has not reported ready, and stops on ready', async () => {
+    const wm = new WindowManager(env.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/test-project' });
+
+    const beat = intervals.find((i) => !i.cleared);
+    expect(beat).toBeDefined();
+    expect(beat?.ms).toBe(SPAWN_WAIT_HEARTBEAT_MS);
+    beat?.cb();
+    beat?.cb();
+    expect(beats).toHaveLength(2);
+    expect(beats[0]).toMatchObject({ event: 'desktop-utility-wait-progress' });
+    expect(flushes).toBe(2);
+
+    env.utilities[0]?.fire({ type: 'ready', port: 51234, apiOrigin: 'http://localhost:51234' });
+    await promise;
+    expect(intervals.every((i) => i.cleared)).toBe(true);
+  });
+
+  test('narrates the renderer load, the stage between windowCreated and loadUrlResolved', async () => {
+    const wm = new WindowManager(env.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/test-project' });
+    env.utilities[0]?.fire({ type: 'ready', port: 51234, apiOrigin: 'http://localhost:51234' });
+    await promise;
+
+    const narrated = intervals.map((i) => {
+      beats.length = 0;
+      i.cb();
+      return { ms: i.ms, event: beats[0]?.event };
+    });
+    const renderer = narrated.find((n) => n.event === 'desktop-renderer-load-progress');
+    expect(narrated.map((n) => n.event)).toContain('desktop-utility-wait-progress');
+    expect(renderer).toBeDefined();
+    expect(renderer?.ms).toBe(SPAWN_WAIT_HEARTBEAT_MS);
+    expect(intervals.every((i) => i.cleared)).toBe(true);
   });
 });

@@ -77,6 +77,13 @@ export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions
   };
 }
 
+export function editorVisibleBand(editor: Editor): { top: number; bottom: number } {
+  const { boundary, padding } = deriveEditorClipOptions(editor)();
+  const box = boundary?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+  const top = box.top + padding.top;
+  return { top, bottom: Math.max(top, box.bottom - padding.bottom) };
+}
+
 function resolveRegionBoundary(editor: Editor): Element | null {
   return getEditorView(editor)?.dom.closest('.editor-doc-scroll') ?? null;
 }

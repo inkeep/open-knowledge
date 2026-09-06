@@ -1550,6 +1550,10 @@ msgstr "新增至 {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "加入詞典"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "最多可加入 3 張你自己的截圖或照片，例如系統對話框、另一台螢幕，或用手機拍下的卡頓畫面。它們不會做遮蔽處理，所以請不要放入不該分享的內容。"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "新增值"
@@ -2009,7 +2013,7 @@ msgstr "資產：{title}"
 msgid "Attach a file"
 msgstr "附加檔案"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "附加圖片"
 
@@ -2019,6 +2023,7 @@ msgid "Attachments"
 msgstr "附件"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "附件總大小必須小於 3 MB。"
 
@@ -2580,6 +2585,10 @@ msgstr "正在檢查更新"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
 msgstr "正在 GitHub 上檢查更新"
+
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "正在檢查更新…"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
@@ -3264,14 +3273,6 @@ msgstr "已連接到"
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
 msgstr "已連接到 GitHub"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "已連線，但你的編輯尚未送達伺服器。"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "已連線，但你的編輯尚未送達伺服器。如果持續如此，請重新啟動伺服器。"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
@@ -7970,7 +7971,7 @@ msgstr "markdownlint 規則"
 msgid "Match case"
 msgstr "區分大小寫"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "最多 {MAX_ATTACHMENTS} 個附件"
 
@@ -9142,6 +9143,7 @@ msgid "Only modified"
 msgstr "只顯示已修改的"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "只允許 PNG、JPEG 或 WebP 圖片。"
 
@@ -9525,6 +9527,7 @@ msgid "Opening worktree"
 msgstr "正在開啟 worktree"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "正在開啟…"
 
@@ -10164,6 +10167,7 @@ msgid "Please enter a valid email address."
 msgstr "請輸入有效的電子郵件地址。"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "請輸入有效的電子郵件。"
 
@@ -10727,6 +10731,7 @@ msgstr "相關度"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -10761,7 +10766,7 @@ msgstr "移除"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "移除 {0}"
 
@@ -12041,6 +12046,7 @@ msgid "Share URL"
 msgstr "分享 URL"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "留下你的電子郵件以便我們跟進"
 
@@ -12917,6 +12923,10 @@ msgstr "這個 worktree 的同步已設為「自動（僅拉取）」，繼承�
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "這個 worktree 的同步已設為「手動」，繼承自 {project}。可在「設定 → 同步」中變更。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "同步花費的時間比平常更久——你的變更已安全儲存在此裝置上。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -13800,6 +13810,10 @@ msgstr "這是 {boldName} 的預覽，在 {boldHarness} 的 {boldLevel} 層級�
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "這是 {boldName} 的預覽。把它安裝到你的代理中。"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "這比平常花的時間更長。重新載入視窗通常可以解決此問題。"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"
 msgstr "這不是一般的主題檔案"
@@ -13852,6 +13866,11 @@ msgstr "這個頁面還不存在。開啟它就能在編輯器中建立這個頁
 #: src/components/LinksPanel.tsx
 msgid "This page doesn't link to anything yet."
 msgstr "這個頁面還沒有連到任何地方。"
+
+#: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "此頁面已不在該路徑下。"
 
 #: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
@@ -14203,6 +14222,7 @@ msgstr "試試一段提示"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "再試一次"
@@ -15138,6 +15158,7 @@ msgid "You can also manage this in Settings."
 msgstr "你也可以在「設定」中管理這一項。"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "你最多可以附加 {MAX_ATTACHMENTS} 張圖片。"
 
@@ -15227,6 +15248,7 @@ msgid "You're subscribed!"
 msgstr "訂閱成功！"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
@@ -15277,6 +15299,10 @@ msgstr "你的 GitHub 工作階段已過期——請重新登入以確認推送�
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "你的 GitHub 權杖缺少必要的權限範圍。請試著重新登入。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "你的圖片"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

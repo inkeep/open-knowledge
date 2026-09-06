@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
 
 function agentId(label: string): string {
@@ -223,5 +224,86 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     await expect(page.locator('[data-testid="agent-diff-pane"]')).toBeVisible({ timeout: 5_000 });
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible();
+  });
+
+  test('axe scan of the Source diff surface in a real browser', async ({ page, api }) => {
+    const docView = 'panel-a11y-view';
+    const docAgent = 'panel-a11y-agent';
+    await api.seedDocs([
+      { name: docView, markdown: '# View\n\nSome content here.' },
+      {
+        name: docAgent,
+        markdown:
+          '# Agent Doc\n\nOriginal paragraph with initial text content that will be changed.',
+      },
+    ]);
+    await page.goto(`/#/${docView}`);
+    await waitForProvider(page);
+
+    const claude = agentId('claude-a11y');
+    await api.writeAsAgent(
+      docAgent,
+      '# Agent Doc\n\nOriginal paragraph with modified text content that was changed.',
+      { agentId: claude, agentName: 'Claude A11Y', clientName: 'claude-code' },
+    );
+
+    const claudeAvatar = page
+      .locator(
+        '[data-slot="presence-bar"] [data-presence-badge="agent"][aria-label*="Claude A11Y"]',
+      )
+      .first();
+    await expect(claudeAvatar).toBeVisible({ timeout: 10_000 });
+    await claudeAvatar.click();
+
+    const panel = page.locator('[data-testid="activity-panel"]');
+    await expect(panel).toBeVisible({ timeout: 5_000 });
+
+    const row = panel.locator('[data-testid="activity-panel-file-row"]').first();
+    const burst = row.locator('[data-testid="activity-panel-burst-open"]').first();
+    await expect(burst).toBeVisible({ timeout: 5_000 });
+    await burst.click();
+
+    const diffPane = page.locator('[data-testid="agent-diff-pane"]');
+    await expect(diffPane).toBeVisible({ timeout: 5_000 });
+
+    const sourceToggle = diffPane.locator('[data-testid="agent-diff-render-source"]');
+    await expect(sourceToggle).toBeVisible({ timeout: 3_000 });
+    await sourceToggle.click();
+
+    const pierreHost = diffPane.locator('.activity-panel-diff diffs-container');
+    await expect(pierreHost).toBeVisible({ timeout: 10_000 });
+    expect(await pierreHost.evaluate((el) => getComputedStyle(el).display)).toBe('block');
+
+    const hostDisplay = await diffPane
+      .locator('.activity-panel-diff diffs-container')
+      .evaluate((el) => getComputedStyle(el).display);
+    expect(
+      hostDisplay,
+      'Pierre host must be display:block. @pierre/diffs sets no display on :host, so a custom element defaults to inline and drops width/padding/block layout. If this fails after a Pierre bump, check whether upstream started setting it before deleting the app rule.',
+    ).toBe('block');
+
+    const axeResults = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .include('[data-testid="agent-diff-pane"]')
+      .analyze();
+
+    await test.info().attach('axe.json', {
+      body: JSON.stringify(axeResults, null, 2),
+      contentType: 'application/json',
+    });
+
+    const MEASURED_NODE_BUDGET: Record<string, number> = {
+      'color-contrast': 2,
+      'scrollable-region-focusable': 0,
+    };
+
+    for (const v of axeResults.violations) {
+      const ceiling = MEASURED_NODE_BUDGET[v.id];
+      expect(ceiling, `unexpected axe rule '${v.id}': ${v.help}`).toBeDefined();
+      expect(
+        v.nodes.length,
+        `'${v.id}' node count ${v.nodes.length} exceeds the measured baseline of ${ceiling}`,
+      ).toBeLessThanOrEqual(ceiling);
+    }
   });
 });

@@ -800,12 +800,7 @@ export function ShareBranchSwitchDialog({
           ) : null}
         </DialogBody>
         <DialogFooter className="sm:justify-between">
-          <Button
-            variant="ghost"
-            className="font-mono uppercase"
-            onClick={handleCancel}
-            data-testid="share-branch-switch-cancel"
-          >
+          <Button variant="ghost" onClick={handleCancel} data-testid="share-branch-switch-cancel">
             <Trans>Cancel</Trans>
           </Button>
           {branchSwitchState.phase === 'branch-in-other-worktree' ? (
@@ -843,7 +838,6 @@ export function ShareBranchSwitchDialog({
               {variant?.openCurrentEnabled ? (
                 <Button
                   variant="outline"
-                  className="font-mono uppercase"
                   onClick={handleOpenCurrent}
                   disabled={switching || creating}
                   data-testid="share-branch-switch-open-current"

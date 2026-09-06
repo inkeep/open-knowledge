@@ -447,6 +447,10 @@ export {
   spawnErrorLogOpenMode,
 } from './constants/lifecycle.ts';
 export {
+  MANUAL_CHECK_NOTICE_EXPIRY_MS,
+  MANUAL_CHECK_WATCHDOG_MS,
+} from './constants/manual-update-check.ts';
+export {
   GREP_MAX_RESULTS,
   MCP_SERVER_NAME,
   OK_DESKTOP_TERMINAL_ENV,
@@ -782,15 +786,24 @@ export type {
   OkBugReportSendFallbackReason,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
+  OkImageAttachmentContentType,
   ReportBundleLevel,
   ReportBundleSummary,
   SerializedError,
   SerializedErrorTruncation,
 } from './logger-types.ts';
 export {
+  BUG_REPORT_ATTACHMENT_CONTENT_TYPES,
+  BUG_REPORT_ATTACHMENT_EXTENSIONS,
+  BUG_REPORT_ATTACHMENTS_ZIP_DIR,
+  BUG_REPORT_ATTACHMENTS_ZIP_PREFIX,
+  BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH,
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  isBugReportAttachmentEntry,
   LOG_LEVELS,
+  MAX_BUG_REPORT_ATTACHMENTS,
+  MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES,
 } from './logger-types.ts';
 export {
   LOGGER_OWNED_FIELDS,

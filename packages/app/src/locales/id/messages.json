@@ -135,6 +135,7 @@
     "0t0bbC": ["Preferensi sinkronisasi tidak dapat disimpan: ", ["detail"]],
     "0uTHCg": ["Mulai proyek OpenKnowledge baru."],
     "0wswKc": ["Garis mendatar yang memisahkan bagian."],
+    "0x9smA": ["Halaman ini tidak lagi berada di jalur ini."],
     "0xnQ_X": ["Pembaruan mengalir masuk"],
     "0xnmlQ": ["Nama repositori"],
     "0ySP5u": ["Perubahan disimpan otomatis ke tema ini."],
@@ -2027,6 +2028,9 @@
     "PMyJ9C": ["Belum ada sesi penyuntingan"],
     "PPFQ3o": ["\"", ["0"], "\" dipasang ke ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" tidak ada."],
+    "PR0_fn": [
+      "Tambahkan hingga 3 tangkapan layar atau foto Anda sendiri, misalnya dialog sistem, monitor lain, atau foto ponsel saat aplikasi macet. Isinya tidak disunting, jadi jangan sertakan apa pun yang tidak boleh dibagikan."
+    ],
     "PR9FSv": ["Pergi ke hasil pencarian penyunting visual berikutnya."],
     "PRgIJh": [["subRoot"], " tidak bisa diperbarui: ", ["0"]],
     "PRnH8G": ["dari ", ["0"]],
@@ -2523,6 +2527,9 @@
     "Vlc75q": ["Biarkan berkas terhapus"],
     "VmJT51": ["Memuat laporan Anda"],
     "VmXASo": ["(symlink)"],
+    "VpRSfQ": [
+      "Sinkronisasi memakan waktu lebih lama dari biasanya — perubahan Anda aman di perangkat ini."
+    ],
     "VsaI0G": [["folderCount", "plural", { "other": ["folder"] }]],
     "VuxVSP": ["Mulai pelengkapan sumber"],
     "VxLvKE": ["Kembalikan ke versi yang terpasang"],
@@ -2615,9 +2622,6 @@
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
-    "X7fxS9": [
-      "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
-    ],
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
@@ -2727,6 +2731,7 @@
     "YGIi_c": ["Pasang ulang"],
     "YGNRB5": ["— kecuali"],
     "YGt-0e": ["Membaca…"],
+    "YHOIrR": ["Memeriksa pembaruan…"],
     "YJ1BTp": ["Keterampilan dengan nama itu sudah ada."],
     "YJPN3F": ["Terlalu lambat"],
     "YKLP_-": ["Nama templat diganti"],
@@ -3411,6 +3416,9 @@
     "gITz7o": [
       "Memindahkan kursor atau memperluas pilihan lewat peta tombol navigasi penyunting sumber standar CodeMirror."
     ],
+    "gJ5Yso": [
+      "Ini memakan waktu lebih lama dari biasanya. Memuat ulang jendela biasanya mengatasinya."
+    ],
     "gJR87V": ["Folder proyek tidak dapat dibuat. Pilih folder lain."],
     "gKi-a_": ["Proyek baru"],
     "gLCE2c": [
@@ -4068,7 +4076,6 @@
     "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
-    "n6N-xC": ["Terhubung, tetapi suntingan Anda belum sampai ke server."],
     "n6hXUm": [
       "Sinkronisasi otomatis secara berkala melakukan fetch, pull, dan push commit ke repositori git remote Anda agar suntingan Anda tetap selaras antarkomputer."
     ],
@@ -4630,6 +4637,7 @@
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
     ],
     "uUCrBv": ["symlink"],
+    "uV3EYs": ["Gambar Anda"],
     "uVbUP8": ["Pengaturan…"],
     "uX85yl": [
       "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat). Keterampilan Anda tidak termasuk: semuanya mengikuti git seperti berkas lain di proyek ini.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."

@@ -129,7 +129,7 @@ export function SkillForkDialog({
         <DialogBody className="min-h-0 flex-1 overflow-auto">
           {canonicalBody !== null && forkBody !== null ? (
             <MultiFileDiff
-              className="conflict-view"
+              className="pierre-diff"
               oldFile={{ name: skill.name, contents: canonicalBody }}
               newFile={{ name: skill.name, contents: forkBody }}
               options={{ overflow: 'wrap', diffStyle: 'unified', theme: okPierreTheme() }}

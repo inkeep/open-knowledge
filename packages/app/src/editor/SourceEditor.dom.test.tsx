@@ -2,7 +2,8 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Config } from '@inkeep/open-knowledge-core';
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { Activity } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -13,6 +14,7 @@ import {
   type OutlineNavDetail,
 } from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { FULL_PAGE_CM_HOST_SELECTORS } from '@/globals-css.test-helper';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';
@@ -123,12 +125,33 @@ async function findCmContent(container: HTMLElement): Promise<HTMLElement> {
   return container.querySelector<HTMLElement>('.cm-content');
 }
 
+const ORIGINAL_PLATFORM = globalThis.navigator.platform;
+
 function setPlatform(platform: string): void {
   Object.defineProperty(globalThis.navigator, 'platform', {
     value: platform,
     configurable: true,
   });
 }
+
+describe('SourceEditor host contract', () => {
+  afterEach(() => {
+    cleanup();
+    for (const docName of mountedDocNames) {
+      evictCmEditor(docName);
+    }
+    mountedDocNames.clear();
+  });
+
+  test('renders the host class used by the composer-inset selector', async () => {
+    const { provider, ytext } = makeProvider('source-composer-inset-host');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+
+    await findCmContent(container);
+
+    expect(container.querySelector(FULL_PAGE_CM_HOST_SELECTORS.sourceEditor)).not.toBeNull();
+  });
+});
 
 describe('SourceEditor word-wrap preference wiring', () => {
   beforeEach(() => {
@@ -146,6 +169,7 @@ describe('SourceEditor word-wrap preference wiring', () => {
   });
 
   afterEach(() => {
+    setPlatform(ORIGINAL_PLATFORM);
     unsubscribeComposer?.();
     unsubscribeComposer = null;
     cleanup();
@@ -584,5 +608,149 @@ describe('SourceEditor Problems-row navigation', () => {
     await clickProblemsRow(docName);
 
     expect(peekPendingSourceNavigation(docName)).toBeNull();
+  });
+});
+
+const FLIP_UNTRACKED_ORIGIN = Object.freeze({ kind: 'source-editor-dom-untracked-rewrite' });
+const MOD_KEY: 'metaKey' | 'ctrlKey' = /Mac/.test(ORIGINAL_PLATFORM) ? 'metaKey' : 'ctrlKey';
+
+function ActivityHarness({
+  provider,
+  ytext,
+  visible,
+  sourceMode = true,
+}: {
+  provider: HocuspocusProvider;
+  ytext: Y.Text;
+  visible: boolean;
+  sourceMode?: boolean;
+}) {
+  return (
+    <ConfigContext value={makeConfigValue(true)}>
+      <Activity mode={visible ? 'visible' : 'hidden'}>
+        <SourceEditor
+          docName={provider.configuration.name ?? 'test-source'}
+          ytext={ytext}
+          provider={provider}
+          isSourceModeActive={visible && sourceMode}
+        />
+      </Activity>
+    </ConfigContext>
+  );
+}
+
+async function pressUndo(content: HTMLElement): Promise<void> {
+  await act(async () => {
+    fireEvent.keyDown(content, { key: 'z', code: 'KeyZ', keyCode: 90, [MOD_KEY]: true });
+  });
+}
+
+describe('SourceEditor undo after leaving and returning to source mode', () => {
+  beforeEach(() => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pages') return Response.json({ pages: [] });
+      if (url === '/api/documents') return Response.json({ documents: [] });
+      if (url === '/api/tags') return Response.json({ tags: [] });
+      return Response.json({}, { status: 404 });
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    cleanup();
+    for (const docName of mountedDocNames) {
+      evictCmEditor(docName);
+    }
+    mountedDocNames.clear();
+    globalThis.fetch = originalFetch;
+  });
+
+  async function mountAndType(docName: string): Promise<{
+    ytext: Y.Text;
+    content: HTMLElement;
+    rerender: (state: { visible: boolean; sourceMode?: boolean }) => void;
+  }> {
+    const { provider, ytext } = makeProvider(docName, '');
+    const view = render(<ActivityHarness provider={provider} ytext={ytext} visible={true} />);
+    const content = await findCmContent(view.container);
+    const cm = EditorView.findFromDOM(content);
+    expect(cm).toBeTruthy();
+    if (!cm) throw new Error('no CodeMirror view');
+    await act(async () => {
+      cm.dispatch({
+        changes: { from: 0, insert: 'hello bug\n\n\nhello bug' },
+        userEvent: 'input.type',
+      });
+    });
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug');
+    return {
+      ytext,
+      content,
+      rerender: ({ visible, sourceMode }: { visible: boolean; sourceMode?: boolean }) =>
+        view.rerender(
+          <ActivityHarness
+            provider={provider}
+            ytext={ytext}
+            visible={visible}
+            sourceMode={sourceMode}
+          />,
+        ),
+    };
+  }
+
+  test('Cmd+Z after returning to a tab rewritten while hidden leaves the document unchanged', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-activity-rewrite');
+
+    await act(async () => rerender({ visible: false }));
+    await act(async () => {
+      ytext.doc?.transact(() => ytext.insert(ytext.length, ' oops'), FLIP_UNTRACKED_ORIGIN);
+    });
+    await act(async () => rerender({ visible: true }));
+
+    const beforeUndo = ytext.toString();
+    expect(beforeUndo).toBe('hello bug\n\n\nhello bug oops');
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe(beforeUndo);
+  });
+
+  test('Cmd+Z still undoes the pre-hide burst when nothing wrote while the tab was hidden', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-activity-quiet');
+
+    await act(async () => rerender({ visible: false }));
+    await act(async () => rerender({ visible: true }));
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe('');
+  });
+
+  test('Cmd+Z after an in-pane flip to Visual and back over a rewrite leaves the document unchanged', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-inpane-rewrite');
+
+    await act(async () => rerender({ visible: true, sourceMode: false }));
+    await act(async () => {
+      ytext.doc?.transact(() => ytext.insert(ytext.length, ' oops'), FLIP_UNTRACKED_ORIGIN);
+    });
+    await act(async () => rerender({ visible: true, sourceMode: true }));
+
+    const beforeUndo = ytext.toString();
+    expect(beforeUndo).toBe('hello bug\n\n\nhello bug oops');
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe(beforeUndo);
+  });
+
+  test('Cmd+Z still undoes the pre-flip burst after an in-pane flip with no rewrite', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-inpane-quiet');
+
+    await act(async () => rerender({ visible: true, sourceMode: false }));
+    await act(async () => rerender({ visible: true, sourceMode: true }));
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe('');
   });
 });

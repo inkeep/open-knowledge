@@ -470,12 +470,7 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
               </DialogBody>
 
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="font-mono uppercase"
-                  onClick={handleClose}
-                >
+                <Button type="button" variant="outline" onClick={handleClose}>
                   <Trans>Cancel</Trans>
                 </Button>
                 <Button
@@ -602,7 +597,6 @@ function PublishSuccessView({
         <Button
           type="button"
           variant="outline"
-          className="font-mono uppercase"
           onClick={onClose}
           data-testid="publish-success-done"
         >

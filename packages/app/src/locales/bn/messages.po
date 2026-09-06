@@ -1546,6 +1546,10 @@ msgstr "{gitignorePath}-এ যোগ করুন"
 msgid "Add to Dictionary"
 msgstr "অভিধানে যোগ করুন"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "নিজের সর্বোচ্চ ৩টি স্ক্রিনশট বা ছবি যোগ করুন, যেমন কোনো সিস্টেম ডায়ালগ, অন্য একটি মনিটর, বা অ্যাপ আটকে যাওয়ার সময় ফোনে তোলা ছবি। এগুলো থেকে গোপন তথ্য সরানো হয় না, তাই ভাগ করা উচিত নয় এমন কিছু রাখবেন না।"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "মান যোগ করুন"
@@ -2005,7 +2009,7 @@ msgstr "সম্পদ: {title}"
 msgid "Attach a file"
 msgstr "একটি ফাইল সংযুক্ত করুন"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "ছবি সংযুক্ত করুন"
 
@@ -2015,6 +2019,7 @@ msgid "Attachments"
 msgstr "সংযুক্তি"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "সংযুক্তির মোট আকার ৩ MB-র কম হতে হবে।"
 
@@ -2576,6 +2581,10 @@ msgstr "হালনাগাদ দেখা হচ্ছে"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Checking for updates on GitHub"
 msgstr "GitHub-এ হালনাগাদ দেখা হচ্ছে"
+
+#: src/components/UpdateNotices.shared.ts
+msgid "Checking for updates…"
+msgstr "হালনাগাদ দেখা হচ্ছে…"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Checking GitHub connection..."
@@ -3260,14 +3269,6 @@ msgstr "যার সঙ্গে যুক্ত"
 #: src/components/AuthModal.tsx
 msgid "Connected to GitHub"
 msgstr "GitHub-এর সঙ্গে যুক্ত হয়েছে"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
@@ -7966,7 +7967,7 @@ msgstr "markdownlint নিয়ম"
 msgid "Match case"
 msgstr "অক্ষরের ছাঁদ মেলান"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "সর্বোচ্চ {MAX_ATTACHMENTS}টি সংযুক্তি"
 
@@ -9138,6 +9139,7 @@ msgid "Only modified"
 msgstr "কেবল পরিবর্তিত"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "কেবল PNG, JPEG বা WebP ছবি অনুমোদিত।"
 
@@ -9521,6 +9523,7 @@ msgid "Opening worktree"
 msgstr "ওয়ার্কট্রি খোলা হচ্ছে"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "খোলা হচ্ছে…"
 
@@ -10160,6 +10163,7 @@ msgid "Please enter a valid email address."
 msgstr "অনুগ্রহ করে একটি বৈধ ইমেইল ঠিকানা দিন।"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "অনুগ্রহ করে একটি বৈধ ইমেইল দিন।"
 
@@ -10723,6 +10727,7 @@ msgstr "প্রাসঙ্গিকতা"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -10757,7 +10762,7 @@ msgstr "সরান"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "{0} সরান"
 
@@ -12037,6 +12042,7 @@ msgid "Share URL"
 msgstr "শেয়ার URL"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "পরবর্তী যোগাযোগের জন্য আপনার ইমেইল দিন"
 
@@ -12913,6 +12919,10 @@ msgstr "এই ওয়ার্কট্রির সিঙ্ক “স্ব
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "এই ওয়ার্কট্রির সিঙ্ক “ম্যানুয়াল”-এ সেট করা, যা {project} থেকে উত্তরাধিকারসূত্রে পাওয়া। Settings → Sync-এ এটি বদলান।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "সিঙ্ক হতে স্বাভাবিকের চেয়ে বেশি সময় লাগছে — আপনার পরিবর্তনগুলি এই ডিভাইসে নিরাপদে সংরক্ষিত আছে।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -13796,6 +13806,10 @@ msgstr "এটি {boldName}-এর একটি প্রাকদর্শন,
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "এটি {boldName}-এর একটি প্রাকদর্শন। এটি আপনার এজেন্টগুলোতে ইনস্টল করুন।"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "এটি স্বাভাবিকের চেয়ে বেশি সময় নিচ্ছে। উইন্ডোটি আবার লোড করলে সাধারণত এটি ঠিক হয়ে যায়।"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"
 msgstr "এটি একটি সাধারণ থিম ফাইল নয়"
@@ -13848,6 +13862,11 @@ msgstr "এই পাতাটি এখনও নেই। সম্পাদ�
 #: src/components/LinksPanel.tsx
 msgid "This page doesn't link to anything yet."
 msgstr "এই পাতাটি এখনও কোনো কিছুর সঙ্গে লিংক করে না।"
+
+#: src/components/LinksPanel.tsx
+#: src/components/OutlinePanel.tsx
+msgid "This page is no longer at this path."
+msgstr "এই পৃষ্ঠাটি আর এই পাথে নেই।"
 
 #: src/components/LinksPanel.tsx
 msgid "This page references no local files or images."
@@ -14199,6 +14218,7 @@ msgstr "একটি প্রম্পট চেষ্টা করে দে�
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "আবার চেষ্টা করুন"
@@ -15134,6 +15154,7 @@ msgid "You can also manage this in Settings."
 msgstr "আপনি এটি Settings-এও সামলাতে পারেন।"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "আপনি সর্বোচ্চ {MAX_ATTACHMENTS}টি ছবি সংযুক্ত করতে পারেন।"
 
@@ -15223,6 +15244,7 @@ msgid "You're subscribed!"
 msgstr "আপনি সদস্য হয়েছেন!"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
@@ -15273,6 +15295,10 @@ msgstr "আপনার GitHub সেশনের মেয়াদ শেষ �
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "আপনার GitHub টোকেনে আবশ্যক স্কোপ নেই। আবার সাইন ইন করে দেখুন।"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "আপনার ছবি"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

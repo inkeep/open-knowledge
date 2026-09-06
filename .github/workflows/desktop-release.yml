@@ -626,6 +626,106 @@ jobs:
             exit 1
           fi
 
+      # Stage the Developer ID cert in a keychain this job owns and hand it to
+      # electron-builder via CSC_KEYCHAIN, instead of letting electron-builder
+      # build one from CSC_LINK. electron-builder <= 26.16.0 authenticates its
+      # `security set-key-partition-list` call with the .p12 password instead
+      # of the temporary keychain's own password
+      # (electron-userland/electron-builder#10066). macOS <= 26.5 let that
+      # slide on an already-unlocked keychain; macOS 26.6 (GitHub's macos-26
+      # image 20260831 onward) verifies it, and every signed build on that
+      # image died with `SecKeychainUnlock: The user name or passphrase you
+      # entered is not correct`. The v26 backport (#10172) is merged but
+      # unreleased, and a dependency bump would not reach already-cut tags
+      # anyway: this job builds the TAG's tree while the workflow file is read
+      # from main, so the fix has to live here. With CSC_KEYCHAIN set and
+      # CSC_LINK unset, electron-builder skips its keychain setup entirely and
+      # reads identities from the keychain it is handed (macPackager.ts).
+      #
+      # Inlined rather than shared via .github/scripts for the same tag-tree
+      # reason: a script would be missing on the stranded tags this exists to
+      # rescue. desktop-build.yml carries a twin of this step. Hand-rolled
+      # rather than apple-actions/import-codesign-certs (which would also be
+      # reachable from main) because that action neither stages
+      # app-builder-lib's bundled Apple certs nor exports CSC_KEYCHAIN, and it
+      # would add a marketplace dependency on the release path for ~20 lines.
+      #
+      # REMOVAL, once electron-builder >= 26.16.1 is pinned: delete this step
+      # and its desktop-build.yml twin, restore CSC_LINK + CSC_KEY_PASSWORD on
+      # both packager steps (desktop-build.yml in its signed-mode conditional
+      # form), drop desktop-build.yml's "Remove signing keychain", and drop
+      # the "macOS signing stays on the workflow-staged keychain" block in
+      # release-cascade-shape.test.mjs. Keep "Attest the signed macOS app".
+      - name: Prepare signing keychain (CSC_KEYCHAIN)
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          umask 077
+          KEYCHAIN_PATH="$RUNNER_TEMP/ok-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(head -c 32 /dev/urandom | base64)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          CERT_PATH="$RUNNER_TEMP/ok-signing.p12"
+          trap 'rm -f "$CERT_PATH"' EXIT
+
+          # CSC_LINK is bare base64 of the .p12 (workflow header). macOS
+          # `base64 -i` wraps lines, hence the whitespace strip.
+          printf '%s' "$CSC_LINK" | tr -d '[:space:]' | base64 -d > "$CERT_PATH"
+          if [[ ! -s "$CERT_PATH" ]]; then
+            echo "::error::CSC_LINK did not materialize a .p12 (empty after decode). Re-export with 'base64 -i developer-id.p12 | pbcopy' and paste the single-line output."
+            exit 1
+          fi
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # No lock timeout: sign + notarize runs well past the 5 min default.
+          security set-keychain-settings "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild >/dev/null
+          # The call electron-builder gets wrong: -k is the KEYCHAIN password.
+          # Without this, codesign blocks on a GUI prompt for the private key.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+
+          # Search list: this keychain first, then electron-builder's bundled
+          # Apple root + intermediate certs (it adds these itself on the
+          # CSC_LINK path so the Developer ID chain validates offline), then
+          # whatever was already listed. `list-keychains -s` REPLACES the list.
+          ROOT_CERTS="$(node -e '
+            const path = require("path");
+            const eb = path.dirname(require.resolve("electron-builder/package.json"));
+            const lib = path.dirname(require.resolve("app-builder-lib/package.json", { paths: [eb] }));
+            process.stdout.write(path.join(lib, "certs", "root_certs.keychain"));
+          ')"
+          if [[ ! -f "$ROOT_CERTS" ]]; then
+            echo "::error::app-builder-lib's bundled root_certs.keychain is not at $ROOT_CERTS; its certs layout may have moved in a dependency bump."
+            exit 1
+          fi
+          if ! LISTED="$(security list-keychains -d user)"; then
+            echo "::error::security list-keychains failed; refusing to replace the user search list blind."
+            exit 1
+          fi
+          EXISTING=()
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%\"}"
+            line="${line#\"}"
+            [[ -n "$line" ]] && EXISTING+=("$line")
+          done <<<"$LISTED"
+          # `${arr[@]+...}`: the runner's bash 3.2 treats an empty array as
+          # unbound under set -u.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "$ROOT_CERTS" ${EXISTING[@]+"${EXISTING[@]}"}
+
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH")"
+          echo "$IDENTITIES"
+          if ! grep -q '"Developer ID Application' <<<"$IDENTITIES"; then
+            echo "::error::No valid 'Developer ID Application' identity in the staged keychain. Either the CSC_LINK .p12 / CSC_KEY_PASSWORD pair is wrong, or the cert chain does not validate on this runner. The full identity list is above."
+            exit 1
+          fi
+          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       # Materialize App Store Connect API key (Option B notarization shape).
       # @electron/notarize's NotaryToolApiKeyCredentials types `appleApiKey`
       # as a filesystem path to the .p8 file — not the PEM contents. CI
@@ -678,9 +778,12 @@ jobs:
         run: node scripts/stage-parcel-watcher.mjs
 
       - name: Build + sign + notarize DMG/ZIP
-        # electron-builder picks up CSC_LINK / CSC_KEY_PASSWORD from env +
-        # signs. afterSign.mjs picks up APPLE_* + notarizes + staples +
-        # fuse-verifies. `--publish never`: the fan-in publish-assets job is
+        # electron-builder signs with the identity in CSC_KEYCHAIN (pushed
+        # into $GITHUB_ENV by the "Prepare signing keychain" step). CSC_LINK
+        # and CSC_KEY_PASSWORD must NOT be set on this step: their presence
+        # routes electron-builder back into its own keychain setup, the path
+        # that fails on macOS 26.6. afterSign.mjs picks up APPLE_* + notarizes
+        # + staples + fuse-verifies. `--publish never`: the fan-in publish-assets job is
         # the only publication point — this job stages its outputs as a run
         # artifact below. electron-builder still writes the channel manifest
         # (`latest-mac.yml` or `beta-mac.yml`, per `--config.publish.channel`)
@@ -693,8 +796,6 @@ jobs:
         # Release's prerelease flag is set by the upstream
         # `gh release create --prerelease`.
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -769,6 +870,55 @@ jobs:
             echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
             bash -c "$PKG_CMD"
           fi
+
+      # Placed HERE, not at the end of the job (where desktop-build.yml keeps
+      # its twin): release-cascade-shape.test.mjs forbids `if: always()` on any
+      # step from the DMG smoke gate onward, and nothing after packaging needs
+      # the key (notarize + staple run inside afterSign.mjs). Tearing down
+      # before the smoke also keeps the private key out of reach of the
+      # freshly packaged app the smoke launches.
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          if [[ -n "${CSC_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CSC_KEYCHAIN" || true
+          fi
+
+      # macOS peer of "Attest signed Windows packages". With CSC_KEYCHAIN,
+      # electron-builder no longer hard-fails on a missing identity (that throw
+      # lived in its own keychain setup; without forceCodeSigning a failed
+      # identity lookup is a warning and an ad-hoc-signed app), and the DMG
+      # smoke launches unsigned bundles just fine. This is the only place the
+      # cascade proves the artifact it is about to ship is Developer ID
+      # signed, hardened-runtime, and carries a stapled notarization ticket.
+      # No `if:`: the implicit success() guard is the point.
+      - name: Attest the signed macOS app
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          FOUND=0
+          while IFS= read -r APP; do
+            [[ -n "$APP" ]] || continue
+            FOUND=$((FOUND + 1))
+            echo "::group::codesign $APP"
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            codesign -dv --verbose=4 "$APP" 2>&1 | tee "$RUNNER_TEMP/codesign-details.txt"
+            echo "::endgroup::"
+            if ! grep -q 'Authority=Developer ID Application' "$RUNNER_TEMP/codesign-details.txt"; then
+              echo "::error::$APP is not Developer ID signed (ad-hoc or unsigned). auto-update would reject this build."
+              exit 1
+            fi
+            if ! grep -qE 'flags=.*\(.*runtime' "$RUNNER_TEMP/codesign-details.txt"; then
+              echo "::error::$APP lacks the hardened-runtime flag; notarization requires it."
+              exit 1
+            fi
+            xcrun stapler validate "$APP"
+          done < <(find dist-desktop -maxdepth 2 -type d -name '*.app')
+          if [[ "$FOUND" -eq 0 ]]; then
+            echo "::error::No .app found under dist-desktop to attest."
+            exit 1
+          fi
+          echo "Attested $FOUND signed, notarized, stapled app bundle(s)."
 
       # FR5b — smoke the signed DMG before anything about this release becomes
       # visible or installable. Under the fan-in topology this job failing on

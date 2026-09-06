@@ -60,6 +60,29 @@ describe('gracefulTerminate', () => {
     expect(result).toEqual({ escalated: false });
   });
 
+  it('waits for asynchronous signal dispatch before polling liveness', async () => {
+    let releaseSignal: (() => void) | undefined;
+    let polled = false;
+    const termination = gracefulTerminate({
+      sendSignal: () =>
+        new Promise<void>((resolve) => {
+          releaseSignal = resolve;
+        }),
+      isAlive: () => {
+        polled = true;
+        return false;
+      },
+      now: () => 0,
+      sleep: () => Promise.resolve(),
+    });
+
+    await Promise.resolve();
+    expect(polled).toBe(false);
+    releaseSignal?.();
+    await termination;
+    expect(polled).toBe(true);
+  });
+
   it('defaults the grace and poll cadence to the shared lifecycle constants', async () => {
     const { deps, signals, sleeps } = scriptedDeps({ aliveForChecks: Infinity });
     const result = await gracefulTerminate(deps);

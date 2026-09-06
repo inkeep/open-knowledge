@@ -7,7 +7,6 @@ import {
   type ForwardLinkLocalTarget,
   type ForwardLinksSuccess,
   ForwardLinksSuccessSchema,
-  isManagedArtifactDocName,
   ProblemDetailsSchema,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
@@ -28,6 +27,7 @@ import { toast } from 'sonner';
 import { resolveLinkTargetIntent } from '@/components/link-target-intent';
 import { usePageList } from '@/components/PageListContext';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { isKnownPageDocName } from '@/components/page-membership';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -111,7 +111,7 @@ function SectionTrigger({
   isLoading,
 }: {
   title: string;
-  count: number;
+  count: number | null;
   isLoading: boolean;
 }) {
   return (
@@ -120,7 +120,7 @@ function SectionTrigger({
         <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
         <PanelTitle>{title}</PanelTitle>
       </span>
-      {!isLoading && <PanelCount>{count}</PanelCount>}
+      {!isLoading && count !== null && <PanelCount>{count}</PanelCount>}
     </CollapsibleTrigger>
   );
 }
@@ -253,16 +253,22 @@ function LinkRow({
 
 function BacklinksSection({ docName }: { docName: string }) {
   const { t } = useLingui();
-  const { folderPaths, pages, pagesBySlug, pagesByBasename, loading } = usePageList();
   const {
-    data: backlinks = [],
-    isLoading,
-    error,
-  } = useQuery({
+    folderPaths,
+    pages,
+    pagesBySlug,
+    pagesByBasename,
+    loading,
+    error: pageListError,
+  } = usePageList();
+  const { data, isLoading, error } = useQuery({
     queryKey: ['backlinks', docName],
     queryFn: () => fetchBacklinks(docName),
-    enabled: !loading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+    enabled: !loading && isKnownPageDocName(pages, docName),
   });
+  const backlinks = data ?? [];
+  const isUnresolvable =
+    !loading && pageListError === null && !isKnownPageDocName(pages, docName) && data !== undefined;
   const [expanded, setExpanded] = useState(false);
   const [prevDocName, setPrevDocName] = useState(docName);
   if (prevDocName !== docName) {
@@ -273,10 +279,20 @@ function BacklinksSection({ docName }: { docName: string }) {
 
   return (
     <Collapsible defaultOpen>
-      <SectionTrigger title={t`Backlinks`} count={backlinks.length} isLoading={isLoading} />
+      <SectionTrigger
+        title={t`Backlinks`}
+        count={error !== null || isUnresolvable ? null : backlinks.length}
+        isLoading={isLoading}
+      />
       <CollapsibleContent>
         <div className="px-2 pb-3" aria-busy={isLoading}>
-          {error ? (
+          {isUnresolvable ? (
+            <div className="px-3">
+              <PanelEmpty role="status">
+                <Trans>This page is no longer at this path.</Trans>
+              </PanelEmpty>
+            </div>
+          ) : error ? (
             <div className="px-3">
               <PanelError>
                 {error instanceof Error ? error.message : t`Failed to load backlinks`}
@@ -335,13 +351,19 @@ function ForwardLinksSection({ docName }: { docName: string }) {
     pagesBySlug,
     pagesByBasename,
     loading: pagesLoading,
+    error: pageListError,
   } = usePageList();
   const { data, isLoading, error } = useQuery({
     queryKey: ['forward-links', docName],
     queryFn: () => fetchForwardLinks(docName),
-    enabled: !pagesLoading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+    enabled: !pagesLoading && isKnownPageDocName(pages, docName),
   });
   const links = data?.forwardLinks ?? [];
+  const isUnresolvable =
+    !pagesLoading &&
+    pageListError === null &&
+    !isKnownPageDocName(pages, docName) &&
+    data !== undefined;
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [prevDocName, setPrevDocName] = useState(docName);
@@ -466,10 +488,20 @@ function ForwardLinksSection({ docName }: { docName: string }) {
 
   return (
     <Collapsible defaultOpen>
-      <SectionTrigger title={t`Outgoing`} count={links.length} isLoading={isLoading} />
+      <SectionTrigger
+        title={t`Outgoing`}
+        count={error !== null || isUnresolvable ? null : links.length}
+        isLoading={isLoading}
+      />
       <CollapsibleContent>
         <div className="px-2 pb-3" aria-busy={isLoading}>
-          {error ? (
+          {isUnresolvable ? (
+            <div className="px-3">
+              <PanelEmpty role="status">
+                <Trans>This page is no longer at this path.</Trans>
+              </PanelEmpty>
+            </div>
+          ) : error ? (
             <div className="px-3">
               <PanelError>
                 {error instanceof Error ? error.message : t`Failed to load outgoing links`}
@@ -499,12 +531,17 @@ function ForwardLinksSection({ docName }: { docName: string }) {
 
 function LocalFilesSection({ docName }: { docName: string }) {
   const { t } = useLingui();
-  const { pages, loading: pagesLoading } = usePageList();
+  const { pages, loading: pagesLoading, error: pageListError } = usePageList();
   const { data, isLoading, error } = useQuery({
     queryKey: ['forward-links', docName],
     queryFn: () => fetchForwardLinks(docName),
-    enabled: !pagesLoading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+    enabled: !pagesLoading && isKnownPageDocName(pages, docName),
   });
+  const isUnresolvable =
+    !pagesLoading &&
+    pageListError === null &&
+    !isKnownPageDocName(pages, docName) &&
+    data !== undefined;
   const [expanded, setExpanded] = useState(false);
   const [prevDocName, setPrevDocName] = useState(docName);
   if (prevDocName !== docName) {
@@ -564,10 +601,20 @@ function LocalFilesSection({ docName }: { docName: string }) {
 
   return (
     <Collapsible defaultOpen>
-      <SectionTrigger title={t`Local files`} count={rows.length} isLoading={isLoading} />
+      <SectionTrigger
+        title={t`Local files`}
+        count={error !== null || isUnresolvable ? null : rows.length}
+        isLoading={isLoading}
+      />
       <CollapsibleContent>
         <div className="px-2 pb-3" aria-busy={isLoading}>
-          {error ? (
+          {isUnresolvable ? (
+            <div className="px-3">
+              <PanelEmpty role="status">
+                <Trans>This page is no longer at this path.</Trans>
+              </PanelEmpty>
+            </div>
+          ) : error ? (
             <div className="px-3">
               <PanelError>
                 {error instanceof Error ? error.message : t`Failed to load local files`}

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
-import { bunGlobalShimPath, okVitestBase } from '../../test-support/vitest.base';
+import { okVitestBase } from '../../test-support/vitest.base';
 import { RENDERER_DEDUPE } from './vite.dedupe';
 
 // `@lingui/{react,core}/macro` only run under the build's Babel macro pass; a
@@ -40,7 +40,7 @@ export const appVitestConfig = {
   },
   test: {
     ...okVitestBase.test,
-    setupFiles: [bunGlobalShimPath, idbPreloadPath],
+    setupFiles: [...okVitestBase.test.setupFiles, idbPreloadPath],
   },
 } satisfies ViteUserConfig;
 

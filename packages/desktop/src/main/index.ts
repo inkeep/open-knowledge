@@ -120,6 +120,12 @@ import {
   shell,
   utilityProcess,
 } from 'electron';
+import {
+  BOOT_HEARTBEAT_EVENTS,
+  BOOT_HEARTBEAT_MAX_BEATS,
+  DESKTOP_BOOT_EVENT,
+  startupMarkLine,
+} from '../shared/boot-narration.ts';
 import type {
   ClaudeReadiness,
   CliReadiness,
@@ -159,6 +165,7 @@ import {
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
+import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts';
 import {
   describeDesktopLanguage,
   readStoredLanguagePreference,
@@ -255,6 +262,7 @@ import {
   type EditorPresenceProbes,
   registerIntegrationsSettings,
 } from './integrations-settings.ts';
+import { handleAssetUpload } from './ipc/asset-upload.ts';
 import {
   type BugReportScreenshotEntry,
   createBugReportScreenshotHold,
@@ -278,7 +286,7 @@ import {
 } from './ipc/local-op.ts';
 import { handleSeedApply, handleSeedListPacks, handleSeedPlan } from './ipc/seed.ts';
 import { handleSharingSetMode, handleSharingStatus } from './ipc/sharing.ts';
-import { handleSlidesOpen, handleSlidesStatus } from './ipc/slides.ts';
+import { handleSlidesOpen, handleSlidesStatus, shouldLogSlidesOpenError } from './ipc/slides.ts';
 import {
   detectProtocol as detectProtocolImpl,
   recordHandoff as recordHandoffImpl,
@@ -939,7 +947,29 @@ function persistTerminalDockForWindow(
   appState = committed.state;
   return committed.result;
 }
-const startupWaterfall = new StartupWaterfall({ otelEnabled: false });
+const startupWaterfall = new StartupWaterfall({
+  otelEnabled: false,
+  onMark: ({ phase, elapsedMs }) => {
+    getLogger('startup').info(startupMarkLine(phase, elapsedMs), `startup ${phase}`);
+    flushDesktopLogger();
+  },
+});
+const bootHeartbeatDeps: Required<BootHeartbeatDeps> = {
+  log: getLogger('startup'),
+  flushLog: flushDesktopLogger,
+  setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+};
+
+const stopBootHeartbeat = startBootHeartbeat(
+  bootHeartbeatDeps,
+  BOOT_HEARTBEAT_EVENTS.boot,
+  '[startup] boot in progress',
+  () => ({ lastPhase: startupWaterfall.lastPhase ?? '(no phase marked yet)' }),
+  { maxBeats: BOOT_HEARTBEAT_MAX_BEATS },
+);
+app.on('will-quit', stopBootHeartbeat);
+
 let firstWindowShown = false;
 let waterfallDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -964,6 +994,7 @@ function emitStartupWaterfall(): void {
 function onFirstWindowShown(): void {
   if (firstWindowShown) return;
   firstWindowShown = true;
+  stopBootHeartbeat();
   startupWaterfall.mark('windowShown');
   if (startupWaterfall.readyToEmit) {
     emitStartupWaterfall();
@@ -1418,6 +1449,7 @@ function ensureWindowManager() {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
     log: getLogger('window-manager'),
+    flushLog: flushDesktopLogger,
     recordServerExit: (info) =>
       getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
     createKeepalive: createDesktopKeepaliveFactory({
@@ -1501,6 +1533,10 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     ),
     showGate,
     pendingPayload,
+    log: getLogger('navigator'),
+    flushLog: flushDesktopLogger,
+    setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
   });
 }
 
@@ -4446,7 +4482,7 @@ function registerIpcHandlers() {
       },
       recordOpenAttempt: recordDeckOpen,
       openWindow: (deck) => {
-        createSlidesWindow({
+        return createSlidesWindow({
           createWindow: (winOpts) => {
             const win = new BrowserWindow({
               ...DEFAULT_WIN_OPTS,
@@ -4476,7 +4512,7 @@ function registerIpcHandlers() {
         window.focus();
       },
     });
-    if (!opened.ok) {
+    if (shouldLogSlidesOpenError(opened)) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:slides:dispatch',
@@ -4522,6 +4558,17 @@ function registerIpcHandlers() {
             },
           },
           screenshotPngBytes: (reportId) => bugReportSendScreenshots.read(reportId),
+          attachmentBytes: (reportId) => bugReportSendScreenshots.readAttachments(reportId),
+        },
+        request,
+      );
+    }
+    if (request.kind === 'upload-image') {
+      return handleAssetUpload(
+        {
+          intakeBaseUrl: resolveBugReportIntakeUrl({
+            envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          }),
         },
         request,
       );
@@ -4579,6 +4626,16 @@ function registerIpcHandlers() {
         onScreenshotStaged: (reportId, png) => {
           const composedBy = event.sender.id;
           bugReportSendScreenshots.remember(reportId, png, composedBy);
+          if (bugReportSendScreenshotReapers.has(composedBy)) return;
+          bugReportSendScreenshotReapers.add(composedBy);
+          event.sender.once('destroyed', () => {
+            bugReportSendScreenshotReapers.delete(composedBy);
+            bugReportSendScreenshots.forgetOwner(composedBy);
+          });
+        },
+        onAttachmentsStaged: (reportId, attachments) => {
+          const composedBy = event.sender.id;
+          bugReportSendScreenshots.rememberAttachments(reportId, attachments, composedBy);
           if (bugReportSendScreenshotReapers.has(composedBy)) return;
           bugReportSendScreenshotReapers.add(composedBy);
           event.sender.once('destroyed', () => {
@@ -5612,7 +5669,7 @@ if (isDriverBootSmokeMode(process.env)) {
 function bootPrimaryInstance(): void {
   getRootDesktopLogger().info(
     {
-      event: 'desktop.boot',
+      event: DESKTOP_BOOT_EVENT,
       version: app.getVersion(),
       isPackaged: app.isPackaged,
       electronVersion: process.versions.electron,
@@ -6381,7 +6438,15 @@ function bootPrimaryInstance(): void {
 
   const runTerminalQuitDrain = createTerminalQuitDrain({
     defer: (callback) => setImmediate(callback),
-    drain: () => terminalReaper?.killAll() ?? Promise.resolve(),
+    drain: async () => {
+      const [terminalResult] = await Promise.allSettled([
+        terminalReaper?.killAll() ?? Promise.resolve(),
+        slidesDeckRegistry.reapAll(),
+      ]);
+      if (terminalResult.status === 'rejected') {
+        getLogger('lifecycle').warn({ err: terminalResult.reason }, 'terminal quit drain failed');
+      }
+    },
     resumeQuit: () => app.quit(),
   });
   app.on('will-quit', (event) => {
@@ -6393,8 +6458,6 @@ function bootPrimaryInstance(): void {
       crashSentinelHeartbeat = null;
     }
     rendererRecovery = null;
-    void terminalReaper?.killAll();
-    slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();

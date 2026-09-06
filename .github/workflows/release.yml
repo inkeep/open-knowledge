@@ -396,7 +396,7 @@ jobs:
           TOP=$(printf '%s\n%s\n' "$BASE_VERSION" "$STABLE" | sort -V | tail -n1)
           if [[ "$TOP" != "$BASE_VERSION" ]]; then
             echo "::error::Computed beta base ${BASE_VERSION} is BEHIND the latest stable ${STABLE} — genuine anchor drift, not the transient post-promotion window (base==stable is deferred upstream)."
-            echo "::error::Run public-open-knowledge-main-reset.yml with stable_version=${STABLE} on agents-private, then re-cut."
+            echo "::error::Run public-open-knowledge-main-reset.yml with stable_version=${STABLE} on agents-private, then re-cut. If that reset fails its version guard, re-dispatch it with -f anchor_override=true (RELEASES.md, Recovering anchor drift)."
             exit 1
           fi
           echo "Beta base ${BASE_VERSION} leads latest stable ${STABLE}."

@@ -110,6 +110,7 @@ test.describe('share-receive multi-worktree smoke (US-014 / J1 silent dispatch)'
       }),
     );
     captureStderrFor(app, {
+      home: tmpHome,
       cleanupDirs: [fixture.root, tmpHome],
     });
 

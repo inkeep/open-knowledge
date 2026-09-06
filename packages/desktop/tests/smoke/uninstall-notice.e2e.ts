@@ -61,7 +61,7 @@ test.describe('uninstall notice smoke', () => {
 
   test('pressing each notice through carries the answer to main', async ({ captureStderrFor }) => {
     const { app, home } = await launchNoticePreview('ok-uninstall-notice-');
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
 
@@ -91,7 +91,7 @@ test.describe('uninstall notice smoke', () => {
     captureStderrFor,
   }) => {
     const { app, home } = await launchNoticePreview('ok-uninstall-notice-close-');
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
 

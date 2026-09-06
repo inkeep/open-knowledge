@@ -123,6 +123,8 @@ test('Escape decline restores focus, confirmation creates indexes, and disabling
   const cancelButton = disclosure.getByRole('button', { name: 'Cancel' });
   const confirmButton = disclosure.getByRole('button', { name: 'Enable indexes' });
   await expect(confirmButton).toHaveCSS('text-transform', 'uppercase');
+  await expect(cancelButton).toHaveCSS('text-transform', 'uppercase');
+  await expect(cancelButton).toHaveCSS('font-family', /JetBrains Mono/);
   const dialogBox = await disclosure.boundingBox();
   expect(dialogBox).not.toBeNull();
   for (const button of [cancelButton, confirmButton]) {

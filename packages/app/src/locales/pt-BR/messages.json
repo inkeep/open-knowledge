@@ -149,6 +149,7 @@
     "0t0bbC": ["Não foi possível salvar a preferência de sincronização: ", ["detail"]],
     "0uTHCg": ["Comece um projeto do OpenKnowledge."],
     "0wswKc": ["Linha horizontal que separa seções."],
+    "0x9smA": ["Esta página não está mais neste caminho."],
     "0xnQ_X": ["As atualizações chegam sozinhas"],
     "0xnmlQ": ["Nome do repositório"],
     "0ySP5u": ["As alterações são salvas automaticamente neste tema."],
@@ -2279,6 +2280,9 @@
     "PMyJ9C": ["Ainda não há sessão de edição"],
     "PPFQ3o": ["\"", ["0"], "\" instalado em ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" não existe."],
+    "PR0_fn": [
+      "Adicione até 3 capturas ou fotos suas, como uma caixa de diálogo do sistema, outro monitor ou uma foto do travamento feita com o celular. Elas não são ocultadas, então deixe de fora qualquer coisa que não deva ser compartilhada."
+    ],
     "PR9FSv": ["Vai para o próximo resultado de busca do editor visual."],
     "PRgIJh": ["Não deu para atualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
@@ -2862,6 +2866,9 @@
     "Vlc75q": ["Manter o arquivo excluído"],
     "VmJT51": ["Carregando seus relatórios"],
     "VmXASo": ["(link simbólico)"],
+    "VpRSfQ": [
+      "A sincronização está demorando mais que o normal — suas alterações estão seguras neste dispositivo."
+    ],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["pasta"], "many": ["pastas"], "other": ["pastas"] }]
     ],
@@ -2962,9 +2969,6 @@
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
     "X59Fx2": ["Não foi possível abrir este documento no Slidev."],
     "X7ShnN": ["Abrir o painel de agentes"],
-    "X7fxS9": [
-      "Conectado, mas suas edições ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
-    ],
     "X7u0xR": [["0"], " modelos disponíveis"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
@@ -3089,6 +3093,7 @@
     "YGIi_c": ["Reinstalar"],
     "YGNRB5": ["— exceto"],
     "YGt-0e": ["Lendo…"],
+    "YHOIrR": ["Buscando atualizações…"],
     "YJ1BTp": ["Já existe uma habilidade com esse nome."],
     "YJPN3F": ["Lento demais"],
     "YKLP_-": ["Modelo renomeado"],
@@ -3867,6 +3872,7 @@
     "gITz7o": [
       "Move o cursor ou estende a seleção pelo mapa de teclas padrão de navegação do editor de código do CodeMirror."
     ],
+    "gJ5Yso": ["Isto está demorando mais que o normal. Recarregar a janela costuma resolver."],
     "gJR87V": ["Não foi possível criar a pasta do projeto. Escolha outra pasta."],
     "gKi-a_": ["Novo projeto"],
     "gLCE2c": [
@@ -4568,7 +4574,6 @@
     "n4vt3Q": ["Baixar aplicativo"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
-    "n6N-xC": ["Conectado, mas suas edições ainda não estão chegando ao servidor."],
     "n6hXUm": [
       "A sincronização automática faz fetch, pull e push de commits para seu repositório git remoto de tempos em tempos, para que suas edições fiquem em sincronia entre computadores."
     ],
@@ -5193,6 +5198,7 @@
       "Não deu para reiniciar o servidor — ele está rodando em outra conta. Reinicie o computador para liberá-lo e abra este projeto de novo."
     ],
     "uUCrBv": ["link simbólico"],
+    "uV3EYs": ["Suas imagens"],
     "uVbUP8": ["Configurações…"],
     "uX85yl": [
       "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta). Suas habilidades não são incluídas: elas seguem o git como qualquer outro arquivo do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."

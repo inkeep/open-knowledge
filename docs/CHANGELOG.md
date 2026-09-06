@@ -1,5 +1,77 @@
 # @inkeep/open-knowledge-docs
 
+## 0.0.176
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.21
+
+## 0.0.175
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.20
+
+## 0.0.174
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.19
+
+## 0.0.173
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.18
+
+## 0.0.172
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.15
+
+## 0.0.171
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.14
+
+## 0.0.170
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.13
+
+## 0.0.169
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.12
+
+## 0.0.168
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.11
+
+## 0.0.167
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.10
+
+## 0.0.166
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.9
+
+## 0.0.165
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.68.8
+
 ## 0.0.164
 
 ### Patch Changes

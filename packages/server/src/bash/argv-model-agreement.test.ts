@@ -12,6 +12,7 @@ function stageOf(command: string): Stage {
 const COMMANDS = [
   'grep -m 5 needle notes.md',
   'grep -e needle notes.md',
+  'grep -f pats.txt notes.md',
   'grep -rn needle .',
   'grep --include=*.md needle .',
   'grep -A 2 needle notes.md',

@@ -130,6 +130,14 @@ test('S21: fixing broken MDX in nested CM upgrades rawMdxFallback to jsxComponen
   ).toHaveLength(1);
 });
 
+/*
+ * WARN: this fixture is still-invalid, so `tryParseUpgrade` returns null and the
+ * on-blur upgrade branch never runs. It does not cover the unregistered-but-VALID
+ * source, where the parse yields a `jsxComponent` that `JsxComponentView` converts
+ * straight back to a `rawMdxFallback` — a two-hop identity churn with no user-visible
+ * change. Covering that needs a new fixture, not stronger assertions here. Evidence:
+ * reports/e2e-jsx-nodeselection-delete/REPORT.md.
+ */
 test('S22: blur with still-invalid source does not churn the rawMdxFallback node', async ({
   page,
   api,

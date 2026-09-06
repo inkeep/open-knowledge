@@ -5,11 +5,19 @@ import type {
   OkBugReportScreenshot,
   ReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
-import { BUG_REPORT_SCREENSHOT_ZIP_ENTRY } from '@inkeep/open-knowledge-core';
+import {
+  BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+  isBugReportAttachmentEntry,
+} from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { AlertCircleIcon, ArchiveIcon, ShieldIcon, TriangleAlertIcon } from 'lucide-react';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { BugReportPreviousReports } from '@/components/BugReportHistory';
+import {
+  ImageAttachmentList,
+  ImageAttachmentPicker,
+  useImageAttachmentProblemMessage,
+} from '@/components/ImageAttachments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -22,11 +30,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { useContactEmail } from '@/hooks/use-contact-email';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { formatBundleSize, zipBasename } from '@/lib/bug-report-support';
+import { commitContactEmail } from '@/lib/contact-email-store';
+import { imageAttachmentsProblem, isImageAttachmentType } from '@/lib/image-attachments';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
+import { isValidContactEmail } from '@/lib/validate-email';
 
 export interface ReportBugCrashContext {
   source: string;
@@ -106,8 +119,24 @@ const COMPOSE_IDLE: Phase = { step: 'compose', creating: false, createError: nul
 
 function reportIncludesRawDump(report: CreatedReport): boolean {
   return report.summary.files.some(
-    (file) => file.startsWith('extra/') && file !== BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+    (file) =>
+      file.startsWith('extra/') &&
+      file !== BUG_REPORT_SCREENSHOT_ZIP_ENTRY &&
+      !isBugReportAttachmentEntry(file),
   );
+}
+
+function reportIncludesAttachments(report: CreatedReport): boolean {
+  return report.summary.files.some(isBugReportAttachmentEntry);
+}
+
+async function toAttachmentInputs(files: readonly File[]) {
+  const inputs = [];
+  for (const file of files) {
+    if (!isImageAttachmentType(file.type)) continue;
+    inputs.push({ contentType: file.type, bytes: new Uint8Array(await file.arrayBuffer()) });
+  }
+  return inputs;
 }
 
 export interface ReportBugDialogProps {
@@ -141,6 +170,10 @@ function ReportBugDialog({
     crashInvite !== undefined ? crashInvite.minidumpAvailable === true : probedCrashDumpAvailable;
   const [includeDump, setIncludeDump] = useState(crashInvite?.minidumpAvailable === true);
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [shareEmail, setShareEmail] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const opSeqRef = useRef(0);
   const noteId = useId();
   const logsId = useId();
@@ -151,7 +184,23 @@ function ReportBugDialog({
   const dumpHintId = useId();
   const screenshotId = useId();
   const screenshotHintId = useId();
+  const attachmentsId = useId();
+  const attachmentsHintId = useId();
+  const shareEmailId = useId();
+  const emailId = useId();
+  const emailErrorId = useId();
   const whatToIncludeId = useId();
+  const attachmentProblemMessage = useImageAttachmentProblemMessage();
+  const attachmentsError = attachmentProblemMessage(imageAttachmentsProblem(attachments));
+
+  const rememberedEmail = useContactEmail().email;
+
+  useEffect(() => {
+    if (!open) return;
+    setShareEmail(rememberedEmail !== null);
+    setEmail(rememberedEmail ?? '');
+    setEmailError(null);
+  }, [open, rememberedEmail]);
 
   const noteContextLines =
     crashContext !== undefined
@@ -178,13 +227,22 @@ function ReportBugDialog({
       });
       return;
     }
+    if (shareEmail && !isValidContactEmail(email.trim())) {
+      setEmailError(t`Please enter a valid email.`);
+      return;
+    }
+    setEmailError(null);
+    if (attachmentsError !== null) return;
     const seq = ++opSeqRef.current;
     setPhase({ step: 'compose', creating: true, createError: null });
+    const attachmentInputs = await toAttachmentInputs(attachments);
+    if (opSeqRef.current !== seq) return;
     const result = await bugReport.create({
       level: detailed ? 'full' : 'standard',
       note: composeNote(note, noteContextLines),
       ...(crashDumpAvailable ? { includeCrashDump: includeDump } : {}),
       ...(screenshot !== null ? { includeScreenshot } : {}),
+      ...(attachmentInputs.length > 0 ? { attachments: attachmentInputs } : {}),
     });
     if (opSeqRef.current !== seq) return;
     if (result.ok) {
@@ -202,16 +260,21 @@ function ReportBugDialog({
   }
 
   function handleSend(report: CreatedReport) {
+    const trimmedEmail = email.trim();
+    commitContactEmail(shareEmail, trimmedEmail);
     bugReportSendManager.startBugReportSend({
       kind: 'created-report',
       report,
       note: composeNote(note, noteContextLines),
       includeScreenshot: report.summary.files.includes(BUG_REPORT_SCREENSHOT_ZIP_ENTRY),
+      includeAttachments: reportIncludesAttachments(report),
+      ...(shareEmail && isValidContactEmail(trimmedEmail) ? { email: trimmedEmail } : {}),
     });
     setNote('');
     setDetailed(crashContext !== undefined || crashInvite !== undefined);
     setIncludeDump(crashInvite?.minidumpAvailable === true);
     setIncludeScreenshot(true);
+    setAttachments([]);
     handleOpenChange(false);
   }
 
@@ -430,6 +493,42 @@ function ReportBugDialog({
                     </div>
                   </div>
                 )}
+                {}
+                {/* biome-ignore lint/a11y/useSemanticElements: role="group" + aria-labelledby matches the sibling checkbox rows above without <fieldset>/<legend>'s layout-reset quirks. */}
+                <div
+                  role="group"
+                  aria-labelledby={attachmentsId}
+                  aria-describedby={attachmentsHintId}
+                  className="flex items-start gap-2.5"
+                >
+                  <div className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <p id={attachmentsId} className="text-sm font-medium">
+                      <Trans>Your images</Trans>
+                    </p>
+                    <p id={attachmentsHintId} className="text-1sm text-muted-foreground">
+                      <Trans>
+                        Add up to 3 screenshots or photos of your own, like a system dialog, another
+                        monitor, or a phone photo of a hang. They aren't redacted, so leave out
+                        anything that shouldn't be shared.
+                      </Trans>
+                    </p>
+                    <div className="mt-1.5 flex flex-col gap-2">
+                      <div className="flex">
+                        <ImageAttachmentPicker
+                          files={attachments}
+                          onChange={setAttachments}
+                          disabled={phase.creating}
+                        />
+                      </div>
+                      <ImageAttachmentList
+                        files={attachments}
+                        onChange={setAttachments}
+                        error={attachmentsError}
+                      />
+                    </div>
+                  </div>
+                </div>
                 {crashDumpAvailable && (
                   <div className="flex items-start gap-2.5">
                     <Checkbox
@@ -456,16 +555,51 @@ function ReportBugDialog({
                 )}
               </div>
               {}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2.5">
+                  <Checkbox
+                    id={shareEmailId}
+                    checked={shareEmail}
+                    onCheckedChange={(value) => {
+                      setShareEmail(value === true);
+                      setEmailError(null);
+                    }}
+                    disabled={phase.creating}
+                  />
+                  <label htmlFor={shareEmailId} className="text-sm">
+                    <Trans>Share your email for followups</Trans>
+                  </label>
+                </div>
+                {shareEmail && (
+                  <div className="flex flex-col gap-1.5">
+                    <Input
+                      id={emailId}
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setEmailError(null);
+                      }}
+                      placeholder={t`you@company.com`}
+                      disabled={phase.creating}
+                      aria-invalid={emailError !== null}
+                      aria-describedby={emailError !== null ? emailErrorId : undefined}
+                    />
+                    {emailError !== null && (
+                      <p id={emailErrorId} className="text-destructive text-sm">
+                        {emailError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+              {}
               {crashInvite === undefined && crashContext === undefined ? (
                 <BugReportPreviousReports />
               ) : null}
             </DialogBody>
             <DialogFooter>
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => handleOpenChange(false)}
-              >
+              <Button variant="ghost" onClick={() => handleOpenChange(false)}>
                 {crashInvite !== undefined ? <Trans>Not now</Trans> : <Trans>Cancel</Trans>}
               </Button>
               <Button onClick={() => void handleCreate()} disabled={phase.creating}>
@@ -508,11 +642,7 @@ function ReportBugDialog({
               </div>
             </DialogBody>
             <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => setPhase(COMPOSE_IDLE)}
-              >
+              <Button variant="ghost" onClick={() => setPhase(COMPOSE_IDLE)}>
                 <Trans>Back</Trans>
               </Button>
               <Button onClick={() => handleSend(phase.report)}>

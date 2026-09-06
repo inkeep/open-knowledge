@@ -8,7 +8,7 @@ import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { ProjectAiToolsField } from '@/components/ProjectAiToolsField';
 import {
@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 import { type ConsentStore, consentStore as defaultConsentStore } from '@/lib/consent-store';
 import type {
@@ -39,6 +40,20 @@ import type {
 import { isContentDirSafe, relativeToProject } from '@/lib/project-paths';
 
 const PROBE_THROTTLE_MS = 750;
+
+/* STOP: this backstop must exceed the main-process detection ceiling, or it silently truncates
+   working probes instead of catching wedged ones. That ceiling is the SLOWEST SINGLE LEG, and a
+   leg is a SUM, not a max: detectProtocol races getApplicationInfoForProtocol against
+   DEFAULT_PROBE_TIMEOUT_MS = 2000 (desktop/src/main/ipc-handlers.ts) and only THEN awaits the OS
+   probe, which loops MACOS_APP_NAMES candidates SERIALLY at INSTALLED_AGENTS_PROBE_TIMEOUT_MS =
+   2000 each (server/src/handoff-api.ts). One candidate per scheme today, so that leg is 4000; the
+   CLI leg is PROBE_TIMEOUT_MS = 5000 (desktop/src/main/claude-readiness.ts) fanned out in
+   parallel. Ceiling is 5000 and headroom is 3000. Three ways to breach it, none of which any test
+   here catches because the grace-dependent tests inject a small detectionGraceMs: raise any of the
+   three constants (2000 -> 6000 lands at exactly 8000), serialise a parallel fan-out, or add a
+   third MACOS_APP_NAMES alias for one scheme (also exactly 8000, touching no constant named
+   above). */
+const DETECTION_GRACE_MS = 8_000;
 
 const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
   root: msg`You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want.`,
@@ -54,6 +69,7 @@ interface ConsentDialogBodyProps {
   store?: ConsentStore;
   toast?: ToastImpl;
   payload?: OkOnboardingShowPayload;
+  detectionGraceMs?: number;
 }
 
 export interface ToastImpl {
@@ -68,19 +84,28 @@ function ConsentDialogBody({
   store = defaultConsentStore,
   toast = defaultToast,
   payload,
+  detectionGraceMs = DETECTION_GRACE_MS,
 }: ConsentDialogBodyProps = {}) {
   const snapshot = payload ?? store.getSnapshot();
   if (!snapshot) return null;
-  return <ConsentDialogForm payload={snapshot} store={store} toast={toast} />;
+  return (
+    <ConsentDialogForm
+      payload={snapshot}
+      store={store}
+      toast={toast}
+      detectionGraceMs={detectionGraceMs}
+    />
+  );
 }
 
 interface ConsentDialogFormProps {
   payload: OkOnboardingShowPayload;
   store: ConsentStore;
   toast: ToastImpl;
+  detectionGraceMs: number;
 }
 
-function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
+function ConsentDialogForm({ payload, store, toast, detectionGraceMs }: ConsentDialogFormProps) {
   const { t } = useLingui();
   const initGit = true;
   const formId = useId();
@@ -95,6 +120,10 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   const [busy, setBusy] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [awaitingDetection, setAwaitingDetection] = useState(false);
+  const detectionRef = useRef<Promise<readonly OkMcpWiringEditorId[]> | null>(null);
+  const cancelInFlightRef = useRef(false);
+  const confirmEpochRef = useRef(0);
 
   useEffect(() => {
     if (!isContentDirSafe(contentDir)) {
@@ -130,33 +159,48 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
       return;
     }
     let cancelled = false;
-    bridge.integrations
+    const detection: Promise<readonly OkMcpWiringEditorId[]> = bridge.integrations
       .status()
       .then((status) => {
-        if (cancelled) return;
         const userMcpInstalled = new Set(
           status.editors.filter((e) => e.state === 'installed').map((e) => e.id),
         );
-        setDetectedEditors(
-          status.detectedEditorIds.filter((id) =>
-            receivesProjectIntegrationWrite(id, {
-              userMcpEntryInstalled: userMcpInstalled.has(id),
-            }),
-          ),
+        return status.detectedEditorIds.filter((id) =>
+          receivesProjectIntegrationWrite(id, {
+            userMcpEntryInstalled: userMcpInstalled.has(id),
+          }),
         );
       })
       .catch((err: unknown) => {
         console.warn('[ConsentDialog] editor-detection probe failed:', err);
-        if (!cancelled) setDetectedEditors([]);
+        return [];
       });
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    detectionRef.current = Promise.race([
+      detection,
+      new Promise<readonly OkMcpWiringEditorId[]>((resolve) => {
+        graceTimer = setTimeout(() => {
+          console.warn(
+            `[ConsentDialog] editor detection did not settle within ${detectionGraceMs}ms`,
+          );
+          if (!cancelled) setDetectedEditors([]);
+          resolve([]);
+        }, detectionGraceMs);
+      }),
+    ]);
+    void detection.then((editors) => {
+      clearTimeout(graceTimer);
+      if (!cancelled) setDetectedEditors(editors);
+    });
     return () => {
       cancelled = true;
+      clearTimeout(graceTimer);
     };
-  }, []);
+  }, [detectionGraceMs]);
 
   const contentDirSafe = isContentDirSafe(contentDir);
-  const detectionPending = connectEditors && detectedEditors === null;
-  const startDisabled = busy || detectionPending || !contentDirSafe;
+  const startDisabled = busy || !contentDirSafe;
+  const exitsLive = !busy || awaitingDetection;
   const advancedExpanded = advancedOpen || !contentDirSafe;
 
   const projectDir = payload.projectDir;
@@ -183,13 +227,28 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     setContentDir(relative);
   }
 
+  async function resolveDetectedEditors(): Promise<readonly OkMcpWiringEditorId[]> {
+    if (!connectEditors) return [];
+    if (detectedEditors !== null) return detectedEditors;
+    const pending = detectionRef.current;
+    if (pending === null) return [];
+    setAwaitingDetection(true);
+    const detected = await pending;
+    setAwaitingDetection(false);
+    return detected;
+  }
+
   async function onConfirm() {
+    const epoch = confirmEpochRef.current + 1;
+    confirmEpochRef.current = epoch;
     setBusy(true);
+    const detected = await resolveDetectedEditors();
+    if (confirmEpochRef.current !== epoch) return;
     const result = await store.confirm({
       initGit,
       contentDir,
       additionalIgnores,
-      editorIds: connectEditors ? [...(detectedEditors ?? [])] : [],
+      editorIds: [...detected],
       connectEditors,
       sharing,
     });
@@ -206,16 +265,21 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   }
 
   async function onCancel() {
+    if (cancelInFlightRef.current) return;
+    cancelInFlightRef.current = true;
+    confirmEpochRef.current += 1;
     setBusy(true);
     const result = await store.cancel();
     if (!result.ok) {
+      cancelInFlightRef.current = false;
+      setAwaitingDetection(false);
       toast.error(result.error);
       setBusy(false);
     }
   }
 
   function onOpenChange(open: boolean) {
-    if (!open && !busy) void onCancel();
+    if (!open && exitsLive) void onCancel();
   }
 
   return (
@@ -383,14 +447,20 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
           <Button
             type="button"
             variant="outline"
-            className="font-mono uppercase"
             onClick={() => void onCancel()}
-            disabled={busy}
+            disabled={!exitsLive}
             data-testid="consent-cancel"
           >
             <Trans>Cancel</Trans>
           </Button>
-          <Button type="submit" form={formId} disabled={startDisabled} data-testid="consent-start">
+          <Button
+            type="submit"
+            form={formId}
+            disabled={startDisabled}
+            aria-busy={awaitingDetection}
+            data-testid="consent-start"
+          >
+            {awaitingDetection ? <Spinner aria-hidden="true" /> : null}
             <Trans comment="Primary button — begins scaffolding the project">Setup</Trans>
           </Button>
         </DialogFooter>

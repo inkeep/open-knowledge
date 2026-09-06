@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
+import { contactEmailStore } from '@/lib/contact-email-store';
 import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -72,6 +73,7 @@ type CreateRequest = {
   note?: string;
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
+  attachments?: { contentType: string; bytes: Uint8Array }[];
 };
 type SendRequest = OkBugReportSendInput;
 
@@ -394,6 +396,7 @@ describe('ReportBugDialog', () => {
           note: 'upload me',
         },
         includeScreenshot: false,
+        includeAttachments: false,
       },
     ]);
 
@@ -1170,5 +1173,171 @@ describe('ReportBugDialog', () => {
     expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
     expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
+  });
+});
+
+describe('ReportBugDialog — contact email opt-in', () => {
+  afterEach(async () => {
+    cleanup();
+    contactEmailStore.forget();
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+    });
+    clearBridge();
+  });
+
+  function emailCheckbox() {
+    return screen.getByRole('checkbox', { name: 'Share your email for followups' });
+  }
+
+  test('the input stays hidden until the box is ticked', async () => {
+    installBridge();
+    await renderDialog();
+
+    expect(screen.queryByPlaceholderText('you@company.com')).toBeNull();
+    await userEvent.click(emailCheckbox());
+    expect(screen.getByPlaceholderText('you@company.com')).not.toBeNull();
+  });
+
+  test('an unchecked box never blocks Create and sends no email on the wire', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls).toHaveLength(1);
+    expect(log.sendCalls[0]?.metadata.email).toBeUndefined();
+  });
+
+  test('a checked box with an invalid address blocks Create with the shared message', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+
+    expect(screen.getByText('Please enter a valid email.')).not.toBeNull();
+    expect(log.createCalls).toHaveLength(0);
+  });
+
+  test('a valid address rides the send metadata and is remembered for next time', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'me@example.com');
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls[0]?.metadata.email).toBe('me@example.com');
+    expect(contactEmailStore.getSnapshot().email).toBe('me@example.com');
+  });
+
+  test('a remembered address prefills the box and the input on open', async () => {
+    contactEmailStore.remember('stored@example.com');
+    installBridge();
+    await renderDialog();
+
+    expect((emailCheckbox() as HTMLInputElement).getAttribute('data-state')).toBe('checked');
+    expect(screen.getByDisplayValue('stored@example.com')).not.toBeNull();
+  });
+
+  test('unchecking and sending forgets the stored address entirely', async () => {
+    contactEmailStore.remember('stored@example.com');
+    installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(contactEmailStore.getSnapshot().email).toBeNull();
+  });
+});
+
+describe('ReportBugDialog — reporter attachments', () => {
+  afterEach(async () => {
+    cleanup();
+    contactEmailStore.forget();
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+    });
+    clearBridge();
+  });
+
+  function pngFile(name: string, bytes = [0x89, 0x50, 0x4e, 0x47]) {
+    return new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+  }
+
+  function fileInput(): HTMLInputElement {
+    const input = document.querySelector('input[type="file"]');
+    if (input === null) throw new Error('no attachment file input rendered');
+    return input as HTMLInputElement;
+  }
+
+  test('the row explains that reporter images are not redacted', async () => {
+    installBridge();
+    await renderDialog();
+
+    expect(screen.getByText('Your images')).not.toBeNull();
+    expect(screen.getByText(/aren't redacted/)).not.toBeNull();
+  });
+
+  test('a picked image renders a removable card and rides the create request', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), pngFile('dialog.png'));
+    expect(screen.getByText('dialog.png')).not.toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.attachments).toHaveLength(1);
+    expect(log.createCalls[0]?.attachments?.[0]?.contentType).toBe('image/png');
+    expect(log.createCalls[0]?.attachments?.[0]?.bytes).toBeInstanceOf(Uint8Array);
+  });
+
+  test('removing the card drops it from the create request', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), pngFile('dialog.png'));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove dialog.png' }));
+    expect(screen.queryByText('dialog.png')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.attachments).toBeUndefined();
+  });
+
+  test('a fourth pick is refused at the cap and the picker disables', async () => {
+    installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), [
+      pngFile('a.png', [1]),
+      pngFile('b.png', [2]),
+      pngFile('c.png', [3]),
+      pngFile('d.png', [4]),
+    ]);
+
+    expect(screen.queryByText('d.png')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Attach images' }).hasAttribute('disabled')).toBe(
+      true,
+    );
+  });
+
+  test('a report with no attachments sends includeAttachments false', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls[0]?.includeAttachments).toBe(false);
   });
 });

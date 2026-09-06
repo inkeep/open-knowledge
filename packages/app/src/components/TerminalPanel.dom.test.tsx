@@ -168,17 +168,49 @@ let deferTerminalWrites = false;
 let terminalGeneratedInput: string | null = null;
 let mockResolvedTheme: string | undefined = 'dark';
 
-let roCallback: (() => void) | null = null;
+type MockResizeEntry = { contentRect: { width: number; height: number } };
+type MockResizeCallback = (entries?: readonly MockResizeEntry[]) => void;
+const sizedEntries = (width: number, height: number): readonly MockResizeEntry[] => [
+  { contentRect: { width, height } },
+];
+
+const stubContainerLayout = (
+  rect: { width: number; height: number },
+  style: { width: string; height: string },
+) => {
+  const measure = Element.prototype.getBoundingClientRect;
+  const computed = window.getComputedStyle;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    return (this.matches('[data-terminal-status]') ? rect : measure.call(this)) as DOMRect;
+  };
+  window.getComputedStyle = ((element: Element, pseudo?: string | null) => {
+    const base = computed.call(window, element, pseudo ?? undefined);
+    if (!element.matches('[data-terminal-status]')) return base;
+    return new Proxy(base, {
+      get(target, prop, receiver) {
+        if (prop === 'width') return style.width;
+        if (prop === 'height') return style.height;
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+  }) as typeof window.getComputedStyle;
+  onTestFinished(() => {
+    Element.prototype.getBoundingClientRect = measure;
+    window.getComputedStyle = computed;
+  });
+};
+
+let roCallback: MockResizeCallback | null = null;
 let allROs: MockResizeObserver[] = [];
 class MockResizeObserver {
-  cb: () => void;
+  cb: MockResizeCallback;
   observed: Array<{ el: Element; opts?: ResizeObserverOptions }> = [];
   observe = vi.fn((el: Element, opts?: ResizeObserverOptions) => {
     this.observed.push({ el, opts });
   });
   unobserve = vi.fn(() => {});
   disconnect = vi.fn(() => {});
-  constructor(cb: () => void) {
+  constructor(cb: MockResizeCallback) {
     this.cb = cb;
     roCallback = cb;
     allROs.push(this);
@@ -382,7 +414,7 @@ describe('TerminalPanel', () => {
 
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
     expect(terminal.create).not.toHaveBeenCalled();
-    expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 80, 24);
+    expect(terminal.resize).not.toHaveBeenCalled();
     act(() => lastTerm?.onDataCb?.('user input'));
     expect(terminal.input).toHaveBeenCalledWith('pty-survivor', 'user input');
   });
@@ -414,7 +446,7 @@ describe('TerminalPanel', () => {
     expect(lastTerm?.focus).not.toHaveBeenCalled();
     act(() => lastTerm?.onDataCb?.('early user input'));
     expect(terminal.input).not.toHaveBeenCalledWith('pty-survivor', 'early user input');
-    expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 80, 24);
+    expect(terminal.resize).not.toHaveBeenCalled();
     act(() => lastTerm?.flushPendingWrites());
 
     expect(terminal.input).not.toHaveBeenCalledWith('pty-survivor', '\x1b[?1;2c');
@@ -654,6 +686,24 @@ describe('TerminalPanel', () => {
     expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
+  test('the starting notice keeps its Reload clickable under the click-through overlay', async () => {
+    vi.useFakeTimers();
+    try {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      const notice = await vi.waitFor(() => screen.getByTestId('terminal-starting-notice'));
+      expect(notice.className).toContain('pointer-events-none');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_000);
+      });
+      const reload = screen.getByRole('button', { name: 'Reload' });
+      expect(notice.contains(reload)).toBe(true);
+      expect(reload.className).toContain('pointer-events-auto');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('forwards user keystrokes to the PTY via input', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
@@ -834,7 +884,7 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(roCallback).toBeTruthy());
 
     const fitsBefore = lastFit?.fit.mock.calls.length ?? 0;
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
 
     expect(lastFit?.fit.mock.calls.length ?? 0).toBeGreaterThan(fitsBefore);
     expect(terminal.resize).toHaveBeenCalledWith('pty-1', 80, 24);
@@ -848,9 +898,9 @@ describe('TerminalPanel', () => {
     const fitsBefore = lastFit?.fit.mock.calls.length ?? 0;
     const resizesBefore = terminal.resize.mock.calls.length;
     act(() => {
-      roCallback?.();
-      roCallback?.();
-      roCallback?.();
+      roCallback?.(sizedEntries(742, 380));
+      roCallback?.(sizedEntries(742, 380));
+      roCallback?.(sizedEntries(742, 380));
     });
     expect((lastFit?.fit.mock.calls.length ?? 0) - fitsBefore).toBe(3);
     expect(terminal.resize.mock.calls.length - resizesBefore).toBe(1);
@@ -860,18 +910,116 @@ describe('TerminalPanel', () => {
     });
   });
 
+  test('a resize notification from an unrendered container never collapses the grid or the PTY', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    expect(lastFit).not.toBeNull();
+    lastFit?.fit.mockImplementation(() => {
+      if (lastTerm) {
+        lastTerm.cols = 11;
+        lastTerm.rows = 5;
+      }
+    });
+    const fitsBefore = lastFit?.fit.mock.calls.length ?? 0;
+    const resizesBefore = terminal.resize.mock.calls.length;
+
+    act(() => roCallback?.(sizedEntries(0, 0)));
+
+    expect(lastFit?.fit.mock.calls.length ?? 0).toBe(fitsBefore);
+    expect(lastTerm?.cols).toBe(80);
+    expect(lastTerm?.rows).toBe(24);
+    expect(terminal.resize.mock.calls.length).toBe(resizesBefore);
+    expect(terminal.resize).not.toHaveBeenCalledWith('pty-1', 11, 5);
+  });
+
+  test('the mount-time fit is skipped while the container is not rendered', async () => {
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    expect(lastFit).not.toBeNull();
+    expect(lastFit?.fit.mock.calls.length).toBe(0);
+  });
+
+  test('the mount-time fit is skipped when only padding gives the container width', async () => {
+    stubContainerLayout({ width: 12, height: 380 }, { width: '0px', height: '380px' });
+
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    expect(lastFit).not.toBeNull();
+    expect(lastFit?.fit.mock.calls.length).toBe(0);
+  });
+
+  test('the mount-time fit runs once the container is rendered', async () => {
+    stubContainerLayout({ width: 742, height: 380 }, { width: '730px', height: '380px' });
+
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() => expect(lastFit?.fit.mock.calls.length ?? 0).toBeGreaterThan(0));
+  });
+
+  test('an adopted session forwards only the measured grid, never an unmeasured one', async () => {
+    stubContainerLayout({ width: 742, height: 380 }, { width: '730px', height: '380px' });
+
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' });
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
+    expect(lastFit).not.toBeNull();
+    expect(lastFit?.fit.mock.calls.length).toBeGreaterThan(0);
+    expect(terminal.resize).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(roCallback).toBeTruthy());
+    lastFit?.fit.mockImplementation(() => {
+      if (lastTerm) {
+        lastTerm.cols = 200;
+        lastTerm.rows = 50;
+      }
+    });
+    act(() => roCallback?.(sizedEntries(742, 380)));
+
+    expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 200, 50);
+  });
+
+  test('an adopted session mounted hidden sends the live PTY no grid until the container is rendered', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' });
+    render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
+
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
+    expect(lastFit).not.toBeNull();
+    expect(lastFit?.fit.mock.calls.length).toBe(0);
+    expect(terminal.resize).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(roCallback).toBeTruthy());
+    lastFit?.fit.mockImplementation(() => {
+      if (lastTerm) {
+        lastTerm.cols = 200;
+        lastTerm.rows = 50;
+      }
+    });
+    act(() => roCallback?.(sizedEntries(742, 380)));
+
+    expect(lastFit?.fit.mock.calls.length ?? 0).toBe(1);
+    expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 200, 50);
+  });
+
   test('a grid-changing fit repaints synchronously in the same frame (no blank-frame flash)', async () => {
     const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(roCallback).toBeTruthy());
 
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
     expect(lastTerm?.renderFlush).not.toHaveBeenCalled();
 
     lastFit?.fit.mockImplementation(() => {
       if (lastTerm) lastTerm.cols = 100;
     });
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
     expect(lastTerm?.refresh).toHaveBeenCalled();
     expect(lastTerm?.renderFlush).toHaveBeenCalledTimes(1);
   });
@@ -889,7 +1037,7 @@ describe('TerminalPanel', () => {
     lastFit?.fit.mockImplementation(() => {
       if (lastTerm) lastTerm.cols += 1;
     });
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
     expect(lastTerm?.viewportY).toBe(120);
     expect(lastTerm?.scrollbarLine).toBe(7);
     expect(lastTerm?.pendingScrollTarget).toBeNull();
@@ -901,7 +1049,7 @@ describe('TerminalPanel', () => {
       lastTerm.renderFlush.mockClear();
       lastTerm.scrollToBottom.mockClear();
     }
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
     expect(lastTerm?.renderFlush.mock.invocationCallOrder[0]).toBeLessThan(
       lastTerm?.scrollToBottom.mock.invocationCallOrder[0] ?? 0,
     );
@@ -916,7 +1064,7 @@ describe('TerminalPanel', () => {
       lastTerm.scrollbarLine = 3;
     }
     lastFit?.fit.mockImplementation(() => {});
-    act(() => roCallback?.());
+    act(() => roCallback?.(sizedEntries(742, 380)));
     expect(lastTerm?.viewportY).toBe(12);
     expect(lastTerm?.scrollbarLine).toBe(3);
     expect(lastTerm?.pendingScrollTarget).toBeNull();

@@ -392,7 +392,6 @@ export function ImportSkillForm({
       <DialogFooter>
         <Button
           variant="outline"
-          className="font-mono uppercase"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onOpenChange(false)}
           disabled={busy}

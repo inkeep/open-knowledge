@@ -40,6 +40,7 @@ export interface EventChannels {
   'ok:update:whats-new': { payload: { version: string; releaseUrl: string } };
   'ok:update:whats-new-dismissed': { payload: { version: string } };
   'ok:update:stuck-hint': { payload: { downloadUrl: string } };
+  'ok:update:manual-check': { payload: { phase: 'started' | 'settled' } };
   'ok:deep-link': {
     payload: {
       doc: string;

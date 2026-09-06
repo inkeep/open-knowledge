@@ -155,6 +155,7 @@
     "0t0bbC": ["Impossible d'enregistrer la préférence de synchronisation : ", ["detail"]],
     "0uTHCg": ["Démarrez un nouveau projet OpenKnowledge."],
     "0wswKc": ["Filet horizontal qui sépare les sections."],
+    "0x9smA": ["Cette page ne se trouve plus à ce chemin."],
     "0xnQ_X": ["Les mises à jour arrivent"],
     "0xnmlQ": ["Nom du dépôt"],
     "0ySP5u": ["Les modifications sont automatiquement enregistrées dans ce thème."],
@@ -2340,6 +2341,9 @@
     "PMyJ9C": ["Pas encore de session de modification"],
     "PPFQ3o": ["« ", ["0"], " » installé dans ", ["1"]],
     "PQCdtv": ["« ", ["docName"], " » n'existe pas."],
+    "PR0_fn": [
+      "Ajoutez jusqu'à 3 captures ou photos de votre choix : une boîte de dialogue système, un autre écran, ou une photo prise au téléphone d'un blocage. Elles ne sont pas masquées, alors laissez de côté tout ce qui ne doit pas être partagé."
+    ],
     "PR9FSv": ["Va au résultat de recherche suivant dans l'éditeur visuel."],
     "PRgIJh": ["Impossible de mettre à jour ", ["subRoot"], " : ", ["0"]],
     "PRnH8G": ["sur ", ["0"]],
@@ -2940,6 +2944,9 @@
     "Vlc75q": ["Laisser le fichier supprimé"],
     "VmJT51": ["Chargement de vos rapports"],
     "VmXASo": ["(lien symbolique)"],
+    "VpRSfQ": [
+      "La synchronisation prend plus de temps que d'habitude — vos modifications sont en sécurité sur cet appareil."
+    ],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["dossier"], "many": ["dossiers"], "other": ["dossiers"] }]
     ],
@@ -3046,9 +3053,6 @@
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
-    "X7fxS9": [
-      "Connecté, mais vos modifications n'atteignent pas encore le serveur. Redémarrez-le si cela continue."
-    ],
     "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
@@ -3176,6 +3180,7 @@
     "YGIi_c": ["Réinstaller"],
     "YGNRB5": ["— sauf"],
     "YGt-0e": ["Lecture…"],
+    "YHOIrR": ["Recherche de mises à jour…"],
     "YJ1BTp": ["Une compétence portant ce nom existe déjà."],
     "YJPN3F": ["Trop lent"],
     "YKLP_-": ["Modèle renommé"],
@@ -3983,6 +3988,9 @@
     "gITz7o": [
       "Déplace le curseur ou étend la sélection via le mappage clavier de navigation standard de l'éditeur de source CodeMirror."
     ],
+    "gJ5Yso": [
+      "Cela prend plus de temps que d'habitude. Recharger la fenêtre suffit généralement à résoudre le problème."
+    ],
     "gJR87V": ["Impossible de créer le dossier du projet. Choisissez un autre dossier."],
     "gKi-a_": ["Nouveau projet"],
     "gLCE2c": [
@@ -4700,7 +4708,6 @@
     "n4vt3Q": ["Télécharger l’application"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
-    "n6N-xC": ["Connecté, mais vos modifications n'atteignent pas encore le serveur."],
     "n6hXUm": [
       "La synchronisation automatique récupère, tire et pousse périodiquement les commits vers votre dépôt git distant, afin que vos modifications restent synchronisées entre vos machines."
     ],
@@ -5351,6 +5358,7 @@
       "Impossible de redémarrer le serveur — il s'exécute sous un autre compte. Redémarrez votre ordinateur pour le libérer, puis rouvrez ce projet."
     ],
     "uUCrBv": ["lien symbolique"],
+    "uV3EYs": ["Vos images"],
     "uVbUP8": ["Paramètres…"],
     "uX85yl": [
       "Les fichiers de configuration comprennent : <0>.ok/</0>, les configurations MCP des outils IA (<1>.mcp.json</1> et les fichiers propres à chaque outil). Vos compétences ne sont pas concernées : elles suivent git comme n'importe quel autre fichier du projet.<2/><3>Partagé</3> les valide dans git, donc toute personne qui clone le dépôt obtient la même configuration. <4/><5>Moi uniquement</5> les tient à l'écart de git (via <6>.git/info/exclude</6>)."

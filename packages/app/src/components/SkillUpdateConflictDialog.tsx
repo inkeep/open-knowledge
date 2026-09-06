@@ -47,7 +47,7 @@ export function SkillUpdateConflictDialog({
         <DialogBody className="min-h-0 flex-1 overflow-auto">
           {}
           <MultiFileDiff
-            className="conflict-view"
+            className="pierre-diff"
             oldFile={{ name: skillName, contents: localBody }}
             newFile={{ name: skillName, contents: upstreamBody }}
             options={{ overflow: 'wrap', diffStyle: 'unified', theme: okPierreTheme() }}

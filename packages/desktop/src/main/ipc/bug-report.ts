@@ -10,19 +10,29 @@ import {
   redactContent,
 } from '@inkeep/open-knowledge';
 import {
+  BUG_REPORT_ATTACHMENT_CONTENT_TYPES,
+  BUG_REPORT_ATTACHMENT_EXTENSIONS,
+  BUG_REPORT_ATTACHMENTS_ZIP_DIR,
+  BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH,
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
   clampToCodeUnits,
   isBlankNoteContent,
   isReportIdShape,
+  MAX_BUG_REPORT_ATTACHMENTS,
+  MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES,
   type OkBugReportCrashAckResult,
   type OkBugReportCrashDumpAvailability,
   type OkBugReportCreateResult,
   type OkBugReportScreenshot,
   type OkBugReportSendMetadata,
   type OkBugReportSendResult,
+  type OkImageAttachmentContentType,
   type ReportBundleLevel,
 } from '@inkeep/open-knowledge-core';
-import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
+import type {
+  OkBugReportAttachmentInput,
+  OkBugReportSendInput,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
 import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
@@ -39,6 +49,7 @@ export interface OkBugReportCreateRequest {
   note?: string;
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
+  attachments?: OkBugReportAttachmentInput[];
 }
 
 interface OkBugReportCaptureScreenshotRequest {
@@ -65,8 +76,16 @@ interface OkBugReportCrashDumpAvailabilityRequest {
   kind: 'crash-dump-availability';
 }
 
+export interface OkAssetUploadRequestMessage {
+  kind: 'upload-image';
+  contentType: OkImageAttachmentContentType;
+  bytes: Uint8Array;
+  filename: string;
+}
+
 export type OkBugReportRequest =
   | OkBugReportCreateRequest
+  | OkAssetUploadRequestMessage
   | OkBugReportSendRequest
   | OkBugReportCrashAckRequest
   | OkBugReportCaptureScreenshotRequest
@@ -92,6 +111,12 @@ export interface BugReportCreateDeps {
   flushLogger?: () => void;
   onReportGenerated?: (meta: GeneratedReportMeta) => Promise<void>;
   onScreenshotStaged?: (reportId: string, png: Buffer) => void;
+  onAttachmentsStaged?: (reportId: string, attachments: readonly StagedAttachment[]) => void;
+}
+
+export interface StagedAttachment {
+  contentType: OkImageAttachmentContentType;
+  bytes: Buffer;
 }
 
 const MAX_NOTE_LENGTH = 32_768;
@@ -105,6 +130,32 @@ function scrubNoteForSidecar(note: string | undefined): string | undefined {
   return clampToCodeUnits(redactContent(note).redacted, MAX_NOTE_LENGTH);
 }
 
+export function isValidAttachmentContentType(
+  value: unknown,
+): value is OkImageAttachmentContentType {
+  return (
+    typeof value === 'string' &&
+    (BUG_REPORT_ATTACHMENT_CONTENT_TYPES as readonly string[]).includes(value)
+  );
+}
+
+function isAttachmentBytes(value: unknown): value is Uint8Array {
+  return value instanceof Uint8Array;
+}
+
+function isValidAttachments(value: unknown): value is OkBugReportAttachmentInput[] | undefined {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > MAX_BUG_REPORT_ATTACHMENTS) return false;
+  let total = 0;
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) return false;
+    const e = entry as Record<string, unknown>;
+    if (!isValidAttachmentContentType(e.contentType) || !isAttachmentBytes(e.bytes)) return false;
+    total += e.bytes.byteLength;
+  }
+  return total <= MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES;
+}
+
 function isCreateRequest(request: unknown): request is OkBugReportCreateRequest {
   if (typeof request !== 'object' || request === null) return false;
   const r = request as Record<string, unknown>;
@@ -113,7 +164,8 @@ function isCreateRequest(request: unknown): request is OkBugReportCreateRequest 
     (r.level === 'standard' || r.level === 'full') &&
     isValidNote(r.note) &&
     (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean') &&
-    (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean')
+    (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean') &&
+    isValidAttachments(r.attachments)
   );
 }
 
@@ -242,12 +294,32 @@ export async function handleBugReportCreate(
     deps.flushLogger?.();
   } catch {}
 
+  const stagedAttachments: StagedAttachment[] = (request.attachments ?? []).map((attachment) => ({
+    contentType: attachment.contentType,
+    bytes: Buffer.from(
+      attachment.bytes.buffer,
+      attachment.bytes.byteOffset,
+      attachment.bytes.byteLength,
+    ),
+  }));
+
   let screenshotTmpPath: string | null = null;
+  const attachmentTmpPaths: string[] = [];
   try {
     if (screenshotBytes !== null) {
       screenshotTmpPath = join(tmpdir(), `ok-bugreport-screenshot-${randomUUID()}.png`);
       await writeFile(screenshotTmpPath, screenshotBytes, { mode: 0o600 });
       extraFiles.push({ sourcePath: screenshotTmpPath, zipName: BUG_REPORT_SCREENSHOT_ZIP_NAME });
+    }
+    for (const [index, attachment] of stagedAttachments.entries()) {
+      const extension = BUG_REPORT_ATTACHMENT_EXTENSIONS[attachment.contentType];
+      const tmpPath = join(tmpdir(), `ok-bugreport-attachment-${randomUUID()}.${extension}`);
+      await writeFile(tmpPath, attachment.bytes, { mode: 0o600 });
+      attachmentTmpPaths.push(tmpPath);
+      extraFiles.push({
+        sourcePath: tmpPath,
+        zipName: `${BUG_REPORT_ATTACHMENTS_ZIP_DIR}/${index + 1}.${extension}`,
+      });
     }
     const outputPath = deps.outputPath ?? defaultBugReportZipPath();
     const { zipPath, summary } = await collectReportBundle({
@@ -274,6 +346,15 @@ export async function handleBugReportCreate(
       } catch (err) {
         try {
           deps.logger?.warn({ zipPath, err }, 'bug-report: failed to retain screenshot for send');
+        } catch {}
+      }
+    }
+    if (stagedAttachments.length > 0) {
+      try {
+        deps.onAttachmentsStaged?.(basename(zipPath), stagedAttachments);
+      } catch (err) {
+        try {
+          deps.logger?.warn({ zipPath, err }, 'bug-report: failed to retain attachments for send');
         } catch {}
       }
     }
@@ -325,6 +406,14 @@ export async function handleBugReportCreate(
         deps.logger?.warn(
           { screenshotTmpPath, err },
           'bug-report: failed to remove temp screenshot file',
+        );
+      });
+    }
+    for (const attachmentTmpPath of attachmentTmpPaths) {
+      await unlink(attachmentTmpPath).catch((err: unknown) => {
+        deps.logger?.warn(
+          { attachmentTmpPath, err },
+          'bug-report: failed to remove temp attachment file',
         );
       });
     }
@@ -393,7 +482,13 @@ const MAX_PENDING_REPORT_SCREENSHOTS = 4;
 
 export interface BugReportScreenshotHold {
   remember(reportId: string, png: Buffer, owner: number): void;
+  rememberAttachments(
+    reportId: string,
+    attachments: readonly StagedAttachment[],
+    owner: number,
+  ): void;
   read(reportId: string): Buffer | null;
+  readAttachments(reportId: string): readonly StagedAttachment[];
   forget(reportId: string): void;
   forgetOwner(owner: number): void;
 }
@@ -407,20 +502,43 @@ export function createBugReportScreenshotHold(
   options: BugReportScreenshotHoldOptions = {},
 ): BugReportScreenshotHold {
   const maxReports = options.maxReports ?? MAX_PENDING_REPORT_SCREENSHOTS;
-  const byReport = new Map<string, { png: Buffer; owner: number }>();
+  const byReport = new Map<
+    string,
+    { png: Buffer | null; attachments: readonly StagedAttachment[]; owner: number }
+  >();
+
+  function upsert(
+    reportId: string,
+    owner: number,
+    patch: Partial<{ png: Buffer | null; attachments: readonly StagedAttachment[] }>,
+  ): void {
+    const previous = byReport.get(reportId);
+    byReport.delete(reportId);
+    byReport.set(reportId, {
+      png: patch.png ?? previous?.png ?? null,
+      attachments: patch.attachments ?? previous?.attachments ?? [],
+      owner,
+    });
+    while (byReport.size > maxReports) {
+      const oldest = byReport.keys().next();
+      if (oldest.done === true) break;
+      byReport.delete(oldest.value);
+      options.onEvict?.(oldest.value);
+    }
+  }
+
   return {
     remember(reportId, png, owner) {
-      byReport.delete(reportId);
-      byReport.set(reportId, { png, owner });
-      while (byReport.size > maxReports) {
-        const oldest = byReport.keys().next();
-        if (oldest.done === true) break;
-        byReport.delete(oldest.value);
-        options.onEvict?.(oldest.value);
-      }
+      upsert(reportId, owner, { png });
+    },
+    rememberAttachments(reportId, attachments, owner) {
+      upsert(reportId, owner, { attachments });
     },
     read(reportId) {
       return byReport.get(reportId)?.png ?? null;
+    },
+    readAttachments(reportId) {
+      return byReport.get(reportId)?.attachments ?? [];
     },
     forget(reportId) {
       byReport.delete(reportId);
@@ -450,6 +568,7 @@ export interface BugReportSendDeps {
   timeouts?: Partial<BugReportUploadTimeouts>;
   sidecar?: BugReportSendSidecarHooks;
   screenshotPngBytes?: (reportId: string) => Buffer | null;
+  attachmentBytes?: (reportId: string) => readonly StagedAttachment[];
 }
 
 interface BugReportUploadTimeouts {
@@ -505,11 +624,21 @@ export function parseTransportSafeUrl(raw: string): URL | null {
   return url.protocol === 'http:' && loopback ? url : null;
 }
 
+function isValidContactEmail(email: unknown): boolean {
+  return (
+    email === undefined ||
+    (typeof email === 'string' &&
+      email.length > 0 &&
+      email.length <= BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH)
+  );
+}
+
 function isSendRequest(request: unknown): request is OkBugReportSendRequest {
   if (typeof request !== 'object' || request === null) return false;
   const r = request as Record<string, unknown>;
   if (r.kind !== 'send' || typeof r.zipPath !== 'string') return false;
   if (r.includeScreenshot !== undefined && typeof r.includeScreenshot !== 'boolean') return false;
+  if (r.includeAttachments !== undefined && typeof r.includeAttachments !== 'boolean') return false;
   if (r.traceparent !== undefined && typeof r.traceparent !== 'string') return false;
   if (typeof r.metadata !== 'object' || r.metadata === null) return false;
   const m = r.metadata as Record<string, unknown>;
@@ -517,7 +646,8 @@ function isSendRequest(request: unknown): request is OkBugReportSendRequest {
     (m.level === 'standard' || m.level === 'full') &&
     typeof m.systemWide === 'boolean' &&
     (m.projectSlug === null || typeof m.projectSlug === 'string') &&
-    isValidNote(m.note)
+    isValidNote(m.note) &&
+    isValidContactEmail(m.email)
   );
 }
 
@@ -620,48 +750,60 @@ function describeTransportFailure(
   return details;
 }
 
-function logScreenshotSkip(reason: string, cause?: unknown): null {
-  logIpcError({
-    event: 'ipc.error',
-    channel: 'ok:bug-report:dispatch',
-    reason: `screenshot-upload-skipped: ${reason}`,
-    handler: 'uploadScreenshotAsset',
-    ...(cause === undefined ? {} : { cause }),
-  });
-  return null;
+function logImageUploadSkip(handler: string, prefix: string) {
+  return (reason: string, cause?: unknown): null => {
+    logIpcError({
+      event: 'ipc.error',
+      channel: 'ok:bug-report:dispatch',
+      reason: `${prefix}: ${reason}`,
+      handler,
+      ...(cause === undefined ? {} : { cause }),
+    });
+    return null;
+  };
 }
 
-async function uploadScreenshotAsset(
-  base: URL,
-  screenshotBytes: Uint8Array,
-  metadata: BugReportWireMetadata,
+const logScreenshotSkip = logImageUploadSkip('uploadScreenshotAsset', 'screenshot-upload-skipped');
+const logAttachmentSkip = logImageUploadSkip('uploadImageAsset', 'attachment-upload-skipped');
+
+export interface ImageAssetUpload {
+  bytes: Uint8Array;
+  contentType: OkImageAttachmentContentType;
+  filename: string;
+}
+
+interface ImageMintEndpoint {
+  url: URL;
+  body: Record<string, unknown>;
+}
+
+async function uploadImageAsset(
+  mintEndpoint: (image: ImageAssetUpload) => ImageMintEndpoint,
+  image: ImageAssetUpload,
+  skip: (reason: string, cause?: unknown) => null,
   timeouts?: Partial<BugReportUploadTimeouts>,
 ): Promise<string | null> {
   try {
-    const mintRes = await fetch(new URL('/api/bug-report', base), {
+    const endpoint = mintEndpoint(image);
+    const mintRes = await fetch(endpoint.url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        filename: BUG_REPORT_SCREENSHOT_ZIP_NAME,
-        sizeBytes: screenshotBytes.byteLength,
-        contentType: 'image/png',
-        metadata,
-      }),
+      body: JSON.stringify(endpoint.body),
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.mintMs ?? SCREENSHOT_MINT_TIMEOUT_MS),
     });
-    if (!mintRes.ok) return logScreenshotSkip(`mint responded ${mintRes.status}`);
+    if (!mintRes.ok) return skip(`mint responded ${mintRes.status}`);
     const mint = parseMintResponse(await mintRes.json().catch(() => null));
-    if (mint === null) return logScreenshotSkip('mint response malformed');
+    if (mint === null) return skip('mint response malformed');
     if (parseTransportSafeUrl(mint.uploadUrl) === null) {
-      return logScreenshotSkip('mint named a non-https upload URL');
+      return skip('mint named a non-https upload URL');
     }
 
-    const body = new Uint8Array(screenshotBytes.byteLength);
-    body.set(screenshotBytes);
+    const body = new Uint8Array(image.bytes.byteLength);
+    body.set(image.bytes);
     const putRes = await fetch(mint.uploadUrl, {
       method: 'PUT',
-      headers: { 'content-type': 'image/png', ...mint.headers },
+      headers: { 'content-type': image.contentType, ...mint.headers },
       body,
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.putMs ?? SCREENSHOT_PUT_TIMEOUT_MS),
@@ -671,13 +813,49 @@ async function uploadScreenshotAsset(
       putRes.status === 0 ||
       (putRes.status >= 300 && putRes.status < 400)
     ) {
-      return logScreenshotSkip('upload redirected');
+      return skip('upload redirected');
     }
-    if (!putRes.ok) return logScreenshotSkip(`upload responded ${putRes.status}`);
+    if (!putRes.ok) return skip(`upload responded ${putRes.status}`);
     return mint.assetUrl;
   } catch (err) {
-    return logScreenshotSkip('transport error', err);
+    return skip('transport error', err);
   }
+}
+
+function bugReportMintEndpoint(base: URL, metadata: BugReportWireMetadata) {
+  return (image: ImageAssetUpload): ImageMintEndpoint => ({
+    url: new URL('/api/bug-report', base),
+    body: {
+      filename: image.filename,
+      sizeBytes: image.bytes.byteLength,
+      contentType: image.contentType,
+      metadata,
+    },
+  });
+}
+
+function feedbackAttachmentMintEndpoint(base: URL) {
+  return (image: ImageAssetUpload): ImageMintEndpoint => ({
+    url: new URL('/api/feedback/attachment', base),
+    body: {
+      filename: image.filename,
+      sizeBytes: image.bytes.byteLength,
+      contentType: image.contentType,
+    },
+  });
+}
+
+export async function uploadFeedbackImageAsset(
+  base: URL,
+  image: ImageAssetUpload,
+  timeouts?: Partial<BugReportUploadTimeouts>,
+): Promise<string | null> {
+  return uploadImageAsset(
+    feedbackAttachmentMintEndpoint(base),
+    image,
+    logImageUploadSkip('handleAssetUpload', 'feedback-image-upload-skipped'),
+    timeouts,
+  );
 }
 
 async function uploadBugReport(
@@ -687,6 +865,7 @@ async function uploadBugReport(
   timeouts?: Partial<BugReportUploadTimeouts>,
   screenshotBytes?: Uint8Array | null,
   sendTrace?: BugReportSendTrace,
+  attachments: readonly StagedAttachment[] = [],
 ): Promise<BugReportUploadOutcome> {
   const base = parseTransportSafeUrl(baseUrl);
   if (base === null) {
@@ -788,10 +967,36 @@ async function uploadBugReport(
         details: describeTransportFailure(step, stepTarget, { status: putRes.status }),
       };
 
+    const mintEndpoint = bugReportMintEndpoint(base, metadata);
     const screenshotAssetUrl =
       screenshotBytes === undefined || screenshotBytes === null
         ? null
-        : await uploadScreenshotAsset(base, screenshotBytes, metadata, timeouts);
+        : await uploadImageAsset(
+            mintEndpoint,
+            {
+              bytes: screenshotBytes,
+              contentType: 'image/png',
+              filename: BUG_REPORT_SCREENSHOT_ZIP_NAME,
+            },
+            logScreenshotSkip,
+            timeouts,
+          );
+
+    const attachmentAssetUrls: string[] = [];
+    for (const [index, attachment] of attachments.entries()) {
+      const extension = BUG_REPORT_ATTACHMENT_EXTENSIONS[attachment.contentType];
+      const assetUrl = await uploadImageAsset(
+        mintEndpoint,
+        {
+          bytes: attachment.bytes,
+          contentType: attachment.contentType,
+          filename: `attachment-${index + 1}.${extension}`,
+        },
+        logAttachmentSkip,
+        timeouts,
+      );
+      if (assetUrl !== null) attachmentAssetUrls.push(assetUrl);
+    }
 
     step = 'complete';
     stepTarget = new URL('/api/bug-report/complete', base);
@@ -799,11 +1004,12 @@ async function uploadBugReport(
     const completeRes = await fetch(stepTarget, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(
-        screenshotAssetUrl === null
-          ? { assetUrl: mint.assetUrl, metadata }
-          : { assetUrl: mint.assetUrl, screenshotAssetUrl, metadata },
-      ),
+      body: JSON.stringify({
+        assetUrl: mint.assetUrl,
+        ...(screenshotAssetUrl === null ? {} : { screenshotAssetUrl }),
+        ...(attachmentAssetUrls.length === 0 ? {} : { attachmentAssetUrls }),
+        metadata,
+      }),
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.completeMs ?? COMPLETE_TIMEOUT_MS),
     });
@@ -936,6 +1142,7 @@ export async function handleBugReportSend(
     systemWide: request.metadata.systemWide,
     projectSlug: request.metadata.projectSlug,
     ...(scrubbedNote !== undefined ? { note: scrubbedNote } : {}),
+    ...(request.metadata.email !== undefined ? { email: request.metadata.email } : {}),
   };
   const fallback = {
     mailtoUrl: buildBugReportMailto({
@@ -989,6 +1196,11 @@ export async function handleBugReportSend(
   if (request.includeScreenshot === true && screenshotBytes === null) {
     logScreenshotSkip('capture unavailable at send time');
   }
+  const attachments =
+    request.includeAttachments === true ? (deps.attachmentBytes?.(reportId) ?? []) : [];
+  if (request.includeAttachments === true && attachments.length === 0) {
+    logAttachmentSkip('attachments unavailable at send time');
+  }
 
   const wireMetadata: BugReportWireMetadata = { ...metadata, ...hostFacts };
   const outcome = await uploadBugReport(
@@ -998,6 +1210,7 @@ export async function handleBugReportSend(
     deps.timeouts,
     screenshotBytes,
     sendTrace,
+    attachments,
   );
   if (outcome.ok) {
     await runSidecarHook(

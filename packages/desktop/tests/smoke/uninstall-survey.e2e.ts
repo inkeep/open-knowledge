@@ -51,7 +51,7 @@ test.describe('uninstall churn survey smoke', () => {
 
   test('carries a filled-in survey back to main as answers', async ({ captureStderrFor }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-');
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');
@@ -85,7 +85,7 @@ test.describe('uninstall churn survey smoke', () => {
     captureStderrFor,
   }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-close-');
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');
@@ -103,7 +103,7 @@ test.describe('uninstall churn survey smoke', () => {
 
   test('skipping continues with nothing filed', async ({ captureStderrFor }) => {
     const { app, home } = await launchSurveyPreview('ok-uninstall-survey-skip-');
-    captureStderrFor(app, { cleanupDirs: [home] });
+    captureStderrFor(app, { home, cleanupDirs: [home] });
 
     await app.firstWindow({ timeout: 20_000 });
     const survey = await findWindowByPath(app, '/uninstall.html');

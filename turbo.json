@@ -42,7 +42,22 @@
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
       "outputs": ["dist/**", ".next/**"],
-      "env": ["VERCEL_GIT_COMMIT_SHA", "GITHUB_SHA"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!src/**/*.test.ts",
+        "!src/**/*.test.tsx",
+        "!src/**/*.test-helper.ts",
+        "!vitest.config.ts",
+        "!vitest.*.config.mts"
+      ],
+      "env": [
+        "VERCEL_GIT_COMMIT_SHA",
+        "GITHUB_SHA",
+        "VERCEL_ENV",
+        "OK_ALLOW_BLOGLESS_LLMS_TXT",
+        "CI",
+        "VERCEL"
+      ]
     },
     "test": {
       "dependsOn": ["^build"],
@@ -51,6 +66,7 @@
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.json",
+        "src/**/*.css",
         "tests/contract/**/*.ts",
         "vitest.config.ts",
         "vite.dedupe.ts",
@@ -60,10 +76,37 @@
         "../test-support/*.ts"
       ]
     },
+    "@inkeep/open-knowledge-docs#test": {
+      "dependsOn": ["^build", "build"],
+      "cache": true,
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "content/**",
+        "_snippets/**",
+        "next.config.ts",
+        "source.config.ts",
+        "microfrontends.json",
+        "postcss.config.ts",
+        "tsconfig.json",
+        "vitest.config.ts",
+        "vitest.*.config.mts",
+        "../../test-support/*.ts",
+        "../test-support/*.ts"
+      ]
+    },
     "@inkeep/open-knowledge#test": {
       "dependsOn": ["^build", "build"],
       "cache": true,
-      "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "tests/contract/**/*.ts",
+        "vitest.config.ts",
+        "../../test-support/*.ts"
+      ]
     },
     "@inkeep/open-knowledge-desktop#test": {
       "dependsOn": ["^build"],
@@ -105,6 +148,7 @@
         "src/**/*.tsx",
         "tests/dom/**/*.ts",
         "tests/dom/**/*.tsx",
+        "tests/stress/_helpers/**/*.ts",
         "tests/*.test-helper.ts",
         "tests/integration/test-harness.ts",
         "vitest.dom.config.ts",
@@ -126,6 +170,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -148,6 +193,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -170,6 +216,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -192,6 +239,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",

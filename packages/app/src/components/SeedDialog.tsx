@@ -244,16 +244,12 @@ export function SeedDialog({ open, onOpenChange, onSeedApplied, initialPackId }:
 
         <DialogFooter>
           {step === 'configure' && !packLocked ? (
-            <Button className="me-auto uppercase font-mono" variant="ghost" onClick={handleBack}>
+            <Button className="me-auto" variant="ghost" onClick={handleBack}>
               <ArrowLeft aria-hidden="true" className="h-4 w-4" />
               <Trans>Back</Trans>
             </Button>
           ) : null}
-          <Button
-            className="uppercase font-mono"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             {phase.kind === 'already-seeded' || phase.kind === 'error' ? (
               <Trans>Close</Trans>
             ) : (

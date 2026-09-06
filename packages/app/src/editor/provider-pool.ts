@@ -199,7 +199,7 @@ const LAST_OBSERVED_BRANCH_KEY = 'ok-last-observed-branch';
 
 const DOC_LINEAGE_EPOCHS_KEY = 'ok-doc-lineage-epochs';
 
-const FORCE_SYNC_INTERVAL_MS = 5_000;
+export const FORCE_SYNC_INTERVAL_MS = 5_000;
 
 const MAX_BUFFER_BYTES = readNumericOverride('MAX_BUFFER_BYTES', 1 * 1024 * 1024);
 

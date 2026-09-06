@@ -16,6 +16,10 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  REFUSED_LOOPBACK_ORIGIN,
+  REFUSED_LOOPBACK_ORIGIN_ALT,
+} from '../../../../../test-support/refused-loopback.test-helper.ts';
 
 const startedSpanNames: string[] = [];
 vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
@@ -65,6 +69,7 @@ import {
   resolveBugReportIntakeUrl,
   resolveMinidumpAttachment,
   resolveMinidumpIntent,
+  type StagedAttachment,
 } from './bug-report.ts';
 
 async function readSidecarValue(path: string) {
@@ -2673,7 +2678,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
 
     const result = await handleBugReportSend(
       {
-        ...makeSendDeps('https://intake.invalid-tld-for-test.invalid', dir),
+        ...makeSendDeps(REFUSED_LOOPBACK_ORIGIN, dir),
         sidecar: store.sendHooks,
       },
       { kind: 'send', zipPath, metadata: SEND_METADATA },
@@ -2683,12 +2688,12 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.lastError).toMatchObject({
       reason: 'mint-network-error',
-      errorCode: 'ENOTFOUND',
+      errorCode: 'ECONNREFUSED',
     });
     expect(sidecar?.attempts?.at(-1)).toMatchObject({
       outcome: 'failed',
       error: 'mint-network-error',
-      errorCode: 'ENOTFOUND',
+      errorCode: 'ECONNREFUSED',
     });
     expect(JSON.stringify(sidecar)).not.toContain('fetch failed');
   });
@@ -2770,8 +2775,8 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
     return line;
   }
 
-  test('an unresolvable intake names the step, the errno, and the host', async () => {
-    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+  test('an unreachable intake names the step, the errno, and the host', async () => {
+    const { deps, zipPath } = makeSendRig(REFUSED_LOOPBACK_ORIGIN);
 
     const lines = await captureIpcErrors(() =>
       handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
@@ -2779,16 +2784,17 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
 
     const details = dispatchFailure(lines).details as Record<string, unknown>;
     expect(details.step).toBe('mint');
-    expect(details.host).toBe('intake.invalid-tld-for-test.invalid');
+    expect(details.host).toBe(new URL(REFUSED_LOOPBACK_ORIGIN).host);
     expect(details.errName).toBe('TypeError');
-    expect(details.errCode).toBe('ENOTFOUND');
+    expect(details.errCode).toBe('ECONNREFUSED');
   });
 
   test('a failing upload names the storage host without leaking the signature', async () => {
+    const storageOrigin = REFUSED_LOOPBACK_ORIGIN;
     const stub = await startIntakeStub({
       mintBody: {
-        uploadUrl: 'https://storage.example.invalid/dest?X-Signature=SUPERSECRETSIG&exp=99',
-        assetUrl: 'https://uploads.example.invalid/asset/dest',
+        uploadUrl: `${storageOrigin}/dest?X-Signature=SUPERSECRETSIG&exp=99`,
+        assetUrl: `${REFUSED_LOOPBACK_ORIGIN_ALT}/asset/dest`,
         headers: {},
       },
     });
@@ -2801,7 +2807,7 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
     const line = dispatchFailure(lines);
     const details = line.details as Record<string, unknown>;
     expect(details.step).toBe('upload');
-    expect(details.host).toBe('storage.example.invalid');
+    expect(details.host).toBe(new URL(storageOrigin).host);
     expect(JSON.stringify(line)).not.toContain('SUPERSECRETSIG');
   });
 
@@ -2818,7 +2824,7 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
   });
 
   test('a transport throw names its leg in the reason, not just in the details', async () => {
-    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+    const { deps, zipPath } = makeSendRig(REFUSED_LOOPBACK_ORIGIN);
 
     const lines = await captureIpcErrors(() =>
       handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
@@ -2866,5 +2872,251 @@ describe('handleBugReportSend — transport phase spans', () => {
         'ok.bug-report.complete',
       ]),
     );
+  });
+});
+
+describe('handleBugReportCreate — reporter attachments', () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]);
+  const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x02]);
+
+  test('stages each attachment byte-for-byte under extra/attachments/', async () => {
+    const deps = makeDeps({});
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      attachments: [
+        { contentType: 'image/png', bytes: new Uint8Array(PNG) },
+        { contentType: 'image/jpeg', bytes: new Uint8Array(JPEG) },
+      ],
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain('extra/attachments/1.png');
+    expect(entries).toContain('extra/attachments/2.jpg');
+    expect(readZipEntryBytes(result.zipPath, 'extra/attachments/1.png').equals(PNG)).toBe(true);
+    expect(readZipEntryBytes(result.zipPath, 'extra/attachments/2.jpg').equals(JPEG)).toBe(true);
+  });
+
+  test('hands the staged bytes to the hold keyed by report id', async () => {
+    const staged: { reportId: string; attachments: readonly StagedAttachment[] }[] = [];
+    const deps = makeDeps({
+      onAttachmentsStaged: (reportId, attachments) => staged.push({ reportId, attachments }),
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      attachments: [{ contentType: 'image/webp', bytes: new Uint8Array(PNG) }],
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(staged).toHaveLength(1);
+    expect(staged[0]?.reportId).toBe(basename(result.zipPath));
+    expect(staged[0]?.attachments[0]?.contentType).toBe('image/webp');
+    expect(staged[0]?.attachments[0]?.bytes.equals(PNG)).toBe(true);
+  });
+
+  test('a request with no attachments stages nothing and never calls the hold', async () => {
+    let called = 0;
+    const deps = makeDeps({ onAttachmentsStaged: () => (called += 1) });
+
+    const result = await handleBugReportCreate(deps, { kind: 'create', level: 'standard' });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath).some((e) => e.startsWith('extra/'))).toBe(false);
+    expect(called).toBe(0);
+  });
+
+  test('rejects more than three attachments as an invalid request', async () => {
+    const deps = makeDeps({});
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      attachments: Array.from({ length: 4 }, () => ({
+        contentType: 'image/png' as const,
+        bytes: new Uint8Array(PNG),
+      })),
+    });
+    expect(result).toEqual({ ok: false, error: 'invalid-request' });
+  });
+
+  test('rejects a disallowed content type and an over-cap total', async () => {
+    const deps = makeDeps({});
+    expect(
+      await handleBugReportCreate(deps, {
+        kind: 'create',
+        level: 'standard',
+        attachments: [
+          { contentType: 'image/gif' as unknown as 'image/png', bytes: new Uint8Array(PNG) },
+        ],
+      }),
+    ).toEqual({ ok: false, error: 'invalid-request' });
+
+    expect(
+      await handleBugReportCreate(deps, {
+        kind: 'create',
+        level: 'standard',
+        attachments: [{ contentType: 'image/png', bytes: new Uint8Array(3 * 1024 * 1024 + 1) }],
+      }),
+    ).toEqual({ ok: false, error: 'invalid-request' });
+  });
+});
+
+describe('handleBugReportSend — reporter attachments and contact email', () => {
+  const ATTACHMENT_ONE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01]);
+  const ATTACHMENT_TWO = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x02]);
+
+  function rigWithAttachments(intakeUrl: string, attachments: StagedAttachment[]) {
+    const rig = makeSendRig(intakeUrl, SCREENSHOT_PNG);
+    return {
+      zipPath: rig.zipPath,
+      deps: { ...rig.deps, attachmentBytes: () => attachments },
+    };
+  }
+
+  test('uploads each attachment as its own asset and carries the URLs to completion', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = rigWithAttachments(stub.url, [
+      { contentType: 'image/png', bytes: ATTACHMENT_ONE },
+      { contentType: 'image/jpeg', bytes: ATTACHMENT_TWO },
+    ]);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+      includeScreenshot: true,
+      includeAttachments: true,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+
+    const mints = stub.requests.filter((r) => r.path === '/api/bug-report');
+    expect(mints).toHaveLength(4);
+    expect(JSON.parse(mints[2]?.body.toString('utf8') ?? '')).toMatchObject({
+      filename: 'attachment-1.png',
+      contentType: 'image/png',
+      sizeBytes: ATTACHMENT_ONE.byteLength,
+    });
+    expect(JSON.parse(mints[3]?.body.toString('utf8') ?? '')).toMatchObject({
+      filename: 'attachment-2.jpg',
+      contentType: 'image/jpeg',
+    });
+
+    const complete = stub.requests.at(-1);
+    expect(JSON.parse(complete?.body.toString('utf8') ?? '')).toMatchObject({
+      attachmentAssetUrls: [
+        'https://uploads.example.invalid/asset/dest',
+        'https://uploads.example.invalid/asset/dest',
+      ],
+    });
+  });
+
+  test('omits the attachment key entirely when the report carries none', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    const body = JSON.parse(stub.requests.at(-1)?.body.toString('utf8') ?? '') as Record<
+      string,
+      unknown
+    >;
+    expect('attachmentAssetUrls' in body).toBe(false);
+    expect('screenshotAssetUrl' in body).toBe(false);
+    expect(Object.keys(body)).toEqual(['assetUrl', 'metadata']);
+  });
+
+  test('does not upload attachments the send request did not consent to', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = rigWithAttachments(stub.url, [
+      { contentType: 'image/png', bytes: ATTACHMENT_ONE },
+    ]);
+
+    await handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA });
+
+    expect(stub.requests.filter((r) => r.path === '/api/bug-report')).toHaveLength(1);
+  });
+
+  test('carries the contact email on every mint and on completion', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: { ...SEND_METADATA, email: 'me@example.com' },
+    });
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    const complete = JSON.parse(stub.requests.at(-1)?.body.toString('utf8') ?? '') as {
+      metadata: Record<string, unknown>;
+    };
+    expect(complete.metadata.email).toBe('me@example.com');
+  });
+
+  test('rejects an over-long address as an invalid request', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: { ...SEND_METADATA, email: `${'a'.repeat(320)}@example.com` },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(stub.requests).toHaveLength(0);
+  });
+});
+
+describe('createBugReportScreenshotHold — attachments', () => {
+  test('a screenshot and attachments for one report share a lifetime', () => {
+    const hold = createBugReportScreenshotHold();
+    const png = Buffer.from([0x01]);
+    const attachments: StagedAttachment[] = [
+      { contentType: 'image/png', bytes: Buffer.from([0x02]) },
+    ];
+
+    hold.remember('report-a', png, 7);
+    hold.rememberAttachments('report-a', attachments, 7);
+
+    expect(hold.read('report-a')).toBe(png);
+    expect(hold.readAttachments('report-a')).toEqual(attachments);
+
+    hold.forget('report-a');
+    expect(hold.read('report-a')).toBeNull();
+    expect(hold.readAttachments('report-a')).toEqual([]);
+  });
+
+  test('forgetOwner drops attachments alongside the screenshot', () => {
+    const hold = createBugReportScreenshotHold();
+    hold.rememberAttachments(
+      'report-b',
+      [{ contentType: 'image/webp', bytes: Buffer.from([0x03]) }],
+      9,
+    );
+    hold.forgetOwner(9);
+    expect(hold.readAttachments('report-b')).toEqual([]);
+  });
+
+  test('eviction keeps the cap across both kinds of held bytes', () => {
+    const evicted: string[] = [];
+    const hold = createBugReportScreenshotHold({
+      maxReports: 2,
+      onEvict: (id) => evicted.push(id),
+    });
+    hold.remember('r1', Buffer.from([0x01]), 1);
+    hold.rememberAttachments('r2', [{ contentType: 'image/png', bytes: Buffer.from([2]) }], 1);
+    hold.remember('r3', Buffer.from([0x03]), 1);
+    expect(evicted).toEqual(['r1']);
+    expect(hold.read('r1')).toBeNull();
   });
 });

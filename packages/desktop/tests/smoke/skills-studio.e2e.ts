@@ -42,7 +42,7 @@ test.describe('Skills Studio', () => {
       env: { ...process.env, HOME: tmpHome, OK_M6B_FORCE: '1' },
       timeout: 30_000,
     });
-    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
     await app.firstWindow({ timeout: 15_000 });
 
     const page = await (async () => {
