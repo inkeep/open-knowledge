@@ -1,5 +1,9 @@
-import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
-import { getSchema } from '@tiptap/core';
+import {
+  MarkdownManager,
+  type SerializeCallOptions,
+  sharedExtensions,
+} from '@inkeep/open-knowledge-core';
+import { getSchema, type JSONContent } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
 import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -11,6 +15,7 @@ import { getMetrics } from './metrics.ts';
 import { createCountingManager } from './parse-counting.test-helper.ts';
 import {
   __resetMapDrivenParseErrorWarnForTests,
+  __resetMemoComposeFailureWarnForTests,
   OBSERVER_SYNC_ORIGIN,
   setupServerObservers,
 } from './server-observers.ts';
@@ -329,14 +334,11 @@ describe('map-driven Observer A — default Path A behavior', () => {
       } as unknown as MarkdownManager;
       const reasons: string[] = [];
 
-      const splice = computeMapDrivenBodySplice(
-        'A.\n',
-        mdManager.parse('A.\n'),
-        throwingManager,
-        (reason) => {
+      const splice = computeMapDrivenBodySplice('A.\n', mdManager.parse('A.\n'), throwingManager, {
+        onFallback: (reason) => {
           reasons.push(reason);
         },
-      );
+      });
 
       expect(splice).toBeNull();
       expect(reasons).toEqual(['parse-error']);
@@ -391,14 +393,69 @@ describe('map-driven Observer A — default Path A behavior', () => {
       cleanup();
     });
 
+    test('a memo composition failure warns once with the error, then stays counter-only', () => {
+      const raw = '# Heading\n\npreserved   \n\nFirst.\n\nSecond.\n\nThird.\n';
+      const { doc, xmlFragment, ytext } = createTestDoc();
+      const uncloneableManager = new Proxy(mdManager, {
+        get(target, prop) {
+          if (prop === 'parseToEditorMdast') {
+            return (markdown: string) => {
+              const tree = target.parseToEditorMdast(markdown);
+              for (const child of tree.children) {
+                (child as { data?: Record<string, unknown> }).data = {
+                  uncloneable: () => undefined,
+                };
+              }
+              return tree;
+            };
+          }
+          const value = Reflect.get(target, prop, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      __resetMemoComposeFailureWarnForTests();
+      const warnSpy = vi.spyOn(getLogger('server-observers'), 'warn');
+      const cleanup = setupServerObservers({
+        doc,
+        xmlFragment,
+        ytext,
+        mdManager: uncloneableManager,
+        schema,
+      });
+      doc.transact(() => {
+        composeAndWriteRawBody(doc, raw, 'agent');
+      }, AGENT_WRITE_ORIGIN);
+
+      const before = getMetrics();
+      populateFragment(doc, xmlFragment, raw.replace('First.', 'First EDITED.'));
+      populateFragment(doc, xmlFragment, raw.replace('First.', 'First EDITED TWICE.'));
+      const after = getMetrics();
+
+      expect(ytext.toString()).toContain('First EDITED TWICE.');
+      expect(
+        (after.mapDrivenSpliceMemoSkips['compose-failed'] ?? 0) -
+          (before.mapDrivenSpliceMemoSkips['compose-failed'] ?? 0),
+      ).toBeGreaterThanOrEqual(2);
+      const memoWarns = warnSpy.mock.calls.filter((args) =>
+        String(args[1]).includes('Spliced-body memo composition threw'),
+      );
+      expect(memoWarns).toHaveLength(1);
+      expect((memoWarns[0]?.[0] as { err?: Error }).err?.name).toBe('DataCloneError');
+
+      warnSpy.mockRestore();
+      cleanup();
+    });
+
     test('an offset-less block reports missing-position through the pure computer', () => {
       const reasons: string[] = [];
       const splice = computeMapDrivenBodySplice(
         '<!-- note -->\n',
         mdManager.parse('<!-- note -->\n\nX.\n'),
         mdManager,
-        (reason) => {
-          reasons.push(reason);
+        {
+          onFallback: (reason) => {
+            reasons.push(reason);
+          },
         },
       );
 
@@ -445,6 +502,79 @@ describe('typing-burst parse economy (PRD-8273)', () => {
     expect(ytext.toString()).toContain('alphaXYZ');
 
     expect(burstParses).toBe(3);
+
+    cleanup();
+  });
+
+  test('a keystroke drain serializes the fragment JSON once, not once per consumer', () => {
+    const { manager: counted, serializes } = createCountingManager();
+    const { doc, xmlFragment, ytext } = createTestDoc();
+    const cleanup = setupServerObservers({
+      doc,
+      xmlFragment,
+      ytext,
+      mdManager: counted,
+      schema,
+    });
+
+    doc.transact(() => {
+      const pmNode = schema.nodeFromJSON(counted.parse('# H\n\nalpha\n'));
+      updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
+    });
+
+    const before = serializes();
+    for (const ch of 'XYZ') typeChar(doc, xmlFragment, ch);
+
+    expect(ytext.toString()).toContain('alphaXYZ');
+    expect(serializes() - before).toBe(3);
+
+    cleanup();
+  });
+
+  test('a drain inside the freshness window serializes for itself instead of reusing the suppressed body', () => {
+    const real = new MarkdownManager({
+      extensions: sharedExtensions,
+      deriveStructuralFreshness: true,
+    });
+    const serializeOpts: Array<SerializeCallOptions | undefined> = [];
+    const recording = new Proxy(real, {
+      get(target, prop, receiver) {
+        if (prop === 'serialize') {
+          return (json: JSONContent, opts?: SerializeCallOptions) => {
+            serializeOpts.push(opts);
+            return target.serialize(json, opts);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const { doc, xmlFragment, ytext } = createTestDoc();
+    const cleanup = setupServerObservers({
+      doc,
+      xmlFragment,
+      ytext,
+      mdManager: recording,
+      schema,
+      docName: 'freshness-window',
+    });
+
+    doc.transact(() => {
+      const pmNode = schema.nodeFromJSON(real.parse('# H\n\nalpha\n\nbeta\n'));
+      updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
+    });
+
+    doc.transact(() => {
+      ytext.insert(ytext.length, 'Source tail.\n');
+    });
+
+    const before = serializeOpts.length;
+    typeChar(doc, xmlFragment, 'X');
+    const drainCalls = serializeOpts.slice(before);
+
+    expect(drainCalls.some((o) => o?.skipFreshnessDerive === true)).toBe(true);
+    expect(drainCalls.some((o) => o?.skipFreshnessDerive !== true)).toBe(true);
+    expect(ytext.toString()).toContain('X');
 
     cleanup();
   });

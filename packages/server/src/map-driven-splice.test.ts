@@ -1,7 +1,12 @@
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
-import { computeMapDrivenBodySplice, createEditorMdastMemo } from './map-driven-splice.ts';
+import {
+  computeMapDrivenBodySplice,
+  createEditorMdastMemo,
+  type EditorMdastMemo,
+} from './map-driven-splice.ts';
+import type { MapDrivenSpliceMemoSkipReason } from './metrics.ts';
 import { createCountingManager } from './parse-counting.test-helper.ts';
 
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
@@ -212,19 +217,15 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
     const memo = createEditorMdastMemo();
     const bodyA = '# H\n\nalpha\n';
 
-    const first = computeMapDrivenBodySplice(
-      bodyA,
-      counted.parse('# H\n\nalphaX\n'),
-      counted,
-      undefined,
+    const first = computeMapDrivenBodySplice(bodyA, counted.parse('# H\n\nalphaX\n'), counted, {
       memo,
-    );
+    });
     expect(first).not.toBeNull();
     if (!first) return;
     const bodyB = applySplice(bodyA, first);
     const afterFirst = parses();
 
-    computeMapDrivenBodySplice(bodyB, counted.parse('# H\n\nalphaXY\n'), counted, undefined, memo);
+    computeMapDrivenBodySplice(bodyB, counted.parse('# H\n\nalphaXY\n'), counted, { memo });
 
     expect(parses() - afterFirst).toBe(1);
   });
@@ -234,7 +235,7 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
     const memo = createEditorMdastMemo();
 
     const primed = '# H\n\nalpha\n';
-    computeMapDrivenBodySplice(primed, counted.parse('# H\n\nalphaX\n'), counted, undefined, memo);
+    computeMapDrivenBodySplice(primed, counted.parse('# H\n\nalphaX\n'), counted, { memo });
     const afterPrime = parses();
 
     const external = '# DIFFERENT\n\nomega\n\ntail\n';
@@ -242,8 +243,7 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
       external,
       counted.parse('# DIFFERENT\n\nomega EDITED\n\ntail\n'),
       counted,
-      undefined,
-      memo,
+      { memo },
     );
     expect(splice).not.toBeNull();
     if (!splice) return;
@@ -265,8 +265,7 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
       bodyA,
       counted.parse('# H\n\none EDITED\n\ntwo\n\nthree\n'),
       counted,
-      undefined,
-      memo,
+      { memo },
     );
     expect(first).not.toBeNull();
     if (!first) return;
@@ -274,7 +273,7 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
 
     const newPm = counted.parse('# H\n\none EDITED\n\ntwo CHANGED\n\nthree\n');
     const before = parses();
-    const fromHit = computeMapDrivenBodySplice(bodyB, newPm, counted, undefined, memo);
+    const fromHit = computeMapDrivenBodySplice(bodyB, newPm, counted, { memo });
     expect(parses() - before).toBe(1);
 
     const fromFreshParse = computeMapDrivenBodySplice(bodyB, newPm, counted);
@@ -282,7 +281,7 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
     expect(fromHit).not.toBeNull();
   });
 
-  test('preserved bytes the serializer would not emit cause the next drain to miss', () => {
+  test('preserved bytes the serializer would not emit still hit the next drain', () => {
     const { manager: counted, parses } = createCountingManager();
     const memo = createEditorMdastMemo();
     const bodyA = 'one   \n\ntwo\n\nthree\n';
@@ -291,22 +290,19 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
       bodyA,
       counted.parse('one   \n\ntwo A\n\nthree\n'),
       counted,
-      undefined,
-      memo,
+      { memo },
     );
     expect(first).not.toBeNull();
     if (!first) return;
     const bodyB = applySplice(bodyA, first);
+    expect(bodyB).not.toBe(counted.serialize(counted.parse(bodyB)));
+    expect(memo.entry?.body).toBe(bodyB);
 
+    const newPm = counted.parse('one   \n\ntwo B\n\nthree\n');
     const before = parses();
-    computeMapDrivenBodySplice(
-      bodyB,
-      counted.parse('one   \n\ntwo B\n\nthree\n'),
-      counted,
-      undefined,
-      memo,
-    );
-    expect(parses() - before).toBe(2);
+    const fromHit = computeMapDrivenBodySplice(bodyB, newPm, counted, { memo });
+    expect(parses() - before).toBe(1);
+    expect(fromHit).toEqual(computeMapDrivenBodySplice(bodyB, newPm, counted));
   });
 
   test('a same-length body with different content misses — the key is bytes, not length', () => {
@@ -318,15 +314,224 @@ describe('editor-mdast parse memo (PRD-8273)', () => {
     expect(actual.length).toBe(primed.length);
     expect(actual).not.toBe(primed);
 
-    computeMapDrivenBodySplice('zzz\n', counted.parse(primed), counted, undefined, memo);
+    computeMapDrivenBodySplice('zzz\n', counted.parse(primed), counted, { memo });
 
     const newPm = counted.parse('one two\n\nthreeY\n');
     const before = parses();
-    const withMemo = computeMapDrivenBodySplice(actual, newPm, counted, undefined, memo);
+    const withMemo = computeMapDrivenBodySplice(actual, newPm, counted, { memo });
     expect(parses() - before).toBe(2);
 
     const withoutMemo = computeMapDrivenBodySplice(actual, newPm, counted);
     expect(withMemo).toEqual(withoutMemo);
     expect(withMemo).not.toBeNull();
+  });
+});
+
+describe('caller-supplied serialization', () => {
+  test('a body serialized from the same PM JSON is reused instead of re-serialized', () => {
+    const { manager: counted, serializes } = createCountingManager();
+    const memo = createEditorMdastMemo();
+    const oldBody = '# H\n\none\n\ntwo\n';
+    const newPm = counted.parse('# H\n\none EDITED\n\ntwo\n');
+    const body = counted.serialize(newPm);
+
+    const before = serializes();
+    const reused = computeMapDrivenBodySplice(oldBody, newPm, counted, {
+      memo,
+      serializedNewPm: { json: newPm, body, opts: undefined },
+    });
+    expect(serializes() - before).toBe(0);
+    expect(reused).toEqual(computeMapDrivenBodySplice(oldBody, newPm, counted));
+  });
+
+  test('a body carried from different PM JSON is ignored and the splice serializes itself', () => {
+    const { manager: counted, serializes } = createCountingManager();
+    const oldBody = '# H\n\none\n\ntwo\n';
+    const newPm = counted.parse('# H\n\none EDITED\n\ntwo\n');
+    const stale = counted.parse('# H\n\nSTALE\n\ntwo\n');
+    const staleBody = counted.serialize(stale);
+
+    const before = serializes();
+    const splice = computeMapDrivenBodySplice(oldBody, newPm, counted, {
+      serializedNewPm: { json: stale, body: staleBody, opts: undefined },
+    });
+    const selfSerializes = serializes() - before;
+    expect(selfSerializes).toBe(1);
+    expect(splice).toEqual(computeMapDrivenBodySplice(oldBody, newPm, counted));
+  });
+});
+
+describe('spliced-body memo fidelity', () => {
+  const DIRTY_PREFIX = 'preserved   \n\n';
+
+  const NARROWABLE_SHAPES = new Set(['list', 'blockquote', 'loose-list']);
+
+  const CORPUS: Array<[string, string]> = [
+    ['paragraphs', 'one\n\ntwo\n\nthree\n\nfour\n'],
+    ['headings', '# H\n\npara\n\n## H2\n\npara two\n\ntail\n'],
+    ['list', '# H\n\n- one\n- two\n- three\n\npara\n\ntail\n'],
+    ['blockquote', '# H\n\n> one\n>\n> two\n\npara\n\ntail\n'],
+    ['table', '# H\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\npara\n\ntail\n'],
+    ['code-fence', '# H\n\n```js\nconst a = 1;\n```\n\npara\n\ntail\n'],
+    ['setext', 'Title\n=====\n\npara\n\ntail\n'],
+    ['definitions', '# H\n\n[a]: http://example.com\n\nsee [a]\n\npara two\n\ntail\n'],
+    ['footnote', '# H\n\ntext[^1]\n\n[^1]: note\n\npara two\n\ntail\n'],
+    ['dirty-bytes', 'one   \n\ntwo\n\nthree\n\nfour\n'],
+    ['blank-runs', 'one\n\n\n\ntwo\n\nthree\n\nfour\n'],
+    ['thematic-break', 'one\n\n---\n\ntwo\n\nthree\n'],
+    ['loose-list', '# H\n\n- one\n\n- two\n\npara\n\ntail\n'],
+    [
+      'many-blocks',
+      `${Array.from({ length: 60 }, (_, i) => `Paragraph ${i} body text.`).join('\n\n')}\n`,
+    ],
+  ];
+
+  const EDITS: Array<[string, (text: string) => string]> = [
+    ['append-char', (text) => `${text}Z`],
+    ['prepend-char', (text) => `Z${text}`],
+    ['emphasis-marker', (text) => `${text} *em*`],
+    ['dash-run', (text) => `${text} ---`],
+  ];
+
+  function editFirstLeaf(
+    json: JSONContent,
+    blockIndex: number,
+    edit: (text: string) => string,
+  ): JSONContent | null {
+    const clone = structuredClone(json) as JSONContent;
+    const block = clone.content?.[blockIndex];
+    if (!block) return null;
+    const stack: JSONContent[] = [block];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (!node) continue;
+      if (typeof node.text === 'string') {
+        node.text = edit(node.text);
+        return clone;
+      }
+      for (const child of node.content ?? []) stack.push(child);
+    }
+    return null;
+  }
+
+  function appendToFirstLeaf(json: JSONContent, blockIndex: number): JSONContent | null {
+    return editFirstLeaf(json, blockIndex, (text) => `${text}Z`);
+  }
+
+  for (const [label, canonicalDoc] of CORPUS) {
+    for (const [form, doc] of [
+      ['canonical', canonicalDoc],
+      ['non-canonical', `${DIRTY_PREFIX}${canonicalDoc}`],
+    ] as const) {
+      test(`${label} (${form}): every composed entry equals a fresh parse of the spliced body`, () => {
+        const pm = mdManager.parse(doc);
+        const blockCount = pm.content?.length ?? 0;
+        expect(blockCount).toBeGreaterThan(0);
+        const firstEditable = form === 'canonical' ? 0 : 1;
+        let composed = 0;
+        let attempted = 0;
+        const skips: MapDrivenSpliceMemoSkipReason[] = [];
+
+        for (let index = firstEditable; index < blockCount; index++) {
+          for (const [, edit] of EDITS) {
+            const edited = editFirstLeaf(pm, index, edit);
+            if (!edited) continue;
+            attempted++;
+            const memo = createEditorMdastMemo();
+            const newBody = mdManager.serialize(edited);
+            const splice = computeMapDrivenBodySplice(doc, edited, mdManager, {
+              memo,
+              onMemoSkip: (reason) => skips.push(reason),
+            });
+            expect(splice).not.toBeNull();
+            if (!splice) continue;
+            const applied = applySplice(doc, splice);
+            expect(memo.entry).not.toBeNull();
+            if (applied === newBody) {
+              expect(memo.entry?.body).toBe(newBody);
+              continue;
+            }
+            if (memo.entry?.body !== applied) continue;
+            composed++;
+            expect(JSON.stringify(memo.entry.children)).toBe(
+              JSON.stringify(mdManager.parseToEditorMdast(applied).children),
+            );
+          }
+        }
+
+        const narrowedSkips = skips.filter((reason) => reason === 'narrowed').length;
+        const alreadyCurrentSkips = skips.filter(
+          (reason) => reason === 'entry-already-current',
+        ).length;
+
+        expect(attempted).toBeGreaterThan(0);
+        expect(skips.filter((r) => r !== 'narrowed' && r !== 'entry-already-current')).toEqual([]);
+        expect(composed).toBe(attempted - narrowedSkips - alreadyCurrentSkips);
+        if (form === 'canonical') {
+          expect(alreadyCurrentSkips).toBeGreaterThan(0);
+        } else {
+          expect(composed).toBeGreaterThan(0);
+        }
+        if (NARROWABLE_SHAPES.has(label)) {
+          expect(narrowedSkips).toBeGreaterThan(0);
+        } else {
+          expect(narrowedSkips).toBe(0);
+        }
+      });
+    }
+  }
+
+  test('a container-narrowed splice leaves the constructed entry unwritten', () => {
+    const doc = 'para   \n\n- one\n- two\n- three\n\ntail\n';
+    const pm = mdManager.parse(doc);
+    const edited = appendToFirstLeaf(pm, 1);
+    expect(edited).not.toBeNull();
+    if (!edited) return;
+    const memo = createEditorMdastMemo();
+    const splice = computeMapDrivenBodySplice(doc, edited, mdManager, { memo });
+    expect(splice).not.toBeNull();
+    if (!splice) return;
+    const applied = applySplice(doc, splice);
+    const newBody = mdManager.serialize(edited);
+    expect(applied).not.toBe(newBody);
+    expect(applied.startsWith('para   ')).toBe(true);
+    expect(splice.spliceStart).toBeGreaterThan(doc.indexOf('- one'));
+    expect(memo.entry?.body).toBe(newBody);
+  });
+});
+
+describe('spliced-body memo failure isolation', () => {
+  test('a throwing memo write costs the optimization, not the splice', () => {
+    const oldBody = 'preserved   \n\none\n\ntwo\n\nthree\n';
+    const newPm = mdManager.parse('preserved   \n\none EDITED\n\ntwo\n\nthree\n');
+    const reasons: MapDrivenSpliceMemoSkipReason[] = [];
+    const errors: unknown[] = [];
+    const composeFailure = new Error('synthetic composition regression');
+    let stored: EditorMdastMemo['entry'] = null;
+    let writes = 0;
+    const hostileMemo = {
+      get entry() {
+        return stored;
+      },
+      set entry(value: EditorMdastMemo['entry']) {
+        writes++;
+        if (writes > 2) throw composeFailure;
+        stored = value;
+      },
+    } as EditorMdastMemo;
+
+    const splice = computeMapDrivenBodySplice(oldBody, newPm, mdManager, {
+      memo: hostileMemo,
+      onMemoSkip: (reason, err) => {
+        reasons.push(reason);
+        errors.push(err);
+      },
+    });
+
+    expect(splice).not.toBeNull();
+    expect(splice).toEqual(computeMapDrivenBodySplice(oldBody, newPm, mdManager));
+    expect(writes).toBe(3);
+    expect(reasons).toEqual(['compose-failed']);
+    expect(errors).toEqual([composeFailure]);
   });
 });

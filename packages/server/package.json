@@ -74,6 +74,7 @@
     "typecheck": "pnpm run typecheck:bash && tsc",
     "test": "vitest run",
     "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts",
+    "measure:observer-a-drain": "node --import tsx --conditions=development measure-observer-a-drain.ts",
     "typecheck:bash": "tsc -p tsconfig.bash.json"
   },
   "devDependencies": {

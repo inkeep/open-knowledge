@@ -51,6 +51,7 @@ import {
   splitFmBoundarySlot,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
+import type { JSONContent } from '@tiptap/core';
 import type { Schema } from '@tiptap/pm/model';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
@@ -77,6 +78,8 @@ import {
   computeMapDrivenBodySplice,
   createEditorMdastMemo,
   type EditorMdastMemo,
+  type SerializedEditorBody,
+  serializeEditorBody,
 } from './map-driven-splice.ts';
 import {
   incrementBridgeMergeCheckpointCreated,
@@ -86,6 +89,8 @@ import {
   incrementDeriveTimingDeferForceResolved,
   incrementMapDrivenSpliceApplied,
   incrementMapDrivenSpliceFallback,
+  incrementMapDrivenSpliceMemoHit,
+  incrementMapDrivenSpliceMemoSkip,
   incrementObserverAApplyLoss,
   incrementObserverAApplyLossCheckpointCreated,
   incrementObserverADuplicationCheckpointCreated,
@@ -265,10 +270,10 @@ interface YTextMapDrivenSplice {
 interface TryComputeMapDrivenSpliceArgs {
   readonly currentText: string;
   readonly lastSyncedXmlMd: string;
-  readonly json: unknown;
   readonly mdManager: MarkdownManager;
   readonly docName: string | undefined;
   readonly mdastMemo: EditorMdastMemo;
+  readonly serializedNewPm: SerializedEditorBody;
 }
 
 let mapDrivenParseErrorWarned = false;
@@ -286,10 +291,26 @@ function warnOnceMapDrivenParseError(docName: string | undefined, err: unknown):
   );
 }
 
+let memoComposeFailureWarned = false;
+
+export function __resetMemoComposeFailureWarnForTests(): void {
+  memoComposeFailureWarned = false;
+}
+
+function warnOnceMemoComposeFailure(docName: string | undefined, err: unknown): void {
+  if (memoComposeFailureWarned) return;
+  memoComposeFailureWarned = true;
+  log.warn(
+    { docName: docName ?? 'unknown', err: err instanceof Error ? err : new Error(String(err)) },
+    `[Server Observer A] Spliced-body memo composition threw (doc: ${docName ?? 'unknown'}); the splice is unaffected and the next drain re-parses (warned once; further failures count in mapDrivenSpliceMemoSkips only)`,
+  );
+}
+
 function tryComputeMapDrivenSplice(
   args: TryComputeMapDrivenSpliceArgs,
 ): YTextMapDrivenSplice | null {
-  const { currentText, lastSyncedXmlMd, json, mdManager, docName, mdastMemo } = args;
+  const { currentText, lastSyncedXmlMd, mdManager, docName, mdastMemo, serializedNewPm } = args;
+  const newPmJson = serializedNewPm.json;
   if (currentText !== lastSyncedXmlMd) {
     incrementMapDrivenSpliceFallback('text-mismatch');
     return null;
@@ -301,16 +322,19 @@ function tryComputeMapDrivenSplice(
 
   const { body: oldBody } = stripFrontmatter(currentText);
   const bodyOffset = currentText.length - oldBody.length;
-  const splice = computeMapDrivenBodySplice(
-    oldBody,
-    json as Parameters<typeof computeMapDrivenBodySplice>[1],
-    mdManager,
-    (reason, err) => {
+  const splice = computeMapDrivenBodySplice(oldBody, newPmJson, mdManager, {
+    onFallback: (reason, err) => {
       incrementMapDrivenSpliceFallback(reason);
       if (reason === 'parse-error') warnOnceMapDrivenParseError(docName, err);
     },
-    mdastMemo,
-  );
+    onMemoHit: incrementMapDrivenSpliceMemoHit,
+    onMemoSkip: (reason, err) => {
+      incrementMapDrivenSpliceMemoSkip(reason);
+      if (reason === 'compose-failed') warnOnceMemoComposeFailure(docName, err);
+    },
+    memo: mdastMemo,
+    serializedNewPm,
+  });
   if (!splice) return null;
 
   return {
@@ -1115,7 +1139,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       const rawWitnessCoherent = ytext.toString() === lastSyncedYTextBytes;
       const ytextQuiescent = Date.now() - lastExternalYtextChangeMs >= FRESHNESS_QUIESCENCE_MS;
       const freshnessSafe = rawWitnessCoherent && ytextQuiescent;
-      const body = mdManager.serialize(json, { skipFreshnessDerive: !freshnessSafe });
+      const serializedNewPm = serializeEditorBody(mdManager, json as JSONContent, {
+        skipFreshnessDerive: !freshnessSafe,
+      });
+      const body = serializedNewPm.body;
       if (freshnessSafe) runProducerGuard(json as PmStructuralNode, body);
       const frontmatter = readCurrentFm();
       const composition = composeDerivedBodyMd(frontmatter, body);
@@ -1199,10 +1226,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
           : tryComputeMapDrivenSplice({
               currentText,
               lastSyncedXmlMd: lastSyncedYTextBytes,
-              json,
               mdManager,
               docName: opts.docName,
               mdastMemo,
+              serializedNewPm,
             });
       if (mapDrivenSplice) {
         setActiveSpanAttributes({

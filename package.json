@@ -36,6 +36,7 @@
     "measure:stress": "cd packages/app && pnpm run measure:stress",
     "measure:sweep": "cd packages/app && pnpm run measure:sweep",
     "measure:generated-index-sweep": "pnpm --dir packages/server run measure:generated-index-sweep",
+    "measure:observer-a-drain": "pnpm --dir packages/server run measure:observer-a-drain",
 
     "prepare": "bash scripts/husky-prepare.sh",
     "changeset": "changeset",

@@ -1,4 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { getMetrics } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -7,6 +8,7 @@ import {
   assertBridgeInvariant,
   createTestClients,
   createTestServer,
+  getServerState,
   pollUntil,
   serializeFragment,
   type TestClient,
@@ -69,6 +71,40 @@ describe('C3: mixed-mode concurrent edits', () => {
       });
 
       await assertConverged(clients, ['C3-WYSIWYG-FROM-A', 'C3-SOURCE-FROM-B']);
+    } finally {
+      for (const c of clients) await c.cleanup();
+    }
+  });
+
+  test('a remote source edit followed by local typing exercises the spliced-body memo', async () => {
+    const clients = await createTestClients(server.port, {
+      count: 2,
+      perClientOptions: { skipInvariantWatcher: true },
+    });
+    try {
+      appendParagraph(clients[0], 'C3-MEMO-SEED');
+      await assertConverged(clients, ['C3-MEMO-SEED']);
+
+      clients[1].doc.transact(() => {
+        clients[1].ytext.insert(0, 'C3-REMOTE-SOURCE\n\n');
+      });
+      await assertConverged(clients, ['C3-MEMO-SEED', 'C3-REMOTE-SOURCE']);
+
+      const before = getMetrics();
+      for (let i = 0; i < 4; i++) {
+        appendParagraph(clients[0], `C3-MEMO-TYPED-${i}`);
+        await wait(120);
+      }
+      const after = getMetrics();
+
+      await assertConverged(clients, ['C3-REMOTE-SOURCE', 'C3-MEMO-TYPED-3']);
+      expect(after.mapDrivenSpliceMemoHits).toBeGreaterThan(before.mapDrivenSpliceMemoHits);
+      expect(
+        (after.mapDrivenSpliceMemoSkips['entry-already-current'] ?? 0) -
+          (before.mapDrivenSpliceMemoSkips['entry-already-current'] ?? 0),
+      ).toBeGreaterThan(0);
+      const serverBody = getServerState(server, clients[0].docName)?.fullMd ?? '';
+      expect(serverBody).toContain('C3-REMOTE-SOURCE');
     } finally {
       for (const c of clients) await c.cleanup();
     }

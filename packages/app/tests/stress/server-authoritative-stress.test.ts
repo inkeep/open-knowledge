@@ -114,7 +114,7 @@ describe('server-authoritative stress (US-013)', () => {
       if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
         throw new Error(
           `STRESS_SEED must be a finite integer, got ${JSON.stringify(raw)}. ` +
-            `Example: STRESS_SEED=42 bun test tests/stress/server-authoritative-stress.test.ts`,
+            `Example: STRESS_SEED=42 pnpm exec vitest run tests/stress/server-authoritative-stress.test.ts`,
         );
       }
       seed = parsed;

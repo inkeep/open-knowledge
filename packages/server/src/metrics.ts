@@ -6,6 +6,13 @@ export type MapDrivenSpliceFallbackReason =
   | 'parse-error'
   | 'missing-position';
 
+export type MapDrivenSpliceMemoSkipReason =
+  | 'narrowed'
+  | 'empty-children'
+  | 'entry-already-current'
+  | 'position-not-numeric'
+  | 'compose-failed';
+
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
@@ -56,6 +63,8 @@ export interface ReconciliationMetrics {
   observerAPathBFiresSuppressed: number;
   mapDrivenSpliceApplied: number;
   mapDrivenSpliceFallback: Partial<Record<MapDrivenSpliceFallbackReason, number>>;
+  mapDrivenSpliceMemoHits: number;
+  mapDrivenSpliceMemoSkips: Partial<Record<MapDrivenSpliceMemoSkipReason, number>>;
   observerAResidualMergeRuns: number;
   /** Count of Observer A duplication-gate recoveries — a substantive body
    *  line materialized more times in the fragment than clean Y.Text justified,
@@ -166,6 +175,8 @@ const counters: ReconciliationMetrics = {
   observerAPathBFires: 0,
   observerAPathBFiresSuppressed: 0,
   mapDrivenSpliceApplied: 0,
+  mapDrivenSpliceMemoHits: 0,
+  mapDrivenSpliceMemoSkips: {},
   mapDrivenSpliceFallback: {},
   observerAResidualMergeRuns: 0,
   observerADuplicationRederives: 0,
@@ -364,6 +375,14 @@ export function incrementMapDrivenSpliceApplied(): void {
 
 export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallbackReason): void {
   counters.mapDrivenSpliceFallback[reason] = (counters.mapDrivenSpliceFallback[reason] ?? 0) + 1;
+}
+
+export function incrementMapDrivenSpliceMemoHit(): void {
+  counters.mapDrivenSpliceMemoHits++;
+}
+
+export function incrementMapDrivenSpliceMemoSkip(reason: MapDrivenSpliceMemoSkipReason): void {
+  counters.mapDrivenSpliceMemoSkips[reason] = (counters.mapDrivenSpliceMemoSkips[reason] ?? 0) + 1;
 }
 
 export function incrementObserverAResidualMergeRuns(): void {
@@ -590,6 +609,7 @@ export function getMetrics(): ReconciliationMetrics {
     cc1LastSeq: { ...counters.cc1LastSeq },
     bridgeToleranceApplied: { ...counters.bridgeToleranceApplied },
     mapDrivenSpliceFallback: { ...counters.mapDrivenSpliceFallback },
+    mapDrivenSpliceMemoSkips: { ...counters.mapDrivenSpliceMemoSkips },
   };
 }
 
@@ -643,6 +663,8 @@ export function resetMetrics(): void {
   counters.observerAPathBFiresSuppressed = 0;
   counters.mapDrivenSpliceApplied = 0;
   counters.mapDrivenSpliceFallback = {};
+  counters.mapDrivenSpliceMemoHits = 0;
+  counters.mapDrivenSpliceMemoSkips = {};
   counters.observerAResidualMergeRuns = 0;
   counters.observerADuplicationRederives = 0;
   counters.observerADuplicationCheckpointCreated = 0;

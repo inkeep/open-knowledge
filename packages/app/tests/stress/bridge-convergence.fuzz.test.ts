@@ -422,7 +422,7 @@ function parseIntegerEnv(name: string, raw: string): number {
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
     throw new Error(
       `${name} must be a finite integer, got ${JSON.stringify(raw)}. ` +
-        `Example: ${name}=42 bun test tests/stress/bridge-convergence.fuzz.test.ts`,
+        `Example: ${name}=42 pnpm exec vitest run tests/stress/bridge-convergence.fuzz.test.ts`,
     );
   }
   return parsed;

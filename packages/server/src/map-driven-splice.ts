@@ -1,6 +1,7 @@
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import type { MarkdownManager, SerializeCallOptions } from '@inkeep/open-knowledge-core';
 import type { JSONContent } from '@tiptap/core';
-import type { Root, RootContent } from 'mdast';
+import type { RootContent } from 'mdast';
+import type { MapDrivenSpliceMemoSkipReason } from './metrics.ts';
 
 export interface MapDrivenSplice {
   readonly spliceStart: number;
@@ -8,39 +9,75 @@ export interface MapDrivenSplice {
   readonly newSlice: string;
 }
 
+export interface SerializedEditorBody {
+  readonly json: JSONContent;
+  readonly body: string;
+  readonly opts: SerializeCallOptions | undefined;
+}
+
+export function serializeEditorBody(
+  mdManager: MarkdownManager,
+  json: JSONContent,
+  opts?: SerializeCallOptions,
+): SerializedEditorBody {
+  return { json, body: mdManager.serialize(json, opts), opts };
+}
+
+function reusableBodyFrom(
+  serializedNewPm: SerializedEditorBody | undefined,
+  newPmJson: JSONContent,
+): string | undefined {
+  if (serializedNewPm === undefined) return undefined;
+  if (serializedNewPm.json !== newPmJson) return undefined;
+  if (serializedNewPm.opts?.skipFreshnessDerive === true) return undefined;
+  return serializedNewPm.body;
+}
+
+export interface MapDrivenSpliceOptions {
+  readonly onFallback?: (reason: 'parse-error' | 'missing-position', err?: unknown) => void;
+  readonly onMemoHit?: () => void;
+  readonly onMemoSkip?: (reason: MapDrivenSpliceMemoSkipReason, err?: unknown) => void;
+  readonly memo?: EditorMdastMemo;
+  readonly serializedNewPm?: SerializedEditorBody;
+}
+
 export interface EditorMdastMemo {
-  entry: { readonly body: string; readonly tree: Root } | null;
+  entry: { readonly body: string; readonly children: readonly RootContent[] } | null;
 }
 
 export function createEditorMdastMemo(): EditorMdastMemo {
   return { entry: null };
 }
 
-function parseEditorMdastMemoized(
+function editorMdastChildren(
   mdManager: MarkdownManager,
   body: string,
   memo: EditorMdastMemo | undefined,
-): Root {
-  if (memo?.entry?.body === body) return memo.entry.tree;
-  const tree = mdManager.parseToEditorMdast(body);
-  if (memo !== undefined) memo.entry = { body, tree };
-  return tree;
+  onHit?: () => void,
+): readonly RootContent[] {
+  if (memo?.entry?.body === body) {
+    onHit?.();
+    return memo.entry.children;
+  }
+  const children = mdManager.parseToEditorMdast(body).children;
+  if (memo !== undefined) memo.entry = { body, children };
+  return children;
 }
 
 export function computeMapDrivenBodySplice(
   oldBody: string,
   newPmJson: JSONContent,
   mdManager: MarkdownManager,
-  onFallback?: (reason: 'parse-error' | 'missing-position', err?: unknown) => void,
-  memo?: EditorMdastMemo,
+  options: MapDrivenSpliceOptions = {},
 ): MapDrivenSplice | null {
+  const { onFallback, onMemoHit, onMemoSkip, memo, serializedNewPm } = options;
   let oldChildren: readonly RootContent[];
   let newBody: string;
   let newChildren: readonly RootContent[];
   try {
-    oldChildren = parseEditorMdastMemoized(mdManager, oldBody, memo).children;
-    newBody = mdManager.serialize(newPmJson);
-    newChildren = parseEditorMdastMemoized(mdManager, newBody, memo).children;
+    oldChildren = editorMdastChildren(mdManager, oldBody, memo, onMemoHit);
+    newBody = reusableBodyFrom(serializedNewPm, newPmJson) ?? mdManager.serialize(newPmJson);
+    newChildren = editorMdastChildren(mdManager, newBody, memo);
   } catch (err) {
     onFallback?.('parse-error', err);
     return null;
@@ -51,8 +88,9 @@ export function computeMapDrivenBodySplice(
     return null;
   }
 
+  let walked: ChildrenSplice;
   try {
-    return computeChildrenSplice(
+    walked = computeChildrenSplice(
       oldChildren,
       newChildren,
       {
@@ -69,12 +107,31 @@ export function computeMapDrivenBodySplice(
     onFallback?.('missing-position', err);
     return null;
   }
+
+  if (memo !== undefined) {
+    try {
+      memoizeSplicedBody(memo, { oldBody, oldChildren, newBody, newChildren, walked }, onMemoSkip);
+    } catch (err) {
+      onMemoSkip?.('compose-failed', err);
+    }
+  }
+  return walked.splice;
 }
 
 interface ByteRegion {
   readonly start: number;
   readonly end: number;
 }
+
+type ChildrenSplice =
+  | { readonly narrowed: true; readonly splice: MapDrivenSplice }
+  | {
+      readonly narrowed: false;
+      readonly splice: MapDrivenSplice;
+      readonly prefixLen: number;
+      readonly suffixLen: number;
+      readonly newSliceStart: number;
+    };
 
 const NARROWABLE_CONTAINER_TYPES = new Set(['blockquote', 'list', 'listItem']);
 
@@ -84,7 +141,7 @@ function computeChildrenSplice(
   oldRegion: ByteRegion,
   newRegion: ByteRegion,
   newBody: string,
-): MapDrivenSplice {
+): ChildrenSplice {
   let prefixLen = 0;
   while (
     prefixLen < oldChildren.length &&
@@ -113,7 +170,7 @@ function computeChildrenSplice(
     const oldChanged = oldChildren[prefixLen];
     const newChanged = newChildren[prefixLen];
     const narrowed = tryNarrowIntoContainer(oldChanged, newChanged, newBody);
-    if (narrowed) return narrowed;
+    if (narrowed) return { narrowed: true, splice: narrowed.splice };
   }
 
   const spliceStart = prefixLen > 0 ? blockEndOffset(oldChildren[prefixLen - 1]) : oldRegion.start;
@@ -126,9 +183,15 @@ function computeChildrenSplice(
     suffixLen > 0 ? blockStartOffset(newChildren[newChildren.length - suffixLen]) : newRegion.end;
 
   return {
-    spliceStart,
-    spliceEnd,
-    newSlice: newBody.slice(newSliceStart, newSliceEnd),
+    splice: {
+      spliceStart,
+      spliceEnd,
+      newSlice: newBody.slice(newSliceStart, newSliceEnd),
+    },
+    prefixLen,
+    suffixLen,
+    newSliceStart,
+    narrowed: false,
   };
 }
 
@@ -136,7 +199,7 @@ function tryNarrowIntoContainer(
   oldNode: RootContent,
   newNode: RootContent,
   newBody: string,
-): MapDrivenSplice | null {
+): ChildrenSplice | null {
   if (oldNode.type !== newNode.type || !NARROWABLE_CONTAINER_TYPES.has(oldNode.type)) return null;
   if (!('children' in oldNode) || !('children' in newNode)) return null;
   const oldKids = oldNode.children as readonly RootContent[];
@@ -156,6 +219,105 @@ function tryNarrowIntoContainer(
     { start: blockStartOffset(newNode), end: blockEndOffset(newNode) },
     newBody,
   );
+}
+
+interface SplicedBodyInputs {
+  readonly oldBody: string;
+  readonly oldChildren: readonly RootContent[];
+  readonly newBody: string;
+  readonly newChildren: readonly RootContent[];
+  readonly walked: ChildrenSplice;
+}
+
+function memoizeSplicedBody(
+  memo: EditorMdastMemo,
+  inputs: SplicedBodyInputs,
+  onSkip: ((reason: MapDrivenSpliceMemoSkipReason, err?: unknown) => void) | undefined,
+): void {
+  const { oldBody, oldChildren, newBody, newChildren, walked } = inputs;
+  if (walked.narrowed) {
+    onSkip?.('narrowed');
+    return;
+  }
+  if (oldChildren.length === 0 || newChildren.length === 0) {
+    onSkip?.('empty-children');
+    return;
+  }
+
+  const { splice, prefixLen, suffixLen, newSliceStart } = walked;
+  const applied =
+    oldBody.slice(0, splice.spliceStart) + splice.newSlice + oldBody.slice(splice.spliceEnd);
+  if (applied === newBody) {
+    onSkip?.('entry-already-current');
+    return;
+  }
+
+  const mid = cloneShifted(
+    newChildren.slice(prefixLen, newChildren.length - suffixLen),
+    splice.spliceStart - newSliceStart,
+    countNewlines(oldBody, 0, splice.spliceStart) - countNewlines(newBody, 0, newSliceStart),
+  );
+  if (mid === null) {
+    onSkip?.('position-not-numeric');
+    return;
+  }
+
+  const tail = cloneShifted(
+    oldChildren.slice(oldChildren.length - suffixLen),
+    applied.length - oldBody.length,
+    countNewlines(splice.newSlice, 0, splice.newSlice.length) -
+      countNewlines(oldBody, splice.spliceStart, splice.spliceEnd),
+  );
+  if (tail === null) {
+    onSkip?.('position-not-numeric');
+    return;
+  }
+
+  memo.entry = { body: applied, children: [...oldChildren.slice(0, prefixLen), ...mid, ...tail] };
+}
+
+function cloneShifted(
+  nodes: readonly RootContent[],
+  byteDelta: number,
+  lineDelta: number,
+): RootContent[] | null {
+  const cloned = structuredClone(nodes) as RootContent[];
+  return shiftPositions(cloned, byteDelta, lineDelta) ? cloned : null;
+}
+
+function shiftPositions(value: unknown, byteDelta: number, lineDelta: number): boolean {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!shiftPositions(entry, byteDelta, lineDelta)) return false;
+    }
+    return true;
+  }
+  if (value === null || typeof value !== 'object') return true;
+  const node = value as Record<string, unknown>;
+  const position = node.position as
+    | { start?: { offset?: number; line?: number }; end?: { offset?: number; line?: number } }
+    | undefined;
+  if (position !== undefined) {
+    for (const point of [position.start, position.end]) {
+      if (point === undefined) continue;
+      if (typeof point.offset !== 'number' || typeof point.line !== 'number') return false;
+      point.offset += byteDelta;
+      point.line += lineDelta;
+    }
+  }
+  for (const key of Object.keys(node)) {
+    if (key === 'position') continue;
+    if (!shiftPositions(node[key], byteDelta, lineDelta)) return false;
+  }
+  return true;
+}
+
+function countNewlines(text: string, from: number, to: number): number {
+  let count = 0;
+  for (let index = from; index < to; index++) {
+    if (text.charCodeAt(index) === 10) count++;
+  }
+  return count;
 }
 
 function allBlocksCarryPositions(children: readonly RootContent[]): boolean {
