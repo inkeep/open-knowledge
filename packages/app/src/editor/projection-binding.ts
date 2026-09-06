@@ -14,7 +14,14 @@ import type { Node as PmNode } from '@tiptap/pm/model';
 import { type EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
+
+const SPLICE_DECLINED_EVENT = 'ok-projection-splice-declined';
+const WRITE_DROPPED_EVENT = 'ok-projection-write-dropped';
+const REBASE_DECLINED_EVENT = 'ok-projection-rebase-declined';
+const REPROJECT_MISMATCH_EVENT = 'ok-projection-reproject-mismatch';
+const ALIGN_DECLINED_EVENT = 'ok-projection-align-declined';
 
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
@@ -70,9 +77,17 @@ export function mapOffsetThroughDelta(
   return write + Math.max(0, offset - read);
 }
 
-function reprojectAgainst(source: string, doc: PmNode, md: MarkdownManager): Projection | null {
+function reprojectAgainst(
+  source: string,
+  doc: PmNode,
+  md: MarkdownManager,
+  onMismatch?: (rebuiltChildren: number) => void,
+): Projection | null {
   const rebuilt = buildProjection(source, md);
-  if (rebuilt.doc.childCount !== doc.childCount) return null;
+  if (rebuilt.doc.childCount !== doc.childCount) {
+    onMismatch?.(rebuilt.doc.childCount);
+    return null;
+  }
   return { ...rebuilt, doc };
 }
 
@@ -101,6 +116,26 @@ interface ProjectionBindingState {
   projection: Projection;
   rebuilds: number;
   writes: number;
+  spliceDeclines: number;
+  droppedWrites: number;
+  rebaseDeclines: number;
+  reprojectMismatches: number;
+  alignDeclines: number;
+  unchangedUpdates: number;
+}
+
+function newBindingState(projection: Projection): ProjectionBindingState {
+  return {
+    projection,
+    rebuilds: 1,
+    writes: 0,
+    spliceDeclines: 0,
+    droppedWrites: 0,
+    rebaseDeclines: 0,
+    reprojectMismatches: 0,
+    alignDeclines: 0,
+    unchangedUpdates: 0,
+  };
 }
 
 function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
@@ -115,16 +150,39 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
     view(view) {
       let projection = options.initial;
       let destroyed = false;
-      const stats: ProjectionBindingState = options.stats ?? {
-        projection,
-        rebuilds: 1,
-        writes: 0,
-      };
+      const stats: ProjectionBindingState = options.stats ?? newBindingState(projection);
       let applyingRemote = false;
 
       const adopt = (next: Projection): void => {
         projection = next;
         stats.projection = next;
+      };
+
+      let declineReason = '';
+      let declineFields: Readonly<Record<string, number>> = {};
+      const noteDecline = (reason: string, detail?: Readonly<Record<string, number>>): void => {
+        declineReason = reason;
+        declineFields = detail ?? {};
+      };
+      const takeDecline = (): Record<string, number | string> => {
+        const taken = { reason: declineReason, ...declineFields };
+        declineReason = '';
+        declineFields = {};
+        return taken;
+      };
+
+      const alignTo = (base: Projection, doc: PmNode, site: string): Projection => {
+        declineReason = '';
+        const aligned = alignProjectionToDoc(base, doc, noteDecline);
+        if (declineReason !== '') {
+          stats.alignDeclines++;
+          emitDiagnosticBreadcrumb(ALIGN_DECLINED_EVENT, {
+            site,
+            ...takeDecline(),
+            declines: stats.alignDeclines,
+          });
+        }
+        return aligned;
       };
 
       const fullPrecision = (): Projection => {
@@ -151,7 +209,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         } finally {
           applyingRemote = false;
         }
-        adopt(alignProjectionToDoc(next, view.state.doc));
+        adopt(alignTo(next, view.state.doc, 'project'));
       };
 
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
@@ -164,7 +222,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
       let settling = false;
       if (ytext.toString() === projection.source) {
-        adopt(alignProjectionToDoc(projection, view.state.doc));
+        adopt(alignTo(projection, view.state.doc, 'mount'));
       } else {
         settling = true;
         queueMicrotask(() => {
@@ -182,12 +240,19 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
           const changed = changedProjectionBlocks(projection.doc, after);
           if (changed === null) {
-            adopt(alignProjectionToDoc(projection, after));
+            stats.unchangedUpdates++;
+            adopt(alignTo(projection, after, 'unchanged'));
             return;
           }
 
-          const splice = computeBlockSplice(projection, after, md, changed);
+          const splice = computeBlockSplice(projection, after, md, changed, noteDecline);
           if (splice === null) {
+            stats.spliceDeclines++;
+            emitDiagnosticBreadcrumb(
+              SPLICE_DECLINED_EVENT,
+              { ...takeDecline(), declines: stats.spliceDeclines },
+              'warn',
+            );
             project(ytext.toString(), null);
             return;
           }
@@ -196,19 +261,52 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           const writesBytes = projection.source.slice(splice.from, splice.to) !== splice.text;
           if (writesBytes) {
             const doc = ytext.doc;
-            if (doc === null) return;
+            if (doc === null) {
+              stats.droppedWrites++;
+              emitDiagnosticBreadcrumb(
+                WRITE_DROPPED_EVENT,
+                {
+                  spliceFrom: splice.from,
+                  spliceTo: splice.to,
+                  textLength: splice.text.length,
+                  children: after.childCount,
+                  dropped: stats.droppedWrites,
+                },
+                'warn',
+              );
+              return;
+            }
             doc.transact(() => applyToYText(ytext, splice), origin);
             stats.writes++;
           }
 
-          const rebased = rebaseProjection(projection, after, changed, splice);
+          const rebased = rebaseProjection(projection, after, changed, splice, noteDecline);
           if (rebased !== null) {
             adopt(rebased);
             return;
           }
-          const reprojected = reprojectAgainst(nextSource, after, md);
+          stats.rebaseDeclines++;
+          emitDiagnosticBreadcrumb(REBASE_DECLINED_EVENT, {
+            ...takeDecline(),
+            declines: stats.rebaseDeclines,
+          });
+
+          let rebuiltChildren = -1;
+          const reprojected = reprojectAgainst(nextSource, after, md, (children) => {
+            rebuiltChildren = children;
+          });
           stats.rebuilds++;
-          adopt(reprojected ?? alignProjectionToDoc(buildProjection(nextSource, md), after));
+          if (reprojected !== null) {
+            adopt(reprojected);
+            return;
+          }
+          stats.reprojectMismatches++;
+          emitDiagnosticBreadcrumb(REPROJECT_MISMATCH_EVENT, {
+            rebuiltChildren,
+            children: after.childCount,
+            mismatches: stats.reprojectMismatches,
+          });
+          adopt(alignTo(buildProjection(nextSource, md), after, 'reproject-fallback'));
         },
         destroy() {
           destroyed = true;
@@ -234,7 +332,7 @@ export function createProjectionBinding(
 ): ProjectionBinding {
   const origin = options.origin ?? PROJECTION_WRITE_ORIGIN;
   const initial = buildProjection(options.ytext.toString(), options.md);
-  const stats: ProjectionBindingState = { projection: initial, rebuilds: 1, writes: 0 };
+  const stats: ProjectionBindingState = newBindingState(initial);
   const undoManager = sharedUndoManagerFor(options.ytext);
   if (origin !== PROJECTION_WRITE_ORIGIN) undoManager.addTrackedOrigin(origin);
   const plugin = projectionBindingPlugin({ ...options, origin, initial, stats, undoManager });

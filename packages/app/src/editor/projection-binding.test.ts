@@ -2,10 +2,14 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { createProjectionBinding, mapOffsetThroughDelta } from './projection-binding';
+import {
+  createProjectionBinding,
+  mapOffsetThroughDelta,
+  type ProjectionBinding,
+} from './projection-binding';
 import { sharedUndoManagerFor } from './shared-undo-manager';
 import { buildExtensionList, buildPatternDConstructorOptions } from './TiptapEditor';
 import { fakeClipboard, installDomGlobals } from './walk-currency-test-harness';
@@ -30,7 +34,7 @@ interface Rig {
   editor: Editor;
   ytext: Y.Text;
   ydoc: Y.Doc;
-  stats: { rebuilds: number; writes: number };
+  stats: ProjectionBinding['stats'];
   destroy(): void;
 }
 
@@ -688,6 +692,179 @@ describe('projection binding — a document the MDX parser rejects', () => {
     const rig = createRig(BROKEN);
     rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
     expect(rig.ytext.toString()).toBe(`Preamble.\n\n${BROKEN}`);
+    rig.destroy();
+  });
+});
+
+describe('projection binding — a silent drop is named on the wire', () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+  let info: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    info = vi.spyOn(console, 'info').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function emittedEvents(spy: ReturnType<typeof vi.spyOn>): Record<string, unknown>[] {
+    return spy.mock.calls.flatMap(([first]) => {
+      if (typeof first !== 'string') return [];
+      try {
+        const parsed = JSON.parse(first) as Record<string, unknown>;
+        return typeof parsed.event === 'string' ? [parsed] : [];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  const names = (spy: ReturnType<typeof vi.spyOn>): string[] =>
+    emittedEvents(spy).map((e) => e.event as string);
+
+  function blockStart(editor: Editor, index: number): number {
+    let pos = 0;
+    for (let i = 0; i < index; i++) pos += editor.state.doc.child(i).nodeSize;
+    return pos;
+  }
+
+  function typeInto(editor: Editor, blockIndex: number, ch: string): void {
+    const at = endOfBlock(editor, blockIndex);
+    editor.view.dispatch(editor.state.tr.insertText(ch, at, at));
+  }
+
+  function deleteBlockText(rig: Rig, blockIndex: number): void {
+    const from = blockStart(rig.editor, blockIndex) + 1;
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.setSelection(
+        TextSelection.create(rig.editor.state.doc, from, endOfBlock(rig.editor, blockIndex)),
+      ),
+    );
+    rig.editor.commands.deleteSelection();
+  }
+
+  it('says nothing at all while ordinary typing lands', () => {
+    const rig = createRig(DOC);
+    for (const ch of 'abcdef') typeInto(rig.editor, 1, ch);
+    expect(rig.ytext.toString()).toContain('inside.abcdef');
+    expect(names(warn)).toEqual([]);
+    expect(names(info)).toEqual([]);
+    rig.destroy();
+  });
+
+  it('names the rebase it declined for a write that is only newlines', () => {
+    const rig = createRig('a\n\nb\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+
+    expect(rig.ytext.toString()).toBe('a\n\n\nb\n');
+    expect(names(warn)).toEqual([]);
+    expect(emittedEvents(info)).toEqual([
+      {
+        event: 'ok-projection-rebase-declined',
+        reason: 'all-newline-write',
+        textLength: 3,
+        declines: 1,
+      },
+    ]);
+    rig.destroy();
+  });
+
+  it('names every step of the walk from a lossy re-parse to a stale block table', () => {
+    const rig = createRig('- one\n\nmid\n\n- two\n');
+    expect(rig.editor.state.doc.childCount).toBe(3);
+
+    deleteBlockText(rig, 1);
+
+    expect(names(warn)).toEqual([]);
+    expect(emittedEvents(info)).toEqual([
+      {
+        event: 'ok-projection-rebase-declined',
+        reason: 'all-newline-write',
+        textLength: 3,
+        declines: 1,
+      },
+      {
+        event: 'ok-projection-reproject-mismatch',
+        rebuiltChildren: 1,
+        children: 3,
+        mismatches: 1,
+      },
+      {
+        event: 'ok-projection-align-declined',
+        site: 'reproject-fallback',
+        reason: 'unaccounted-doc-block',
+        index: 2,
+        blocks: 1,
+        children: 3,
+        declines: 1,
+      },
+    ]);
+    expect(rig.stats.spliceDeclines).toBe(0);
+    rig.destroy();
+  });
+
+  it('warns on the site that discards the keystroke, instead of dropping it in silence', () => {
+    const rig = createRig('- one\n\nmid\n\n- two\n');
+    deleteBlockText(rig, 1);
+    warn.mockClear();
+    info.mockClear();
+
+    const before = rig.ytext.toString();
+    typeInto(rig.editor, rig.editor.state.doc.childCount - 1, 'Z');
+
+    expect(emittedEvents(warn)).toEqual([
+      {
+        event: 'ok-projection-splice-declined',
+        reason: 'block-range-out-of-bounds',
+        beforeFrom: 2,
+        beforeTo: 3,
+        blocks: 1,
+        children: 3,
+        declines: 1,
+      },
+    ]);
+    expect(rig.ytext.toString()).toBe(before);
+    expect(rig.stats.spliceDeclines).toBe(1);
+    rig.destroy();
+  });
+
+  it('warns when a splice cannot reach a Y.Text that has lost its document', () => {
+    const rig = createRig('a\n');
+    (rig.ytext as unknown as { doc: unknown }).doc = null;
+
+    typeInto(rig.editor, 0, 'X');
+
+    expect(emittedEvents(warn)).toEqual([
+      {
+        event: 'ok-projection-write-dropped',
+        spliceFrom: 0,
+        spliceTo: 1,
+        textLength: 2,
+        children: 1,
+        dropped: 1,
+      },
+    ]);
+    expect(rig.stats.writes).toBe(0);
+    rig.editor.destroy();
+  });
+
+  it('counts a doc rebuilt into identical blocks without emitting anything', () => {
+    const rig = createRig('# H\n\nalpha\n');
+    const at = blockStart(rig.editor, 1);
+    const node = rig.editor.state.doc.child(1);
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.replaceWith(
+        at,
+        at + node.nodeSize,
+        node.type.create(node.attrs, node.content, node.marks),
+      ),
+    );
+
+    expect(rig.stats.unchangedUpdates).toBe(1);
+    expect(names(warn)).toEqual([]);
+    expect(names(info)).toEqual([]);
     rig.destroy();
   });
 });

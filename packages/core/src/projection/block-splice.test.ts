@@ -531,3 +531,141 @@ describe('computeBlockSplice — a block landing in a blank run', () => {
     expectTableHolds(after);
   });
 });
+
+describe('a refused splice names its reason', () => {
+  function recorder() {
+    const seen: { reason: string; detail: Record<string, number> }[] = [];
+    return {
+      seen,
+      onDecline: (reason: string, detail?: Readonly<Record<string, number>>) => {
+        seen.push({ reason, detail: { ...detail } });
+      },
+    };
+  }
+
+  function kids(doc: Projection['doc']) {
+    const out = [];
+    for (let i = 0; i < doc.childCount; i++) out.push(doc.child(i));
+    return out;
+  }
+
+  function docOf(projection: Projection, children: unknown[]) {
+    return projection.doc.type.schema.topNodeType.create(projection.doc.attrs, children as never);
+  }
+
+  function block(projection: Projection, markdown: string) {
+    return projection.doc.type.schema.nodeFromJSON(md.parse(markdown)).child(0);
+  }
+
+  function outgrownTable(): { stale: Projection; reason: string; detail: Record<string, number> } {
+    const seeded = buildProjection('- one\n\n- two\n', md);
+    expect(seeded.doc.childCount).toBe(1);
+    const twoLists = docOf(seeded, [seeded.doc.child(0), seeded.doc.child(0)]);
+    const { seen, onDecline } = recorder();
+    const stale = alignProjectionToDoc(seeded, twoLists, onDecline);
+    expect(stale.map.blocks).toHaveLength(1);
+    expect(stale.doc.childCount).toBe(2);
+    return { stale, reason: seen[0].reason, detail: seen[0].detail };
+  }
+
+  it('says so when the block table has been outgrown by the doc', () => {
+    const { reason, detail } = outgrownTable();
+    expect(reason).toBe('unaccounted-doc-block');
+    expect(detail).toEqual({ index: 1, blocks: 1, children: 2 });
+  });
+
+  it('says so when the block table is longer than the doc', () => {
+    const seeded = buildProjection(DOC, md);
+    const { seen, onDecline } = recorder();
+    alignProjectionToDoc(seeded, docOf(seeded, kids(seeded.doc).slice(0, 2)), onDecline);
+    expect(seen).toEqual([
+      { reason: 'table-longer-than-doc', detail: { blocks: seeded.doc.childCount, children: 2 } },
+    ]);
+  });
+
+  it('names the bounds guard that discards a keystroke', () => {
+    const { stale } = outgrownTable();
+    const after = docOf(stale, [stale.doc.child(0), block(stale, 'Edited.\n')]);
+    const changed = changedProjectionBlocks(stale.doc, after);
+    expect(changed).toEqual({ before: { from: 1, to: 2 }, after: { from: 1, to: 2 } });
+
+    const { seen, onDecline } = recorder();
+    expect(computeBlockSplice(stale, after, md, changed, onDecline)).toBeNull();
+    expect(seen).toEqual([
+      {
+        reason: 'block-range-out-of-bounds',
+        detail: { beforeFrom: 1, beforeTo: 2, blocks: 1, children: 2 },
+      },
+    ]);
+  });
+
+  it('names an unchanged document rather than refusing silently', () => {
+    const seeded = buildProjection(DOC, md);
+    const { seen, onDecline } = recorder();
+    expect(computeBlockSplice(seeded, seeded.doc, md, undefined, onDecline)).toBeNull();
+    expect(seen).toEqual([
+      { reason: 'no-changed-blocks', detail: { children: seeded.doc.childCount } },
+    ]);
+  });
+
+  it('names the block-table invariant the STOP marker guards', () => {
+    const { stale } = outgrownTable();
+    const after = docOf(stale, [block(stale, 'Edited.\n'), stale.doc.child(1)]);
+    const changed = changedProjectionBlocks(stale.doc, after);
+    const splice = computeBlockSplice(stale, after, md, changed);
+    expect(splice).not.toBeNull();
+
+    const { seen, onDecline } = recorder();
+    expect(rebaseProjection(stale, after, changed as never, splice as never, onDecline)).toBeNull();
+    expect(seen).toEqual([{ reason: 'block-table-desynced', detail: { blocks: 1, children: 2 } }]);
+  });
+
+  it('names a rebase that spans more than one block', () => {
+    const seeded = buildProjection(DOC, md);
+    const after = docOf(seeded, [
+      block(seeded, '# Changed\n'),
+      block(seeded, 'Also changed.\n'),
+      ...kids(seeded.doc).slice(2),
+    ]);
+    const changed = changedProjectionBlocks(seeded.doc, after);
+    expect(changed).toEqual({ before: { from: 0, to: 2 }, after: { from: 0, to: 2 } });
+    const splice = computeBlockSplice(seeded, after, md, changed);
+
+    const { seen, onDecline } = recorder();
+    expect(
+      rebaseProjection(seeded, after, changed as never, splice as never, onDecline),
+    ).toBeNull();
+    expect(seen).toEqual([{ reason: 'multi-block-change', detail: { afterFrom: 0, afterTo: 2 } }]);
+  });
+
+  it('names a write that is nothing but newlines', () => {
+    const seeded = buildProjection('a\n\nb\n', md);
+    const after = docOf(seeded, [
+      seeded.doc.child(0),
+      seeded.doc.type.schema.node('paragraph'),
+      seeded.doc.child(1),
+    ]);
+    const changed = changedProjectionBlocks(seeded.doc, after);
+    const splice = computeBlockSplice(seeded, after, md, changed);
+    expect(splice?.text).toBe('\n\n\n');
+
+    const { seen, onDecline } = recorder();
+    expect(
+      rebaseProjection(seeded, after, changed as never, splice as never, onDecline),
+    ).toBeNull();
+    expect(seen).toEqual([{ reason: 'all-newline-write', detail: { textLength: 3 } }]);
+  });
+
+  it('stays quiet when nothing is refused', () => {
+    const seeded = buildProjection(DOC, md);
+    const after = docOf(seeded, [block(seeded, '# Edited\n'), ...kids(seeded.doc).slice(1)]);
+    const changed = changedProjectionBlocks(seeded.doc, after);
+    const { seen, onDecline } = recorder();
+    const splice = computeBlockSplice(seeded, after, md, changed, onDecline);
+    expect(splice).not.toBeNull();
+    const rebased = rebaseProjection(seeded, after, changed as never, splice as never, onDecline);
+    expect(rebased).not.toBeNull();
+    alignProjectionToDoc(rebased as never, after, onDecline);
+    expect(seen).toEqual([]);
+  });
+});

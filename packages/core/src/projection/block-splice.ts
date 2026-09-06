@@ -25,6 +25,24 @@ export interface ChangedBlocks {
 
 const MIN_WRITTEN_EDGE_EMPTIES = 2;
 
+type ProjectionDeclineReason =
+  | 'no-changed-blocks'
+  | 'block-range-out-of-bounds'
+  | 'after-range-out-of-bounds'
+  | 'multi-block-change'
+  | 'block-table-desynced'
+  | 'missing-prefix-block'
+  | 'all-newline-write'
+  | 'missing-tail-block'
+  | 'table-longer-than-doc'
+  | 'unaccounted-doc-block'
+  | 'unconsumed-table-blocks';
+
+type ProjectionDeclineReporter = (
+  reason: ProjectionDeclineReason,
+  detail?: Readonly<Record<string, number>>,
+) => void;
+
 export interface Projection {
   readonly source: string;
   readonly bodyOffset: number;
@@ -43,10 +61,17 @@ export function buildProjection(source: string, md: MarkdownManager): Projection
    indexes through, and a leading run is the case that breaks it: one leading blank has no
    byte spelling at all, so the doc legitimately carries a block the parse never returns.
    Dropping it here costs the NEXT keystroke, which computeBlockSplice then declines. */
-export function alignProjectionToDoc(projection: Projection, doc: PmNode): Projection {
+export function alignProjectionToDoc(
+  projection: Projection,
+  doc: PmNode,
+  onDecline?: ProjectionDeclineReporter,
+): Projection {
   const old = projection.map.blocks;
   if (old.length === doc.childCount) return { ...projection, doc };
-  if (old.length > doc.childCount) return { ...projection, doc };
+  if (old.length > doc.childCount) {
+    onDecline?.('table-longer-than-doc', { blocks: old.length, children: doc.childCount });
+    return { ...projection, doc };
+  }
 
   const bodyEnd = projection.map.sourceLength;
   const blocks: PmSourceSpan[] = [];
@@ -70,12 +95,26 @@ export function alignProjectionToDoc(projection: Projection, doc: PmNode): Proje
       continue;
     }
     const prior = old[taken];
-    if (prior === undefined) return { ...projection, doc };
+    if (prior === undefined) {
+      onDecline?.('unaccounted-doc-block', {
+        index: i,
+        blocks: old.length,
+        children: doc.childCount,
+      });
+      return { ...projection, doc };
+    }
     taken++;
     frontier = prior.sourceEnd;
     blocks.push({ ...prior, from, to: pos, type: child.type.name });
   }
-  if (taken !== old.length) return { ...projection, doc };
+  if (taken !== old.length) {
+    onDecline?.('unconsumed-table-blocks', {
+      taken,
+      blocks: old.length,
+      children: doc.childCount,
+    });
+    return { ...projection, doc };
+  }
   return {
     ...projection,
     doc,
@@ -139,15 +178,34 @@ export function computeBlockSplice(
   after: PmNode,
   md: MarkdownManager,
   changed?: ChangedBlocks | null,
+  onDecline?: ProjectionDeclineReporter,
 ): SourceSplice | null {
   const range = changed === undefined ? changedProjectionBlocks(projection.doc, after) : changed;
-  if (range === null) return null;
+  if (range === null) {
+    onDecline?.('no-changed-blocks', { children: after.childCount });
+    return null;
+  }
 
   const { map, bodyOffset, source } = projection;
   const body = source.slice(bodyOffset);
   const blocks = map.blocks;
-  if (range.before.from < 0 || range.before.to > blocks.length) return null;
-  if (range.after.to > after.childCount) return null;
+  if (range.before.from < 0 || range.before.to > blocks.length) {
+    onDecline?.('block-range-out-of-bounds', {
+      beforeFrom: range.before.from,
+      beforeTo: range.before.to,
+      blocks: blocks.length,
+      children: projection.doc.childCount,
+    });
+    return null;
+  }
+  if (range.after.to > after.childCount) {
+    onDecline?.('after-range-out-of-bounds', {
+      afterFrom: range.after.from,
+      afterTo: range.after.to,
+      children: after.childCount,
+    });
+    return null;
+  }
 
   const text = serializeBlockRange(after, range.after, md);
   const shift = (offset: number): number => offset + bodyOffset;
@@ -351,15 +409,28 @@ export function rebaseProjection(
   after: PmNode,
   changed: ChangedBlocks,
   splice: SourceSplice,
+  onDecline?: ProjectionDeclineReporter,
 ): Projection | null {
-  if (changed.after.to - changed.after.from > 1) return null;
+  if (changed.after.to - changed.after.from > 1) {
+    onDecline?.('multi-block-change', {
+      afterFrom: changed.after.from,
+      afterTo: changed.after.to,
+    });
+    return null;
+  }
 
   const oldBlocks = projection.map.blocks;
   /* STOP: map.blocks.length === doc.childCount is the contract every splice indexes through.
      A block whose source spells nothing must be held with a zero-width span
      (alignProjectionToDoc) rather than left out of the table, and a write that was declined
      must not be reported as made. A violation loses the NEXT keystroke, not this one. */
-  if (oldBlocks.length !== projection.doc.childCount) return null;
+  if (oldBlocks.length !== projection.doc.childCount) {
+    onDecline?.('block-table-desynced', {
+      blocks: oldBlocks.length,
+      children: projection.doc.childCount,
+    });
+    return null;
+  }
 
   const source = applySplice(projection.source, splice);
   const sourceDelta = splice.text.length - (splice.to - splice.from);
@@ -376,7 +447,10 @@ export function rebaseProjection(
 
     if (i < changed.after.from) {
       const old = oldBlocks[i];
-      if (old === undefined) return null;
+      if (old === undefined) {
+        onDecline?.('missing-prefix-block', { index: i, blocks: oldBlocks.length });
+        return null;
+      }
       blocks.push({
         ...span,
         sourceStart: old.sourceStart,
@@ -387,7 +461,10 @@ export function rebaseProjection(
     }
     if (i < changed.after.to) {
       const written = splice.text;
-      if (written !== '' && written.trim() === '') return null;
+      if (written !== '' && written.trim() === '') {
+        onDecline?.('all-newline-write', { textLength: written.length });
+        return null;
+      }
       const lead = written.length - written.replace(/^\n+/, '').length;
       const trail = written.length - written.replace(/\n+$/, '').length;
       blocks.push({
@@ -399,7 +476,10 @@ export function rebaseProjection(
       continue;
     }
     const old = oldBlocks[i - tailShift];
-    if (old === undefined) return null;
+    if (old === undefined) {
+      onDecline?.('missing-tail-block', { index: i - tailShift, blocks: oldBlocks.length });
+      return null;
+    }
     blocks.push({
       ...span,
       sourceStart: old.sourceStart + sourceDelta,
