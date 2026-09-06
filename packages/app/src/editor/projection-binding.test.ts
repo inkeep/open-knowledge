@@ -771,13 +771,12 @@ describe('projection binding — a silent drop is named on the wire', () => {
     rig.destroy();
   });
 
-  it('names every step of the walk from a lossy re-parse to a stale block table', () => {
+  it('names every step of the walk from a lossy re-parse to the re-derive that ends it', () => {
     const rig = createRig('- one\n\nmid\n\n- two\n');
     expect(rig.editor.state.doc.childCount).toBe(3);
 
     deleteBlockText(rig, 1);
 
-    expect(names(warn)).toEqual([]);
     expect(emittedEvents(info)).toEqual([
       {
         event: 'ok-projection-rebase-declined',
@@ -801,32 +800,55 @@ describe('projection binding — a silent drop is named on the wire', () => {
         declines: 1,
       },
     ]);
+    expect(emittedEvents(warn)).toEqual([
+      {
+        event: 'ok-projection-doc-rederived',
+        site: 'reproject-fallback',
+        blocks: 1,
+        children: 3,
+        rederives: 1,
+      },
+    ]);
     expect(rig.stats.spliceDeclines).toBe(0);
     rig.destroy();
   });
 
-  it('warns on the site that discards the keystroke, instead of dropping it in silence', () => {
+  it('leaves the block table agreeing with the document the source re-parses into', () => {
+    const rig = createRig('- one\n\nmid\n\n- two\n');
+
+    deleteBlockText(rig, 1);
+
+    expect(rig.ytext.toString()).toBe('- one\n\n\n- two\n');
+    expect(rig.editor.state.doc.childCount).toBe(1);
+    expect(rig.stats.projection.map.blocks).toHaveLength(1);
+    expect(rig.stats.docRederives).toBe(1);
+    rig.destroy();
+  });
+
+  it('keeps the next keystroke instead of discarding it against a stale table', () => {
     const rig = createRig('- one\n\nmid\n\n- two\n');
     deleteBlockText(rig, 1);
     warn.mockClear();
     info.mockClear();
 
-    const before = rig.ytext.toString();
     typeInto(rig.editor, rig.editor.state.doc.childCount - 1, 'Z');
 
-    expect(emittedEvents(warn)).toEqual([
-      {
-        event: 'ok-projection-splice-declined',
-        reason: 'block-range-out-of-bounds',
-        beforeFrom: 2,
-        beforeTo: 3,
-        blocks: 1,
-        children: 3,
-        declines: 1,
-      },
-    ]);
-    expect(rig.ytext.toString()).toBe(before);
-    expect(rig.stats.spliceDeclines).toBe(1);
+    expect(rig.ytext.toString()).toContain('Z');
+    expect(names(warn)).toEqual([]);
+    expect(rig.stats.spliceDeclines).toBe(0);
+    rig.destroy();
+  });
+
+  it('keeps the second list when the keystroke after the re-parse lands in block 0', () => {
+    const rig = createRig('- one\n\n  X\n\nmid\n\n- two\n\n  Y\n');
+    deleteBlockText(rig, 1);
+
+    typeInto(rig.editor, 0, 'Q');
+
+    const source = rig.ytext.toString();
+    expect(source).toContain('two');
+    expect(source).toContain('Y');
+    expect(source).toContain('Q');
     rig.destroy();
   });
 

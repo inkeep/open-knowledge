@@ -22,6 +22,7 @@ const WRITE_DROPPED_EVENT = 'ok-projection-write-dropped';
 const REBASE_DECLINED_EVENT = 'ok-projection-rebase-declined';
 const REPROJECT_MISMATCH_EVENT = 'ok-projection-reproject-mismatch';
 const ALIGN_DECLINED_EVENT = 'ok-projection-align-declined';
+const DOC_REDERIVED_EVENT = 'ok-projection-doc-rederived';
 
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
@@ -121,6 +122,7 @@ interface ProjectionBindingState {
   rebaseDeclines: number;
   reprojectMismatches: number;
   alignDeclines: number;
+  docRederives: number;
   unchangedUpdates: number;
 }
 
@@ -134,6 +136,7 @@ function newBindingState(projection: Projection): ProjectionBindingState {
     rebaseDeclines: 0,
     reprojectMismatches: 0,
     alignDeclines: 0,
+    docRederives: 0,
     unchangedUpdates: 0,
   };
 }
@@ -183,6 +186,32 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           });
         }
         return aligned;
+      };
+
+      /* STOP: alignProjectionToDoc returns the caller's doc over a stale table when it cannot
+         account for every child, and map.blocks.length === doc.childCount is the contract every
+         splice indexes through. Adopting that pair costs the NEXT keystroke, which
+         computeBlockSplice then declines or, in block 0, spells over the whole body. A doc the
+         source cannot re-parse into is unrepresentable, so the source wins and the doc is
+         re-derived. */
+      const adoptAligned = (base: Projection, doc: PmNode, site: string): boolean => {
+        const aligned = alignTo(base, doc, site);
+        if (aligned.map.blocks.length === doc.childCount) {
+          adopt(aligned);
+          return true;
+        }
+        stats.docRederives++;
+        emitDiagnosticBreadcrumb(
+          DOC_REDERIVED_EVENT,
+          {
+            site,
+            blocks: aligned.map.blocks.length,
+            children: doc.childCount,
+            rederives: stats.docRederives,
+          },
+          'warn',
+        );
+        return false;
       };
 
       const fullPrecision = (): Projection => {
@@ -306,7 +335,8 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             children: after.childCount,
             mismatches: stats.reprojectMismatches,
           });
-          adopt(alignTo(buildProjection(nextSource, md), after, 'reproject-fallback'));
+          if (adoptAligned(buildProjection(nextSource, md), after, 'reproject-fallback')) return;
+          project(nextSource, null);
         },
         destroy() {
           destroyed = true;
