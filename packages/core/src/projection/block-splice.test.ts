@@ -1,3 +1,5 @@
+import type { Node as PmNode } from '@tiptap/pm/model';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { describe, expect, it } from 'vitest';
 import { sharedExtensions } from '../extensions/shared.ts';
 import { loadLargeRealistic } from '../markdown/fixtures/index.ts';
@@ -471,13 +473,51 @@ describe('computeBlockSplice — a block landing in a blank run', () => {
     expectTableHolds(after);
   });
 
-  it('leaves a leading blank run held, which is a separate gap', () => {
+  it('writes a leading blank run', () => {
     const seeded = buildProjection('Above.\n\nBelow.\n', md);
     const after = advance(
       seeded,
       docOf(seeded, [blank(seeded), blank(seeded), ...kids(seeded.doc)]),
     );
+    expect(after.source).toBe('\n\nAbove.\n\nBelow.\n');
+    expectTableHolds(after);
+  });
+
+  it('holds a single leading blank, which no source can spell, without losing the table', () => {
+    const seeded = buildProjection('Above.\n\nBelow.\n', md);
+    const after = advance(seeded, docOf(seeded, [blank(seeded), ...kids(seeded.doc)]));
     expect(after.source).toBe('Above.\n\nBelow.\n');
+    expect(after.map.blocks).toHaveLength(after.doc.childCount);
+
+    const typed = advance(
+      after,
+      docOf(after, [...kids(after.doc).slice(0, 2), block(after, 'Edited.\n')]),
+    );
+    expect(typed.source).toBe('Above.\n\nEdited.\n');
+    expect(typed.map.blocks).toHaveLength(typed.doc.childCount);
+  });
+
+  it('keeps every keystroke of Return-go-Return-go in an empty document', () => {
+    let p = buildProjection('', md);
+    const at = (doc: PmNode, pos: number) => {
+      const state = EditorState.create({ doc });
+      const tr = state.tr.setSelection(TextSelection.near(doc.resolve(pos)));
+      return state.apply(tr.split(tr.selection.from)).doc;
+    };
+    const typeInto = (doc: PmNode, ch: string) =>
+      EditorState.create({ doc }).apply(
+        EditorState.create({ doc }).tr.insertText(ch, doc.content.size - 1),
+      ).doc;
+
+    p = advance(p, at(p.doc, 1));
+    for (const ch of 'go') p = advance(p, typeInto(p.doc, ch));
+    p = advance(p, at(p.doc, p.doc.content.size - 1));
+    for (const ch of 'go') p = advance(p, typeInto(p.doc, ch));
+
+    expect(p.source).toBe('go\n\ngo\n');
+    expect(p.doc.child(1).textContent).toBe('go');
+    expect(p.doc.child(2).textContent).toBe('go');
+    expect(p.map.blocks).toHaveLength(p.doc.childCount);
   });
 
   it('leaves an insertion with no blank run in play on its old anchor', () => {

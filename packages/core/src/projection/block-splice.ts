@@ -23,7 +23,7 @@ export interface ChangedBlocks {
   after: BlockRange;
 }
 
-const MIN_WRITTEN_TRAILING_EMPTIES = 2;
+const MIN_WRITTEN_EDGE_EMPTIES = 2;
 
 export interface Projection {
   readonly source: string;
@@ -38,39 +38,44 @@ export function buildProjection(source: string, md: MarkdownManager): Projection
   return { source, bodyOffset: frontmatter.length, doc, map };
 }
 
+/* STOP: a blank paragraph the source cannot spell must be HELD with a zero-width span, not
+   left out of the table. map.blocks.length === doc.childCount is the contract every splice
+   indexes through, and a leading run is the case that breaks it: one leading blank has no
+   byte spelling at all, so the doc legitimately carries a block the parse never returns.
+   Dropping it here costs the NEXT keystroke, which computeBlockSplice then declines. */
 export function alignProjectionToDoc(projection: Projection, doc: PmNode): Projection {
   const old = projection.map.blocks;
   if (old.length === doc.childCount) return { ...projection, doc };
   if (old.length > doc.childCount) return { ...projection, doc };
-  for (let i = old.length; i < doc.childCount; i++) {
-    const child = doc.child(i);
-    if (child.type.name !== 'paragraph' || child.content.size !== 0) {
-      return { ...projection, doc };
-    }
-  }
 
   const bodyEnd = projection.map.sourceLength;
   const blocks: PmSourceSpan[] = [];
   let pos = 0;
+  let taken = 0;
+  let frontier = 0;
   for (let i = 0; i < doc.childCount; i++) {
     const child = doc.child(i);
     const from = pos;
     pos += child.nodeSize;
-    const prior = old[i];
-    blocks.push(
-      prior !== undefined
-        ? { ...prior, from, to: pos, type: child.type.name }
-        : {
-            from,
-            to: pos,
-            sourceStart: bodyEnd,
-            sourceEnd: bodyEnd,
-            type: child.type.name,
-            depth: 1,
-            mapped: false,
-          },
-    );
+    if (isBlankParagraph(child) && doc.childCount - i > old.length - taken) {
+      blocks.push({
+        from,
+        to: pos,
+        sourceStart: frontier,
+        sourceEnd: frontier,
+        type: child.type.name,
+        depth: 1,
+        mapped: false,
+      });
+      continue;
+    }
+    const prior = old[taken];
+    if (prior === undefined) return { ...projection, doc };
+    taken++;
+    frontier = prior.sourceEnd;
+    blocks.push({ ...prior, from, to: pos, type: child.type.name });
   }
+  if (taken !== old.length) return { ...projection, doc };
   return {
     ...projection,
     doc,
@@ -237,6 +242,15 @@ function blankRunGapSplice(
   const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
   const next = runEnd < after.childCount ? blocks[runEnd - tailShift] : undefined;
 
+  if (prev === undefined && next !== undefined) {
+    return gapWrite(
+      body,
+      0,
+      lineStart(body, next.sourceStart),
+      '\n'.repeat(count >= MIN_WRITTEN_EDGE_EMPTIES ? count : 0),
+      shift,
+    );
+  }
   if (prev !== undefined && next !== undefined) {
     return gapWrite(
       body,
@@ -251,7 +265,7 @@ function blankRunGapSplice(
       body,
       lineEnd(body, prev.sourceEnd),
       body.length,
-      '\n'.repeat(count >= MIN_WRITTEN_TRAILING_EMPTIES ? count + 1 : 1),
+      '\n'.repeat(count >= MIN_WRITTEN_EDGE_EMPTIES ? count + 1 : 1),
       shift,
     );
   }
@@ -277,20 +291,24 @@ function blankRunAnchoredSplice(
   if (runStart === range.before.from && runEnd === range.before.to) return null;
 
   const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
-  if (prev === undefined || prev.sourceEnd <= prev.sourceStart) return null;
+  if (prev !== undefined && prev.sourceEnd <= prev.sourceStart) return null;
   const next = runEnd < blocks.length ? blocks[runEnd] : undefined;
 
-  const from = lineEnd(body, prev.sourceEnd);
+  const from = prev === undefined ? 0 : lineEnd(body, prev.sourceEnd);
   const to = next === undefined ? body.length : lineStart(body, next.sourceStart);
   if (to < from) return null;
 
   const lead = range.before.from - runStart;
   const trail = runEnd - range.before.to;
+  const head =
+    prev === undefined
+      ? '\n'.repeat(lead >= MIN_WRITTEN_EDGE_EMPTIES ? lead : 0)
+      : '\n'.repeat(lead + 2);
   const tail =
     next !== undefined
       ? '\n'.repeat(trail + 2)
-      : '\n'.repeat(trail >= MIN_WRITTEN_TRAILING_EMPTIES ? trail + 1 : 1);
-  return { from: shift(from), to: shift(to), text: `${'\n'.repeat(lead + 2)}${text}${tail}` };
+      : '\n'.repeat(trail >= MIN_WRITTEN_EDGE_EMPTIES ? trail + 1 : 1);
+  return { from: shift(from), to: shift(to), text: `${head}${text}${tail}` };
 }
 
 function gapWrite(

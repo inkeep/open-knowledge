@@ -97,11 +97,25 @@ describe('doc-edge blank runs on the CRDT path', () => {
     }
   });
 
-  test('CHARACTERIZATION: a leading blank run is held in the projection and never written', async () => {
+  test('a leading blank run reaches the source bytes', async () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
       editProjectionBlocks(a, (blocks) => [...blanks(2), ...blocks]);
+
+      const expected = '\n\nAbove.\n\nBelow.\n';
+      await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
+      await expectEverywhereExactly(clients, expected, 2, 10_000);
+    } finally {
+      for (const c of clients) await c.cleanup();
+    }
+  });
+
+  test('a single leading blank has no spelling in markdown, so it stays held', async () => {
+    const clients = await seedDocument('Above.\n\nBelow.\n');
+    try {
+      const a = clients[0];
+      editProjectionBlocks(a, (blocks) => [...blanks(1), ...blocks]);
 
       const unchanged = 'Above.\n\nBelow.\n';
       await wait(1000);
