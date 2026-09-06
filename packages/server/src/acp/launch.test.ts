@@ -13,8 +13,9 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getLogger, type PinoLogger } from '../logger.ts';
+import { isValidLockPid } from '../process-alive.ts';
 import {
   AgentLaunchError,
   brokenInterpreterHint,
@@ -190,11 +191,18 @@ const launchFor = (script: string, overlay?: Record<string, string>): ResolvedLa
   pathFromOverlay: overlaySetsPath(overlay),
 });
 
+const realSetTimeout = globalThis.setTimeout;
+
+const realTimePause = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    realSetTimeout(resolve, ms);
+  });
+
 async function waitFor(pred: () => boolean, ms: number, what: string): Promise<void> {
   const deadline = Date.now() + ms;
   while (!pred()) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 25));
+    await realTimePause(25);
   }
 }
 
@@ -208,6 +216,7 @@ function tmp(): string {
 }
 afterEach(() => {
   for (const pid of strayPids) {
+    if (!isValidLockPid(pid)) continue;
     try {
       process.kill(pid, 'SIGKILL');
     } catch {}
@@ -888,10 +897,10 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
 
   test('a hung probe times out as healthy and does not leak the process', async () => {
     const dir = tmp();
-    const beat = join(dir, 'heartbeat');
+    const kidPidFile = join(dir, 'kid.pid');
     writeFileSync(
       join(dir, 'npx'),
-      `#!/bin/sh\n(while : ; do echo tick >> ${beat}; /bin/sleep 0.05; done) &\nwait\n`,
+      `#!/bin/sh\n(while : ; do /bin/sleep 0.05; done) &\necho $! > ${kidPidFile}\nwait\n`,
       { mode: 0o755 },
     );
     const launch: ResolvedLaunch = {
@@ -901,21 +910,49 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
       kind: 'npx',
       pathFromOverlay: true,
     };
-    expect(await probeInterpreterHealth(launch, 500)).toBeNull();
-    await waitFor(() => existsSync(beat), 5_000, 'the grandchild to start ticking');
+    const publishedKidPid = (): string =>
+      existsSync(kidPidFile) ? readFileSync(kidPidFile, 'utf8').trim() : '';
 
-    const beats = (): number => readFileSync(beat, 'utf8').length;
-    let stopped = false;
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      const before = beats();
-      await new Promise((r) => setTimeout(r, 400));
-      if (beats() === before) {
-        stopped = true;
-        break;
-      }
+    const PROBE_TIMEOUT_MS = 500;
+    let kidPid = 0;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settledEarly: string | null | undefined;
+      const verdict = probeInterpreterHealth(launch, PROBE_TIMEOUT_MS).then(
+        (detail) => (settledEarly = detail),
+      );
+
+      await waitFor(
+        () => publishedKidPid() !== '' || settledEarly !== undefined,
+        5_000,
+        'the fixture to publish its grandchild pid',
+      );
+      kidPid = Number(publishedKidPid());
+      strayPids.push(kidPid);
+
+      expect(
+        settledEarly,
+        'the probe settled before the fixture ever published a grandchild pid',
+      ).toBeUndefined();
+      expect(
+        Number.isInteger(kidPid) && kidPid > 0,
+        `the fixture published an unusable grandchild pid: ${JSON.stringify(publishedKidPid())}`,
+      ).toBe(true);
+      expect(isAlive(kidPid), 'the fixture published a grandchild pid already dead').toBe(true);
+
+      await realTimePause(PROBE_TIMEOUT_MS + 100);
+      expect(
+        isAlive(kidPid),
+        'the probe deadline fired on real time — the fake-timer hold is not in effect',
+      ).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(PROBE_TIMEOUT_MS);
+      await expect(verdict).resolves.toBeNull();
+    } finally {
+      await vi.runAllTimersAsync();
+      vi.useRealTimers();
     }
-    expect(stopped).toBe(true);
+    await waitFor(() => !isAlive(kidPid), 5_000, 'the detached grandchild to die');
   }, 20_000);
 });
 
