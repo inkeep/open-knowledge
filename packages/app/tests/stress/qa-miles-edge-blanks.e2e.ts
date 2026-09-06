@@ -67,13 +67,13 @@ test.describe('doc-edge blank runs at browser fidelity', () => {
     await visualToggle(page).click();
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await expect.poll(() => countBlankParagraphs(page), { timeout: 10_000 }).toBe(4);
-    expect(await readSource(page)).toBe(expected);
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(expected);
 
     await page.reload();
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await expect.poll(() => countBlankParagraphs(page), { timeout: 10_000 }).toBe(4);
-    expect(await readSource(page)).toBe(expected);
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(expected);
   });
 
   test('INV-11: blank lines typed at the tail in source mode appear in the visual editor', async ({
@@ -92,6 +92,11 @@ test.describe('doc-edge blank runs at browser fidelity', () => {
     await visualToggle(page).click();
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
     await expect.poll(() => countBlankParagraphs(page), { timeout: 10_000 }).toBe(2);
-    expect(await readSource(page), 'source bytes survive the toggle').toBe(expected);
+    await expect
+      .poll(() => readSource(page), {
+        message: 'source bytes survive the toggle',
+        timeout: 10_000,
+      })
+      .toBe(expected);
   });
 });

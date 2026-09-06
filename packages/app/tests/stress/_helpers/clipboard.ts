@@ -17,11 +17,14 @@
 import type { Page } from '@playwright/test';
 import { selectAllAndWaitForSelection } from './editor-state';
 
+const SOURCE_CONTENT_SELECTOR = '.source-editor .cm-content';
+
 export async function simulateCopyAndRead(
   page: Page,
   view: 'wysiwyg' | 'source' = 'wysiwyg',
 ): Promise<{ plain: string; html: string }> {
-  const selector = view === 'source' ? '.cm-content' : '.ProseMirror:not(.composer-prosemirror)';
+  const selector =
+    view === 'source' ? SOURCE_CONTENT_SELECTOR : '.ProseMirror:not(.composer-prosemirror)';
   await selectAllAndWaitForSelection(page, selector);
   return page.evaluate((sel) => {
     const editor = document.querySelector(sel) as HTMLElement | null;
@@ -58,7 +61,8 @@ export async function simulateCutAndRead(
   page: Page,
   view: 'wysiwyg' | 'source' = 'wysiwyg',
 ): Promise<{ plain: string; html: string; contentAfter: string }> {
-  const selector = view === 'source' ? '.cm-content' : '.ProseMirror:not(.composer-prosemirror)';
+  const selector =
+    view === 'source' ? SOURCE_CONTENT_SELECTOR : '.ProseMirror:not(.composer-prosemirror)';
   await selectAllAndWaitForSelection(page, selector);
   return page.evaluate((sel) => {
     const editor = document.querySelector(sel) as HTMLElement | null;

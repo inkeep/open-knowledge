@@ -60,11 +60,14 @@ function parseMark(raw: RawMarkPayload | null): LandingMark {
 
 export async function waitForLandingSettled(
   page: Page,
-  opts?: { since?: number; timeout?: number },
+  opts: { since: number; timeout?: number },
 ): Promise<LandingMark> {
-  const since = opts?.since ?? 0;
+  const { since } = opts;
   await expect
-    .poll(() => landingMarkCount(page), { timeout: opts?.timeout ?? 10_000 })
+    .poll(() => landingMarkCount(page), {
+      message: `waitForLandingSettled: no terminal landing mark past ${since}; the mode switch either never started a landing or it was cancelled without one`,
+      timeout: opts.timeout ?? 10_000,
+    })
     .toBeGreaterThan(since);
 
   const raw = await page.evaluate(
