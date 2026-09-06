@@ -1492,6 +1492,12 @@ async function startChokidarWatcher(
   const BATCH_WINDOW_MS = 50;
   let pendingEvents: Array<{ type: 'create' | 'update' | 'delete'; path: string }> = [];
   let batchTimer: ReturnType<typeof setTimeout> | null = null;
+  // Serialize batches: chokidar (Windows ReadDirectoryChangesW) emits more
+  // granular events than inotify, so a 50ms batch can still be mid-drain
+  // (readFile-ing every change) when the next timer fires. Launching batches
+  // independently piles up overlapping async work → unbounded heap growth on
+  // event storms. Chaining on this promise makes batches strictly sequential.
+  let inFlight: Promise<void> = Promise.resolve();
 
   function queueEvent(type: 'create' | 'update' | 'delete', path: string) {
     pendingEvents.push({ type, path });
@@ -1500,15 +1506,18 @@ async function startChokidarWatcher(
       pendingEvents = [];
       batchTimer = null;
       onRawBatch?.(batch.map((e) => e.path));
-      handleRawEvents(
-        batch,
-        contentDir,
-        contentFilter,
-        fileIndex,
-        folderIndex,
-        onDiskEvent,
-        aliasMap,
-      )
+      inFlight = inFlight
+        .then(() =>
+          handleRawEvents(
+            batch,
+            contentDir,
+            contentFilter,
+            fileIndex,
+            folderIndex,
+            onDiskEvent,
+            aliasMap,
+          ),
+        )
         .then(onAfterMutation)
         .catch((err) => log.error({ err }, 'chokidar batch error'));
     }, BATCH_WINDOW_MS);

@@ -231,3 +231,61 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
     }
   });
 });
+
+describe('chokidar backend — batch serialization', () => {
+  // Regression for the Windows heap-growth bug: chokidar (ReadDirectoryChangesW)
+  // emits more granular events than inotify, so a 50ms batch can still be
+  // mid-drain (readFile-ing every change) when the next timer fires. Without
+  // serialization each timer fire launches handleRawEvents independently and
+  // overlapping batches pile up → unbounded heap growth on event storms.
+  let tmpDir: string;
+  let contentDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-chokidar-serial-'));
+    contentDir = resolve(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'seed.md'), '# Seed\n');
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function until(predicate: () => boolean, timeoutMs = 4000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return true;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return predicate();
+  }
+
+  test('batches are drained strictly one at a time', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const filter = createContentFilter({ projectDir: tmpDir, contentDir });
+    const handle = await startWatcher(
+      contentDir,
+      async () => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((r) => setTimeout(r, 200));
+        active--;
+      },
+      filter,
+      { forceBackend: 'chokidar' },
+    );
+    try {
+      // Batch 1: write to an existing file → watcher fires, drain starts.
+      writeFileSync(resolve(contentDir, 'seed.md'), '# Seed 1\n');
+      expect(await until(() => active === 1)).toBe(true);
+      // Batch 2 lands mid-drain (drain holds 200ms) → must queue, not overlap.
+      writeFileSync(resolve(contentDir, 'seed.md'), '# Seed 2\n');
+      await new Promise((r) => setTimeout(r, 600));
+      expect(maxActive).toBe(1);
+    } finally {
+      await handle.unsubscribe();
+    }
+  });
+});
