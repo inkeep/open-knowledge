@@ -408,7 +408,11 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     const { unmount } = render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
 
     await screen.findByRole('button', { name: /keep file deleted/i });
-    expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe('0px');
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe(
+        '0px',
+      );
+    });
 
     unmount();
     expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe('');
@@ -419,7 +423,11 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     const { unmount } = render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
 
     await screen.findByRole('button', { name: /accept their deletion/i });
-    expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe('0px');
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe(
+        '0px',
+      );
+    });
 
     unmount();
     expect(document.documentElement.style.getPropertyValue('--conflict-footer-height')).toBe('');
