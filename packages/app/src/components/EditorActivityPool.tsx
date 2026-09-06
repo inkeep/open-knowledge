@@ -90,7 +90,7 @@ const TextDocEditor = lazy(async () => ({
  * Value rationale (500_000 chars ≈ 500 KB plain text):
  *   - README.md / AGENTS.md / CLAUDE.md (≤150 KB) — BELOW. No change from
  *     pre-mount-both default; toggle stays instant.
- *   - PROJECT.md (multi-MB) — ABOVE. Cold load skips the non-active
+ *   - perf-fixtures/big-doc.md (3.25 MB, generated) — ABOVE. Cold load skips the non-active
  *     editor's initial mount+parse; first toggle pays the cost; subsequent
  *     toggles are instant.
  *

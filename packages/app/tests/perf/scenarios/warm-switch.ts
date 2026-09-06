@@ -25,7 +25,7 @@ import { installLongtaskObserver } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
 const SMALL_DOC = process.env.OK_PERF_SMALL_DOC ?? 'README';
-const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
+const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'perf-fixtures/big-doc';
 
 const WAIT_CONTENT_MS = 90_000;
 

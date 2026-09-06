@@ -7,7 +7,7 @@ const DOC_BUCKETS = (
     ? process.env.OK_PERF_M1_DOCS.split(',')
         .map((s) => s.trim())
         .filter(Boolean)
-    : ['README', 'AGENTS', 'PROJECT']
+    : ['README', 'AGENTS', 'perf-fixtures/big-doc']
 ) as readonly string[];
 const LEAK_CYCLES = Number(process.env.OK_PERF_M1_LEAK_CYCLES ?? 10);
 const MOUNT_TEN_COUNT = Number(process.env.OK_PERF_M1_MOUNT_COUNT ?? 10);
@@ -192,7 +192,13 @@ export default defineScenario({
         `${doc} per-editor: ${round2(perEditor)} MB (B′=${round2(stageBMb)} → C=${round2(stageCMb)})`,
       );
 
-      const otherDocs = ['README', 'AGENTS', 'CLAUDE', 'STORIES', 'PROJECT'];
+      const otherDocs = [
+        'README',
+        'AGENTS',
+        'CLAUDE',
+        'perf-fixtures/medium-doc',
+        'perf-fixtures/big-doc',
+      ];
       for (let i = 0; i < MOUNT_TEN_COUNT; i++) {
         const next = otherDocs[i % otherDocs.length];
         await page.goto(`${opts.target}/#/${encodeURIComponent(next)}`, {

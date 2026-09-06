@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type Browser, chromium, type Page, type Request, type Response } from '@playwright/test';
 import type { PerfCollector, ProfilerRenderEvent } from '../../src/lib/perf/types.ts';
+import { writeSyntheticFixtures } from './fixtures/synthetic-doc.ts';
 import { traceEnd, traceStart } from './lib/cdp-tracer.ts';
 import type {
   NetworkRequestRecord,
@@ -103,6 +104,10 @@ async function loadScenario(name: string): Promise<ScenarioDefinition> {
 }
 
 async function runScenario(args: CliArgs): Promise<void> {
+  for (const fixture of writeSyntheticFixtures()) {
+    if (fixture.written)
+      console.log(`[perf] generated fixture ${fixture.path} (${fixture.bytes} bytes)`);
+  }
   const scen = await loadScenario(args.scenario);
 
   const opts: ScenarioOptions = {

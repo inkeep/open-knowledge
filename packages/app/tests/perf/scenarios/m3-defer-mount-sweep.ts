@@ -3,7 +3,7 @@ import { installLongtaskObserver } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
 const DEFAULT_THRESHOLDS = [Number.MAX_SAFE_INTEGER, 1_500_000, 500_000, 200_000, 100_000, 0];
-const DEFAULT_DOCS = ['README', 'AGENTS', 'STORIES'];
+const DEFAULT_DOCS = ['README', 'AGENTS', 'perf-fixtures/medium-doc'];
 
 const THRESHOLDS = (
   process.env.OK_PERF_M3_THRESHOLDS

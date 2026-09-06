@@ -8,7 +8,7 @@ import { correlateLongtasksWithMarks } from '../lib/correlate-longtasks.ts';
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
-const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
+const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'perf-fixtures/big-doc';
 const PM_READY_CHARS = 500;
 const PM_READY_TIMEOUT_MS = 90_000;
 
@@ -145,7 +145,7 @@ function lastMarkByName(marks: UserMark[], name: string): UserMark | null {
 export default defineScenario({
   name: 'g4-profile-decomposition',
   description:
-    'Profile probe: decomposes PROJECT.md cold-MISS longest-task into JS / layout / style halves and cold-LOAD into IDB / WS / PM phases.',
+    'Profile probe: decomposes perf-fixtures/big-doc.md cold-MISS longest-task into JS / layout / style halves and cold-LOAD into IDB / WS / PM phases.',
 
   async run(ctx) {
     const { page, cdp, opts } = ctx;

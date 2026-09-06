@@ -35,6 +35,7 @@
     "test:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots",
     "test:perf": "vitest run tests/stress/component-blocks.perf.test.ts",
     "test:a11y": "playwright test --config playwright.a11y.config.ts",
+    "perf:fixtures": "tsx tests/perf/fixtures/generate.ts",
     "perf:profile": "tsx tests/perf/profile.ts",
     "sweep:cache-regime": "tsx tests/perf/profile.ts --scenario=sweep-cache-regime",
     "sweep:convention-cap-graduation": "tsx tests/perf/profile.ts --scenario=sweep-convention-cap-graduation",

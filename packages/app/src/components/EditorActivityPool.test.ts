@@ -233,7 +233,7 @@ describe('LARGE_DOC_CHAR_THRESHOLD', () => {
     expect(LARGE_DOC_CHAR_THRESHOLD).toBeGreaterThan(200_000);
   });
 
-  test('is safely below PROJECT.md-class docs (≥3 MB) so they trigger defer-mount', () => {
+  test('is safely below perf-fixtures/big-doc.md-class docs (≥3 MB) so they trigger defer-mount', () => {
     expect(LARGE_DOC_CHAR_THRESHOLD).toBeLessThan(1_000_000);
   });
 });
