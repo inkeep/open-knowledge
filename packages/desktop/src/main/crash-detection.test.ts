@@ -10,12 +10,15 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { installWasInFlightDuring } from './auto-updater.ts';
 import {
   type CrashDetectionDeps,
   createCrashDetection,
+  GPU_CRASH_INVITE_THRESHOLD,
+  GPU_CRASH_WINDOW_MS,
   type InstallInFlight,
+  MAX_DECLINED_DEATHS,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
@@ -45,6 +48,7 @@ interface Rig {
   deps: CrashDetectionDeps;
   emitted: OkBugReportCrashDetectedEvent[];
   warnings: Record<string, unknown>[];
+  infos: Record<string, unknown>[];
   ownDump: Buffer;
   ownDumpStamped(version: string): Buffer;
   ownDumpWithAxMode(version: string, mode: string): Buffer;
@@ -65,6 +69,7 @@ function makeRig(): Rig {
   tmpDirs.push(dir);
   const emitted: OkBugReportCrashDetectedEvent[] = [];
   const warnings: Record<string, unknown>[] = [];
+  const infos: Record<string, unknown>[] = [];
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let installInFlight: InstallInFlight | null = null;
@@ -86,6 +91,7 @@ function makeRig(): Rig {
     dir,
     emitted,
     warnings,
+    infos,
     ownDump: buildMinidump(ownModules),
     ownDumpSimulated: buildMinidump(ownModules, { exceptionCode: 0x4350_7378 }),
     ownDumpStamped: (version: string) =>
@@ -143,7 +149,9 @@ function makeRig(): Rig {
       currentBootSessionUuid: () => bootSessionUuid,
       installInFlight: () => installInFlight,
       logger: {
-        info: () => {},
+        info: (payload) => {
+          infos.push(payload);
+        },
         warn: (payload) => {
           warnings.push(payload);
         },
@@ -2139,16 +2147,21 @@ describe('dumps of deaths the app declined to prompt for', () => {
 
     sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
     expect(rig.emitted).toHaveLength(0);
-    seedMinidump(
-      rig,
-      'completed/gpu.dmp',
-      new Date(rig.nowMs()),
-      rig.ownDumpWithProcessType('gpu-process'),
-    );
+    const declinedAt = new Date(rig.nowMs());
+    const dumpAt = new Date(declinedAt.getTime() + 5_000);
+    seedMinidump(rig, 'completed/gpu.dmp', dumpAt, rig.ownDumpWithProcessType('gpu-process'));
     sessionA.markCleanQuit();
 
     const sessionB = createCrashDetection(rig.deps);
     expect(sessionB.detectBootCrash()).toBeNull();
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.dump-retired',
+        dumpMtimeAt: dumpAt.toISOString(),
+        declinedAt: declinedAt.toISOString(),
+        processType: 'gpu-process',
+      }),
+    );
     sessionB.notifyRendererReady();
     expect(rig.emitted).toHaveLength(0);
     sessionB.markCleanQuit();
@@ -2173,6 +2186,9 @@ describe('dumps of deaths the app declined to prompt for', () => {
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    expect(rig.infos).not.toContainEqual(
+      expect.objectContaining({ event: 'crash-detection.dump-beside-decline-unclassified' }),
+    );
   });
 
   test('a renderer dump beside a declined GPU death is a different crash and still prompts', () => {
@@ -2191,6 +2207,9 @@ describe('dumps of deaths the app declined to prompt for', () => {
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    expect(rig.infos).not.toContainEqual(
+      expect.objectContaining({ event: 'crash-detection.dump-beside-decline-unclassified' }),
+    );
   });
 
   test('a GPU dump written long after the declined death is a separate incident', () => {
@@ -2223,6 +2242,61 @@ describe('dumps of deaths the app declined to prompt for', () => {
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.dump-beside-decline-unclassified',
+        unnamed: 1,
+        parseFailed: 0,
+      }),
+    );
+  });
+
+  test('a dump whose annotation read throws is counted apart from one that says nothing', async () => {
+    const CRASHPAD_INFO_MODULE_LIST_PREFIX_BYTES = 52;
+    const rig = makeRig();
+    const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    vi.resetModules();
+    vi.doMock('node:fs', () => ({
+      ...realFs,
+      readSync: (
+        fd: number,
+        buffer: NodeJS.ArrayBufferView,
+        offset: number,
+        length: number,
+        position: number,
+      ) => {
+        if (length === CRASHPAD_INFO_MODULE_LIST_PREFIX_BYTES)
+          throw new Error('crashpad layout moved');
+        return realFs.readSync(fd, buffer, offset, length, position);
+      },
+    }));
+    try {
+      const mocked = await import('./crash-detection.ts');
+      const sessionA = mocked.createCrashDetection(rig.deps);
+      expect(sessionA.detectBootCrash()).toBeNull();
+
+      sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+      seedMinidump(
+        rig,
+        'completed/gpu.dmp',
+        new Date(rig.nowMs()),
+        rig.ownDumpWithProcessType('gpu-process'),
+      );
+      sessionA.markCleanQuit();
+
+      const sessionB = mocked.createCrashDetection(rig.deps);
+      expect(bootInvite(sessionB.detectBootCrash()).context.dirtyShutdown).toBe(false);
+      expect(rig.infos).toContainEqual(
+        expect.objectContaining({
+          event: 'crash-detection.dump-beside-decline-unclassified',
+          unnamed: 0,
+          parseFailed: 1,
+        }),
+      );
+    } finally {
+      vi.doUnmock('node:fs');
+      vi.resetModules();
+    }
   });
 
   test('a retired dump is still offered to a report the user opens themselves', () => {
@@ -2329,28 +2403,40 @@ describe('dumps of deaths the app declined to prompt for', () => {
     expect(stored.declinedDeaths).toHaveLength(1);
   });
 
+  test('the cap covers a day of the fastest within-session cadence that never prompts', () => {
+    const SUSTAINED_HOURS = 24;
+    const declinesPerHour = 3_600_000 / (GPU_CRASH_WINDOW_MS / (GPU_CRASH_INVITE_THRESHOLD - 1));
+    expect(MAX_DECLINED_DEATHS).toBeGreaterThanOrEqual(SUSTAINED_HOURS * declinesPerHour);
+  });
+
   test('the record list is capped, dropping the oldest first', () => {
     const rig = makeRig();
+    const seededAt: string[] = [];
+    for (let i = 0; i < MAX_DECLINED_DEATHS - 1; i++) {
+      seededAt.push(new Date(rig.nowMs() - (MAX_DECLINED_DEATHS - i) * 6 * 60_000).toISOString());
+    }
+    mkdirSync(dirname(rig.deps.ackStorePath), { recursive: true });
+    writeFileSync(
+      rig.deps.ackStorePath,
+      JSON.stringify({
+        ackedEventIds: [],
+        minidumpBaselineAt: new Date(rig.nowMs() - MAX_DECLINED_DEATHS * 12 * 60_000).toISOString(),
+        declinedDeaths: seededAt.map((at) => ({ at, processType: 'gpu-process' })),
+      }),
+    );
     const session = createCrashDetection(rig.deps);
     expect(session.detectBootCrash()).toBeNull();
+    const oldestAt = seededAt[0] ?? '';
 
     rig.advance(6 * 60_000);
     session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
-    const afterFirst = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
-      declinedDeaths: { at: string }[];
-    };
-    expect(afterFirst.declinedDeaths).toHaveLength(1);
-    const oldestAt = afterFirst.declinedDeaths[0]?.at ?? '';
-
-    for (let i = 0; i < 24; i++) {
-      rig.advance(6 * 60_000);
-      session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
-    }
+    rig.advance(6 * 60_000);
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
 
     const stored = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
       declinedDeaths: { at: string }[];
     };
-    expect(stored.declinedDeaths).toHaveLength(20);
+    expect(stored.declinedDeaths).toHaveLength(MAX_DECLINED_DEATHS);
     expect(stored.declinedDeaths.map((d) => d.at)).not.toContain(oldestAt);
 
     const evictedAt = new Date(Date.parse(oldestAt));
@@ -2409,6 +2495,14 @@ describe('dumps of deaths the app declined to prompt for', () => {
       rig.ownDumpWithProcessType('gpu-process'),
     );
     sessionA.markCleanQuit();
+
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.declined-deaths-cleared',
+        processType: 'gpu-process',
+        cleared: 2,
+      }),
+    );
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
