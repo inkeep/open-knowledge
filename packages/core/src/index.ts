@@ -444,6 +444,10 @@ export {
   spawnErrorLogOpenMode,
 } from './constants/lifecycle.ts';
 export {
+  MANUAL_CHECK_NOTICE_EXPIRY_MS,
+  MANUAL_CHECK_WATCHDOG_MS,
+} from './constants/manual-update-check.ts';
+export {
   GREP_MAX_RESULTS,
   MCP_SERVER_NAME,
   OK_DESKTOP_TERMINAL_ENV,

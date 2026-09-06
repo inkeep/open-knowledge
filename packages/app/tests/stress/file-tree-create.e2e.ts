@@ -191,6 +191,7 @@ async function installDelayedDesktopSessionBridge(
         return raw ? JSON.parse(raw) : { ...initialSession, updatedAt: '2026-05-08T00:00:00.000Z' };
       };
       const unsubscribe = () => {};
+      // STOP: this fixture must implement every OkDesktopBridge member main.tsx invokes at boot; it is outside packages/app/tsconfig.json include, so nothing typechecks it.
       const okDesktop = {
         appVersion: 'test',
         platform: 'darwin',
@@ -210,6 +211,7 @@ async function installDelayedDesktopSessionBridge(
         onWhatsNew: () => unsubscribe,
         onWhatsNewDismissed: () => unsubscribe,
         onUpdateStuckHint: () => unsubscribe,
+        onUpdateManualCheck: () => unsubscribe,
         onDeepLink: () => unsubscribe,
         onShareReceived: () => unsubscribe,
         onServerVersionDrift: () => unsubscribe,

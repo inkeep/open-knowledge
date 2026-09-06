@@ -368,6 +368,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         onWhatsNew: () => () => {},
         onWhatsNewDismissed: () => () => {},
         onUpdateStuckHint: () => () => {},
+        onUpdateManualCheck: () => () => {},
         onDeepLink: () => () => {},
         onShareReceived: () => () => {},
         onServerVersionDrift: () => () => {},
