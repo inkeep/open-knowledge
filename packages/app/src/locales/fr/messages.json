@@ -777,6 +777,9 @@
     "7wogIQ": [
       ["0", "plural", { "one": ["Extension"], "many": ["Extensions"], "other": ["Extensions"] }]
     ],
+    "7xEWbL": [
+      "Ajoute également les rapports de plantage que macOS a enregistrés pour OpenKnowledge et ses processus auxiliaires, jamais le rapport d'une autre application, même si les nôtres nomment les processus qui s'exécutaient à leurs côtés. Chacun contient des informations sur la machine que macOS inscrit dans tous les rapports : l'uid de votre compte, le modèle de Mac et le nom du processus qui a lancé l'application. Sur une machine gérée, ce processus de lancement peut être un outil interne. Les identifiants qui relieraient entre eux les rapports de bug que vous envoyez sont d'abord remplacés, de sorte qu'un rapport collecté n'est pas identique octet pour octet à celui écrit par macOS."
+    ],
     "80c4-P": ["Code copié dans le presse-papiers"],
     "81H_23": ["Ajouter des propriétés"],
     "851WA-": ["Cela se configure dans Paramètres > Outils IA et CLI"],
@@ -4597,9 +4600,6 @@
     ],
     "mPzgTS": ["Ouvrir ", ["docName"]],
     "mR3uQg": ["Ce fichier a été supprimé sur la branche actuelle (conflit delete-modify)."],
-    "mRitpT": [
-      "Il ajoute également les rapports de plantage que macOS a enregistrés pour OpenKnowledge et ses processus auxiliaires, uniquement les nôtres et jamais ceux d'une autre application."
-    ],
     "mToVM9": ["Envoyer un message à ", ["agentName"]],
     "mU3j1b": ["Retirer l'élément ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflit)"],

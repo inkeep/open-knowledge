@@ -1,4 +1,4 @@
-import { type Dirent, readdirSync, readFileSync, statSync } from 'node:fs';
+import { closeSync, type Dirent, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { DESKTOP_PRODUCT_NAME } from '../integrations/desktop-state.ts';
 
@@ -6,6 +6,8 @@ const DIAGNOSTIC_REPORT_WINDOW_DAYS = 7;
 const DIAGNOSTIC_REPORT_WINDOW_MS = DIAGNOSTIC_REPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 const MAX_BUNDLED_DIAGNOSTIC_REPORTS = 25;
+
+export const MAX_HEADER_BYTES = 8192;
 
 export interface DiagnosticReportCollection {
   files: string[];
@@ -51,7 +53,11 @@ function normalizeSolidusEscapes(content: string): string {
   });
 }
 
-const LINKING_IDENTIFIER_KEYS = ['crashReporterKey', 'bootSessionUUID'] as const;
+const LINKING_IDENTIFIER_KEYS = [
+  'crashReporterKey',
+  'bootSessionUUID',
+  'deviceIdentifierForVendor',
+] as const;
 
 const LINKING_IDENTIFIERS = new RegExp(
   `("(?:${LINKING_IDENTIFIER_KEYS.join('|')})"\\s*:\\s*)"[^"]*"`,
@@ -81,11 +87,33 @@ function parseHeaderTimestamp(value: unknown): number | null {
   return Number.isNaN(parsed) ? null : parsed;
 }
 
+function readHeaderLine(filePath: string): string | null {
+  const fd = openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(MAX_HEADER_BYTES);
+    let filled = 0;
+    let atEof = false;
+    while (filled < MAX_HEADER_BYTES) {
+      const read = readSync(fd, buf, filled, MAX_HEADER_BYTES - filled, filled);
+      if (read === 0) {
+        atEof = true;
+        break;
+      }
+      const scanFrom = filled;
+      filled += read;
+      const found = buf.subarray(0, filled).indexOf(0x0a, scanFrom);
+      if (found !== -1) return buf.subarray(0, found).toString('utf-8');
+    }
+    return atEof ? buf.subarray(0, filled).toString('utf-8') : null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readReportHeader(filePath: string): ReportHeader {
   try {
-    const content = readFileSync(filePath, 'utf-8');
-    const newline = content.indexOf('\n');
-    const firstLine = newline === -1 ? content : content.slice(0, newline);
+    const firstLine = readHeaderLine(filePath);
+    if (firstLine === null) return { kind: 'unreadable' };
     const header: unknown = JSON.parse(firstLine);
     if (typeof header !== 'object' || header === null) return { kind: 'unreadable' };
     const {

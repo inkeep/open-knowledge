@@ -69,8 +69,35 @@ describe('staged-content coverage', () => {
     tmpDirs.push(contentDir);
     writeFileSync(join(contentDir, 'note.md'), '# note\n');
 
+    const reportsDir = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-reports-'));
+    tmpDirs.push(reportsDir);
+    const reportPath = join(reportsDir, 'OpenKnowledge-2026-05-28-142201.ips');
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify({ name: 'OpenKnowledge', timestamp: '2026-05-28 14:22:01.00 +0000' })}\n{"procName":"OpenKnowledge"}\n`,
+    );
+
+    const processDir = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-process-'));
+    tmpDirs.push(processDir);
+    writeFileSync(join(processDir, 'sample.txt'), 'process sample\n');
+
+    const extraDir = mkdtempSync(resolve(tmpdir(), 'ok-staging-coverage-extra-'));
+    tmpDirs.push(extraDir);
+    const extraPath = join(extraDir, 'minidump.dmp');
+    writeFileSync(extraPath, Buffer.from([0x4d, 0x44, 0x4d, 0x50, 0x00, 0x01]));
+
     const collected = await collectBundle({
       contentDir,
+      processDir,
+      extraFiles: [{ sourcePath: extraPath }],
+      diagnosticReports: {
+        files: [reportPath],
+        outcome: 'collected',
+        foreignIgnored: 0,
+        unparseable: 0,
+        droppedOverCap: 0,
+        windowDays: 7,
+      },
       deps: {
         fetchAgentPresence: async () => null,
         fetchAgentEffects: async () => null,
@@ -89,7 +116,9 @@ describe('staged-content coverage', () => {
       const produced = readdirSync(collected.stagingDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => e.name);
-      expect(produced.length).toBeGreaterThan(0);
+      expect(produced).toContain('diagnostic-reports');
+      expect(produced).toContain('process');
+      expect(produced).toContain('extra');
       for (const dir of produced) {
         expect(Object.keys(TOP_LEVEL), `staged directory "${dir}" is undeclared`).toContain(dir);
       }

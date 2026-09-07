@@ -7295,8 +7295,8 @@ msgid "Invalid YAML"
 msgstr "无效的 YAML"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
-msgstr "它还会添加 macOS 为 OpenKnowledge 及其辅助进程记录的崩溃报告，仅包含我们的报告，绝不包含其他应用的报告。"
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote."
+msgstr "还会添加 macOS 为 OpenKnowledge 及其辅助进程记录的崩溃报告，绝不包含其他应用的报告，不过我们自己的报告会列出与之同时运行的进程。每份报告都含有 macOS 写入所有报告的机器信息：你的账户 uid、Mac 机型，以及启动该应用的进程名称。在受管理的设备上，该启动进程可能是内部工具。会先替换掉可能将你提交的多份问题报告相互关联的标识符，因此收集到的报告与 macOS 写入的原文并非逐字节相同。"
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

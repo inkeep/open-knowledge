@@ -294,7 +294,7 @@ describe('ReportBugDialog', () => {
     ).not.toBeNull();
     expect(
       screen.getByText(
-        "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's.",
+        "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote.",
         { exact: false },
       ),
     ).not.toBeNull();

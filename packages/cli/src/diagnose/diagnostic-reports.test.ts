@@ -1,12 +1,32 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
 import {
   collectDiagnosticReports,
+  MAX_HEADER_BYTES,
   prepareDiagnosticReportText,
   renderDiagnosticReportsStatus,
 } from './diagnostic-reports.ts';
+
+const fsHolder = vi.hoisted(() => ({
+  realReadSync: null as null | typeof import('node:fs').readSync,
+}));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  fsHolder.realReadSync = actual.readSync;
+  return { ...actual, readSync: vi.fn(actual.readSync) };
+});
+const mockedReadSync = vi.mocked(readSync);
 
 const tmpDirs: string[] = [];
 
@@ -17,6 +37,7 @@ function makeTmpDir(): string {
 }
 
 afterEach(() => {
+  mockedReadSync.mockReset();
   for (const d of tmpDirs) {
     if (existsSync(d)) rmSync(d, { recursive: true, force: true });
   }
@@ -39,6 +60,19 @@ function headerTimestamp(at: Date, offsetHours = 0): string {
   const abs = Math.abs(offsetHours);
   const offset = `${sign}${String(abs).padStart(2, '0')}00`;
   return `${shifted.toISOString().slice(0, 10)} ${shifted.toISOString().slice(11, 19)}.00 ${offset}`;
+}
+
+function headerOfExactBytes(target: number): string {
+  const build = (pad: string): string =>
+    JSON.stringify({
+      name: 'OpenKnowledge',
+      bug_type: '309',
+      timestamp: headerTimestamp(daysBefore(1)),
+      pad,
+    });
+  const header = build('x'.repeat(target - Buffer.byteLength(build(''))));
+  expect(Buffer.byteLength(header)).toBe(target);
+  return header;
 }
 
 function writeReport(
@@ -113,7 +147,10 @@ describe('prepareDiagnosticReportText', () => {
       '  "crashReporterKey" : "03BEA1C8-0E42-2631-A65B-FB48F8C46739",',
       '  "bootSessionUUID" : "2C1A7E44-9B3D-4A02-8F55-1D0C6E9B7A31",',
       '  "sleepWakeUUID" : "7F2B9C10-4E5A-4B88-9C31-0A2D5E7F1B44",',
-      '  "incident_id" : "9D5B0E6B-1F0A-4E77-9A6E-6C7B2E0A0B11"',
+      '  "incident_id" : "9D5B0E6B-1F0A-4E77-9A6E-6C7B2E0A0B11",',
+      '  "storeInfo" : {',
+      '    "deviceIdentifierForVendor" : "4E1D9A73-55C2-4F08-B6A1-2D77C0E3F912"',
+      '  }',
       '}',
     ].join('\n');
 
@@ -123,6 +160,8 @@ describe('prepareDiagnosticReportText', () => {
     expect(after).not.toContain('2C1A7E44-9B3D-4A02-8F55-1D0C6E9B7A31');
     expect(after).toContain('"crashReporterKey" : "[REDACTED-DEVICE-ID]"');
     expect(after).toContain('"bootSessionUUID" : "[REDACTED-DEVICE-ID]"');
+    expect(after).not.toContain('4E1D9A73-55C2-4F08-B6A1-2D77C0E3F912');
+    expect(after).toContain('"deviceIdentifierForVendor" : "[REDACTED-DEVICE-ID]"');
     expect(after).toContain('7F2B9C10-4E5A-4B88-9C31-0A2D5E7F1B44');
     expect(after).toContain('9D5B0E6B-1F0A-4E77-9A6E-6C7B2E0A0B11');
     expect(() => JSON.parse(after)).not.toThrow();
@@ -387,6 +426,72 @@ describe('collectDiagnosticReports', () => {
 
       expect(result.files.map((f) => basename(f))).toEqual(['OpenKnowledge-partial.ips']);
       expect(result.unparseable).toBe(0);
+    });
+
+    test('bounds the header read at 8 KiB, which every boundary fixture derives from', () => {
+      expect(MAX_HEADER_BYTES).toBe(8192);
+    });
+
+    test('reassembles a header delivered in short reads, as a network mount may return it', () => {
+      const dir = makeTmpDir();
+      writeReport(dir, 'OpenKnowledge-chunked.ips', { name: 'OpenKnowledge' });
+      mockedReadSync.mockImplementation((fd, buffer, offset, length, position) =>
+        (fsHolder.realReadSync as typeof import('node:fs').readSync)(
+          fd,
+          buffer as NodeJS.ArrayBufferView,
+          offset as number,
+          Math.min(length as number, 3),
+          position as number,
+        ),
+      );
+
+      const result = collectDiagnosticReports(dir, NOW);
+
+      expect(result.files.map((f) => basename(f))).toEqual(['OpenKnowledge-chunked.ips']);
+      expect(result.unparseable).toBe(0);
+      expect(mockedReadSync.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    test('collects a header whose newline lands on the last byte the window covers', () => {
+      const dir = makeTmpDir();
+      const padded = headerOfExactBytes(MAX_HEADER_BYTES - 1);
+      writeReport(dir, 'OpenKnowledge-at-bound.ips', {
+        name: 'OpenKnowledge',
+        raw: `${padded}\n{"procName":"OpenKnowledge"}\n`,
+      });
+
+      const result = collectDiagnosticReports(dir, NOW);
+
+      expect(result.files.map((f) => basename(f))).toEqual(['OpenKnowledge-at-bound.ips']);
+      expect(result.unparseable).toBe(0);
+    });
+
+    test('treats a header complete at exactly the bound as unreadable', () => {
+      const dir = makeTmpDir();
+      const padded = headerOfExactBytes(MAX_HEADER_BYTES);
+      writeReport(dir, 'OpenKnowledge-exact-bound.ips', {
+        name: 'OpenKnowledge',
+        raw: `${padded}\n{"procName":"OpenKnowledge"}\n`,
+      });
+
+      const result = collectDiagnosticReports(dir, NOW);
+
+      expect(result.files).toEqual([]);
+      expect(result.unparseable).toBe(1);
+    });
+
+    test('treats a header line that runs past the bound as unreadable', () => {
+      const dir = makeTmpDir();
+      const padded = headerOfExactBytes(MAX_HEADER_BYTES + 1);
+      writeReport(dir, 'OpenKnowledge-past-bound.ips', {
+        name: 'OpenKnowledge',
+        raw: `${padded}\n{"procName":"OpenKnowledge"}\n`,
+      });
+
+      const result = collectDiagnosticReports(dir, NOW);
+
+      expect(result.files).toEqual([]);
+      expect(result.unparseable).toBe(1);
     });
   });
 

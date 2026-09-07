@@ -639,6 +639,9 @@
     "7uBlRT": ["Copy the focused file-tree item so Paste can duplicate it."],
     "7vxWET": ["Pack preview unavailable."],
     "7wogIQ": [["0", "plural", { "one": ["Plugin"], "other": ["Plugins"] }]],
+    "7xEWbL": [
+      "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote."
+    ],
     "80c4-P": ["Code copied to clipboard"],
     "81H_23": ["Add properties"],
     "851WA-": ["This can be configured in Settings > AI tools & CLI"],
@@ -3940,9 +3943,6 @@
     ],
     "mPzgTS": ["Open ", ["docName"]],
     "mR3uQg": ["This file was deleted on the current branch (delete-modify conflict)."],
-    "mRitpT": [
-      "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
-    ],
     "mToVM9": ["Message ", ["agentName"]],
     "mU3j1b": ["Remove item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflict)"],
