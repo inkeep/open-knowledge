@@ -516,10 +516,16 @@ function printSummary(
     `  macOS crash reports: ${renderDiagnosticReportsStatus(diagnosticReports, summary.stagedDiagnosticReports)}`,
   );
   if (summary.stagedDiagnosticReports > 0) {
-    log('                       rewritten on the way in: escaped path separators normalised');
-    log('                       so the scrub can read them, and the per-device identifier');
-    log('                       replaced. Not byte-identical to the files macOS wrote, on');
-    log('                       any tier and regardless of --no-redact.');
+    log('                       each carrying machine details macOS puts in every report: the');
+    log('                       account uid, the Mac model, and the name of the process that');
+    log('                       launched this app, which on a managed machine can be internal');
+    log('                       tooling.');
+    log('                       Rewritten on the way in: escaped path separators normalised so');
+    log('                       the scrub can read them, and the identifiers that would link');
+    log("                       this machine's bundles to each other replaced.");
+    log('                       Not byte-identical to the files macOS wrote, on any tier and');
+    log('                       regardless of --no-redact. A report of ours still names the');
+    log('                       processes it was running alongside.');
   }
   log(`  Output:              ${outputPath}`);
   log('');

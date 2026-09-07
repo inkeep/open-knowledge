@@ -741,6 +741,9 @@
     "7uBlRT": ["Copia o item em foco na árvore de arquivos para que Colar possa duplicá-lo."],
     "7vxWET": ["Prévia do pacote indisponível."],
     "7wogIQ": [["0", "plural", { "one": ["Plugin"], "many": ["Plugins"], "other": ["Plugins"] }]],
+    "7xEWbL": [
+      "Também adiciona os relatórios de falha que o macOS registrou para o OpenKnowledge e seus processos auxiliares, nunca o relatório de outro aplicativo, embora os nossos nomeiem os processos que estavam em execução ao lado deles. Cada um traz detalhes da máquina que o macOS coloca em todos os relatórios: o uid da sua conta, o modelo do Mac e o nome do processo que iniciou o aplicativo. Em uma máquina gerenciada, esse processo inicializador pode ser uma ferramenta interna. Os identificadores que ligariam entre si os relatórios de erro que você envia são substituídos antes, então um relatório coletado não é idêntico byte a byte ao que o macOS escreveu."
+    ],
     "80c4-P": ["Código copiado para a área de transferência"],
     "81H_23": ["Adicionar propriedades"],
     "851WA-": ["Isto pode ser configurado em Configurações > Ferramentas de IA e CLI"],
@@ -4463,9 +4466,6 @@
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
     "mR3uQg": ["Este arquivo foi excluído no ramo atual (conflito delete-modify)."],
-    "mRitpT": [
-      "Também adiciona os relatórios de falha que o macOS registrou para o OpenKnowledge e seus processos auxiliares, apenas os nossos e nunca os de outro aplicativo."
-    ],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],

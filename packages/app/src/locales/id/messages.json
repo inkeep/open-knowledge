@@ -651,6 +651,9 @@
     "7uBlRT": ["Menyalin item pohon berkas yang sedang difokus agar Tempel bisa menggandakannya."],
     "7vxWET": ["Pratinjau paket tidak tersedia."],
     "7wogIQ": [["0", "plural", { "other": ["Plugin"] }]],
+    "7xEWbL": [
+      "Juga menambahkan laporan kerusakan yang dicatat macOS untuk OpenKnowledge dan proses pembantunya, tidak pernah laporan aplikasi lain, meskipun laporan kami menyebutkan proses-proses yang berjalan berdampingan dengannya. Masing-masing memuat detail mesin yang dicantumkan macOS di setiap laporan: uid akun Anda, model Mac, dan nama proses yang meluncurkan aplikasi. Pada mesin terkelola, proses peluncur itu bisa berupa perkakas internal. Pengidentifikasi yang akan menghubungkan laporan bug yang Anda kirim satu sama lain diganti terlebih dahulu, sehingga laporan yang dikumpulkan tidak identik byte per byte dengan yang ditulis macOS."
+    ],
     "80c4-P": ["Kode disalin ke papan klip"],
     "81H_23": ["Tambahkan properti"],
     "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
@@ -3981,9 +3984,6 @@
     ],
     "mPzgTS": ["Buka ", ["docName"]],
     "mR3uQg": ["Berkas ini dihapus di cabang saat ini (konflik delete-modify)."],
-    "mRitpT": [
-      "Ini juga menambahkan laporan kerusakan yang direkam macOS untuk OpenKnowledge dan proses pembantunya, hanya milik kami dan tidak pernah milik aplikasi lain."
-    ],
     "mToVM9": ["Kirim pesan ke ", ["agentName"]],
     "mU3j1b": ["Hapus item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (konflik)"],

@@ -100,6 +100,14 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
       '1 collected (7d; 1 other-process report(s) ignored; 0 unparseable)',
     );
     expect(summaryLine).not.toContain('not-collected');
+
+    const allLogs = captured.logs.join('\n');
+    expect(allLogs).toContain('machine details macOS puts in every report');
+    expect(allLogs).toContain('account uid, the Mac model, and the name of the process that');
+    expect(allLogs).toContain('which on a managed machine can be internal');
+    expect(allLogs).toContain('tooling.');
+    expect(allLogs).toContain('bundles to each other replaced');
+    expect(allLogs).toContain('processes it was running alongside');
   });
 
   test('reports an empty sweep rather than staying silent', async () => {
@@ -126,6 +134,9 @@ describe('runDiagnoseBundle — macOS crash reports', () => {
       'NOT scrubbed (--no-redact): tokens and keys ship verbatim, crash reports excepted',
     );
     expect(allLogs).toContain('Not byte-identical to the files macOS wrote');
+    expect(allLogs).toContain('machine details macOS puts in every report');
+    expect(allLogs).toContain('bundles to each other replaced');
+    expect(allLogs).toContain('processes it was running alongside');
   });
 
   test('--no-redact promises no exception when no report was staged', async () => {
