@@ -20,6 +20,7 @@ export { waitForGraphSimulationSettled } from './graph.ts';
 export { waitForImageDecoded } from './image.ts';
 export {
   assertLanded,
+  CHUNK_WRAPPER_SELECTOR,
   injectForcedEstimateError,
   landingMarkCount,
   readSourceCaretHead,
