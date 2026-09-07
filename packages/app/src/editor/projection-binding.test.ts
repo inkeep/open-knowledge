@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import {
   createProjectionBinding,
   mapOffsetThroughDelta,
+  narrowSplice,
   type ProjectionBinding,
 } from './projection-binding';
 import { sharedUndoManagerFor } from './shared-undo-manager';
@@ -42,7 +43,11 @@ function createRig(source: string): Rig {
   const ydoc = new Y.Doc();
   const ytext = ydoc.getText('source');
   ydoc.transact(() => ytext.insert(0, source), 'seed');
+  return createRigOn(ydoc);
+}
 
+function createRigOn(ydoc: Y.Doc): Rig {
+  const ytext = ydoc.getText('source');
   const host = document.createElement('div');
   document.body.appendChild(host);
   const binding = createProjectionBinding({ ytext, md: projectionMd, origin: USER_ORIGIN });
@@ -413,6 +418,138 @@ describe('mapOffsetThroughDelta', () => {
 
   it('collapses an offset inside a removed run onto its start', () => {
     expect(mapOffsetThroughDelta([{ retain: 5 }, { delete: 4 }], 7)).toBe(5);
+  });
+});
+
+describe('narrowSplice — one contiguous run, trimmed to the bytes that differ', () => {
+  it('keeps a shared prefix out of the run when a block gains a character', () => {
+    expect(narrowSplice('one\n\ntwo\n', { from: 5, to: 8, text: 'twoX' })).toEqual({
+      from: 8,
+      to: 8,
+      text: 'X',
+    });
+  });
+
+  it('keeps a shared suffix out of the run when a block gains a leading character', () => {
+    expect(narrowSplice('one\n\ntwo\n', { from: 5, to: 8, text: 'Xtwo' })).toEqual({
+      from: 5,
+      to: 5,
+      text: 'X',
+    });
+  });
+
+  it('narrows a middle rewrite to the differing span alone', () => {
+    expect(narrowSplice('a cat sat\n', { from: 0, to: 9, text: 'a dog sat' })).toEqual({
+      from: 2,
+      to: 5,
+      text: 'dog',
+    });
+  });
+
+  it('returns an empty run when the splice writes the bytes already present', () => {
+    expect(narrowSplice('one\n\ntwo\n', { from: 5, to: 8, text: 'two' })).toEqual({
+      from: 8,
+      to: 8,
+      text: '',
+    });
+  });
+
+  it('never splits a surrogate pair across the run boundary', () => {
+    const before = 'a\u{1F600}b\n';
+    const narrowed = narrowSplice(before, { from: 0, to: 4, text: 'a\u{1F601}b' });
+    expect(before.slice(0, narrowed.from) + narrowed.text + before.slice(narrowed.to)).toBe(
+      'a\u{1F601}b\n',
+    );
+    expect(narrowed.text).toBe('\u{1F601}');
+    expect(narrowed.from).toBe(1);
+    expect(narrowed.to).toBe(3);
+  });
+});
+
+describe('projection binding — two peers typing in the same block', () => {
+  const SHARED = [
+    'Filler block 0 untouched.',
+    'Filler block 1 untouched.',
+    'Target block for co-editing.',
+    'Filler block 3 untouched.',
+  ].join('\n\n');
+
+  function syncBoth(left: Rig, right: Rig): void {
+    Y.applyUpdate(right.ydoc, Y.encodeStateAsUpdate(left.ydoc, Y.encodeStateVector(right.ydoc)));
+    Y.applyUpdate(left.ydoc, Y.encodeStateAsUpdate(right.ydoc, Y.encodeStateVector(left.ydoc)));
+  }
+
+  function createPeers(): [Rig, Rig] {
+    const first = createRig(`${SHARED}\n`);
+    const replica = new Y.Doc();
+    Y.applyUpdate(replica, Y.encodeStateAsUpdate(first.ydoc));
+    return [first, createRigOn(replica)];
+  }
+
+  function copiesOfTarget(text: string): number {
+    return text.split('Target block for co-editing.').length - 1;
+  }
+
+  it('keeps one copy of the block when both edits land concurrently', () => {
+    const [a, b] = createPeers();
+    try {
+      appendToBlock(a.editor, 2, 'A');
+      appendToBlock(b.editor, 2, 'B');
+      syncBoth(a, b);
+
+      expect(a.ytext.toString()).toBe(b.ytext.toString());
+      expect(copiesOfTarget(a.ytext.toString())).toBe(1);
+      expect(a.ytext.toString().split('untouched.').length - 1).toBe(3);
+      expect(a.ytext.toString().match(/A/g)?.length ?? 0).toBe(1);
+      expect(a.ytext.toString().match(/B/g)?.length ?? 0).toBe(1);
+    } finally {
+      a.destroy();
+      b.destroy();
+    }
+  });
+
+  it('carries the caret past a remote insert that lands at it, not into the block text', () => {
+    const [a, b] = createPeers();
+    try {
+      const doc = a.editor.state.doc;
+      let pos = 0;
+      for (let i = 0; i <= 2; i++) pos += doc.child(i).nodeSize;
+      a.editor.view.dispatch(a.editor.state.tr.setSelection(TextSelection.create(doc, pos - 1)));
+
+      appendToBlock(b.editor, 2, 'B');
+      syncBoth(a, b);
+
+      a.editor.view.dispatch(a.editor.state.tr.insertText('A'));
+      syncBoth(a, b);
+
+      expect(a.ytext.toString()).toContain('Target block for co-editing.');
+      expect(a.ytext.toString()).toContain('Target block for co-editing.BA');
+      expect(copiesOfTarget(a.ytext.toString())).toBe(1);
+    } finally {
+      a.destroy();
+      b.destroy();
+    }
+  });
+
+  it('keeps one copy of the block across a divergence window of many keystrokes', () => {
+    const [a, b] = createPeers();
+    try {
+      for (let i = 0; i < 10; i++) {
+        appendToBlock(a.editor, 2, 'A');
+        appendToBlock(b.editor, 2, 'B');
+      }
+      syncBoth(a, b);
+
+      const converged = a.ytext.toString();
+      expect(b.ytext.toString()).toBe(converged);
+      expect(copiesOfTarget(converged)).toBe(1);
+      expect(converged.match(/A/g)?.length ?? 0).toBe(10);
+      expect(converged.match(/B/g)?.length ?? 0).toBe(10);
+      expect(converged.split('untouched.').length - 1).toBe(3);
+    } finally {
+      a.destroy();
+      b.destroy();
+    }
   });
 });
 

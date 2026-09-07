@@ -16,7 +16,11 @@ import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
-import { fullPrecisionProjection } from './projection-coordinates';
+import {
+  caretPmPosToSourceOffset,
+  caretSourceOffsetToPmPos,
+  fullPrecisionProjection,
+} from './projection-coordinates';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
 const SPLICE_DECLINED_EVENT = 'ok-projection-splice-declined';
@@ -52,9 +56,40 @@ interface ProjectionBindingOptions {
   undoManager: Y.UndoManager;
 }
 
-/* STOP: one delete plus one insert, so changed lines land as a single fresh contiguous run.
-   Narrowing this to a character-minimal diff trades a cost win for the content-loss class
-   external-change-stale-anchor-interleave.test.ts exists to pin. */
+/* STOP: ONE contiguous delete plus ONE insert, never a multi-range character-minimal diff --
+   that is the content-loss class external-change-stale-anchor-interleave.test.ts exists to pin.
+   The run must still be narrowed to the bytes that differ: rewriting shared affixes makes two
+   peers editing one block each delete the shared text and insert a whole copy of it, and Yjs
+   merges the deletes while keeping both inserts, so the block is duplicated. */
+export function narrowSplice(before: string, splice: SourceSplice): SourceSplice {
+  const previous = before.slice(splice.from, splice.to);
+  const next = splice.text;
+  const bound = Math.min(previous.length, next.length);
+  let prefix = 0;
+  while (prefix < bound && previous.charCodeAt(prefix) === next.charCodeAt(prefix)) prefix++;
+  if (prefix > 0 && isHighSurrogate(next.charCodeAt(prefix - 1))) prefix--;
+  let suffix = 0;
+  while (
+    suffix < bound - prefix &&
+    previous.charCodeAt(previous.length - 1 - suffix) === next.charCodeAt(next.length - 1 - suffix)
+  )
+    suffix++;
+  if (suffix > 0 && isLowSurrogate(next.charCodeAt(next.length - suffix))) suffix--;
+  return {
+    from: splice.from + prefix,
+    to: splice.to - suffix,
+    text: next.slice(prefix, next.length - suffix),
+  };
+}
+
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
 function applyToYText(ytext: Y.Text, splice: SourceSplice): void {
   if (splice.to > splice.from) ytext.delete(splice.from, splice.to - splice.from);
   if (splice.text !== '') ytext.insert(splice.from, splice.text);
@@ -228,18 +263,13 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         return full;
       };
 
-      const caretOffset = (): number => {
-        const before = fullPrecision();
-        return before.bodyOffset + before.map.pmPosToSourceOffset(view.state.selection.from);
-      };
+      const caretOffset = (): number =>
+        caretPmPosToSourceOffset(fullPrecision(), view.state.selection.from);
 
       const project = (source: string, caretAt: number | null, remote: boolean): void => {
         const next = buildProjection(source, md);
         stats.rebuilds++;
-        const at =
-          caretAt === null
-            ? null
-            : next.map.sourceOffsetToPmPos(Math.max(0, caretAt - next.bodyOffset));
+        const at = caretAt === null ? null : caretSourceOffsetToPmPos(next, caretAt);
         applyingRemote = true;
         try {
           replaceDoc(view, next.doc, at, remote);
@@ -313,7 +343,10 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
               );
               return;
             }
-            doc.transact(() => applyToYText(ytext, splice), origin);
+            doc.transact(
+              () => applyToYText(ytext, narrowSplice(projection.source, splice)),
+              origin,
+            );
             stats.writes++;
           }
 

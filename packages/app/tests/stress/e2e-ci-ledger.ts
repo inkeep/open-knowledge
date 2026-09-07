@@ -6,13 +6,6 @@ export interface E2eCiLedgerEntry {
 
 export const E2E_CI_EXCLUSIONS: readonly E2eCiLedgerEntry[] = [
   {
-    file: 'peer-same-line-coedit.e2e.ts',
-    reason:
-      'pins the single-CRDT same-region regression: two peer WYSIWYG clients typing at the same caret in a middle block corrupt the document. Not data loss — every character survives, but the edited block is duplicated 2-16 times with the typed characters interleaved into the copies, and both clients converge on the corrupted text and persist it. main passes all three cases, so this is a correct RED spec of a regression, not a scope boundary. Phase 6 owns the fix; promote into the test:e2e enumeration in that PR.',
-    evidence:
-      'measured 2026-09-04 on main (30397303) vs single-crdt-cutover: main passes all three cases (both edits survive, one copy of the block, clients converge, reaches disk); the branch fails all three with block duplication that holds stable for 60s+. Load-bearing rig details: the doc needs several blocks with both carets in a middle one (a single-paragraph doc passes on both branches), and the oracle must assert block-occurrence counts plus per-peer character counts rather than marker contiguity — concurrent typing at one caret may legitimately interleave.',
-  },
-  {
     file: 'frontmatter-edit.e2e.ts',
     reason:
       'needs-fixture: FR6 (duplicate-key marker) and FR9 (malformed-YAML banner) seed malformed frontmatter through /api/agent-write-md, which now by design refuses to introduce malformed frontmatter (400 urn:ok:error:frontmatter-malformed). They need a disk-write fixture that loads a pre-malformed doc from the inheritor path — M effort, not in this PR. (The other former failures — the virtual "tags" placeholder row and the banner copy — are stale selectors that a repair would fix in the same pass.)',
