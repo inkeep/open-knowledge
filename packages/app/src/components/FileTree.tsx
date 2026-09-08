@@ -1233,7 +1233,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     for (const ancestor of activeAncestorTreePathsRef.current) {
       expanded.add(ancestor);
     }
-    return [...expanded].filter((path) => nextFolderPaths.has(path));
+    return [...expanded].filter(
+      (path) => nextFolderPaths.has(path) && hasExpandedAncestry(path, expanded),
+    );
   };
 
   const resetModelToDocuments = (nextDocuments?: readonly FileEntry[]) => {
@@ -3283,6 +3285,12 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       />
     </>
   );
+}
+
+function hasExpandedAncestry(path: string, expandedPaths: ReadonlySet<string>): boolean {
+  return computeTreeAncestorPaths(path)
+    .slice(0, -1)
+    .every((ancestor) => expandedPaths.has(ancestor));
 }
 
 function findTreeItemPath(event: MouseEvent): string | null {
