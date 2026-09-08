@@ -1,4 +1,3 @@
-
 import { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
