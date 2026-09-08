@@ -89,8 +89,8 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
     const showConnectedStalled = () =>
       showToast(
         hasRestartButton
-          ? t`Connected, but your edits aren't reaching the server yet. Restart it if this continues.`
-          : t`Connected, but your edits aren't reaching the server yet.`,
+          ? t`Connected, but your edits to "${activeDocName}" aren't reaching the server yet. Restart it if this continues.`
+          : t`Connected, but your edits to "${activeDocName}" aren't reaching the server yet.`,
       );
     const showServerStopped = () =>
       showToast(

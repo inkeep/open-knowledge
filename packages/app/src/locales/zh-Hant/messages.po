@@ -3258,12 +3258,12 @@ msgid "Connected to GitHub"
 msgstr "已連接到 GitHub"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "已連線，但你的編輯尚未送達伺服器。"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet."
+msgstr "已連線，但你對「{activeDocName}」的編輯尚未送達伺服器。"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "已連線，但你的編輯尚未送達伺服器。如果持續如此，請重新啟動伺服器。"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet. Restart it if this continues."
+msgstr "已連線，但你對「{activeDocName}」的編輯尚未送達伺服器。如果持續如此，請重新啟動伺服器。"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx

@@ -714,6 +714,11 @@
     "7Fkcej": ["+ Ajouter ", ["addChildName"]],
     "7H4UHD": ["Documents étiquetés <0>#", ["tagName"], "</0>"],
     "7HY6fA": ["S'installe pour tous vos projets"],
+    "7Htz-a": [
+      "Connecté, mais vos modifications de « ",
+      ["activeDocName"],
+      " » n'atteignent pas encore le serveur. Redémarrez-le si cela continue."
+    ],
     "7IsvrP": ["Recherche de mises à jour"],
     "7JtSLi": ["Échec de la suppression du chemin"],
     "7MSbAT": ["Disponible dans"],
@@ -2216,6 +2221,11 @@
     "NzluOx": ["(facultatif)"],
     "O0Z2Xr": ["Sortants"],
     "O2UpM1": ["Parcourir"],
+    "O3KS2Q": [
+      "Connecté, mais vos modifications de « ",
+      ["activeDocName"],
+      " » n'atteignent pas encore le serveur."
+    ],
     "O3oNi5": ["E-mail"],
     "O4PnDd": [
       "La gestion des outils IA n'est disponible que dans l'application de bureau OpenKnowledge."
@@ -3034,9 +3044,6 @@
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
-    "X7fxS9": [
-      "Connecté, mais vos modifications n'atteignent pas encore le serveur. Redémarrez-le si cela continue."
-    ],
     "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
@@ -4687,7 +4694,6 @@
     "n4vt3Q": ["Télécharger l’application"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
-    "n6N-xC": ["Connecté, mais vos modifications n'atteignent pas encore le serveur."],
     "n6hXUm": [
       "La synchronisation automatique récupère, tire et pousse périodiquement les commits vers votre dépôt git distant, afin que vos modifications restent synchronisées entre vos machines."
     ],

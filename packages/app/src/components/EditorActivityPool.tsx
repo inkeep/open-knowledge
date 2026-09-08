@@ -940,6 +940,7 @@ function ActivityEntry({
               previousDocName={previousDocName}
               onNavigateBack={onNavigateBack}
               onRecycle={onRecycle}
+              provider={entry.provider}
             >
               {}
               <Suspense

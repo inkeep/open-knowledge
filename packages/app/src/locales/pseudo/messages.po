@@ -3254,11 +3254,11 @@ msgid "Connected to GitHub"
 msgstr ""
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet."
 msgstr ""
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet. Restart it if this continues."
 msgstr ""
 
 #: src/components/AuthModal.tsx

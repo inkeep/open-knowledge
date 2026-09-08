@@ -3258,12 +3258,12 @@ msgid "Connected to GitHub"
 msgstr "GitHub에 연결됨"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다."
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet."
+msgstr "연결되었지만 \"{activeDocName}\" 문서의 편집 내용이 아직 서버에 전달되지 않고 있습니다."
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다. 계속되면 서버를 재시작하세요."
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet. Restart it if this continues."
+msgstr "연결되었지만 \"{activeDocName}\" 문서의 편집 내용이 아직 서버에 전달되지 않고 있습니다. 계속되면 서버를 재시작하세요."
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx

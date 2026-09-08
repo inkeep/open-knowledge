@@ -684,6 +684,11 @@
     "7Fkcej": ["+ Adicionar ", ["addChildName"]],
     "7H4UHD": ["Documentos com a tag <0>#", ["tagName"], "</0>"],
     "7HY6fA": ["Instala para todos os seus projetos"],
+    "7Htz-a": [
+      "Conectado, mas suas edições em \"",
+      ["activeDocName"],
+      "\" ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
+    ],
     "7IsvrP": ["Buscando atualizações"],
     "7JtSLi": ["Falha ao excluir o caminho"],
     "7MSbAT": ["Disponível em"],
@@ -2157,6 +2162,11 @@
     "NzluOx": ["(opcional)"],
     "O0Z2Xr": ["Saída"],
     "O2UpM1": ["Procurar"],
+    "O3KS2Q": [
+      "Conectado, mas suas edições em \"",
+      ["activeDocName"],
+      "\" ainda não estão chegando ao servidor."
+    ],
     "O3oNi5": ["E-mail"],
     "O4PnDd": [
       "O gerenciamento de ferramentas de IA só está disponível no app de desktop do OpenKnowledge."
@@ -2950,9 +2960,6 @@
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
     "X59Fx2": ["Não foi possível abrir este documento no Slidev."],
     "X7ShnN": ["Abrir o painel de agentes"],
-    "X7fxS9": [
-      "Conectado, mas suas edições ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
-    ],
     "X7u0xR": [["0"], " modelos disponíveis"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
@@ -4555,7 +4562,6 @@
     "n4vt3Q": ["Baixar aplicativo"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
-    "n6N-xC": ["Conectado, mas suas edições ainda não estão chegando ao servidor."],
     "n6hXUm": [
       "A sincronização automática faz fetch, pull e push de commits para seu repositório git remoto de tempos em tempos, para que suas edições fiquem em sincronia entre computadores."
     ],

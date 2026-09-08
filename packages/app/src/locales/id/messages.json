@@ -596,6 +596,11 @@
     "7Fkcej": ["+ Tambah ", ["addChildName"]],
     "7H4UHD": ["Dokumen bertag <0>#", ["tagName"], "</0>"],
     "7HY6fA": ["Terpasang untuk semua proyek Anda"],
+    "7Htz-a": [
+      "Terhubung, tetapi suntingan Anda di \"",
+      ["activeDocName"],
+      "\" belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
+    ],
     "7IsvrP": ["Memeriksa pembaruan"],
     "7JtSLi": ["Gagal menghapus jalur"],
     "7MSbAT": ["Tersedia di"],
@@ -1907,6 +1912,11 @@
     "NzluOx": ["(opsional)"],
     "O0Z2Xr": ["Keluar"],
     "O2UpM1": ["Telusuri"],
+    "O3KS2Q": [
+      "Terhubung, tetapi suntingan Anda di \"",
+      ["activeDocName"],
+      "\" belum sampai ke server."
+    ],
     "O3oNi5": ["Surel"],
     "O4PnDd": ["Pengelolaan alat AI hanya tersedia di aplikasi desktop OpenKnowledge."],
     "O6H89R": ["Selesai"],
@@ -2603,9 +2613,6 @@
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
-    "X7fxS9": [
-      "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
-    ],
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
@@ -4055,7 +4062,6 @@
     "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
-    "n6N-xC": ["Terhubung, tetapi suntingan Anda belum sampai ke server."],
     "n6hXUm": [
       "Sinkronisasi otomatis secara berkala melakukan fetch, pull, dan push commit ke repositori git remote Anda agar suntingan Anda tetap selaras antarkomputer."
     ],

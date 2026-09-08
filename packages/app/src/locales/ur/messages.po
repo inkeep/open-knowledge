@@ -3258,12 +3258,12 @@ msgid "Connected to GitHub"
 msgstr "GitHub سے منسلک"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet."
+msgstr "منسلک ہو گیا، لیکن «{activeDocName}» میں آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔ اگر یہ جاری رہے تو اسے دوبارہ چلائیں۔"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet. Restart it if this continues."
+msgstr "منسلک ہو گیا، لیکن «{activeDocName}» میں آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔ اگر یہ جاری رہے تو اسے دوبارہ چلائیں۔"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx

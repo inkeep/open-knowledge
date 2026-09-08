@@ -3254,12 +3254,12 @@ msgid "Connected to GitHub"
 msgstr "GitHub-এর সঙ্গে যুক্ত হয়েছে"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet."
+msgstr "সংযোগ হয়েছে, কিন্তু \"{activeDocName}\"-এ আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
 
 #: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
+msgid "Connected, but your edits to \"{activeDocName}\" aren't reaching the server yet. Restart it if this continues."
+msgstr "সংযোগ হয়েছে, কিন্তু \"{activeDocName}\"-এ আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
 
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
