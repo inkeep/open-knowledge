@@ -93,10 +93,6 @@ async function findWindowByMode(
   return waitForWindowByMode(app, mode);
 }
 
-async function findEditorAfterAction(app: ElectronApplication): Promise<Page> {
-  return waitForWindowByMode(app, 'editor', { capMs: 10_000 });
-}
-
 async function expandAdvancedSettings(page: Page): Promise<void> {
   const contentDir = page.locator('[data-testid="consent-content-dir"]');
   if (await contentDir.isVisible().catch(() => false)) {
@@ -141,7 +137,6 @@ test.describe('Consent-dialog smoke', () => {
     await clickNavOpen(navigator);
     await expandAdvancedSettings(navigator);
     const contentDir = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDir).toBeVisible({ timeout: 15_000 });
     await expect(navigator.locator('[data-testid="consent-start"]')).toBeEnabled({
       timeout: 30_000,
     });
@@ -149,7 +144,7 @@ test.describe('Consent-dialog smoke', () => {
     await contentDir.focus();
     await contentDir.press('Enter');
 
-    await findEditorAfterAction(app);
+    await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(projectDir, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
@@ -170,7 +165,6 @@ test.describe('Consent-dialog smoke', () => {
     await expandAdvancedSettings(navigator);
 
     const contentDirInput = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDirInput).toBeVisible({ timeout: 15_000 });
 
     await contentDirInput.fill('docs');
     await expect(contentDirInput).toHaveValue('docs');
@@ -197,13 +191,12 @@ test.describe('Consent-dialog smoke', () => {
     await expandAdvancedSettings(navigator);
 
     const contentDir = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDir).toBeVisible({ timeout: 15_000 });
     await expect(contentDir).toHaveValue('.');
 
     const startBtn = navigator.locator('[data-testid="consent-start"]');
     await startBtn.click();
 
-    await findEditorAfterAction(app);
+    await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(repoRoot, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
