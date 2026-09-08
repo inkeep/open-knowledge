@@ -1,0 +1,4 @@
+{
+  "$comment": "Total tests collected by `playwright test tests/smoke/terminal-*.e2e.ts`, skipped ones included. Inkeep runs that collection sharded across parallel Windows CI cells and sums each shard's Playwright JSON stats against this number, so a shard that never ran cannot leave part of the collection unexecuted while every cell reads green. That guard and the workflow driving it live in Inkeep's internal monorepo, so whether a stale number fails anything depends on which checkout you are reading: it does there, and in the public mirror the guard is absent and nothing reads this file. Add or remove a terminal smoke test and this number moves with it either way; the guard prints the observed total when the two disagree.",
+  "terminalSmokeTestCount": 39
+}
