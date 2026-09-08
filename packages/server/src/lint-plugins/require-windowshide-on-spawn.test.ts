@@ -1,14 +1,19 @@
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx';
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx';
 
-describe('require-windowshide-on-spawn GritQL plugin', () => {
+describe('require-windowshide-on-spawn oxlint rule', () => {
   test('fires exactly 7 times — one per spawn that hides neither way', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
       windowsHide: true,
@@ -23,28 +28,25 @@ describe('require-windowshide-on-spawn GritQL plugin', () => {
     expect(output).toContain('withHiddenWindowsConsole');
     expect(output).toContain('windowsHide: true');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#require-windowshide-on-spawngrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#require-windowshide-on-spawn');
   });
 
-  test('plugin is registered in biome.jsonc via overrides (not root plugins)', () => {
-    const config = readBiomeConfig(REPO_ROOT);
+  test('rule is registered, enabled, and scoped via its RULE_SCOPES entry', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('require-windowshide-on-spawn');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/require-windowshide-on-spawn');
+  });
 
-    const rootPlugins = config.plugins ?? [];
-    expect(rootPlugins).not.toContain('./biome-plugins/require-windowshide-on-spawn.grit');
-
-    const overrides = config.overrides ?? [];
-    const matchingOverride = overrides.find((entry) =>
-      (entry.plugins ?? []).includes('./biome-plugins/require-windowshide-on-spawn.grit'),
-    );
-    expect(matchingOverride).toBeDefined();
-
-    const includes = matchingOverride?.includes ?? [];
-    expect(includes).toContain('packages/server/src/**/*.ts');
-    expect(includes).toContain('packages/cli/src/**/*.ts');
-    expect(includes).toContain('packages/desktop/src/**/*.ts');
-    expect(includes).toContain('!**/*.test.ts');
-    expect(includes).toContain(
-      'biome-plugins/__fixtures__/require-windowshide-on-spawn.fixture.tsx',
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'require-windowshide-on-spawn');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/server/src/**/*.ts',
+        'packages/cli/src/**/*.ts',
+        'packages/desktop/src/**/*.ts',
+        '!**/*.test.ts',
+        '!**/*.test-helper.ts',
+        'lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx',
+      ].sort(),
     );
   });
 });

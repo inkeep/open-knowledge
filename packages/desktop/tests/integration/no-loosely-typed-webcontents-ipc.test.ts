@@ -1,13 +1,13 @@
 /**
- * IPC discipline enforcement — `no-loosely-typed-webcontents-ipc` GritQL plugin.
+ * IPC discipline enforcement — `no-loosely-typed-webcontents-ipc` oxlint rule.
  *
- * Plugin:  `biome-plugins/no-loosely-typed-webcontents-ipc.grit`
- * Fixture: `biome-plugins/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx`
+ * Rule:  `lint-plugins/ok-rules/rules/no-loosely-typed-webcontents-ipc.mjs`
+ * Fixture: `lint-plugins/ok-rules/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx`
  *
- * Per precedent #42 (custom Biome enforcement is GritQL plugins) + precedent
+ * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules) + precedent
  * #14 (IPC discipline). The fixture pairs 6 positive cases (one per banned
  * primitive) with 4 negative cases (adjacent methods on the same objects +
- * bare-function with the same name); the test asserts the plugin fires
+ * bare-function with the same name); the test asserts the rule fires
  * exactly 6 times.
  *
  * Exact equality (`toBe(6)`) catches drift in both directions:
@@ -15,20 +15,25 @@
  *   - false-positive: a widened pattern fires on a negative case → above 6 → fails
  *
  * Real input → public
- * interface (`biome check`) → observable outcome (diagnostic count).
+ * interface (`oxlintFixtureArgs()` → `pnpm exec oxlint`) → observable outcome (diagnostic count).
  */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx';
+const FIXTURE_REL =
+  'lint-plugins/ok-rules/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx';
 
-describe('no-loosely-typed-webcontents-ipc GritQL plugin', () => {
+describe('no-loosely-typed-webcontents-ipc oxlint rule', () => {
   test('fires on exactly 6 banned primitives (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -38,12 +43,11 @@ describe('no-loosely-typed-webcontents-ipc GritQL plugin', () => {
     expect(fires).toBe(6);
     expect(output).toContain('route through createInvoker');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#no-loosely-typed-webcontents-ipcgrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#no-loosely-typed-webcontents-ipc');
   });
 
-  test('plugin is registered in biome.jsonc', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const plugins = config.plugins ?? [];
-    expect(plugins).toContain('./biome-plugins/no-loosely-typed-webcontents-ipc.grit');
+  test('rule is registered, enabled, and deliberately unscoped', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('no-loosely-typed-webcontents-ipc');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/no-loosely-typed-webcontents-ipc');
   });
 });

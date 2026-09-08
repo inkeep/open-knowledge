@@ -28,16 +28,49 @@ const noRequireInTests = {
 };
 
 const NO_COMMENTS_PLUGIN = './lint-plugins/no-comments/plugin.mjs';
+const OK_RULES_PLUGIN = './lint-plugins/ok-rules/index.mjs';
 const NO_COMMENTS_RULE = 'no-comments/no-comments';
 const NO_COMMENTS_SEVERITY = 'error';
 
 export default defineConfig({
-  ignorePatterns: ['.agents/skills/**', '.codex/skills/**', '/reports/**', '/specs/**'],
+  ignorePatterns: [
+    '.agents/skills/**',
+    '.codex/skills/**',
+    '/reports/**',
+    '/specs/**',
+    'lint-plugins/ok-rules/__fixtures__/**',
+  ],
   options: {
     typeAware: true,
   },
-  jsPlugins: [{ name: 'eslint-js', specifier: 'oxlint-plugin-eslint' }, NO_COMMENTS_PLUGIN],
+  jsPlugins: [
+    { name: 'eslint-js', specifier: 'oxlint-plugin-eslint' },
+    NO_COMMENTS_PLUGIN,
+    OK_RULES_PLUGIN,
+  ],
   rules: {
+    'ok/class-proof-registration-discipline': 'error',
+    'ok/cst-pm-handler-todo-stub': 'error',
+    'ok/microcopy-ellipsis': 'error',
+    'ok/no-blind-agent-host-fanout': 'error',
+    'ok/no-demoted-dialog-confirm': 'error',
+    'ok/no-hand-rolled-spinner': 'error',
+    'ok/no-inline-tolerance-class': 'error',
+    'ok/no-loosely-typed-webcontents-ipc': 'error',
+    'ok/no-physical-direction-utility': 'error',
+    'ok/no-raw-html-interactive-element': 'error',
+    'ok/no-raw-route-hash-construction': 'error',
+    'ok/no-resolved-value-theme-source': 'error',
+    'ok/no-roundtrip-identity-oracle': 'error',
+    'ok/no-split-suggestion-dispatch': 'error',
+    'ok/no-themeless-pierre-diff': 'error',
+    'ok/no-uninstall-forbidden-import': 'error',
+    'ok/no-unportaled-editor-content': 'error',
+    'ok/no-unwrapped-user-facing-string': 'error',
+    'ok/path-conditional-map-driven-origin': 'error',
+    'ok/playwright-prefer-to-have-count': 'error',
+    'ok/require-utf8-multipart-parser': 'error',
+    'ok/require-windowshide-on-spawn': 'error',
     [NO_COMMENTS_RULE]: NO_COMMENTS_SEVERITY,
     'eslint/logical-assignment-operators': [
       'error',

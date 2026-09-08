@@ -1,10 +1,10 @@
 /**
- * no-inline-tolerance-class — Biome GritQL plugin fixture test.
+ * no-inline-tolerance-class — oxlint rule fixture test.
  *
- * Plugin:  `biome-plugins/no-inline-tolerance-class.grit`
- * Fixture: `biome-plugins/__fixtures__/no-inline-tolerance-class.fixture.tsx`
+ * Rule:  `lint-plugins/ok-rules/rules/no-inline-tolerance-class.mjs`
+ * Fixture: `lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx`
  *
- * Per precedent #42 (custom Biome enforcement is GritQL plugins). Forbids a
+ * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Forbids a
  * public-mirrored test from writing a bridge tolerance-class catalog value
  * (`BRIDGE_TOLERANCE_CLASSES`) inline as a string literal. Importing the catalog
  * symbol into a public test is already blocked by `check-mirror-test-policy`
@@ -14,9 +14,9 @@
  * Three guarantees, each its own test:
  *   1. Fires on exactly the planted positives (and on no negative) — the
  *      bidirectional `toBe(8)` count, plus the diagnostic-message contract.
- *   2. Registered as an override scoped to the public test surface, never at
- *      root `plugins[]` (which would fire on the excluded clusters where the
- *      catalog legitimately lives).
+ *   2. Scoped via its `RULE_SCOPES` entry to the public test surface rather than
+ *      left unscoped, which would fire on the excluded clusters where the
+ *      catalog legitimately lives.
  *   3. The matched fidelity classes plus the four universal text-encoding
  *      classes partition `BRIDGE_TOLERANCE_CLASSES` exactly — a class added to
  *      the catalog reddens here until it is classified into one bucket, so the
@@ -27,17 +27,21 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
+import { MATCHED_FIDELITY_CLASSES } from '../../../../lint-plugins/ok-rules/rules/no-inline-tolerance-class.mjs';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/no-inline-tolerance-class.fixture.tsx';
-const PLUGIN_REL = './biome-plugins/no-inline-tolerance-class.grit';
-const GRIT_ABS = join(REPO_ROOT, 'biome-plugins/no-inline-tolerance-class.grit');
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx';
 const CATALOG_SOURCE_ABS = join(REPO_ROOT, 'packages/core/src/bridge/normalize.ts');
 
-describe('no-inline-tolerance-class GritQL plugin', () => {
+describe('no-inline-tolerance-class oxlint rule', () => {
   test('fires on exactly 8 inline fidelity-class literals (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -49,28 +53,12 @@ describe('no-inline-tolerance-class GritQL plugin', () => {
     expect(fires).toBe(8);
     expect(output).toContain('hard-coding a BRIDGE_TOLERANCE_CLASSES label');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#no-inline-tolerance-classgrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#no-inline-tolerance-class');
   });
 
-  test('plugin is registered as an override scoped to the public test surface (not workspace-wide)', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const rootPlugins: string[] = config.plugins ?? [];
-    expect(rootPlugins).not.toContain(PLUGIN_REL);
-
-    const overrides: Array<{ includes?: string[]; plugins?: string[] }> = config.overrides ?? [];
-    const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
-    expect(entry).toBeDefined();
-    const includes = entry?.includes ?? [];
-    expect(includes).toContain(FIXTURE_REL);
-    for (const excluded of [
-      '!packages/md-conformance/**',
-      '!packages/app/tests/fidelity/**',
-      '!packages/core/src/markdown/**/*.test.ts',
-      '!packages/core/src/bridge/**/*.test.ts',
-      '!**/*.private.*',
-    ]) {
-      expect(includes).toContain(excluded);
-    }
+  test('rule is registered, enabled, and scoped to the public test surface', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('no-inline-tolerance-class');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/no-inline-tolerance-class');
   });
 
   test('matched fidelity set + universal-encoding set partition BRIDGE_TOLERANCE_CLASSES', () => {
@@ -82,14 +70,27 @@ describe('no-inline-tolerance-class GritQL plugin', () => {
     const catalog = [...(arrayBody ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
     expect(catalog.length).toBeGreaterThan(0);
 
-    const gritArms = readFileSync(GRIT_ABS, 'utf-8')
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('//'))
-      .join('\n');
-    const matched = [...gritArms.matchAll(/`'([^']+)'`/g)].map((m) => m[1]).sort();
+    const matched = [...MATCHED_FIDELITY_CLASSES].sort();
 
     expect(matched.filter((c) => UNIVERSAL_ENCODING.includes(c))).toEqual([]);
     const union = [...new Set([...matched, ...UNIVERSAL_ENCODING])].sort();
     expect(union).toEqual(catalog);
+  });
+
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'no-inline-tolerance-class');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/**/*.test.ts',
+        'packages/**/*.test.tsx',
+        'packages/**/*.e2e.ts',
+        '!packages/md-conformance/**',
+        '!packages/app/tests/fidelity/**',
+        '!packages/core/src/markdown/**/*.test.ts',
+        '!packages/core/src/bridge/**/*.test.ts',
+        '!**/*.private.*',
+        'lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx',
+      ].sort(),
+    );
   });
 });

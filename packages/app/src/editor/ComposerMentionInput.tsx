@@ -237,7 +237,7 @@ export function ComposerMentionInput({
 
   return (
     <>
-      {/* biome-ignore lint/plugin/no-unportaled-editor-content: standalone single-instance composer editor — not an Activity-pool document editor. EditorContent's own wrapper element still exclusively parents view.dom (the slash hint below is a sibling of that wrapper, never inside it), so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here. */}
+      {/* oxlint-disable-next-line ok/no-unportaled-editor-content -- standalone single-instance composer editor — not an Activity-pool document editor. EditorContent's own wrapper element still exclusively parents view.dom (the slash hint below is a sibling of that wrapper, never inside it), so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here. */}
       <EditorContent editor={editor} className={className} />
       {}
       {slashCommands !== undefined ? (

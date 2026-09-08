@@ -68,8 +68,7 @@ export function isLoopbackHostname(hostname: string): boolean {
 }
 
 function resolveTarget(input: unknown): URL | null {
-  const base =
-    typeof globalThis.location?.href === 'string' ? globalThis.location.href : undefined;
+  const base = typeof globalThis.location?.href === 'string' ? globalThis.location.href : undefined;
   const raw =
     typeof input === 'string'
       ? input

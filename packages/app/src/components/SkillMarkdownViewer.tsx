@@ -97,7 +97,7 @@ export function SkillMarkdownViewer({
         </main>
       )}
       {createPortal(
-        // biome-ignore lint/plugin/no-unportaled-editor-content: portaled site — view.dom parent is the exclusively-owned portalTarget per the H6 contract (PRECEDENTS.md #44)
+        // oxlint-disable-next-line ok/no-unportaled-editor-content -- portaled site — view.dom parent is the exclusively-owned portalTarget per the H6 contract (PRECEDENTS.md #44)
         <EditorContent
           editor={editor}
           className={flow ? 'tiptap-editor-portal-content' : 'tiptap-editor-portal-content h-full'}

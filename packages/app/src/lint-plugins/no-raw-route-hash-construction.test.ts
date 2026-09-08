@@ -1,15 +1,19 @@
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/no-raw-route-hash-construction.fixture.tsx';
-const PLUGIN_REL = './biome-plugins/no-raw-route-hash-construction.grit';
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx';
 
-describe('no-raw-route-hash-construction GritQL plugin', () => {
+describe('no-raw-route-hash-construction oxlint rule', () => {
   test('fires exactly 5 times — one per hand-built hash, none on the read forms', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
       windowsHide: true,
@@ -23,22 +27,25 @@ describe('no-raw-route-hash-construction GritQL plugin', () => {
 
     expect(output).toContain('hashFromDocName');
     expect(output).toContain('hashFromFolderPath');
-    expect(output).toContain('biome-plugins/README.md#no-raw-route-hash-constructiongrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#no-raw-route-hash-construction');
   });
 
-  test('plugin is registered in biome.jsonc via overrides, with doc-hash.ts excluded', () => {
-    const config = readBiomeConfig(REPO_ROOT);
+  test('rule is registered, enabled, and scoped with doc-hash.ts excluded', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('no-raw-route-hash-construction');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/no-raw-route-hash-construction');
+  });
 
-    expect(config.plugins ?? []).not.toContain(PLUGIN_REL);
-
-    const overrides = config.overrides ?? [];
-    const matchingOverride = overrides.find((entry) => (entry.plugins ?? []).includes(PLUGIN_REL));
-    expect(matchingOverride).toBeDefined();
-
-    const includes = matchingOverride?.includes ?? [];
-    expect(includes).toContain('packages/app/src/**/*.ts');
-    expect(includes).toContain('packages/app/src/**/*.tsx');
-    expect(includes).toContain('!packages/app/src/lib/doc-hash.ts');
-    expect(includes).toContain(FIXTURE_REL);
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'no-raw-route-hash-construction');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/app/src/**/*.ts',
+        'packages/app/src/**/*.tsx',
+        '!packages/app/src/lib/doc-hash.ts',
+        '!**/*.test.ts',
+        '!**/*.test.tsx',
+        'lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx',
+      ].sort(),
+    );
   });
 });

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: frimousse's `EmojiPicker.List` overrides spread the library's own props (active-state data attrs, virtualised-grid wiring) onto a plain element; shadcn Button's variant styling would fight the picker grid. Moved verbatim from PageHeaderWidgets.tsx, which carries the same file-level posture.
+// oxlint-disable ok/no-raw-html-interactive-element -- frimousse's `EmojiPicker.List` overrides spread the library's own props (active-state data attrs, virtualised-grid wiring) onto a plain element; shadcn Button's variant styling would fight the picker grid. Moved verbatim from PageHeaderWidgets.tsx, which carries the same file-level posture.
 
 import { Trans, useLingui } from '@lingui/react/macro';
 import { EmojiPicker, type EmojiPickerListComponents } from 'frimousse';

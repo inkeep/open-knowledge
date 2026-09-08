@@ -49,7 +49,7 @@ function runInjectedProbe(spec: InjectedProbeSpec): Promise<number | null> {
   return new Promise<number | null>((resolve) => {
     let child: ProbeChild;
     try {
-      // biome-ignore lint/plugin/require-windowshide-on-spawn: injected probe seam; the production child_process adapter owns its spawn options
+      // oxlint-disable-next-line ok/require-windowshide-on-spawn -- injected probe seam; the production child_process adapter owns its spawn options
       child = spawn(file, args);
     } catch (err) {
       getLogger(loggerName).warn(

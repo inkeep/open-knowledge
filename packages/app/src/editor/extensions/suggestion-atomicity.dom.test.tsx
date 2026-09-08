@@ -14,7 +14,7 @@
  * data loss.
  *
  * This is the runtime complement to the `no-split-suggestion-dispatch`
- * GritQL rule: the lint catches a bare trigger-delete dispatch statically;
+ * oxlint rule: the lint catches a bare trigger-delete dispatch statically;
  * this test drives each surface through a real Enter keydown (the production
  * `command` callbacks are closure-held inside the Suggestion plugins, so the
  * keydown path is the only way to run them) and asserts the

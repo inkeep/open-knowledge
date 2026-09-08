@@ -1,10 +1,10 @@
 /**
- * playwright-prefer-to-have-count — Biome GritQL plugin fixture test.
+ * playwright-prefer-to-have-count — oxlint rule fixture test.
  *
- * Plugin:  `biome-plugins/playwright-prefer-to-have-count.grit`
- * Fixture: `biome-plugins/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`
+ * Rule:  `lint-plugins/ok-rules/rules/playwright-prefer-to-have-count.mjs`
+ * Fixture: `lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`
  *
- * Per precedent #42 (custom Biome enforcement is GritQL plugins). Bans the
+ * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Bans the
  * one-shot `expect(await locator.count())` snapshot read in the browser
  * e2e suites — the no-retry assertion shape behind hidden flakes — in
  * favor of the web-first auto-retrying
@@ -12,9 +12,9 @@
  * eslint-plugin-playwright `prefer-to-have-count`.
  *
  * The fixture pairs 3 positive cases (one-shot reads through different
- * matchers — plugin must fire) with 5 negative cases (toHaveCount,
+ * matchers — the rule must fire) with 5 negative cases (toHaveCount,
  * expect.poll, bare count read, different awaited method, two-statement
- * read-then-assert — plugin must NOT fire). Exact-equality (`toBe(3)`)
+ * read-then-assert — rule must NOT fire). Exact-equality (`toBe(3)`)
  * catches both false-negative regressions (weakened pattern drops below 3)
  * and false-positive widenings (above 3).
  */
@@ -22,15 +22,20 @@
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/playwright-prefer-to-have-count.fixture.tsx';
-const PLUGIN_REL = './biome-plugins/playwright-prefer-to-have-count.grit';
+const FIXTURE_REL =
+  'lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx';
 
-describe('playwright-prefer-to-have-count GritQL plugin', () => {
+describe('playwright-prefer-to-have-count oxlint rule', () => {
   test('fires on exactly 3 one-shot count reads (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -40,21 +45,23 @@ describe('playwright-prefer-to-have-count GritQL plugin', () => {
     expect(fires).toBe(3);
     expect(output).toContain('use the web-first `await expect(locator).toHaveCount(n)`');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#playwright-prefer-to-have-countgrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#playwright-prefer-to-have-count');
   });
 
-  test('plugin is registered as an override scoped to the e2e suites (not workspace-wide)', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const rootPlugins: string[] = config.plugins ?? [];
-    expect(rootPlugins).not.toContain(PLUGIN_REL);
+  test('rule is registered, enabled, and scoped to the e2e suites', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('playwright-prefer-to-have-count');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/playwright-prefer-to-have-count');
+  });
 
-    const overrides: Array<{ includes?: string[]; plugins?: string[] }> = config.overrides ?? [];
-    const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
-    expect(entry).toBeDefined();
-    const includes = entry?.includes ?? [];
-    expect(includes).toContain(FIXTURE_REL);
-    for (const dir of ['stress', 'visual', 'a11y']) {
-      expect(includes).toContain(`packages/app/tests/${dir}/**/*.e2e.ts`);
-    }
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'playwright-prefer-to-have-count');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/app/tests/stress/**/*.e2e.ts',
+        'packages/app/tests/visual/**/*.e2e.ts',
+        'packages/app/tests/a11y/**/*.e2e.ts',
+        'lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx',
+      ].sort(),
+    );
   });
 });

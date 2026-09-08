@@ -1229,7 +1229,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       {}
       <div ref={portalSlotRef} style={{ display: 'contents' }} />
       {createPortal(
-        // biome-ignore lint/plugin/no-unportaled-editor-content: canonical portaled site — H6 fix per PRECEDENTS.md #44
+        // oxlint-disable-next-line ok/no-unportaled-editor-content -- canonical portaled site — H6 fix per PRECEDENTS.md #44
         <EditorContent
           key={editorContentRevision}
           editor={editor}

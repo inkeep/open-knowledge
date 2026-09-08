@@ -25,7 +25,7 @@ export function McpInstall({ editor, children }: { editor: string; children?: Re
           <strong>Desktop app</strong> (macOS, Windows, Linux). The first time you open a project, a
           consent dialog detects {editor} and configures it for you. To re-trigger the dialog,
           choose{' '}
-          {/* biome-ignore lint/plugin/microcopy-ellipsis: quoting the literal menu label (menu.ts) */}
+          {/* oxlint-disable-next-line ok/microcopy-ellipsis -- quoting the literal menu label (menu.ts) */}
           <strong>File → Set up OpenKnowledge integrations…</strong>.
         </li>
         <li>

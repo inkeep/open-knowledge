@@ -118,7 +118,7 @@ function createIpcEventStream<E extends { type: string }>(
     }
   };
 
-  // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+  // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
   ipcRenderer.on(eventChannel, listener);
   listenerAttached = true;
 
@@ -235,7 +235,7 @@ function readConfigFromArgv(): OkDesktopConfig {
  * reads the live binding rather than as a field on the frozen config.
  */
 let screenReaderActive = parseArg('screen-reader-active') === '1';
-// biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+// oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
 ipcRenderer.on('ok:accessibility:changed', (_event, info: { screenReaderActive: boolean }) => {
   screenReaderActive = info.screenReaderActive === true;
 });
@@ -299,7 +299,7 @@ function deliverMenuAction(dispatch: OkMenuActionDispatch): void {
 
 const bufferedMenuActions: OkMenuActionDispatch[] = [];
 
-// biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+// oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
 ipcRenderer.on('ok:menu-action', (_event, dispatch: OkMenuActionDispatch) => {
   if (menuActionListeners.size > 0) {
     deliverMenuAction(dispatch);
@@ -327,7 +327,7 @@ const bridge: OkDesktopBridge = {
      * function registered, so the wrapper — not `cb` — is what both calls use.
      */
     const listener = (_event: IpcRendererEvent, next: OkDesktopConfig) => cb(next);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:project:switched', listener);
     return () => ipcRenderer.removeListener('ok:project:switched', listener);
   },
@@ -352,91 +352,91 @@ const bridge: OkDesktopBridge = {
 
   onUpdateDownloaded(cb: (info: OkUpdateDownloadedInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateDownloadedInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:downloaded', listener);
     return () => ipcRenderer.removeListener('ok:update:downloaded', listener);
   },
 
   onUpdateRelaunching(cb: (info: OkUpdateRelaunchingInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateRelaunchingInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:relaunching', listener);
     return () => ipcRenderer.removeListener('ok:update:relaunching', listener);
   },
 
   onUpdateFetchingLatest(cb: (info: OkUpdateFetchingLatestInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateFetchingLatestInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:fetching-latest', listener);
     return () => ipcRenderer.removeListener('ok:update:fetching-latest', listener);
   },
 
   onUpdateRelaunchFailed(cb: (info: OkUpdateRelaunchFailedInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateRelaunchFailedInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:relaunch-failed', listener);
     return () => ipcRenderer.removeListener('ok:update:relaunch-failed', listener);
   },
 
   onWhatsNew(cb: (info: OkWhatsNewInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkWhatsNewInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:whats-new', listener);
     return () => ipcRenderer.removeListener('ok:update:whats-new', listener);
   },
 
   onWhatsNewDismissed(cb: (info: { version: string }) => void) {
     const listener = (_event: IpcRendererEvent, info: { version: string }) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:whats-new-dismissed', listener);
     return () => ipcRenderer.removeListener('ok:update:whats-new-dismissed', listener);
   },
 
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateStuckHintInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:stuck-hint', listener);
     return () => ipcRenderer.removeListener('ok:update:stuck-hint', listener);
   },
 
   onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkUpdateManualCheckInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:manual-check', listener);
     return () => ipcRenderer.removeListener('ok:update:manual-check', listener);
   },
 
   onDeepLink(cb: (evt: OkDeepLinkPayload) => void) {
     const listener = (_event: IpcRendererEvent, evt: OkDeepLinkPayload) => cb(evt);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:deep-link', listener);
     return () => ipcRenderer.removeListener('ok:deep-link', listener);
   },
 
   onShareReceived(cb: (payload: OkShareReceivedPayload) => void) {
     const listener = (_event: IpcRendererEvent, payload: OkShareReceivedPayload) => cb(payload);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:share:received', listener);
     return () => ipcRenderer.removeListener('ok:share:received', listener);
   },
 
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkServerVersionDriftInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:server-version-drift', listener);
     return () => ipcRenderer.removeListener('ok:server-version-drift', listener);
   },
 
   onServerRestarted(cb: (info: OkServerRestartedInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkServerRestartedInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:server-restarted', listener);
     return () => ipcRenderer.removeListener('ok:server-restarted', listener);
   },
 
   onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void) {
     const listener = (_event: IpcRendererEvent, info: OkRecentRemovedMissingInfo) => cb(info);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:project:recent-removed-missing', listener);
     return () => ipcRenderer.removeListener('ok:project:recent-removed-missing', listener);
   },
@@ -569,7 +569,7 @@ const bridge: OkDesktopBridge = {
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void) {
       const listener = (_event: IpcRendererEvent, event: OkBugReportCrashDetectedEvent) =>
         cb(event);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:bug-report:crash-detected', listener);
       return () => ipcRenderer.removeListener('ok:bug-report:crash-detected', listener);
     },
@@ -612,7 +612,7 @@ const bridge: OkDesktopBridge = {
       }) as Promise<OkNoteWindowMainActionResult>,
     onMainAction(cb: (action: OkNoteWindowMainAction) => void) {
       const listener = (_event: IpcRendererEvent, action: OkNoteWindowMainAction) => cb(action);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:note-window:main-action', listener);
       return () => ipcRenderer.removeListener('ok:note-window:main-action', listener);
     },
@@ -643,7 +643,7 @@ const bridge: OkDesktopBridge = {
   mcpWiring: {
     onShow(cb: (payload: OkMcpWiringShowPayload) => void) {
       const listener = (_event: IpcRendererEvent, payload: OkMcpWiringShowPayload) => cb(payload);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:mcp-wiring:show', listener);
       return () => ipcRenderer.removeListener('ok:mcp-wiring:show', listener);
     },
@@ -704,7 +704,7 @@ const bridge: OkDesktopBridge = {
   onboarding: {
     onShow(cb: (payload: OkOnboardingShowPayload) => void) {
       const listener = (_event: IpcRendererEvent, payload: OkOnboardingShowPayload) => cb(payload);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:onboarding:show', listener);
       return () => ipcRenderer.removeListener('ok:onboarding:show', listener);
     },
@@ -716,7 +716,7 @@ const bridge: OkDesktopBridge = {
     probeContent: (request) => invoke('ok:onboarding:probe-content', request),
     onToast(cb: (payload: OkOnboardingToastPayload) => void) {
       const listener = (_event: IpcRendererEvent, payload: OkOnboardingToastPayload) => cb(payload);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:onboarding:toast', listener);
       return () => ipcRenderer.removeListener('ok:onboarding:toast', listener);
     },
@@ -762,13 +762,13 @@ const bridge: OkDesktopBridge = {
   sidebar: {
     expandAll(cb: () => void) {
       const listener = (_event: IpcRendererEvent) => cb();
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:sidebar:expand-all', listener);
       return () => ipcRenderer.removeListener('ok:sidebar:expand-all', listener);
     },
     collapseAll(cb: () => void) {
       const listener = (_event: IpcRendererEvent) => cb();
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:sidebar:collapse-all', listener);
       return () => ipcRenderer.removeListener('ok:sidebar:collapse-all', listener);
     },
@@ -821,19 +821,19 @@ const bridge: OkDesktopBridge = {
     },
     onData(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyData) => cb(msg);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:pty:data', listener);
       return () => ipcRenderer.removeListener('ok:pty:data', listener);
     },
     onExit(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyExit) => cb(msg);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:pty:exit', listener);
       return () => ipcRenderer.removeListener('ok:pty:exit', listener);
     },
     onNotice(cb) {
       const listener = (_event: IpcRendererEvent, msg: OkPtyNotice) => cb(msg);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:pty:notice', listener);
       return () => ipcRenderer.removeListener('ok:pty:notice', listener);
     },
@@ -848,7 +848,7 @@ const bridge: OkDesktopBridge = {
     onScreenReaderChanged(cb) {
       const listener = (_event: IpcRendererEvent, info: { screenReaderActive: boolean }) =>
         cb(info.screenReaderActive === true);
-      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:accessibility:changed', listener);
       return () => ipcRenderer.removeListener('ok:accessibility:changed', listener);
     },

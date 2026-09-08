@@ -1,8 +1,8 @@
 /**
- * Microcopy ellipsis convention — `microcopy-ellipsis` GritQL plugin.
+ * Microcopy ellipsis convention — `microcopy-ellipsis` oxlint rule.
  *
- * Plugin:  `biome-plugins/microcopy-ellipsis.grit`
- * Fixture: `biome-plugins/__fixtures__/microcopy-ellipsis.fixture.tsx`
+ * Rule:  `lint-plugins/ok-rules/rules/microcopy-ellipsis.mjs`
+ * Fixture: `lint-plugins/ok-rules/__fixtures__/microcopy-ellipsis.fixture.tsx`
  *
  * The codebase reserves U+2026 (`…`) for two surfaces only:
  *   1. macOS native menu items (`packages/desktop/src/main/menu.ts`)
@@ -11,27 +11,31 @@
  * Per precedent #42. The fixture pairs 2 positive cases (JSX text + JSX
  * attribute containing `…`) with 3 negative cases (clean text, clean
  * attribute, and `…` inside a non-UI attribute that the rule must skip);
- * the test asserts the plugin fires exactly 2 times.
+ * the test asserts the rule fires exactly 2 times.
  *
  * Exact equality (`toBe(2)`) catches drift in both directions:
  *   - false-negative: a weakened pattern drops below 2 → fails
  *   - false-positive: a widened pattern fires on a clean case → above 2 → fails
  *
  * Test shape: real input → public
- * interface (`biome check`) → observable outcome (diagnostic count).
+ * interface (`oxlintFixtureArgs()` → `pnpm exec oxlint`) → observable outcome (diagnostic count).
  */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/microcopy-ellipsis.fixture.tsx';
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/microcopy-ellipsis.fixture.tsx';
 
-describe('microcopy-ellipsis GritQL plugin', () => {
+describe('microcopy-ellipsis oxlint rule', () => {
   test('fires on exactly 2 positive cases (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -41,12 +45,11 @@ describe('microcopy-ellipsis GritQL plugin', () => {
     expect(fires).toBe(2);
     expect(output).toContain('drop the trailing');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#microcopy-ellipsisgrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#microcopy-ellipsis');
   });
 
-  test('plugin is registered in biome.jsonc', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const plugins = config.plugins ?? [];
-    expect(plugins).toContain('./biome-plugins/microcopy-ellipsis.grit');
+  test('rule is registered, enabled, and deliberately unscoped', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('microcopy-ellipsis');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/microcopy-ellipsis');
   });
 });

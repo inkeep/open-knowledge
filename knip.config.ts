@@ -58,7 +58,7 @@ export default {
     'packages/app/src/editor/http-client.ts': ['types'],
     '.{agents,codex}/skills/**': ['files'],
     'lint-plugins/no-comments/__fixtures__/**': ['files'],
-    'biome-plugins/__fixtures__/**': ['files'],
+    'lint-plugins/ok-rules/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/build-slack-release-payload.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],

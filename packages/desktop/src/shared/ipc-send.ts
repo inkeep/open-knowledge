@@ -10,7 +10,7 @@ export function sendToRenderer<K extends keyof EventChannels>(
   channel: K,
   payload: EventChannels[K]['payload'],
 ): void {
-  // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: typed sendToRenderer factory body (precedent #14)
+  // oxlint-disable-next-line ok/no-loosely-typed-webcontents-ipc -- typed sendToRenderer factory body (precedent #14)
   webContents.send(channel, payload);
 }
 
