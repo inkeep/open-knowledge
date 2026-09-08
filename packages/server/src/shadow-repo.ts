@@ -357,7 +357,7 @@ async function commitWipInner(
   }
 }
 
-const FANOUT_INDEX_NAME = 'index-wip-fanout';
+export const FANOUT_INDEX_NAME = 'index-wip-fanout';
 
 function sweepOrphanedScratchState(shadow: ShadowHandle): number {
   let deleted = 0;

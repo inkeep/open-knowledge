@@ -356,6 +356,8 @@ export interface ServerInstance {
   readonly acpPermissions: AcpPermissionStore;
 }
 
+export const SHADOW_FANOUT_WARMUP_MS = 3000;
+
 const PARK_SNAPSHOT_ORIGIN = (() => {
   const ctx = Object.freeze({ origin: 'park-snapshot', paired: true as const });
   return Object.freeze({
@@ -762,6 +764,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let cc1Broadcaster: CC1Broadcaster | null = null;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
+  let shadowWarmupTimer: ReturnType<typeof setTimeout> | null = null;
   const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
   let agentFocusBroadcaster: AgentFocusBroadcaster | null = null;
   let agentPresenceBroadcaster: AgentPresenceBroadcaster | null = null;
@@ -2677,6 +2680,10 @@ export function createServer(options: ServerOptions): ServerInstance {
               clearTimeout(inPlaceRescanTimer);
               inPlaceRescanTimer = null;
             }
+            if (shadowWarmupTimer) {
+              clearTimeout(shadowWarmupTimer);
+              shadowWarmupTimer = null;
+            }
             if (headWatcher) {
               await headWatcher.unsubscribe();
               headWatcher = null;
@@ -2945,14 +2952,16 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
-    if (shadowRef.current) {
+    if (shadowRef.current && inflightDestroy === null) {
       const warmShadow = shadowRef.current;
       const warmContentRoot = toPosix(relative(projectDir, contentDir)) || '.';
-      setTimeout(() => {
+      shadowWarmupTimer = setTimeout(() => {
+        shadowWarmupTimer = null;
         void buildWipTree(warmShadow, warmContentRoot).catch((e) => {
           log.debug({ err: e }, '[shadow] fan-out index warm-up failed (non-fatal)');
         });
-      }, 3000).unref();
+      }, SHADOW_FANOUT_WARMUP_MS);
+      shadowWarmupTimer.unref?.();
     }
 
     if (shadowRef.current) {
