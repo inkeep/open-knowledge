@@ -707,6 +707,30 @@ describe('ReportBugDialog', () => {
     expect(log.createCalls[0]?.note).not.toContain('Crashed app version');
   });
 
+  test('a crash invite that names when it crashed folds the time and its age in', async () => {
+    const log = installBridge();
+    await renderDialog({
+      crashInvite: { ...BOOT_INVITE, crashedAt: '2026-08-31T03:15:17.929Z' },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    const note = log.createCalls[0]?.note ?? '';
+    expect(note).toContain('Crashed at: 2026-08-31T03:15:17.929Z (');
+    expect(note).toMatch(/Crashed at: .+ \(\d+[smhd] ago\)/);
+  });
+
+  test('a crash invite with no crash time composes the note without that line', async () => {
+    const log = installBridge();
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.note).not.toContain('Crashed at');
+  });
+
   test('a plain compose with no dump on hand renders no crash-dump opt-in and sends no flag', async () => {
     const log = installBridge();
     await renderDialog();

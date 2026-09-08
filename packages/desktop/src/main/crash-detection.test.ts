@@ -17,9 +17,12 @@ import {
   createCrashDetection,
   GPU_CRASH_INVITE_THRESHOLD,
   GPU_CRASH_WINDOW_MS,
+  HANDOFF_TEARDOWN_WINDOW_MS,
+  INVITE_EXPIRE_AFTER_MS,
   type InstallInFlight,
   MAX_DECLINED_DEATHS,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
+  STALE_CRASH_AFTER_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
 import { buildMinidump } from './minidump.test-helper.ts';
@@ -1744,36 +1747,42 @@ describe('auto-update install kill suppression', () => {
   });
 });
 
+function committedInstallOf(version: string, handoffAt: number): AppState {
+  return {
+    ...emptyState(),
+    versionPendingInstall: version,
+    attemptedInstall: version,
+    attemptedInstallHandoffAt: handoffAt,
+    versionPendingInstallStagedAt: handoffAt - 60_000,
+    attemptedInstallDeferredBoots: 0,
+  };
+}
+
+function stagedButNeverCommittedOf(version: string, stagedAt: number): AppState {
+  return {
+    ...emptyState(),
+    versionPendingInstall: version,
+    attemptedInstall: version,
+    attemptedInstallHandoffAt: null,
+    versionPendingInstallStagedAt: stagedAt,
+    attemptedInstallDeferredBoots: 0,
+  };
+}
+
+function wireRealUpdater(rig: Rig, state: AppState): void {
+  rig.deps.installInFlight = (span) =>
+    installWasInFlightDuring(state, span, state.versionPendingInstallStagedAt);
+}
+
 describe('the instant the install-kill question is asked in', () => {
   const ATTEMPTED = '0.61.3';
   const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
-  function committedInstall(handoffAt: number): AppState {
-    return {
-      ...emptyState(),
-      versionPendingInstall: ATTEMPTED,
-      attemptedInstall: ATTEMPTED,
-      attemptedInstallHandoffAt: handoffAt,
-      versionPendingInstallStagedAt: handoffAt - 60_000,
-      attemptedInstallDeferredBoots: 0,
-    };
-  }
+  const committedInstall = (handoffAt: number): AppState =>
+    committedInstallOf(ATTEMPTED, handoffAt);
 
-  function stagedButNeverCommitted(stagedAt: number): AppState {
-    return {
-      ...emptyState(),
-      versionPendingInstall: ATTEMPTED,
-      attemptedInstall: ATTEMPTED,
-      attemptedInstallHandoffAt: null,
-      versionPendingInstallStagedAt: stagedAt,
-      attemptedInstallDeferredBoots: 0,
-    };
-  }
-
-  function wireRealUpdater(rig: Rig, state: AppState): void {
-    rig.deps.installInFlight = (span) =>
-      installWasInFlightDuring(state, span, state.versionPendingInstallStagedAt);
-  }
+  const stagedButNeverCommitted = (stagedAt: number): AppState =>
+    stagedButNeverCommittedOf(ATTEMPTED, stagedAt);
 
   test('an install in flight when the previous session died stays suppressed however late the reopen', () => {
     const rig = makeRig();
@@ -2525,5 +2534,437 @@ describe('dumps of deaths the app declined to prompt for', () => {
     expect(JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as unknown).toMatchObject({
       declinedDeaths: [],
     });
+  });
+});
+
+describe('dumps written during the teardown an update handoff started', () => {
+  const SHADOW_ATTEMPTED = '0.66.2';
+
+  function primeThenHandoff(rig: Rig): number {
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    return rig.nowMs();
+  }
+
+  function seedFreshDump(rig: Rig, relPath: string, offsetFromHandoffMs: number): Date {
+    const handoffAt = primeThenHandoff(rig);
+    rig.setInstallInFlight({
+      attemptedVersion: SHADOW_ATTEMPTED,
+      handoffAt,
+      recordedHandoff: true,
+    });
+    const dumpAt = new Date(handoffAt + offsetFromHandoffMs);
+    seedMinidump(rig, relPath, dumpAt);
+    return dumpAt;
+  }
+
+  test('a dump stamped inside the teardown window does not arm a prompt', () => {
+    const rig = makeRig();
+    const handoffAt = primeThenHandoff(rig);
+    wireRealUpdater(rig, committedInstallOf(SHADOW_ATTEMPTED, handoffAt));
+    const dumpAt = new Date(handoffAt + 1_671);
+    seedMinidump(rig, 'completed/teardown.dmp', dumpAt);
+
+    const detection = createCrashDetection(rig.deps);
+    expect(detection.detectBootCrash()).toBeNull();
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.dump-handoff-shadowed',
+        dumpMtimeAt: dumpAt.toISOString(),
+        handoffAt: new Date(handoffAt).toISOString(),
+        teardownWindowMs: HANDOFF_TEARDOWN_WINDOW_MS,
+        attemptedInstall: SHADOW_ATTEMPTED,
+      }),
+    );
+    detection.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('an unreadable dump inside the window still arms — the shadow stays fail-open', () => {
+    const rig = makeRig();
+    const handoffAt = primeThenHandoff(rig);
+    wireRealUpdater(rig, committedInstallOf(SHADOW_ATTEMPTED, handoffAt));
+    seedMinidump(rig, 'completed/torn.dmp', new Date(handoffAt + 1_671), UNPARSEABLE_DUMP);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+
+  test('a dump stamped past the teardown window still arms — the install was live, not quitting', () => {
+    const rig = makeRig();
+    seedFreshDump(rig, 'completed/later.dmp', HANDOFF_TEARDOWN_WINDOW_MS + 1_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+
+  test('a dump stamped before the handoff still arms — the death preceded the quit', () => {
+    const rig = makeRig();
+    seedFreshDump(rig, 'completed/real.dmp', -60_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+
+  test('a staging-fallback handoff shadows nothing — only a recorded commit bounds it', () => {
+    const rig = makeRig();
+    const stagedAt = primeThenHandoff(rig);
+    wireRealUpdater(rig, stagedButNeverCommittedOf(SHADOW_ATTEMPTED, stagedAt));
+    seedMinidump(rig, 'completed/after-staging.dmp', new Date(stagedAt + 1_671));
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+
+  test('with no install in flight a dump arms exactly as before', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/plain.dmp', new Date(rig.nowMs()));
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+});
+
+describe('staleness bounds on the crash reporter', () => {
+  function seedSentinel(rig: Rig, lastAliveMs: number, bootSessionUuid?: string): void {
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(lastAliveMs),
+        startedAt: new Date(lastAliveMs).toISOString(),
+        lastAliveAt: new Date(lastAliveMs).toISOString(),
+        appVersion: CRASHED_VERSION,
+        ...(bootSessionUuid === undefined ? {} : { bootSessionUuid }),
+      }),
+    );
+  }
+
+  test('an invitation nobody answered past the bound is dropped undelivered', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    rig.setRendererAvailable(false);
+    seedMinidump(rig, 'completed/fresh.dmp', new Date(rig.nowMs()));
+    const detection = createCrashDetection(rig.deps);
+    expect(detection.detectBootCrash()).not.toBeNull();
+
+    rig.setRendererAvailable(true);
+    rig.advance(INVITE_EXPIRE_AFTER_MS);
+    detection.notifyRendererReady();
+
+    expect(rig.emitted).toHaveLength(0);
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({ event: 'crash-detection.invitation-expired' }),
+    );
+  });
+
+  test('an invitation answered inside the bound is still delivered', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    rig.setRendererAvailable(false);
+    seedMinidump(rig, 'completed/fresh.dmp', new Date(rig.nowMs()));
+    const detection = createCrashDetection(rig.deps);
+    expect(detection.detectBootCrash()).not.toBeNull();
+
+    rig.setRendererAvailable(true);
+    rig.advance(INVITE_EXPIRE_AFTER_MS / 2);
+    detection.notifyRendererReady();
+
+    expect(rig.emitted).toHaveLength(1);
+  });
+
+  test('a sentinel older than the staleness bound suppresses the dirty-shutdown prompt', () => {
+    const rig = makeRig();
+    seedSentinel(rig, rig.nowMs());
+    rig.advance(STALE_CRASH_AFTER_MS);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.machine-level-death',
+        reason: 'stale-crash',
+        class: 'stale',
+        machineCause: null,
+      }),
+    );
+  });
+
+  test('a reboot older than the bound suppresses as external, naming the machine cause', () => {
+    const rig = makeRig();
+    const bootedAt = rig.nowMs();
+    seedSentinel(rig, bootedAt, 'boot-epoch-a');
+    rig.advance(STALE_CRASH_AFTER_MS);
+    rig.setBootSessionUuid('boot-epoch-b');
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.machine-level-death',
+        reason: 'system-reboot',
+        class: 'external',
+        machineCause: 'system-reboot',
+      }),
+    );
+  });
+
+  test('a future-dated heartbeat cannot date a death, so it neither ages nor stamps it', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedSentinel(rig, rig.nowMs() + 3 * 60 * 60_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(bootInvite(armed).crashedAt).toBeUndefined();
+    expect(rig.infos).not.toContainEqual(
+      expect.objectContaining({ event: 'crash-detection.machine-level-death' }),
+    );
+  });
+
+  test('a stale sentinel with a fresh dump still arms, as the dump-driven variant', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    seedSentinel(rig, rig.nowMs());
+    rig.advance(STALE_CRASH_AFTER_MS);
+    const dumpAt = new Date(rig.nowMs());
+    seedMinidump(rig, 'completed/fresh.dmp', dumpAt);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    expect(bootInvite(armed).crashedAt).toBe(dumpAt.toISOString());
+  });
+
+  test('a dump older than the staleness bound no longer arms on every launch', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/ancient.dmp', new Date(rig.nowMs()));
+    rig.advance(STALE_CRASH_AFTER_MS);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.machine-level-death',
+        reason: 'stale-crash',
+        deathAtSource: 'dump-mtime',
+      }),
+    );
+  });
+
+  test('a dump inside the bound arms as before', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/recent.dmp', new Date(rig.nowMs()));
+    rig.advance(STALE_CRASH_AFTER_MS / 2);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+  });
+
+  test('an aged-out dump never dates a death the heartbeat says was seconds ago', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/ancient.dmp', new Date(rig.nowMs()));
+    rig.advance(STALE_CRASH_AFTER_MS + 60 * 60_000);
+    const lastAliveMs = rig.nowMs();
+    seedSentinel(rig, lastAliveMs);
+    rig.advance(60_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(rig.infos).not.toContainEqual(
+      expect.objectContaining({ event: 'crash-detection.machine-level-death' }),
+    );
+    expect(bootInvite(armed).crashedAt).toBe(new Date(lastAliveMs).toISOString());
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a reboot beside an aged-out dump reports the death the heartbeat dated, not the dump', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/ancient.dmp', new Date(rig.nowMs()));
+    rig.advance(STALE_CRASH_AFTER_MS + 60 * 60_000);
+    const lastAliveMs = rig.nowMs();
+    seedSentinel(rig, lastAliveMs, 'boot-epoch-a');
+    rig.advance(60_000);
+    rig.setBootSessionUuid('boot-epoch-b');
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).crashedAt).toBe(new Date(lastAliveMs).toISOString());
+    expect(bootInvite(armed).eventId).toBe(`boot:${String(lastAliveMs)}`);
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a future-dated heartbeat cannot outrank a fresh dump across a reboot', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    const dumpAt = new Date(rig.nowMs());
+    seedMinidump(rig, 'completed/fresh.dmp', dumpAt);
+    seedSentinel(rig, rig.nowMs() + 3 * 60 * 60_000, 'boot-epoch-a');
+    rig.advance(60_000);
+    rig.setBootSessionUuid('boot-epoch-b');
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    expect(bootInvite(armed).eventId).toBe(`boot:dump:${String(dumpAt.getTime())}`);
+    expect(bootInvite(armed).crashedAt).toBe(dumpAt.toISOString());
+  });
+
+  test('a dirty shutdown is never dated by a dump it says did not explain the death', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/older.dmp', new Date(rig.nowMs()));
+    rig.advance(6 * 24 * 60 * 60_000);
+    seedSentinel(rig, rig.nowMs() + 3 * 60 * 60_000);
+    rig.advance(60_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(bootInvite(armed).crashedAt).toBeUndefined();
+  });
+
+  test('a reboot beside a future-dated heartbeat and no dump reports an undatable death', () => {
+    const rig = makeRig();
+    seedSentinel(rig, rig.nowMs() + 3 * 60 * 60_000, 'boot-epoch-a');
+    rig.advance(60_000);
+    rig.setBootSessionUuid('boot-epoch-b');
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    const breadcrumb = rig.infos.find(
+      (line) => line.event === 'crash-detection.machine-level-death',
+    );
+    expect(breadcrumb).toMatchObject({
+      reason: 'system-reboot',
+      class: 'external',
+      machineCause: 'system-reboot',
+      deathAt: null,
+      deathAtSource: null,
+      deathAgeMs: null,
+    });
+    expect(breadcrumb?.lastAliveAt).toEqual(expect.any(String));
+    expect(breadcrumb?.sentinelAgeMs).toBeLessThan(0);
+  });
+
+  test('an install in flight is named on the prompt when the heartbeat outlived the dump', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    seedMinidump(rig, 'completed/earlier.dmp', new Date(rig.nowMs()));
+    rig.advance(60 * 60_000);
+    const lastAliveMs = rig.nowMs();
+    seedSentinel(rig, lastAliveMs);
+    wireRealUpdater(rig, committedInstallOf('0.66.2', lastAliveMs - 5 * 60_000));
+    rig.advance(60_000);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(bootInvite(armed).context.newMinidumps).toBe(1);
+    expect(rig.infos).toContainEqual(
+      expect.objectContaining({
+        event: 'crash-detection.boot',
+        dirtyShutdown: true,
+        attemptedInstall: '0.66.2',
+      }),
+    );
+  });
+
+  test('a sentinel with no last-alive stamp is never stale — pre-0.35 sentinels are exempt', () => {
+    const rig = makeRig();
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(rig.nowMs()),
+        startedAt: new Date(rig.nowMs()).toISOString(),
+      }),
+    );
+    rig.advance(4 * STALE_CRASH_AFTER_MS);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(bootInvite(armed).crashedAt).toBeUndefined();
+  });
+
+  test('a sentinel inside the bound prompts as it always has, dated by its last heartbeat', () => {
+    const rig = makeRig();
+    const lastAliveMs = rig.nowMs();
+    seedSentinel(rig, lastAliveMs);
+    rig.advance(STALE_CRASH_AFTER_MS / 2);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+    expect(bootInvite(armed).crashedAt).toBe(new Date(lastAliveMs).toISOString());
+  });
+
+  test('an expired invitation is re-offered on the next launch, not retired for good', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    rig.setRendererAvailable(false);
+    const dumpAt = new Date(rig.nowMs());
+    seedMinidump(rig, 'completed/fresh.dmp', dumpAt);
+
+    const expiring = createCrashDetection(rig.deps);
+    const firstArmed = expiring.detectBootCrash();
+    expect(firstArmed).not.toBeNull();
+    rig.advance(INVITE_EXPIRE_AFTER_MS);
+    rig.setRendererAvailable(true);
+    expiring.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+    expiring.markCleanQuit();
+
+    const relaunched = createCrashDetection(rig.deps);
+    const rearmed = relaunched.detectBootCrash();
+    expect(bootInvite(rearmed).eventId).toBe(firstArmed?.eventId);
+    relaunched.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(1);
+    expect(bootInvite(rig.emitted[0] ?? null).crashedAt).toBe(dumpAt.toISOString());
+  });
+
+  test('the invitation carries when the crash happened, not only its boot id', () => {
+    const rig = makeRig();
+    const prior = createCrashDetection(rig.deps);
+    prior.detectBootCrash();
+    prior.markCleanQuit();
+    rig.advance(10 * 60_000);
+    const dumpAt = new Date(rig.nowMs());
+    seedMinidump(rig, 'completed/fresh.dmp', dumpAt);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).crashedAt).toBe(dumpAt.toISOString());
   });
 });

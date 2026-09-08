@@ -142,6 +142,7 @@ export type OkBugReportCrashDetectedEvent =
       context: { dirtyShutdown: boolean; newMinidumps: number };
       minidumpAvailable: boolean;
       crashedAppVersion?: string;
+      crashedAt?: string;
     };
 
 export type OkBugReportCrashAckResult = { ok: true } | { ok: false; error: string };

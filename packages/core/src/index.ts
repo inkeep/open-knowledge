@@ -1956,6 +1956,7 @@ export {
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
 export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
 export { randomUUID } from './utils/random-uuid.ts';
+export { formatRelativeAge, RELATIVE_TIME_UNKNOWN } from './utils/relative-time.ts';
 export {
   decodeHrefPath,
   encodeHrefPath,
