@@ -26,7 +26,7 @@ The skill is optional. The plugin's checks are the same with or without it.
 
 **Maintain index.md** creates and maintains a navigation file in every folder that contains Markdown, listing that folder's documents by type and linking its subfolders.
 
-Generated indexes are machine-owned: OpenKnowledge rewrites them as documents change, so manual edits are replaced. Turning the setting on shows a disclosure before any files are written. In a Git project it also adds a scoped `.gitattributes` rule (`merge=union`) so concurrent index changes merge cleanly. If another attribute already controls those paths, index maintenance pauses and the plugin page explains what to resolve.
+Generated indexes are machine-owned: OpenKnowledge rewrites them as documents change, so manual edits are replaced. Turning the setting on shows a disclosure before any files are written. In a Git project it also adds a scoped `.gitattributes` rule (`merge=union`). A local or CLI merge then combines concurrent index changes instead of conflicting. A merge run on GitHub or GitLab ignores `.gitattributes`, so index changes there can still conflict and need resolving by hand. After a merge across a layout change the combined file can list a document twice until the index is next rebuilt. If another attribute already controls those paths, index maintenance pauses and the plugin page explains what to resolve.
 
 Turning it off stops rebuilds and removes the Git rule, but leaves the generated files in place.
 

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -12,7 +13,13 @@ import {
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { LOCAL_DIR, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_LINTER_CONFIG,
+  type LinterConfig,
+  LOCAL_DIR,
+  lintDocument,
+  REMOVED_KEYS,
+} from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -4391,5 +4398,224 @@ describe('createServer() — generated index wiring', () => {
       expect(readFileSync(path, 'utf-8')).toBe(bytes);
       expect(statSync(path).mtimeMs).toBe(mtime);
     }
+  });
+
+  const UNION_FIXTURE_ANCESTOR_INDEX = [
+    '---',
+    'okf_version: "0.2"',
+    '---',
+    '',
+    '# Index',
+    '',
+    '## Guide',
+    '',
+    '* [Alpha](./alpha.md)',
+    '',
+    '## Index',
+    '',
+    '* [Home](./README.md)',
+    '',
+  ].join('\n');
+
+  const UNION_FIXTURE_OLD_SHAPE_BRANCH_INDEX = [
+    '---',
+    'okf_version: "0.2"',
+    '---',
+    '',
+    '# Index',
+    '',
+    '## Guide',
+    '',
+    '* [Alpha](./alpha.md)',
+    '* [Beta](./beta.md)',
+    '',
+    '## Index',
+    '',
+    '* [Home](./README.md)',
+    '',
+  ].join('\n');
+
+  const UNION_FIXTURE_NEW_SHAPE_BRANCH_INDEX = [
+    '---',
+    'okf_version: "0.2"',
+    '---',
+    '',
+    '# Index',
+    '',
+    '* [Home](./README.md)',
+    '',
+    '## Guide',
+    '',
+    '* [Alpha](./alpha.md)',
+    '',
+  ].join('\n');
+
+  const UNION_FIXTURE_EXPECTED_SWEPT_INDEX = [
+    '---',
+    'okf_version: "0.2"',
+    '---',
+    '',
+    '# Index',
+    '',
+    '* [Home](./README.md)',
+    '',
+    '## Guide',
+    '',
+    '* [Alpha](./alpha.md)',
+    '* [Beta](./beta.md)',
+    '',
+  ].join('\n');
+
+  const DEFAULT_PROFILE_LINT_CONFIG: LinterConfig = {
+    ...DEFAULT_LINTER_CONFIG,
+    enabled: true,
+    plugins: {
+      ...DEFAULT_LINTER_CONFIG.plugins,
+      markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+      okf: { enabled: true },
+    },
+  };
+
+  async function lintIndexCodes(markdown: string): Promise<string[]> {
+    const findings = await lintDocument(markdown, DEFAULT_PROFILE_LINT_CONFIG, 'index.md');
+    return findings.map((finding) => finding.code);
+  }
+
+  function countOccurrences(haystack: string, needle: string): number {
+    return haystack.split(needle).length - 1;
+  }
+
+  function fixtureGit(...args: string[]): string {
+    const result = spawnSync(
+      'git',
+      [
+        '-c',
+        'user.name=Open Knowledge Test',
+        '-c',
+        'user.email=test@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        '-c',
+        'core.autocrlf=false',
+        '-c',
+        'core.attributesFile=',
+        '-c',
+        'core.hooksPath=',
+        ...args,
+      ],
+      { cwd: projectDir, encoding: 'utf-8' },
+    );
+    const ended = result.signal ? `killed by ${result.signal}` : `exited ${result.status}`;
+    expect(
+      result.status,
+      `git ${args.join(' ')} ${ended}\n${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}`,
+    ).toBe(0);
+    return result.stdout ?? '';
+  }
+
+  async function commitOldShapeAncestorUnderUnionMerge(): Promise<string> {
+    fixtureGit('init', '-q', '--template=');
+
+    const installed = await updateGeneratedIndexGitAttributes({
+      projectDir,
+      contentDir,
+      generatedDocNames: ['index'],
+      enabled: true,
+    });
+    expect(installed.ok).toBe(true);
+    expect(installed.status).toEqual({ state: 'ready', ownership: 'open-knowledge' });
+
+    writeDoc('README.md', 'Home', 'Index');
+    writeDoc('alpha.md', 'Alpha', 'Guide');
+    writeFileSync(indexPath(), UNION_FIXTURE_ANCESTOR_INDEX, 'utf-8');
+    fixtureGit('add', '-A');
+    fixtureGit('commit', '-qm', 'old-shape ancestor index');
+
+    return fixtureGit('branch', '--show-current').trim();
+  }
+
+  test('a union merge across the index layout change leaves a duplicated entry that one boot sweep repairs to canonical bytes', async () => {
+    const baseBranch = await commitOldShapeAncestorUnderUnionMerge();
+
+    fixtureGit('checkout', '-q', '-b', 'edits-the-old-shape-index');
+    writeDoc('beta.md', 'Beta', 'Guide');
+    writeFileSync(indexPath(), UNION_FIXTURE_OLD_SHAPE_BRANCH_INDEX, 'utf-8');
+    fixtureGit('add', '-A');
+    fixtureGit('commit', '-qm', 'add beta to the old-shape guide section');
+
+    fixtureGit('checkout', '-q', baseBranch);
+    writeFileSync(indexPath(), UNION_FIXTURE_NEW_SHAPE_BRANCH_INDEX, 'utf-8');
+    fixtureGit('add', '-A');
+    fixtureGit('commit', '-qm', 'regenerate the index in the new shape');
+
+    fixtureGit('merge', '--no-edit', '-q', 'edits-the-old-shape-index');
+
+    const merged = readIndex();
+    expect(await lintIndexCodes(merged)).toEqual(['MD024']);
+    expect(countOccurrences(merged, '* [Home](./README.md)')).toBe(2);
+    expect(merged).toContain('## Index');
+    expect(UNION_FIXTURE_EXPECTED_SWEPT_INDEX).not.toBe(UNION_FIXTURE_OLD_SHAPE_BRANCH_INDEX);
+    expect(UNION_FIXTURE_EXPECTED_SWEPT_INDEX).not.toBe(UNION_FIXTURE_NEW_SHAPE_BRANCH_INDEX);
+
+    const fullSweepDirectories: string[] = [];
+    const activeServer = await startServerWithIndexHooks({
+      beforeDecision: ({ directory, fullSweep }) => {
+        if (fullSweep) fullSweepDirectories.push(directory);
+      },
+    });
+    await activeServer.ready;
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'completed',
+      indexCount: 1,
+    });
+    expect(fullSweepDirectories).toEqual(['']);
+
+    const swept = readIndex();
+    expect(swept).toBe(UNION_FIXTURE_EXPECTED_SWEPT_INDEX);
+    expect(await lintIndexCodes(swept)).toEqual([]);
+  });
+
+  test('the layout upgrade alone merges to canonical bytes that the boot sweep leaves unwritten', async () => {
+    const logCapture = captureAllLoggers();
+    const baseBranch = await commitOldShapeAncestorUnderUnionMerge();
+
+    fixtureGit('checkout', '-q', '-b', 'leaves-the-index-alone');
+    writeFileSync(
+      join(contentDir, 'alpha.md'),
+      '---\ntitle: Alpha\ntype: Guide\n---\n\n# Alpha\n\nRevised prose.\n',
+      'utf-8',
+    );
+    fixtureGit('add', '-A');
+    fixtureGit('commit', '-qm', 'revise alpha without touching the index');
+
+    fixtureGit('checkout', '-q', baseBranch);
+    writeDoc('beta.md', 'Beta', 'Guide');
+    writeFileSync(indexPath(), UNION_FIXTURE_EXPECTED_SWEPT_INDEX, 'utf-8');
+    fixtureGit('add', '-A');
+    fixtureGit('commit', '-qm', 'add beta and regenerate the index in the new shape');
+
+    fixtureGit('merge', '--no-edit', '-q', 'leaves-the-index-alone');
+
+    const merged = readIndex();
+    expect(merged).toBe(UNION_FIXTURE_EXPECTED_SWEPT_INDEX);
+
+    const bytesBeforeBoot = merged;
+    const mtimeBeforeBoot = statSync(indexPath()).mtimeMs;
+
+    const activeServer = await startServerWithIndexHooks({});
+    await activeServer.ready;
+    await expect(activeServer.generatedIndexSweepReady).resolves.toEqual({
+      status: 'completed',
+      indexCount: 1,
+    });
+
+    expect(
+      logCapture
+        .getCalls()
+        .filter((entry) => entry.payload.event === 'generated-index-regeneration')
+        .map((entry) => entry.payload),
+    ).toEqual([{ event: 'generated-index-regeneration', outcome: 'unchanged', directory: '' }]);
+    expect(readIndex()).toBe(bytesBeforeBoot);
+    expect(statSync(indexPath()).mtimeMs).toBe(mtimeBeforeBoot);
   });
 });
