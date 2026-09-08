@@ -47,6 +47,7 @@ import {
   type AcpThreadManagerOptions,
   buildOkMcpStdioCommand,
 } from './acp/thread-manager.ts';
+import { collectServerHostSnapshot } from './agent-registry-probes.ts';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
@@ -173,6 +174,7 @@ export interface BootServerOptions
     | 'enableTestRoutes'
     | 'lockKind'
     | 'detectGh'
+    | 'agentIntegrations'
     | 'detectGhAccounts'
     | 'tokenStore'
     | 'embeddingsKeyStore'
@@ -432,6 +434,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     detectGh: opts.detectGh,
     detectGhAccounts: opts.detectGhAccounts,
     tokenStore: opts.tokenStore,
+    agentIntegrations: opts.agentIntegrations,
     embeddingsKeyStore: opts.embeddingsKeyStore,
     singleDocRelPath: opts.singleDocRelPath,
     ephemeral: opts.ephemeral,
@@ -513,6 +516,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         probePiAcpBridge: opts.probePiAcpBridge,
         ensurePiAcpBridge: opts.ensurePiAcpBridge,
+        hostSnapshot: () =>
+          collectServerHostSnapshot({ env: 'local-web', resolve: opts.agentIntegrations?.probe }),
         log,
       });
   if (acpThreadManager !== null) await acpThreadManager.init();

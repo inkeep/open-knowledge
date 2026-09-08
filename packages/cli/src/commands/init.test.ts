@@ -135,6 +135,18 @@ describe('runInit', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
+  it('drains the retired project-skill block from an existing .gitignore, keeping user lines', async () => {
+    writeFileSync(
+      join(testDir, '.gitignore'),
+      'node_modules/\n.claude/skills/open-knowledge/\n.cursor/skills/open-knowledge/\n',
+      'utf-8',
+    );
+
+    await runInitForTest({ mcp: false });
+
+    expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe('node_modules/\n');
+  });
+
   it('scaffolds .ok/ and writes a fresh global Claude config', async () => {
     const result = await runInitForTest();
 
@@ -224,7 +236,7 @@ describe('runInit', () => {
     expect(config.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
-  it('preserves user-added fields while updating the managed launcher', async () => {
+  it('keeps user-added fields but drops env while updating the managed launcher', async () => {
     writeFileSync(
       claudeConfigPath(),
       JSON.stringify(
@@ -251,7 +263,6 @@ describe('runInit', () => {
     expect(config.mcpServers['open-knowledge']).toEqual({
       ...PUBLISHED_CHAIN_ENTRY,
       cwd: testDir,
-      env: { OK_MODE: 'local' },
     });
   });
 
@@ -278,10 +289,7 @@ describe('runInit', () => {
     expect(result.editors[0].action).toBe('overwritten');
 
     const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers['open-knowledge']).toEqual({
-      command: expectedDevMcpEntry().command,
-      args: expectedDevMcpEntry().args,
-    });
+    expect(config.mcpServers['open-knowledge']).toEqual(expectedDevMcpEntry());
   });
 
   it('does not touch ~/.claude.json when --no-mcp is passed', async () => {
@@ -1173,7 +1181,7 @@ describe('runInit', () => {
       expect(output).toContain(`Seeded .gitignore at ${testDir}/.gitignore (.DS_Store)`);
     });
 
-    it('pre-existing .git/ → preserves a hand-authored .gitignore but appends the always-excluded project-skill block', async () => {
+    it('pre-existing .git/ → leaves a hand-authored .gitignore completely alone', async () => {
       mkdirSync(join(testDir, '.git'));
       writeFileSync(join(testDir, '.git/HEAD'), 'ref: refs/heads/main\n');
       const original = '# user-authored\nnode_modules/\n';
@@ -1185,13 +1193,10 @@ describe('runInit', () => {
       expect(result.rootGitignoreCreated).toBe(false);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
-      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-      expect(after.startsWith(original)).toBe(true);
-      expect(after).toContain('.claude/skills/open-knowledge/');
-      expect(after).toContain('.pi/skills/open-knowledge/');
+      expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe(original);
     });
 
-    it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, project-skill block appended', async () => {
+    it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, file untouched', async () => {
       const original = 'secrets.env\n';
       writeFileSync(join(testDir, '.gitignore'), original, 'utf-8');
 
@@ -1199,9 +1204,7 @@ describe('runInit', () => {
 
       expect(result.didGitInit).toBe(true);
       expect(result.rootGitignoreCreated).toBe(false);
-      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-      expect(after.startsWith(original)).toBe(true);
-      expect(after).toContain('.claude/skills/open-knowledge/');
+      expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe(original);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
     });
@@ -1325,7 +1328,7 @@ describe('runInit', () => {
         join(fakeHome, '.copilot', 'mcp-config.json'),
         JSON.stringify({
           mcpServers: {
-            'open-knowledge': { command: 'custom-ok', args: ['mcp'] },
+            'open-knowledge': { ...PUBLISHED_CHAIN_ENTRY, cwd: testDir },
           },
         }),
       );
@@ -2191,10 +2194,9 @@ describe('detectInstalledEditors', () => {
     expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('copilot');
   });
 
-  it('detects Claude Desktop when its config directory exists', async () => {
+  it('never detects Claude Desktop, even with its config directory present', async () => {
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
-    const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toContain('claude-desktop');
+    expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('claude-desktop');
   });
 
   it('does NOT detect Claude Desktop when its config dir is absent', async () => {
@@ -2215,8 +2217,10 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
     mkdirSync(join(fakeHome, '.hermes'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
-    expect(detected).toHaveLength(ALL_EDITOR_IDS.length);
+    const expected = ALL_EDITOR_IDS.filter((id) => id !== 'claude-desktop');
+    expect(detected).toEqual(expect.arrayContaining([...expected]));
+    expect(detected).toHaveLength(expected.length);
+    expect(detected).not.toContain('claude-desktop');
   });
 
   it('detects Pi via ~/.pi/agent (not the bare ~/.pi dotdir)', async () => {
@@ -2232,7 +2236,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex']);
+    expect(detected).toEqual(['claude', 'cursor', 'codex']);
   });
 
   it('returns empty list when the cwd itself does not exist (zero-detected edge case)', () => {

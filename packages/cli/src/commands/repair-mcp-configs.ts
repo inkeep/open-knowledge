@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import {
   ALL_EDITOR_IDS,
+  droppedManagedKeys,
   EDITOR_TARGETS,
   type EditorId,
   type EditorMcpTarget,
@@ -14,7 +15,14 @@ export interface RepairOutcome {
   scope: 'user' | 'project';
   editorId: EditorId;
   configPath: string;
-  outcome: 'no-entry' | 'canonical' | 'repaired' | 'write-failed' | 'declined';
+  outcome:
+    | 'no-entry'
+    | 'canonical'
+    | 'repaired'
+    | 'foreign'
+    | 'prune-unchanged'
+    | 'write-failed'
+    | 'declined';
   reason?: McpDeclineReason;
   error?: string;
 }
@@ -34,6 +42,8 @@ export interface RepairLogEvent {
   priorCommand?: string | null;
   priorArgs?: unknown[] | null;
   reason?: string;
+  keys?: readonly string[];
+  severity: 'info' | 'warn';
 }
 
 export interface RepairContext {
@@ -49,7 +59,7 @@ export function repairMcpConfigs(ctx: RepairContext): RepairResult {
   const outcomes: RepairOutcome[] = [];
 
   if (ctx.reclaimDisableEnv === '1') {
-    logger({ event: 'mcp-config-repair-skipped', reason: 'reclaim-disabled' });
+    logger({ event: 'mcp-config-repair-skipped', severity: 'info', reason: 'reclaim-disabled' });
     return { outcomes, repairedCount: 0 };
   }
 
@@ -128,47 +138,86 @@ function repairOne(opts: RepairOneOptions): RepairOutcome {
     return { ...base, outcome: 'no-entry' };
   }
 
-  if (opts.editorId === 'pi') {
+  if (opts.target.format === 'file') {
     if (isEntryUpToDate(existing)) return { ...base, outcome: 'canonical' };
   } else {
     const launcher = classifyMcpLauncherEntry(existing);
     if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
-      return { ...base, outcome: 'canonical' };
+      const dropped = droppedManagedKeys(existing, opts.target.buildEntry(opts.cwd, {}));
+      if (dropped.length === 0) return { ...base, outcome: 'canonical' };
+      const pruned = finishRepairWrite(
+        opts,
+        base,
+        writeEditorMcpConfig(
+          opts.target,
+          opts.cwd,
+          { mode: 'published', skipAvailabilityCheck: true, pruneOnly: true },
+          opts.home,
+          opts.configPathOverride,
+        ),
+      );
+      if (pruned.outcome === 'repaired' || pruned.outcome === 'canonical') {
+        opts.logger({
+          event:
+            pruned.outcome === 'repaired'
+              ? 'mcp-config-repair-pruned'
+              : 'mcp-config-repair-prune-unchanged',
+          severity: pruned.outcome === 'repaired' ? 'info' : 'warn',
+          scope: opts.scope,
+          editorId: opts.editorId,
+          configPath: opts.configPath,
+          keys: dropped,
+        });
+      }
+      return pruned.outcome === 'canonical' ? { ...base, outcome: 'prune-unchanged' } : pruned;
     }
     if (launcher.kind === 'declined' && opts.scope === 'project') {
       opts.logger({
-        event: 'mcp-config-repair-declined',
+        event: 'mcp-config-repair-skipped-foreign',
+        severity: 'info',
         scope: opts.scope,
         editorId: opts.editorId,
         configPath: opts.configPath,
         reason: launcher.reason,
       });
-      return { ...base, outcome: 'declined', reason: launcher.reason };
+      return { ...base, outcome: 'foreign', reason: launcher.reason };
     }
   }
 
-  opts.logger(
-    buildMcpConfigMigrateEvent({
+  opts.logger({
+    ...buildMcpConfigMigrateEvent({
       scope: opts.scope,
       surface: 'cli-repair',
       editorId: opts.editorId,
       configPath: opts.configPath,
       priorEntry: existing,
     }),
-  );
+    severity: 'info',
+  });
 
-  const result = writeEditorMcpConfig(
-    opts.target,
-    opts.cwd,
-    { mode: 'published', skipAvailabilityCheck: true },
-    opts.home,
-    opts.configPathOverride,
+  return finishRepairWrite(
+    opts,
+    base,
+    writeEditorMcpConfig(
+      opts.target,
+      opts.cwd,
+      { mode: 'published', skipAvailabilityCheck: true },
+      opts.home,
+      opts.configPathOverride,
+    ),
   );
+}
 
+function finishRepairWrite(
+  opts: RepairOneOptions,
+  base: Pick<RepairOutcome, 'scope' | 'editorId' | 'configPath'>,
+  result: ReturnType<typeof writeEditorMcpConfig>,
+): RepairOutcome {
   if (result.action === 'failed') {
     const error = result.error ?? 'unknown write failure';
     opts.logger({
       event: 'mcp-config-repair-write-failed',
+      severity: 'warn',
       scope: opts.scope,
       editorId: opts.editorId,
       configPath: opts.configPath,
@@ -180,14 +229,16 @@ function repairOne(opts: RepairOneOptions): RepairOutcome {
   if (result.action === 'declined') {
     opts.logger({
       event: 'mcp-config-repair-declined',
+      severity: 'warn',
       scope: opts.scope,
       editorId: opts.editorId,
       configPath: opts.configPath,
       reason: result.declineReason,
     });
-    return { ...base, outcome: 'declined' };
+    return { ...base, outcome: 'declined', reason: result.declineReason };
   }
 
+  if (result.action === 'skipped-flag') return { ...base, outcome: 'canonical' };
   return { ...base, outcome: 'repaired' };
 }
 

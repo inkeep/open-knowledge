@@ -26,6 +26,14 @@ export function isTerminalCliEnabled(
   return resolveEnabled(overrides[terminalEnabledKey(cli)], installed[cli] !== false);
 }
 
+export function isTerminalCliRowEnabled(
+  overrides: EnabledOverrides,
+  cli: TerminalCli,
+  absent: boolean,
+): boolean {
+  return resolveEnabled(overrides[terminalEnabledKey(cli)], !absent);
+}
+
 export function isDesktopTargetEnabled(
   overrides: EnabledOverrides,
   targetId: HandoffTarget,

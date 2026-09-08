@@ -1,3 +1,5 @@
+import type { ApplyReport } from './agent-registry/apply.ts';
+import type { HostSnapshot } from './agent-registry/snapshot.ts';
 import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
 import type { OkFolderState } from './constants/folder-state.ts';
@@ -408,7 +410,7 @@ export type OkIntegrationsSetResult =
 export type OkProjectIntegrationsFollowUp =
   | 'approve-once'
   | 'enable-manually'
-  | 'auto-connect'
+  | 'trust-gated'
   | 'none';
 
 export interface OkProjectIntegrationsStatus {
@@ -445,6 +447,29 @@ export type OkProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkProjectIntegrationsStatus };
 
+export interface OkAgentIntegrationsIntent {
+  readonly satisfierId: string;
+  readonly desired: 'present' | 'absent';
+}
+
+export interface OkAgentIntegrationsApplyRequest {
+  readonly intents: readonly OkAgentIntegrationsIntent[];
+}
+
+export type OkAgentIntegrationsApplyResult =
+  | {
+      readonly ok: true;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly unavailable?: boolean;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    };
+
 export type OkOnboardingWarningKind =
   | 'root'
   | 'home'
@@ -464,6 +489,41 @@ export interface OkOnboardingShowPayload {
   readonly gitRootPromoted: boolean;
   readonly warnings: readonly { readonly kind: OkOnboardingWarningKind }[];
 }
+
+export interface OkDeepLinkPayload {
+  doc: string;
+  kind: 'doc' | 'folder';
+  branch?: string | null;
+  multiCandidate?: boolean;
+  targetMissing?: boolean;
+  repositoryPath?: string;
+  contentRootDepth?: number;
+}
+
+export type OkOnboardingToastPayload =
+  | { readonly kind: 'ancestor-promote'; readonly ancestorPath: string }
+  | { readonly kind: 'git-root-promote'; readonly gitRoot: string; readonly pickedPath: string }
+  | {
+      readonly kind: 'startup-reclaim';
+      readonly mcp:
+        | { readonly status: 'none' }
+        | { readonly status: 'repaired'; readonly editors: readonly string[] }
+        | {
+            readonly status: 'failed';
+            readonly failures: readonly { readonly editor: string; readonly reason?: string }[];
+            readonly repaired?: readonly string[];
+          };
+      readonly path:
+        | { readonly status: 'none' }
+        | { readonly status: 'installed'; readonly summary: string }
+        | { readonly status: 'failed'; readonly summary: string };
+    }
+  | {
+      readonly kind: 'sharing-refused-tracked';
+      readonly tracked: readonly string[];
+      readonly remediation: string;
+    }
+  | { readonly kind: 'sharing-no-git'; readonly requestedMode: 'local-only' };
 
 export interface OkOnboardingConfirmRequest {
   readonly initGit: boolean;
@@ -883,7 +943,12 @@ export type OkPtyNotice =
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
   readonly mcp: 'wired' | 'needs-rewire';
+  readonly mcpScopes?: {
+    readonly global: boolean;
+    readonly project: boolean;
+  };
   readonly mcpPreApprovable?: boolean;
+  readonly okToolsAutoApprovable?: boolean;
   readonly rewireError?: string;
 }
 
@@ -905,17 +970,7 @@ export interface OkDesktopBridge {
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
   onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void): OkUnsubscribe;
-  onDeepLink(
-    cb: (evt: {
-      doc: string;
-      kind: 'doc' | 'folder';
-      branch?: string | null;
-      multiCandidate?: boolean;
-      targetMissing?: boolean;
-      repositoryPath?: string;
-      contentRootDepth?: number;
-    }) => void,
-  ): OkUnsubscribe;
+  onDeepLink(cb: (evt: OkDeepLinkPayload) => void): OkUnsubscribe;
   onShareReceived(cb: (payload: OkShareReceivedPayload) => void): OkUnsubscribe;
 
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void): OkUnsubscribe;
@@ -1165,6 +1220,10 @@ export interface OkDesktopBridge {
     setComponent(request: OkProjectIntegrationsSetRequest): Promise<OkProjectIntegrationsSetResult>;
   };
 
+  agentIntegrations: {
+    apply(request: OkAgentIntegrationsApplyRequest): Promise<OkAgentIntegrationsApplyResult>;
+  };
+
   remoteAccess: {
     probePort(port: number): Promise<boolean>;
   };
@@ -1175,34 +1234,7 @@ export interface OkDesktopBridge {
     confirm(request: OkOnboardingConfirmRequest): Promise<OkOnboardingResult>;
     cancel(): Promise<OkOnboardingResult>;
     probeContent(request: OkOnboardingProbeContentRequest): Promise<OkOnboardingProbeContentResult>;
-    onToast(
-      cb: (
-        payload:
-          | { readonly kind: 'ancestor-promote'; readonly ancestorPath: string }
-          | {
-              readonly kind: 'git-root-promote';
-              readonly gitRoot: string;
-              readonly pickedPath: string;
-            }
-          | {
-              readonly kind: 'startup-reclaim';
-              readonly mcp:
-                | { readonly status: 'none' }
-                | { readonly status: 'repaired'; readonly editors: readonly string[] }
-                | { readonly status: 'failed'; readonly editors: readonly string[] };
-              readonly path:
-                | { readonly status: 'none' }
-                | { readonly status: 'installed'; readonly summary: string }
-                | { readonly status: 'failed'; readonly summary: string };
-            }
-          | {
-              readonly kind: 'sharing-refused-tracked';
-              readonly tracked: readonly string[];
-              readonly remediation: string;
-            }
-          | { readonly kind: 'sharing-no-git'; readonly requestedMode: 'local-only' },
-      ) => void,
-    ): OkUnsubscribe;
+    onToast(cb: (payload: OkOnboardingToastPayload) => void): OkUnsubscribe;
   };
 
   localOp: {
@@ -1253,6 +1285,7 @@ export interface OkDesktopBridge {
       cols: number;
       rows: number;
       launchCommand?: string | TerminalLaunchCommand;
+      launchCli?: TerminalCli;
     }): Promise<OkPtyCreateResult>;
     input(ptyId: string, data: string): void;
     resize(ptyId: string, cols: number, rows: number): void;

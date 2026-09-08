@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ClientLogsRequestSchema, ClientLogsSuccessSchema } from '@inkeep/open-knowledge-core';
+import type { AgentRegistryHostSeam } from '../agent-registry-apply.ts';
+import { collectServerHostSnapshot } from '../agent-registry-probes.ts';
 import type { createInstalledAgentsProbe } from '../handoff-api.ts';
 import { handleHandoffDispatch } from '../handoff-dispatch-api.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
@@ -19,10 +21,11 @@ export interface SystemActionsRouteDeps {
     opts: { handler: string },
   ) => boolean;
   installedAgentsCache: Pick<ReturnType<typeof createInstalledAgentsProbe>, 'probeWithCache'>;
+  agentIntegrations?: AgentRegistryHostSeam;
 }
 
 export function createSystemActionsRoutes(deps: SystemActionsRouteDeps): ApiRouteGroup {
-  const { contentDir, log, checkLocalOpSecurity, installedAgentsCache } = deps;
+  const { contentDir, log, checkLocalOpSecurity, installedAgentsCache, agentIntegrations } = deps;
 
   async function handleHandoffDispatchRoute(
     req: IncomingMessage,
@@ -34,6 +37,8 @@ export function createSystemActionsRoutes(deps: SystemActionsRouteDeps): ApiRout
         contentDir,
         platform: process.platform,
         isSchemeRegistered: installedAgentsCache.probeWithCache,
+        hostSnapshot: () =>
+          collectServerHostSnapshot({ env: 'local-web', resolve: agentIntegrations?.probe }),
       });
     } catch (e) {
       if (!res.headersSent) {

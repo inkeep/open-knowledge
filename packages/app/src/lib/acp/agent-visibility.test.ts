@@ -4,6 +4,7 @@ import {
   isDesktopTargetEnabled,
   isInAppAgentEnabled,
   isTerminalCliEnabled,
+  isTerminalCliRowEnabled,
 } from './agent-visibility';
 import { desktopEnabledKey, inAppEnabledKey, terminalEnabledKey } from './enabled-agents';
 
@@ -62,5 +63,21 @@ describe('agent-visibility — desktop (detected by default)', () => {
     const key = desktopEnabledKey('cursor');
     expect(isDesktopTargetEnabled({ [key]: true }, 'cursor', false)).toBe(true);
     expect(isDesktopTargetEnabled({ [key]: false }, 'cursor', true)).toBe(false);
+  });
+});
+
+describe('isTerminalCliRowEnabled', () => {
+  test('an absent row defaults OFF, so the toggle locks instead of reading enabled', () => {
+    expect(isTerminalCliRowEnabled({}, 'codex', true)).toBe(false);
+  });
+
+  test('a present or unknown row keeps the fail-open default', () => {
+    expect(isTerminalCliRowEnabled({}, 'codex', false)).toBe(true);
+  });
+
+  test('an explicit override still wins in both directions', () => {
+    const key = terminalEnabledKey('codex');
+    expect(isTerminalCliRowEnabled({ [key]: true }, 'codex', true)).toBe(true);
+    expect(isTerminalCliRowEnabled({ [key]: false }, 'codex', false)).toBe(false);
   });
 });

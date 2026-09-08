@@ -13,19 +13,52 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import {
+  AGENTS_SKILLS_ROOT,
+  EDITOR_PROJECT_SKILL_ROOT,
+  EDITOR_USER_SKILL_ROOT,
+  PROJECT_SKILL_EDITOR_IDS,
+  USER_SKILL_EDITOR_IDS,
+  USER_SKILL_HOSTS,
+} from '@inkeep/open-knowledge-core';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   hostSkillsRootEscapes,
+  hostSlotPaths,
   projectInPlaceSkill,
   projectSkill,
   readSkillBundledFiles,
   relocateInPlaceCanonical,
   removeInPlaceSkillCopies,
+  resolvedHosts,
   reverseProjectSkill,
   skillHostDir,
+  skillProjectionEditorIds,
+  skillProjectionRoots,
   validateSkillForInstall,
 } from './skill-projection.ts';
+
+describe('skillProjectionEditorIds', () => {
+  test('the global pair reaches every user-global install root', () => {
+    const roots = skillProjectionRoots('global');
+    const walked = new Set(
+      skillProjectionEditorIds('global')
+        .map((id) => roots[id])
+        .filter((root): root is string => root !== null),
+    );
+    walked.add(AGENTS_SKILLS_ROOT);
+    const seeded = USER_SKILL_HOSTS.map((host) => host.skillsRoot);
+    expect(seeded.filter((root) => !walked.has(root))).toEqual([]);
+  });
+
+  test('each scope delegates to its own id list and root map', () => {
+    expect(skillProjectionEditorIds('project')).toBe(PROJECT_SKILL_EDITOR_IDS);
+    expect(skillProjectionRoots('project')).toBe(EDITOR_PROJECT_SKILL_ROOT);
+    expect(skillProjectionEditorIds('global')).toBe(USER_SKILL_EDITOR_IDS);
+    expect(skillProjectionRoots('global')).toBe(EDITOR_USER_SKILL_ROOT);
+  });
+});
 
 let root: string;
 
@@ -458,5 +491,36 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
     expect(resolve(dirname(cursorLink), readlinkSync(cursorLink))).toBe(dest);
 
     expect(realpathSync(join(root, '.codex/skills/foo'))).toBe(realpathSync(unrelated));
+  });
+});
+
+describe('hostSlotPaths pairs the id list with the root map it was given', () => {
+  test('a global root map enumerates every user-scope host, not the project set', () => {
+    const paths = hostSlotPaths('/h', 'x', EDITOR_USER_SKILL_ROOT);
+    for (const id of USER_SKILL_EDITOR_IDS) {
+      const root = EDITOR_USER_SKILL_ROOT[id];
+      if (root === null) continue;
+      expect(paths).toContain(resolve('/h', root, 'x'));
+    }
+  });
+
+  test('a project root map still enumerates the project set', () => {
+    const paths = hostSlotPaths('/p', 'x', EDITOR_PROJECT_SKILL_ROOT);
+    for (const id of PROJECT_SKILL_EDITOR_IDS) {
+      const root = EDITOR_PROJECT_SKILL_ROOT[id];
+      if (root === null) continue;
+      expect(paths).toContain(resolve('/p', root, 'x'));
+    }
+  });
+});
+
+describe('resolvedHosts keeps the hosts its scope actually has', () => {
+  test('a global request keeps the user-tier-only hosts a project request drops', () => {
+    expect(resolvedHosts(['antigravity', 'lm-studio', 'claude'], 'global')).toEqual([
+      'antigravity',
+      'lm-studio',
+      'claude',
+    ]);
+    expect(resolvedHosts(['antigravity', 'lm-studio', 'claude'], 'project')).toEqual(['claude']);
   });
 });

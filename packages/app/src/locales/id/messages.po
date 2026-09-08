@@ -330,6 +330,12 @@ msgstr "{0} membiarkan {1} bertindak tanpa bertanya"
 msgid "{0} needs {1}"
 msgstr "{0} membutuhkan {1}"
 
+#. placeholder {0}: removed.dependent
+#. placeholder {1}: removed.prerequisite
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{0} needs {1}. Turn both off, or keep both on."
+msgstr "{0} memerlukan {1}. Nonaktifkan keduanya, atau biarkan keduanya aktif."
+
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "{0} needs replacing"
@@ -470,6 +476,31 @@ msgstr "{0} thn lalu"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (konflik)"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude-desktop.per-tool-approval"
+msgstr "{agent} meminta Anda menyetujui setiap alat OpenKnowledge saat pertama kali digunakan."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.session-injection"
+msgstr "{agent} menerima alat OpenKnowledge setiap kali OpenKnowledge menjalankannya; tidak ada yang ditulis ke konfigurasinya."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.pi.folder-trust"
+msgstr "{agent} hanya memuat ekstensi proyek di folder yang Anda percayai; percayai folder ini di {agent} jika alat tidak muncul."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.copilot.shared-workspace-config"
+msgstr "{agent} membaca konfigurasi MCP ruang kerja yang ditulis OpenKnowledge untuk {sourceAgent}; menghapusnya untuk satu berarti menghapusnya untuk keduanya."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.openclaw.central-store-missing"
+msgstr "Penyimpanan keterampilan pusat {agent} belum ada; jalankan {agent} sekali agar ia membuatnya, lalu coba lagi."
+
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} tidak dapat memulai percakapan."
@@ -519,6 +550,10 @@ msgstr "{boldName} adalah bagian dari plugin <0>{0}</0>{pluginVersion} — hanya
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} berada di luar proyek ini, di <0>{source}</0> — agen yang berjalan di sini tidak dapat memuatnya. Salin ke sini untuk mengeditnya."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{changeCount, plural, one {# change} other {# changes}}"
+msgstr "{changeCount, plural, one {# perubahan} other {# perubahan}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -609,6 +644,26 @@ msgstr "{days, plural, other {# hari lalu}}"
 msgid "{days}d ago"
 msgstr "{days} hr lalu"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge cannot safely replace that entry in this file's format."
+msgstr "{dependent} memerlukan {prerequisite}, dan OpenKnowledge tidak dapat mengganti entri tersebut dengan aman dalam format file ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge could not find this agent on this machine."
+msgstr "{dependent} memerlukan {prerequisite}, dan OpenKnowledge tidak menemukan agen ini di mesin ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge does not recognize that entry. Tick {prerequisite} to replace it, then save again."
+msgstr "{dependent} memerlukan {prerequisite}, dan OpenKnowledge tidak mengenali entri tersebut. Centang {prerequisite} untuk menggantinya, lalu simpan lagi."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and this agent has no file of that kind on this machine yet. Open the agent once, then try again."
+msgstr "{dependent} memerlukan {prerequisite}, dan agen ini belum memiliki file jenis itu di mesin ini. Buka agen sekali, lalu coba lagi."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, which OpenKnowledge cannot set up for you. Its setup guide has the manual steps."
+msgstr "{dependent} memerlukan {prerequisite}, yang tidak dapat disiapkan OpenKnowledge untuk Anda. Panduan penyiapannya berisi langkah-langkah manual."
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{descriptorLabel} — render error, source editable below"
 msgstr "{descriptorLabel} — galat render, sumber bisa disunting di bawah"
@@ -650,7 +705,7 @@ msgstr "{displayName} ({bin}) belum terpasang atau tidak ada di PATH Anda."
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "CLI {displayName}"
 
@@ -660,7 +715,7 @@ msgid "{displayName} CLI, {hint}"
 msgstr "CLI {displayName}, {hint}"
 
 #: src/components/handoff/agent-launcher-labels.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
@@ -1059,10 +1114,6 @@ msgstr "<{componentName}> bukan komponen yang dikenal. Salin sumbernya untuk dip
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> gagal dirender (kemungkinan prop yang salah). Salin sumbernya untuk melihat apa yang salah, atau hapus bloknya."
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
-msgstr "<0>~/.ok/bin</0> dan <1>~/.ok/env.sh</1> tetap ada apa pun pilihannya — aplikasi selalu memeliharanya."
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1489,6 +1540,14 @@ msgstr "Tambahkan item ke {keyName}"
 msgid "Add link"
 msgstr "Tambahkan tautan"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill"
+msgstr "Tambahkan MCP & keterampilan"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill for {rowLabel}"
+msgstr "Tambahkan MCP & keterampilan untuk {rowLabel}"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
 msgstr "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci."
@@ -1527,10 +1586,9 @@ msgstr "Tambah tab"
 msgid "Add tag"
 msgstr "Tambahkan tag"
 
-#. Checkbox in Settings → AI tools & CLI that adds the ok CLI to the user's shell PATH
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Add the <0>ok</0> command to your terminal"
 msgstr "Tambahkan perintah <0>ok</0> ke terminal Anda"
 
@@ -1564,15 +1622,14 @@ msgstr "Tambahkan komentar Anda ke pesan ini"
 msgid "Added"
 msgstr "Ditambahkan"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds a global OpenKnowledge MCP entry for this agent."
+msgstr "Menambahkan entri MCP OpenKnowledge global untuk agen ini."
+
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Adds a managed block to"
 msgstr "Menambahkan blok terkelola ke"
-
-#. placeholder {0}: status.path.rcFilesToTouch.join(', ')
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a managed block to {0}"
-msgstr "Menambahkan blok terkelola ke {0}"
 
 #. Subtext under the project AI-tools checkbox
 #: src/components/ProjectAiToolsField.tsx
@@ -1583,6 +1640,20 @@ msgstr "Menambahkan entri MCP OpenKnowledge dan keterampilan proyek ke <0>{toolL
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
 msgstr "Menambahkan entri MCP OpenKnowledge ke <0>{connectToolList}</0> agar agen Anda dapat membaca dan mengedit berkas Anda."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds an OpenKnowledge MCP entry to this project's agent config."
+msgstr "Menambahkan entri MCP OpenKnowledge ke konfigurasi agen proyek ini."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.user-config"
+msgstr "Menambahkan OpenKnowledge ke konfigurasi MCP milik {agent}, sehingga semua proyek di mesin ini dapat dijangkau."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.project-config"
+msgstr "Menambahkan OpenKnowledge ke konfigurasi MCP yang dibaca {agent} di proyek ini, sehingga ia dapat membaca, mencari, dan mengedit dokumen-dokumen ini."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1636,6 +1707,11 @@ msgstr "Obrolan agen"
 msgid "Agent configuration file"
 msgstr "Berkas konfigurasi agen"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Agent connections"
+msgstr "Koneksi agen"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "Mode agen"
@@ -1657,22 +1733,13 @@ msgid "Agent transcript"
 msgstr "Transkrip agen"
 
 #: src/components/ExploreSkills.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "Agen"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "Pengelolaan alat AI hanya tersedia di aplikasi desktop OpenKnowledge."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
 msgstr "Alat AI"
-
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "AI tools & CLI"
-msgstr "Alat AI & CLI"
 
 #: src/editor/bubble-menu/ImageAlignButtons.tsx
 msgid "Align center"
@@ -2393,14 +2460,6 @@ msgstr "Kotak sorot menarik perhatian ke informasi penting."
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "Proyek tidak bisa disarangkan. Sudah ada proyek OpenKnowledge di <0>{rootPath}</0>. Pilih lokasi di luarnya, atau buka proyek itu saja."
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Can't safely edit this project config"
-msgstr "Konfigurasi proyek ini tidak bisa disunting dengan aman"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Can't safely edit this tool's config"
-msgstr "Konfigurasi alat ini tidak bisa disunting dengan aman"
-
 #: src/lib/share/run-share-action.ts
 msgid "Can't share this path."
 msgstr "Tidak dapat membagikan jalur ini."
@@ -2429,6 +2488,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/NetworkAccessSection.tsx
@@ -2655,6 +2715,15 @@ msgstr "Pilih ikon"
 msgid "Choose what a new tab starts"
 msgstr "Pilih apa yang dimulai tab baru"
 
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up for {0}."
+msgstr "Pilih apa yang disiapkan OpenKnowledge untuk {0}."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up."
+msgstr "Pilih apa yang disiapkan OpenKnowledge."
+
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "Pilih ke mana komentar ini dikirim"
@@ -2667,9 +2736,9 @@ msgstr "Pilih ke mana pesan ini dikirim"
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 msgstr "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
-msgstr "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
+msgstr "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, lalu siapkan agar mereka dapat membaca dan memperbarui dokumen Anda."
 
 #. Section label above the light/dark/system cards in the first-launch dialog
 #: src/components/McpConsentDialogBody.tsx
@@ -3143,7 +3212,6 @@ msgstr "Peringatan konfigurasi"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -3208,10 +3276,6 @@ msgstr "Hubungkan GitHub untuk melanjutkan."
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr "Hubungkan OpenKnowledge dengan alat lain yang Anda pakai."
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
-msgstr "Hubungkan alat AI yang Anda pakai ke proyek ini secara khusus. Berkas-berkas ini ada di folder proyek, jadi siapa pun yang membukanya mendapat penyiapan yang sama."
-
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3239,6 +3303,10 @@ msgstr "Hubungkan alat AI Anda"
 #: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "Hubungkan alat AI Anda ke proyek ini"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Connected"
+msgstr "Terhubung"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -3288,10 +3356,18 @@ msgstr "Galat koneksi — coba lagi"
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "Koneksi hilang — biarkan tab ini terbuka, suntingan Anda akan tersinkron saat tersambung kembali"
 
-#. Next step for a Codex project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connects automatically the next time you open this project in a trusted Codex session."
-msgstr "Terhubung otomatis lain kali Anda membuka proyek ini di sesi Codex tepercaya."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.trust-gated"
+msgstr "Terhubung otomatis lain kali Anda membuka proyek ini di sesi {agent} tepercaya."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to OpenKnowledge in every project on this machine."
+msgstr "Menghubungkan agen ke OpenKnowledge di setiap proyek pada mesin ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to this project so it can read, search, and edit your documents."
+msgstr "Menghubungkan agen ke proyek ini agar dapat membaca, mencari, dan mengedit dokumen Anda."
 
 #: src/components/acp/working-status.ts
 msgid "Contemplating…"
@@ -3659,15 +3735,18 @@ msgid "Couldn't add that comment."
 msgstr "Komentar itu tidak bisa ditambahkan."
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Perubahannya tidak bisa diterapkan: {0}"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "Tidak dapat memeriksa apakah {filePath} masih berkonflik — mencoba lagi."
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Couldn't check which tools are connected."
+msgstr "Tidak bisa memeriksa alat mana yang terhubung."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -3944,7 +4023,7 @@ msgstr "Server kolaborasi tidak bisa dihubungi — {errorDetail}. Coba <0>ok sta
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub tidak bisa dihubungi. Coba lagi?"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Couldn't reach the agent registry."
 msgstr "Registri agen tidak bisa dihubungi."
 
@@ -4397,11 +4476,6 @@ msgstr "Endpoint khusus"
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr "HTML khusus dengan panel pratinjau langsung (iframe tersekat)."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
-msgstr "Entri open-knowledge khusus — tidak dikelola OpenKnowledge"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Custom skills folder path"
 msgstr "Jalur folder keterampilan khusus"
@@ -4771,6 +4845,10 @@ msgstr "Putuskan koneksi"
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnecting"
 msgstr "Memutus koneksi"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
+msgstr "Skill penemuan dikelola bersama untuk semua alat AI. Instal skill ini dari Pengaturan → Studio Keterampilan."
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -5256,17 +5334,17 @@ msgstr "Isi awal kosong"
 #. placeholder {0}: agent.name
 #. placeholder {0}: plugin.label
 #. placeholder {0}: rule.name
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Enable {0}"
 msgstr "Aktifkan {0}"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} CLI"
 msgstr "Aktifkan CLI {displayName}"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} Desktop"
 msgstr "Aktifkan {displayName} Desktop"
 
@@ -5412,11 +5490,6 @@ msgstr "Masukkan URL yang valid, misalnya https://notes.example.com"
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "Masukkan origin publik yang dilayani tunnel Anda, misalnya https://notes.example.com"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Entry"
-msgstr "Entri"
-
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "Galat"
@@ -5559,7 +5632,7 @@ msgstr "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "Aplikasi eksternal"
 
@@ -5943,8 +6016,6 @@ msgstr "Bidang"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
 #: src/lib/native-menu-catalog.ts
@@ -6352,9 +6423,9 @@ msgstr "GitHub, sebuah URL git, atau jalur lokal."
 msgid "Give it a name before editing its colors."
 msgstr "Beri nama sebelum menyunting warnanya."
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
-msgstr "Beri alat AI yang Anda pakai akses untuk membaca dan memperbarui proyek Anda. Mencentang kotak langsung menyiapkannya; melepas centang menghapusnya."
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Gives the agent instructions for working with your documents and keeps its edits attributed."
+msgstr "Memberi agen instruksi untuk bekerja dengan dokumen Anda dan menjaga suntingannya tetap teratribusi."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6365,6 +6436,10 @@ msgstr "Pola glob tempat skema ini berlaku"
 #: src/lib/skill-scope.ts
 msgid "Global"
 msgstr "Global"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Global MCP server"
+msgstr "Server MCP global"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Global outside text fields"
@@ -6505,6 +6580,7 @@ msgstr "Bantuan"
 
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Help your agents discover and use OpenKnowledge in any project."
 msgstr "Bantu agen Anda menemukan dan menggunakan OpenKnowledge di proyek mana pun."
 
@@ -6714,15 +6790,13 @@ msgstr "Seberapa sering komputer ini menarik perubahan dari remote Anda."
 msgid "How to push manually"
 msgstr "Cara push manual"
 
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "How to set up"
 msgstr "Cara menyiapkan"
 
-#. placeholder {0}: editor.label
-#: src/components/settings/AiToolsSection.tsx
-msgid "How to set up {0} (opens in browser)"
-msgstr "Cara menyiapkan {0} (terbuka di peramban)"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "How to set up {rowLabel}"
+msgstr "Cara menyiapkan {rowLabel}"
 
 #: src/components/settings/builtin-skill-copy.ts
 msgid "How to set up new projects with OpenKnowledge."
@@ -6780,6 +6854,21 @@ msgstr "ID: {0}"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Identical in both — {pick} still reads them."
 msgstr "Identik di keduanya — {pick} tetap membacanya."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.lm-studio.config-path-mismatch"
+msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, periksa apakah jalur konfigurasi MCP di pengaturannya cocok dengan berkas yang ditulis OpenKnowledge."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, jalankan di proyek ini dan setujui server OpenKnowledge sekali."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, nyalakan server di Settings → Tools & MCP; {agent} membiarkan server proyek mati sampai Anda melakukannya."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -6884,7 +6973,7 @@ msgstr "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masi
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "Di aplikasi"
@@ -7071,6 +7160,7 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris penyunting sumber lewat peta tombol bawaan CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
@@ -7091,6 +7181,10 @@ msgstr "Pasang {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Install {rowLabel}"
+msgstr "Pasang {rowLabel}"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "install a skill here first"
@@ -7168,21 +7262,11 @@ msgstr "Pasang CLI gh"
 msgid "Install this skill"
 msgstr "Pasang keterampilan ini"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "Terpasang"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "Terpasang — ok tersedia di terminal eksternal. Melepas centang menghapusnya; terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
-msgstr "Terpasang — ok tersedia di terminal eksternal. Menghapus centang akan menghapusnya; alat AI Anda tetap berfungsi."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -7240,6 +7324,14 @@ msgstr "Terpasang untuk semua proyek Anda"
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installs into this project"
 msgstr "Terpasang ke proyek ini"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge discovery skill for this agent."
+msgstr "Menginstal keterampilan penemuan OpenKnowledge untuk agen ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge project skill for this agent."
+msgstr "Menginstal keterampilan proyek OpenKnowledge untuk agen ini."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Installs the skill to {path} — the first location holds its own copy"
@@ -7639,7 +7731,7 @@ msgstr "Memuat {fileName}"
 msgid "Loading agent activity"
 msgstr "Memuat aktivitas agen"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "Memuat agen…"
 
@@ -7862,10 +7954,15 @@ msgstr "Respons listPacks salah bentuk"
 msgid "Malformed plan response"
 msgstr "Respons plan salah bentuk"
 
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Manage"
 msgstr "Kelola"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Manage {rowLabel}"
+msgstr "Kelola {rowLabel}"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7880,13 +7977,10 @@ msgstr "Kelola folder keterampilan"
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr "Kelola akun GitHub yang dipakai OpenKnowledge untuk menelusuri dan menyinkronkan repositori Anda."
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Managing AI tools is unavailable in this build."
-msgstr "Pengelolaan alat AI tidak tersedia pada build ini."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Managing project AI tools is unavailable in this build."
-msgstr "Pengelolaan alat AI proyek tidak tersedia pada build ini."
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Managing agent connections is unavailable in this build."
+msgstr "Pengelolaan koneksi agen tidak tersedia di build ini."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -7942,12 +8036,9 @@ msgstr "Jumlah agen yang berjalan sudah maksimal"
 msgid "MCP auto-repair failed"
 msgstr "Perbaikan otomatis MCP gagal"
 
-#. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
-#. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "MCP connections"
-msgstr "Koneksi MCP"
+#: src/lib/install-onboarding-toast.ts
+msgid "MCP auto-repair failed for {failures}"
+msgstr "Perbaikan otomatis MCP gagal untuk {failures}"
 
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "MCP servers"
@@ -8063,6 +8154,10 @@ msgstr "Ubah tujuan tautan, jangkar, dan label tampilannya."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "Lainnya"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "More information"
+msgstr "Informasi selengkapnya"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8533,7 +8628,7 @@ msgstr "Belum ada agen yang disiapkan — pilih satu dari menu kirim."
 msgid "no agents — saved, not installed anywhere"
 msgstr "tanpa agen — disimpan, tidak dipasang di mana pun"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "Tidak ada agen yang tersedia."
 
@@ -8542,7 +8637,7 @@ msgstr "Tidak ada agen yang tersedia."
 msgid "No agents enabled"
 msgstr "Tidak ada agen yang diaktifkan"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "Tidak ada agen yang cocok dengan pencarian Anda."
 
@@ -8906,17 +9001,22 @@ msgstr "Belum dijawab"
 msgid "Not attached to desktop bridge"
 msgstr "Tidak terhubung ke bridge desktop"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not available on this platform"
 msgstr "Tidak tersedia di platform ini"
 
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not connected"
 msgstr "Tidak terhubung"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Not connected to GitHub."
 msgstr "Tidak terhubung ke GitHub."
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine"
+msgstr "Tidak terdeteksi di mesin ini"
 
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
@@ -8928,7 +9028,7 @@ msgstr "Tidak ada di bilah sisi"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "Belum terpasang"
 
@@ -9061,15 +9161,15 @@ msgstr "Pada teks terpilih di <0>{address}</0>"
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
 
-#. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
-msgstr "Satu langkah lagi: aktifkan di Cursor → Settings → Tools & MCP (Cursor membiarkan server proyek mati sampai Anda menyalakannya)."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "Satu langkah lagi: aktifkan di {agent} → Settings → Tools & MCP ({agent} membiarkan server proyek mati sampai Anda menyalakannya)."
 
-#. Next step for a Claude Code project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
-msgstr "Satu langkah lagi: jalankan <0>claude</0> di proyek ini dan setujui OpenKnowledge sekali."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.approve-once"
+msgstr "Satu langkah lagi: jalankan {agent} di proyek ini dan setujui OpenKnowledge sekali."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."
@@ -9159,10 +9259,6 @@ msgstr "Buka proyek terlebih dahulu."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "Buka sebuah proyek untuk menyunting."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Open a project to manage its AI tool connections."
-msgstr "Buka sebuah proyek untuk mengelola koneksi alat AI-nya."
 
 #: src/components/NavigatorApp.tsx
 msgid "Open a single markdown file — no project setup."
@@ -9502,6 +9598,10 @@ msgstr "OpenKnowledge memeriksa konflik"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge memeriksa proyek"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge could not find this agent on this machine."
+msgstr "OpenKnowledge tidak menemukan agen ini di mesin ini."
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
@@ -9529,6 +9629,18 @@ msgstr "OpenKnowledge menghapus {subject}"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge deleted a document"
 msgstr "OpenKnowledge menghapus sebuah dokumen"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge discovery skill"
+msgstr "Keterampilan penemuan OpenKnowledge"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
+msgstr "OpenKnowledge tidak mengenali entri ini, dan tidak dapat menggantinya dengan aman dalam format file ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+msgstr "OpenKnowledge tidak mengenali entri ini. Mengaktifkannya akan menggantinya."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"
@@ -9573,6 +9685,10 @@ msgstr "OpenKnowledge memakai akun GitHub yang disediakan CLI gh. Tidak ada kred
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge memakai akun GitHub ini."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
+msgstr "OpenKnowledge tidak mengubah file ini karena tidak dapat mengurainya dengan aman. Perbaiki file secara manual, lalu coba lagi."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
@@ -10285,10 +10401,6 @@ msgstr "proyek"
 msgid "Project"
 msgstr "Proyek"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "Pengelolaan alat AI proyek hanya tersedia di aplikasi desktop OpenKnowledge."
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Project details"
 msgstr "Detail proyek"
@@ -10296,6 +10408,10 @@ msgstr "Detail proyek"
 #: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "Folder proyek dibuat, tetapi git init gagal. Coba lagi."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project MCP server"
+msgstr "Server MCP proyek"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -10309,6 +10425,10 @@ msgstr "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau mat
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "Akar proyek"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project skill"
+msgstr "Keterampilan proyek"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -10464,6 +10584,21 @@ msgstr "Dikirim {pushed}"
 msgid "Pushing"
 msgstr "Melakukan push"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.user"
+msgstr "Menempatkan keterampilan penemuan OpenKnowledge di folder keterampilan global {agent}, sehingga ia dapat menemukan OpenKnowledge di proyek mana pun."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.project"
+msgstr "Menempatkan keterampilan OpenKnowledge di folder keterampilan {agent} untuk proyek ini, sehingga suntingannya tetap teratribusi."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.central-store"
+msgstr "Menempatkan keterampilan OpenKnowledge di penyimpanan keterampilan pusat yang dibaca {agent}."
+
 #: src/components/acp/working-status.ts
 msgid "Puzzling…"
 msgstr "Memecahkan teka-teki…"
@@ -10581,6 +10716,10 @@ msgstr "Proyek terbaru"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "Baru saja dibuka"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Recommended"
+msgstr "Direkomendasikan"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Recommended agent skill"
@@ -10717,6 +10856,8 @@ msgstr "Kontrol jarak jauh"
 msgid "Remote skill source"
 msgstr "Sumber keterampilan remote"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
@@ -10757,6 +10898,10 @@ msgstr "Hapus {patternText}"
 msgid "Remove {projectName} from recent projects"
 msgstr "Hapus {projectName} dari proyek terbaru"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove {rowLabel}"
+msgstr "Hapus {rowLabel}"
+
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "Hapus {tag}"
@@ -10768,6 +10913,10 @@ msgstr "Gagal menghapus: {error}"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Remove field {field}"
 msgstr "Hapus bidang {field}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove for both"
+msgstr "Hapus untuk keduanya"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
@@ -10787,6 +10936,15 @@ msgstr "Hapus tautan"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Remove OpenKnowledge from {0}"
 msgstr "Hapus OpenKnowledge dari {0}"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge from {0}?"
+msgstr "Hapus OpenKnowledge dari {0}?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge?"
+msgstr "Hapus OpenKnowledge?"
 
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
@@ -10931,7 +11089,7 @@ msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
 msgstr "Membuka lagi \"{docName}\" dengan cache kolaborasi lokal yang baru."
 
 #: src/lib/install-onboarding-toast.ts
-msgid "repaired {names} MCP integration"
+msgid "repaired MCP integration for {names}"
 msgstr "integrasi MCP {names} diperbaiki"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -10946,6 +11104,10 @@ msgstr "Ganti {keyName}"
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace all matches"
 msgstr "Ganti semua kecocokan"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replace and save"
+msgstr "Ganti dan simpan"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace current match"
@@ -10978,6 +11140,10 @@ msgstr "Ganti salinan-salinan ini dengan symlink ke sumbernya?"
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "Ganti symlink-symlink ini dengan salinan mandiri?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgstr "Mengganti entri \"open-knowledge\" yang ada di file ini. Server lain dalam file ini tidak diubah."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -11235,7 +11401,7 @@ msgstr "Mengambil…"
 #: src/components/ConnectingBanner.tsx
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "Coba lagi"
@@ -11375,6 +11541,7 @@ msgstr "Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara
 msgid "Save"
 msgstr "Simpan"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Save changes"
 msgstr "Simpan perubahan"
@@ -11425,6 +11592,7 @@ msgstr "Disimpan bersama proyek untuk tim Anda."
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "Menyimpan berkasnya ke <0>~/Downloads/openknowledge.skill</0> dan membuka aplikasi Claude Desktop. Memerlukan Node.js atau Bun di PATH Anda."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Saving"
 msgstr "Menyimpan"
@@ -11478,7 +11646,7 @@ msgstr "Cari \"{semanticSubmitQuery}\" berdasarkan makna"
 msgid "Search ({searchShortcutLabel})"
 msgstr "Cari ({searchShortcutLabel})"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
 msgstr "Cari agen"
 
@@ -12062,8 +12230,7 @@ msgstr "Tampilkan {0} lagi"
 msgid "Show {hidden} more"
 msgstr "Tampilkan {hidden} lagi"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show {hiddenCount} more"
 msgstr "Tampilkan {hiddenCount} lagi"
 
@@ -12129,8 +12296,7 @@ msgid "Show in Explorer"
 msgstr "Tampilkan di Explorer"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
 msgstr "Tampilkan lebih sedikit"
 
@@ -12337,11 +12503,6 @@ msgstr "Keterampilan dari {0}/{1}."
 msgid "Skills from OpenKnowledge"
 msgstr "Keterampilan dari OpenKnowledge"
 
-#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Skills moved to Skills Studio."
-msgstr "Keterampilan dipindahkan ke Studio Keterampilan."
-
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
 msgstr "Keterampilan dialihkan"
@@ -12497,6 +12658,7 @@ msgstr "Ada yang tidak beres saat mengirim masukan Anda. Silakan coba lagi."
 msgid "Something went wrong starting the terminal."
 msgstr "Ada yang tidak beres saat memulai terminal."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Something went wrong. Please try again."
 msgstr "Ada yang tidak beres. Silakan coba lagi."
@@ -13070,7 +13232,6 @@ msgstr "Templat"
 msgid "Templates available"
 msgstr "Templat tersedia"
 
-#. Group label above the shell-PATH row in Settings → AI tools & CLI
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13079,8 +13240,7 @@ msgstr "Templat tersedia"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -13207,6 +13367,11 @@ msgstr "Permintaan unduhan {0} kehabisan waktu."
 #: src/components/SkillsTree.tsx
 msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
 msgstr "Plugin {0} menyajikan keterampilan ini dari cache-nya — OK tidak pernah mengedit atau memperbaruinya."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.desktop-project-config"
+msgstr "Aplikasi desktop {agent} mengabaikan konfigurasi proyek ini; hanya CLI {agent} yang membacanya."
 
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
@@ -13448,6 +13613,14 @@ msgstr "Folder sumbernya sendiri tidak berpindah."
 msgid "The template's filename (without `.md`)."
 msgstr "Nama berkas templatnya (tanpa `.md`)."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
+msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi menghubungkan salah satu menghubungkan keduanya."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
+msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi menghapusnya akan memutuskan keduanya."
+
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "Terminal dimatikan untuk proyek ini. Nyalakan lagi untuk menjalankan perintah di sini."
@@ -13604,6 +13777,14 @@ msgstr "Agen ini tidak menawarkan perintah garis miring"
 msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
 msgstr "Agen ini tidak menawarkan perintah garis miring — pesan Anda akan dikirim sebagai teks biasa"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
+msgstr "Agen ini tidak memberi OpenKnowledge cara untuk menyiapkannya untuk Anda. Panduan penyiapannya memuat langkah-langkah manual."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
+msgstr "Agen ini belum memiliki file jenis ini di mesin ini. Buka agen sekali, lalu periksa lagi."
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "Agen ini belum mengumumkan perintahnya"
@@ -13647,6 +13828,14 @@ msgstr "Komentar ini berlaku untuk seluruh properti"
 msgid "This conflict is resolved."
 msgstr "Konflik ini sudah diselesaikan."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This could not be set up because the MCP server entry it needs was not written."
+msgstr "Ini tidak dapat disiapkan karena entri server MCP yang diperlukan tidak ditulis."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+msgstr "Tindakan ini menghapus entri server MCP dan file keterampilan yang tercantum di bawah. Agen akan kehilangan akses ke dokumen Anda sampai Anda menambahkannya lagi."
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "Dokumen ini"
@@ -13678,6 +13867,10 @@ msgstr "Dokumen ini telah dihapus"
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
 msgstr "Endpoint ini mengabaikan ukuran vektor yang Anda atur. Hapus <0>search.semantic.dimensions</0> untuk memakai ukuran milik modelnya sendiri."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This entry changed after OpenKnowledge wrote it. Turning it on replaces it."
+msgstr "Entri ini berubah setelah ditulis OpenKnowledge. Mengaktifkannya akan menggantinya."
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
@@ -13730,6 +13923,10 @@ msgstr "Folder ini adalah klona dari {actualOwner}/{actualRepo}, bukan {expected
 #: src/lib/share/receive-flow.ts
 msgid "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
 msgstr "Folder ini adalah klona dari {expectedOwner}/{expectedRepo} di {actualHost}, bukan {expectedHost}. Pilih folder yang diklona dari {expectedHost}?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This folder is also {alsoAffects}'s."
+msgstr "Folder ini juga milik {alsoAffects}."
 
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
@@ -13789,6 +13986,7 @@ msgstr "item ini"
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This machine"
@@ -13813,6 +14011,10 @@ msgstr "Yang ini perlu melihat file Anda, bukan hanya dokumen yang terbuka, sehi
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
 msgstr "Yang ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This option cannot be changed automatically."
+msgstr "Opsi ini tidak dapat diubah secara otomatis."
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -13869,6 +14071,7 @@ msgid "This permanently removes {path}. Agents that reference this template by n
 msgstr "Ini menghapus {path} secara permanen. Agen yang merujuk templat ini berdasarkan nama akan gagal sampai ia dibuat ulang atau digantikan oleh templat di folder induk."
 
 #: src/components/PanelScopeHeader.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This project"
@@ -13917,11 +14120,6 @@ msgstr "Server proyek ini yang sedang berjalan tidak mendukung penyuntingan lang
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "Server proyek ini (v{0}) lebih baru daripada aplikasi ini (v{1})."
 
-#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This project's skill moved to Skills Studio."
-msgstr "Keterampilan proyek ini dipindahkan ke Studio Keterampilan."
-
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "Ini menghapus pengaturan dan integrasi OpenKnowledge dari Mac Anda serta dari proyek mana pun yang Anda pilih di bawah, tetapi mempertahankan konten markdown dan keterampilan yang Anda tulis."
@@ -13958,6 +14156,18 @@ msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborat
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborator. Ia memerlukan kunci API (setel di bawah) kecuali endpoint Anda adalah server lokal yang tidak memerlukannya."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers} through <0>{path}</0>. Removing it here removes it for {peers} too."
+msgstr "Konfigurasi ini dibagikan dengan {peers} melalui <0>{path}</0>. Menghapusnya di sini juga menghapusnya untuk {peers}."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}, and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
+msgstr "Penyiapan ini dibagikan dengan {peers}, dan OpenKnowledge tidak dapat mengubahnya dari sini. Lepaskan tautan folder di Skills Studio terlebih dahulu."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}. Removing it here removes it for {peers} too."
+msgstr "Konfigurasi ini dibagikan dengan {peers}. Menghapusnya di sini juga menghapusnya untuk {peers}."
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -14279,7 +14489,6 @@ msgid "Type to find a doc"
 msgstr "Ketik untuk menemukan sebuah dokumen"
 
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr "tidak tersedia di platform ini"
 
@@ -14913,8 +15122,7 @@ msgstr "Apa yang harus dilakukan AI? (opsional)"
 msgid "What the agent may read, write, and surface."
 msgstr "Apa yang boleh dibaca, ditulis, dan ditampilkan agen."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "What this checkbox changes"
 msgstr "Apa yang berubah karena kotak centang ini"
 
@@ -14990,6 +15198,10 @@ msgstr "Siapa Anda, agar agennya punya konteks Anda."
 msgid "Whole word"
 msgstr "Kata utuh"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Why this needs attention"
+msgstr "Mengapa ini perlu diperhatikan"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Wiki link"
 msgstr "Tautan wiki"
@@ -15026,6 +15238,10 @@ msgstr "Jendela"
 #: src/components/CreateProjectDialog.tsx
 msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
 msgstr "Tanpa alat AI yang terhubung, {packSkillCount, plural, one {# skill} other {# skill}} dari paket ini tidak akan dipasang."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Without the skill the agent still works, but it loses edit attribution and the live preview."
+msgstr "Tanpa keterampilan ini agen tetap berfungsi, tetapi kehilangan atribusi suntingan dan pratinjau langsung."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
@@ -15074,6 +15290,11 @@ msgstr "Worktree"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Membungkus baris panjang di penyunting sumber markdown."
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.managed-file"
+msgstr "Menulis berkas jembatan kecil yang dimuat {agent} dari proyek ini untuk menjangkau OpenKnowledge."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "Menulis entri ke"
@@ -15081,6 +15302,10 @@ msgstr "Menulis entri ke"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "menulis"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Writing this file failed. Check the OpenKnowledge log for the reason."
+msgstr "Gagal menulis file ini. Periksa log OpenKnowledge untuk mengetahui alasannya."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
@@ -15228,6 +15453,10 @@ msgstr "Salinan cabang <0>{shareBranch}</0> milik Anda punya perubahan yang belu
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "Versi Anda saat ini disimpan lebih dulu, jadi ini bisa dikembalikan."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Your documents are not touched."
+msgstr "Dokumen Anda tidak diubah."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx

@@ -10,13 +10,14 @@ import { dirname, join } from 'node:path';
 import {
   buildMcpConfigDeclineEvent,
   buildMcpConfigMigrateEvent,
+  droppedManagedKeys,
   type EditorMcpTarget,
   editorConfigPathDisplay,
   editorEntryLocator,
   type McpDeclineReason,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
-import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
+import { CONNECTION_ROW_AGENT_IDS, classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   McpWiringConfirmRequest,
@@ -162,7 +163,11 @@ export interface McpWiringDispatchTarget extends SendableWebContents {
 
 export interface McpWiringCliSurface {
   detectInstalledEditors(cwd: string, home?: string): McpWiringEditorId[];
-  writeUserMcpConfigs(opts: { editors: McpWiringEditorId[]; home?: string }): Promise<
+  writeUserMcpConfigs(opts: {
+    editors: McpWiringEditorId[];
+    home?: string;
+    pruneOnly?: boolean;
+  }): Promise<
     Array<{
       editorId: McpWiringEditorId;
       label: string;
@@ -203,14 +208,15 @@ interface McpWiringLogger {
   info(msg: string, ctx?: object): void;
   warn(msg: string, ctx?: object): void;
   error(msg: string, ctx?: object): void;
-  event(payload: { event: string; [k: string]: unknown }): void;
+  event(payload: { event: string; severity: 'info' | 'warn'; [k: string]: unknown }): void;
 }
 
 const DEFAULT_LOGGER: McpWiringLogger = {
   info: (msg, ctx) => console.info('[mcp-wiring]', msg, ctx ?? ''),
   warn: (msg, ctx) => console.warn('[mcp-wiring]', msg, ctx ?? ''),
   error: (msg, ctx) => console.error('[mcp-wiring]', msg, ctx ?? ''),
-  event: (payload) => console.warn(JSON.stringify(payload)),
+  event: (payload) =>
+    (payload.severity === 'warn' ? console.warn : console.info)(JSON.stringify(payload)),
 };
 
 interface RunMcpWiringOpts {
@@ -244,7 +250,11 @@ export type McpStartupRepairResult =
   | { status: 'skipped'; reason: string }
   | { status: 'ok'; checkedEditors: McpWiringEditorId[] }
   | { status: 'repaired'; repairedEditors: McpWiringEditorId[] }
-  | { status: 'failed'; failedEditors: Array<{ editor: McpWiringEditorId; error?: string }> };
+  | {
+      status: 'failed';
+      failedEditors: Array<{ editor: McpWiringEditorId; error?: string }>;
+      repairedEditors: McpWiringEditorId[];
+    };
 
 export function checkAndRepairMcpWiringOnStartup(
   opts: RunMcpWiringOpts,
@@ -271,45 +281,76 @@ export function checkAndRepairMcpWiringOnStartup(
     return Promise.resolve({ status: 'skipped', reason: 'bad-executable-path' });
   }
   const selectedEditors = cli.allEditorIds.filter(
-    (id) => cli.editorTargets[id]?.scope === 'global',
+    (id) =>
+      cli.editorTargets[id]?.scope === 'global' &&
+      (CONNECTION_ROW_AGENT_IDS as readonly string[]).includes(id),
   );
-  logger.event({ event: 'mcp-wiring-repair-check-started', editors: selectedEditors });
+  logger.event({
+    event: 'mcp-wiring-repair-check-started',
+    severity: 'info',
+    editors: selectedEditors,
+  });
   if (selectedEditors.length === 0) return Promise.resolve({ status: 'ok', checkedEditors: [] });
 
   const editorsToRepair: McpWiringEditorId[] = [];
+  const editorsToPrune: McpWiringEditorId[] = [];
+  const pruneKeys = new Map<McpWiringEditorId, readonly string[]>();
   for (const editor of selectedEditors) {
     let classification: McpEntryClassification;
     try {
       classification = cli.classifyExistingMcpEntry(editor, home);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      logger.event({ event: 'mcp-wiring-repair-read-failed', editor, error: message });
+      logger.event({
+        event: 'mcp-wiring-repair-read-failed',
+        severity: 'warn',
+        editor,
+        error: message,
+      });
       editorsToRepair.push(editor);
       continue;
     }
 
     if (classification.kind === 'absent' || classification.kind === 'no-entry') {
-      logger.event({ event: 'mcp-wiring-repair-no-token', editor });
+      logger.event({ event: 'mcp-wiring-repair-no-token', severity: 'info', editor });
       continue;
     }
 
     if (classification.kind === 'present') {
       const launcher = classifyMcpLauncherEntry(classification.entry);
       if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
-        logger.event({ event: 'mcp-wiring-repair-healthy-current', editor });
+        const target = cli.editorTargets[editor];
+        if (target.format === 'file') {
+          logger.event({ event: 'mcp-wiring-repair-unsupported-format', severity: 'warn', editor });
+          continue;
+        }
+        const dropped = droppedManagedKeys(classification.entry, target.buildEntry('', {}));
+        if (dropped.length === 0) {
+          logger.event({ event: 'mcp-wiring-repair-healthy-current', severity: 'info', editor });
+          continue;
+        }
+        logger.event({
+          event: 'mcp-wiring-repair-prune-planned',
+          severity: 'info',
+          editor,
+          keys: dropped,
+        });
+        pruneKeys.set(editor, dropped);
+        editorsToPrune.push(editor);
         continue;
       }
     }
 
     if (classification.kind === 'decline') {
-      logger.event(
-        buildMcpConfigDeclineEvent({
+      logger.event({
+        severity: 'warn',
+        ...buildMcpConfigDeclineEvent({
           scope: 'user',
           surface: 'desktop-startup',
           editorId: editor,
           reason: classification.reason,
         }),
-      );
+      });
       continue;
     }
 
@@ -318,15 +359,16 @@ export function checkAndRepairMcpWiringOnStartup(
       try {
         migrateConfigPath = cli.editorTargets[editor]?.configPath('', home) ?? '';
       } catch {}
-      logger.event(
-        buildMcpConfigMigrateEvent({
+      logger.event({
+        severity: 'info',
+        ...buildMcpConfigMigrateEvent({
           scope: 'user',
           surface: 'desktop-startup',
           editorId: editor,
           configPath: migrateConfigPath,
           priorEntry: classification.entry,
         }),
-      );
+      });
       editorsToRepair.push(editor);
       continue;
     }
@@ -335,41 +377,92 @@ export function checkAndRepairMcpWiringOnStartup(
     return _exhaustive;
   }
 
-  if (editorsToRepair.length === 0) {
+  if (editorsToRepair.length === 0 && editorsToPrune.length === 0) {
     return Promise.resolve({ status: 'ok', checkedEditors: selectedEditors });
   }
 
-  return cli
-    .writeUserMcpConfigs({ editors: editorsToRepair, home })
+  const writes = [
+    ...(editorsToRepair.length > 0
+      ? [cli.writeUserMcpConfigs({ editors: editorsToRepair, home })]
+      : []),
+    ...(editorsToPrune.length > 0
+      ? [cli.writeUserMcpConfigs({ editors: editorsToPrune, home, pruneOnly: true })]
+      : []),
+  ];
+  return Promise.all(writes)
+    .then((batches) => batches.flat())
     .then((results) => {
       const failed = results
         .filter((r) => r.action === 'failed')
         .map((r) => ({ editor: r.editorId, error: r.error }));
       for (const r of results) {
+        const prunedKeys = pruneKeys.get(r.editorId);
         if (r.action === 'declined') {
-          logger.event(
-            buildMcpConfigDeclineEvent({
+          const reason = r.declineReason ?? 'unparseable';
+          logger.event({
+            severity: 'warn',
+            ...buildMcpConfigDeclineEvent({
               scope: 'user',
               surface: 'desktop-startup',
               editorId: r.editorId,
-              reason: r.declineReason ?? 'unparseable',
+              reason,
             }),
-          );
+          });
+          if (prunedKeys !== undefined) {
+            failed.push({ editor: r.editorId, error: `prune declined: ${reason}` });
+          }
           continue;
         }
-        logger.event({
-          event:
-            r.action === 'failed' ? 'mcp-wiring-repair-write-failed' : 'mcp-wiring-repair-repaired',
-          editor: r.editorId,
-          configPath: r.configPath,
-          error: r.error ?? null,
-        });
+        if (r.action === 'skipped-flag') {
+          if (prunedKeys !== undefined) {
+            logger.event({
+              event: 'mcp-wiring-repair-prune-unchanged',
+              severity: 'warn',
+              editor: r.editorId,
+              configPath: r.configPath,
+              keys: prunedKeys,
+            });
+            failed.push({ editor: r.editorId, error: `prune unchanged: ${prunedKeys.join(', ')}` });
+          }
+          continue;
+        }
+        if (r.action === 'failed') {
+          logger.event({
+            event: 'mcp-wiring-repair-write-failed',
+            severity: 'warn',
+            editor: r.editorId,
+            configPath: r.configPath,
+            error: r.error ?? null,
+          });
+          continue;
+        }
+        logger.event(
+          prunedKeys === undefined
+            ? {
+                event: 'mcp-wiring-repair-repaired',
+                severity: 'info',
+                editor: r.editorId,
+                configPath: r.configPath,
+                error: null,
+              }
+            : {
+                event: 'mcp-wiring-repair-pruned',
+                severity: 'info',
+                editor: r.editorId,
+                configPath: r.configPath,
+                keys: prunedKeys,
+              },
+        );
       }
       const repairedEditors = results
         .filter((r) => r.action === 'written' || r.action === 'overwritten')
         .map((r) => r.editorId);
       if (failed.length > 0)
-        return { status: 'failed', failedEditors: failed } satisfies McpStartupRepairResult;
+        return {
+          status: 'failed',
+          failedEditors: failed,
+          repairedEditors,
+        } satisfies McpStartupRepairResult;
       if (repairedEditors.length === 0)
         return { status: 'ok', checkedEditors: selectedEditors } satisfies McpStartupRepairResult;
       return {
@@ -379,14 +472,17 @@ export function checkAndRepairMcpWiringOnStartup(
     })
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
+      const attempted = [...editorsToRepair, ...editorsToPrune];
       logger.event({
         event: 'mcp-wiring-repair-write-failed',
-        editors: editorsToRepair,
+        severity: 'warn',
+        editors: attempted,
         error: message,
       });
       return {
         status: 'failed',
-        failedEditors: editorsToRepair.map((editor) => ({ editor, error: message })),
+        failedEditors: attempted.map((editor) => ({ editor, error: message })),
+        repairedEditors: [],
       } satisfies McpStartupRepairResult;
     });
 }
@@ -479,7 +575,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('detection failed — wiring inert for this boot', { err });
-    logger.event({ event: 'mcp-wiring-detect-failed', error: message });
+    logger.event({ event: 'mcp-wiring-detect-failed', severity: 'warn', error: message });
     return inertHandle;
   }
 
@@ -489,7 +585,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('path-install descriptor failed — PATH row hidden for this boot', { err });
-    logger.event({ event: 'mcp-wiring-path-descriptor-failed', error: message });
+    logger.event({ event: 'mcp-wiring-path-descriptor-failed', severity: 'warn', error: message });
     pathDescriptor = { shellDetected: false, rcFilesToTouch: [], alreadyInstalled: false };
   }
 
@@ -499,7 +595,11 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error('skill descriptors failed — skill rows hidden for this boot', { err });
-    logger.event({ event: 'mcp-wiring-skill-descriptors-failed', error: message });
+    logger.event({
+      event: 'mcp-wiring-skill-descriptors-failed',
+      severity: 'warn',
+      error: message,
+    });
     skillDescriptors = [];
   }
 
@@ -562,6 +662,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     for (const r of failedResults) {
       logger.event({
         event: 'mcp-wiring-write-failed',
+        severity: 'warn',
         editor: r.editorId,
         configPath: r.configPath,
         error: r.error ?? null,
@@ -569,14 +670,15 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
     }
     for (const r of results) {
       if (r.action !== 'declined') continue;
-      logger.event(
-        buildMcpConfigDeclineEvent({
+      logger.event({
+        severity: 'warn',
+        ...buildMcpConfigDeclineEvent({
           scope: 'user',
           surface: 'desktop-firstlaunch',
           editorId: r.editorId,
           reason: r.declineReason ?? 'unparseable',
         }),
-      );
+      });
     }
     if (failedResults.length > 0) {
       logger.info('partial failure — marker not written; dialog will re-fire next boot');
@@ -618,6 +720,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
       if (!pathResult.ok) {
         logger.event({
           event: 'mcp-wiring-path-consent-failed',
+          severity: 'warn',
           decision: pathDecision,
           error: pathResult.error,
         });
@@ -650,7 +753,11 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
         skillResult = { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
       if (!skillResult.ok) {
-        logger.event({ event: 'mcp-wiring-skill-consent-failed', error: skillResult.error });
+        logger.event({
+          event: 'mcp-wiring-skill-consent-failed',
+          severity: 'warn',
+          error: skillResult.error,
+        });
         logIpcError({
           event: 'ipc.error',
           channel: 'ok:mcp-wiring:confirm',
@@ -669,6 +776,7 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
           event: enabledIds.includes(d.id)
             ? 'mcp-wiring-skill-consent-granted'
             : 'mcp-wiring-skill-consent-declined',
+          severity: 'info',
           bundle: d.id,
         });
       }

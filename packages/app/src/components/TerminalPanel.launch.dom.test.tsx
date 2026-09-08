@@ -77,11 +77,24 @@ vi.doMock('@xterm/addon-web-links', () => ({ WebLinksAddon: MockWebLinksAddon })
 vi.doMock('@xterm/addon-unicode11', () => ({ Unicode11Addon: MockUnicode11Addon }));
 vi.doMock('@xterm/xterm/css/xterm.css', () => ({}));
 
-const WIRED: ClaudeReadiness = { claude: 'present', mcp: 'wired', mcpPreApprovable: true };
+const WIRED: ClaudeReadiness = {
+  claude: 'present',
+  mcp: 'wired',
+  mcpPreApprovable: true,
+  okToolsAutoApprovable: true,
+};
 const WIRED_FOREIGN_PROJECT: ClaudeReadiness = {
   claude: 'present',
   mcp: 'wired',
   mcpPreApprovable: false,
+  okToolsAutoApprovable: false,
+};
+const WIRED_GLOBAL_ONLY: ClaudeReadiness = {
+  claude: 'present',
+  mcp: 'wired',
+  mcpScopes: { global: true, project: false },
+  mcpPreApprovable: false,
+  okToolsAutoApprovable: true,
 };
 const ON_PATH: CliReadiness = { onPath: 'present' };
 const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigured: true };
@@ -99,6 +112,7 @@ function makeBridge(
         cols: number;
         rows: number;
         launchCommand?: string | TerminalLaunchCommand;
+        launchCli?: TerminalCli;
       }) => ({
         ok: true as const,
         ptyId: 'pty-1',
@@ -154,6 +168,11 @@ function bakedLaunch(
   return last?.launchCommand;
 }
 
+function reportedCli(createMock: ReturnType<typeof vi.fn>): string | undefined {
+  const last = createMock.mock.calls.at(-1)?.[0] as { launchCli?: string } | undefined;
+  return last?.launchCli;
+}
+
 function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
   return inputMock.mock.calls
     .map((c) => c[1] as string)
@@ -163,6 +182,8 @@ function launchInputWrites(inputMock: ReturnType<typeof vi.fn>): string[] {
 const CLAUDE_PRE = `--settings '{"enabledMcpjsonServers":["open-knowledge"],"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
 
 const CLAUDE_TRUST_ONLY = `--settings '{"enabledMcpjsonServers":["open-knowledge"]}'`;
+
+const CLAUDE_AUTO_ONLY = `--settings '{"permissions":{"allow":["mcp__open-knowledge","Bash(ok open:*)"],"ask":["mcp__open-knowledge__delete","mcp__open-knowledge__move","mcp__open-knowledge__share_link","mcp__open-knowledge__install","mcp__open-knowledge__import"]}}'`;
 
 function renderWithAutoApproveOff(ui: ReactElement) {
   const value = {
@@ -702,5 +723,150 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(bakedLaunch(terminal.create)).toBeUndefined();
     expect(launchInputWrites(terminal.input)).toEqual([]);
+  });
+});
+
+describe('the two --settings halves are gated independently, across all four MCP scope states', () => {
+  const PROJECT_ONLY: ClaudeReadiness = {
+    claude: 'present',
+    mcp: 'wired',
+    mcpScopes: { global: false, project: true },
+    mcpPreApprovable: true,
+    okToolsAutoApprovable: true,
+  };
+  const BOTH_SCOPES: ClaudeReadiness = {
+    claude: 'present',
+    mcp: 'wired',
+    mcpScopes: { global: true, project: true },
+    mcpPreApprovable: true,
+    okToolsAutoApprovable: true,
+  };
+  const NEITHER_SCOPE: ClaudeReadiness = {
+    claude: 'present',
+    mcp: 'needs-rewire',
+    mcpScopes: { global: false, project: false },
+    mcpPreApprovable: false,
+    okToolsAutoApprovable: false,
+  };
+
+  beforeEach(() => {
+    (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  async function bakeClaudeLaunch(preflight: ClaudeReadiness) {
+    const { bridge, terminal } = makeBridge(preflight);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    return bakedLaunch(terminal.create);
+  }
+
+  test('global-only: OK tools are auto-approved, and no project server trust is claimed', async () => {
+    const baked = await bakeClaudeLaunch(WIRED_GLOBAL_ONLY);
+    expect(baked).toBe(`claude ${CLAUDE_AUTO_ONLY} 'hi'`);
+    expect(baked).not.toContain('enabledMcpjsonServers');
+  });
+
+  test('project-only: both halves, exactly as before the split', async () => {
+    expect(await bakeClaudeLaunch(PROJECT_ONLY)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+  });
+
+  test('both scopes: both halves, in one settings object', async () => {
+    expect(await bakeClaudeLaunch(BOTH_SCOPES)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+  });
+
+  test('neither scope: a bare launch, no settings at all', async () => {
+    const baked = await bakeClaudeLaunch(NEITHER_SCOPE);
+    expect(baked).toBe("claude 'hi'");
+    expect(baked).not.toContain('--settings');
+  });
+
+  test('a foreign project entry named open-knowledge bakes NOTHING, even alongside a legit global entry', async () => {
+    const baked = await bakeClaudeLaunch({
+      claude: 'present',
+      mcp: 'wired',
+      mcpScopes: { global: true, project: false },
+      mcpPreApprovable: false,
+      okToolsAutoApprovable: false,
+    });
+    expect(baked).toBe("claude 'hi'");
+    expect(baked).not.toContain('--settings');
+  });
+
+  test('toggle OFF on a global-only install: neither half, so the launch is bare', async () => {
+    const { bridge, terminal } = makeBridge(WIRED_GLOBAL_ONLY);
+    renderWithAutoApproveOff(
+      <TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBe("claude 'hi'");
+    expect(bakedLaunch(terminal.create)).not.toContain('--settings');
+  });
+});
+
+describe('the agent CLI reported to the host alongside the spawn', () => {
+  beforeEach(() => {
+    (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('names the agent a launch tab opened for, leaving the baked command untouched', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(reportedCli(terminal.create)).toBe('claude');
+    expect(bakedLaunch(terminal.create)).toBe(`claude ${CLAUDE_PRE} 'hi'`);
+  });
+
+  test('names the agent for a non-claude launch too', async () => {
+    const { bridge, terminal } = makeBridge(WIRED, ON_PATH);
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(reportedCli(terminal.create)).toBe('codex');
+  });
+
+  test('still names the agent when the preflight suppressed the bake', async () => {
+    const { bridge, terminal } = makeBridge(WIRED, { onPath: 'not-found' });
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'codex', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toBeUndefined();
+    expect(reportedCli(terminal.create)).toBe('codex');
+  });
+
+  test('names no agent for a plain tab', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    render(<TerminalPanel bridge={bridge} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(reportedCli(terminal.create)).toBeUndefined();
+  });
+
+  test('names no agent when a failed adoption falls through to a plain shell', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    terminal.adopt = vi.fn(
+      async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
+        ok: false,
+        reason: 'unknown-session',
+      }),
+    );
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        adoptPtyId="surv-gone"
+        launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(reportedCli(terminal.create)).toBeUndefined();
   });
 });

@@ -2,9 +2,8 @@ import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core
 import { Trans, useLingui } from '@lingui/react/macro';
 import { SharingSection } from '@/components/settings/SharingSection';
 import { AccountSection } from './AccountSection';
-import { AiToolsSection } from './AiToolsSection';
+import { AgentConnectionsSection } from './AgentConnectionsSection';
 import { AttachmentsSection } from './AttachmentsSection';
-import { ConfigureAgentsSection } from './ConfigureAgentsSection';
 import { ContentRulesSection } from './ContentRulesSection';
 import { SectionSkeleton } from './field-controls';
 import { HotkeysSection } from './HotkeysSection';
@@ -17,8 +16,8 @@ import {
 } from './LintingSection';
 import { LINT_PLUGIN_UI } from './lint-plugins';
 import { NetworkAccessSection } from './NetworkAccessSection';
+import { OkCliPathRow } from './OkCliPathRow';
 import { OkignoreSection } from './OkignoreSection';
-import { ProjectAiToolsSection } from './ProjectAiToolsSection';
 import { ProjectTemplatesSection } from './ProjectTemplatesSection';
 import { SearchSection } from './SearchSection';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
@@ -56,6 +55,7 @@ export function SettingsDialogBody({
         scopeBadge="user"
         binding={userBinding}
         fields={FIELDS_USER_PREFERENCES}
+        slotsAfter={{ 'appearance.theme': <OkCliPathRow /> }}
       />
     ) : (
       <SectionSkeleton />
@@ -84,8 +84,8 @@ export function SettingsDialogBody({
       </section>
     );
   }
-  if (activeId === 'configure-agents') {
-    return <ConfigureAgentsSection />;
+  if (activeId === 'agent-connections') {
+    return <AgentConnectionsSection />;
   }
   if (activeId === 'hotkeys') {
     return <HotkeysSection />;
@@ -148,12 +148,6 @@ export function SettingsDialogBody({
   }
   if (activeId === 'okignore') {
     return <OkignoreSection binding={okignoreBinding} synced={okignoreSynced} />;
-  }
-  if (activeId === 'ai-tools') {
-    return <AiToolsSection />;
-  }
-  if (activeId === 'project-ai-tools') {
-    return <ProjectAiToolsSection />;
   }
   if (activeId === 'network-access') {
     return <NetworkAccessSection />;

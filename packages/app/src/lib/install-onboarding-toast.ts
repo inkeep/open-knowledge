@@ -22,14 +22,25 @@ export function installOnboardingToastListener(opts: {
       return;
     }
     if (payload.kind === 'startup-reclaim') {
+      const labelOf = (id: string) => EDITOR_LABELS[id as keyof typeof EDITOR_LABELS] ?? id;
       const parts: string[] = [];
+      const details: string[] = [];
       if (payload.mcp.status === 'repaired') {
-        const names = payload.mcp.editors
-          .map((id) => EDITOR_LABELS[id as keyof typeof EDITOR_LABELS] ?? id)
-          .join(', ');
-        parts.push(t`repaired ${names} MCP integration`);
+        const names = payload.mcp.editors.map(labelOf).join(', ');
+        parts.push(t`repaired MCP integration for ${names}`);
       } else if (payload.mcp.status === 'failed') {
-        parts.push(t`MCP auto-repair failed`);
+        const { failures: failed, repaired = [] } = payload.mcp;
+        const names = repaired.map(labelOf).join(', ');
+        if (names.length > 0) parts.push(t`repaired MCP integration for ${names}`);
+        const failures = failed.map(({ editor }) => labelOf(editor)).join(', ');
+        parts.push(
+          failures.length > 0
+            ? t`MCP auto-repair failed for ${failures}`
+            : t`MCP auto-repair failed`,
+        );
+        for (const { editor, reason } of failed) {
+          if (reason) details.push(`${labelOf(editor)}: ${reason}`);
+        }
       }
       if (payload.path.status === 'installed') parts.push(payload.path.summary);
       if (payload.path.status === 'failed') {
@@ -42,6 +53,7 @@ export function installOnboardingToastListener(opts: {
       sonnerToast[hasFailure ? 'error' : 'success'](message, {
         duration: hasFailure || pathTouched ? STICKY_TOAST_DURATION_MS : TOAST_DURATION_MS,
         position: 'bottom-left',
+        ...(details.length > 0 ? { description: details.join('\n') } : {}),
       });
       return;
     }

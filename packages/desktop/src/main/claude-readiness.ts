@@ -139,6 +139,19 @@ export interface ResolveClaudeReadinessDeps {
   probeClaude(): Promise<number | null>;
   classifyMcpEntry(): McpEntryKind;
   isProjectMcpPreApprovable(): boolean;
+  isProjectMcpWired?(): boolean;
+  hasProjectMcpEntry?(): boolean;
+  isGlobalMcpOwnManaged?(): boolean;
+}
+
+function resolveOkToolsAutoApprovable(scopes: {
+  projectEntryPresent: boolean;
+  projectEntryIsOwn: boolean;
+  globalEntryPresent: boolean;
+  globalEntryIsOwn: boolean;
+}): boolean {
+  if (scopes.globalEntryPresent && !scopes.globalEntryIsOwn) return false;
+  return scopes.projectEntryPresent ? scopes.projectEntryIsOwn : scopes.globalEntryIsOwn;
 }
 
 export async function resolveClaudeReadiness(
@@ -157,9 +170,9 @@ export async function resolveClaudeReadiness(
   } catch (err) {
     getLogger('claude-readiness').warn(
       { err },
-      'classifyMcpEntry threw (never-throws contract violated); treating MCP as not-wired',
+      'classifyMcpEntry threw (never-throws contract violated); treating MCP as unreadable',
     );
-    kind = 'absent';
+    kind = 'decline';
   }
   let mcpPreApprovable: boolean;
   try {
@@ -171,10 +184,50 @@ export async function resolveClaudeReadiness(
     );
     mcpPreApprovable = false;
   }
+  let projectEntryPresent: boolean;
+  try {
+    projectEntryPresent = deps.hasProjectMcpEntry?.() ?? true;
+  } catch (err) {
+    getLogger('claude-readiness').warn(
+      { err },
+      'hasProjectMcpEntry threw; assuming a project MCP entry exists (fail-closed)',
+    );
+    projectEntryPresent = true;
+  }
+  let globalEntryIsOwn: boolean;
+  try {
+    globalEntryIsOwn = deps.isGlobalMcpOwnManaged?.() ?? false;
+  } catch (err) {
+    getLogger('claude-readiness').warn(
+      { err },
+      'isGlobalMcpOwnManaged threw; treating the global MCP entry as not OK-owned',
+    );
+    globalEntryIsOwn = false;
+  }
+  const globalWired = mcpStatusFromClassification(kind) === 'wired';
+  let projectWired = mcpPreApprovable;
+  if (deps.isProjectMcpWired !== undefined) {
+    try {
+      projectWired = deps.isProjectMcpWired();
+    } catch (err) {
+      getLogger('claude-readiness').warn(
+        { err },
+        'isProjectMcpWired threw; falling back to the exact project answer',
+      );
+    }
+  }
   return {
     claude: interpretClaudeProbe(code),
-    mcp: mcpStatusFromClassification(kind),
+    mcp: globalWired || projectWired ? 'wired' : 'needs-rewire',
+    mcpScopes: { global: globalWired, project: projectWired },
     mcpPreApprovable,
+    okToolsAutoApprovable: resolveOkToolsAutoApprovable({
+      projectEntryPresent,
+      projectEntryIsOwn: mcpPreApprovable,
+      globalEntryPresent:
+        deps.isGlobalMcpOwnManaged !== undefined && (kind === 'present' || kind === 'decline'),
+      globalEntryIsOwn,
+    }),
   };
 }
 

@@ -43,9 +43,11 @@ import {
 } from '@agentclientprotocol/sdk';
 import {
   AGENT_ICON_COLORS,
+  agentIdForAcpAgent,
   changedBlockRange,
   colorFromSeed,
   type EditorId,
+  type HostSnapshot,
   iconFromClientName,
   OK_HOSTED_AGENT_ENV,
 } from '@inkeep/open-knowledge-core';
@@ -67,6 +69,7 @@ import type {
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
+import { observeReadiness } from '../agent-registry-gate.ts';
 import {
   type AgentSessionManager,
   agentWriteLossDetect,
@@ -296,6 +299,7 @@ export interface AcpThreadManagerOptions {
     cwd: string,
   ) => HarnessManagedMcpEntryHit | null | Promise<HarnessManagedMcpEntryHit | null>;
   probePiAcpBridge?: (cwd: string) => PiAcpBridgeProbe | Promise<PiAcpBridgeProbe>;
+  hostSnapshot?: () => Promise<HostSnapshot>;
   ensurePiAcpBridge?: (cwd: string) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
   runtimeInstall?: {
     root?: string;
@@ -488,6 +492,16 @@ export class AcpThreadManager {
     }
 
     const { info: agentInfo, custom } = await this.resolveAgentInfo(params.agent);
+
+    // STOP: this await must stay ABOVE the capacity re-check below. The check
+    await observeReadiness({
+      site: 'acp-thread',
+      agentId: custom === null ? (agentIdForAcpAgent(agentInfo.id) ?? agentInfo.id) : agentInfo.id,
+      mode: 'acp',
+      log: this.opts.log,
+      snapshot: this.opts.hostSnapshot,
+    });
+
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     if (this.liveThreadCount() >= this.maxThreads) {
       throw new ThreadOpError('capacity', `maximum of ${this.maxThreads} concurrent agent threads`);

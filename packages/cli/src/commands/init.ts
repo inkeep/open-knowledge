@@ -16,7 +16,6 @@ import {
   BUNDLE_SKILL_NAME,
   detectUserSkillHosts,
   ensureProjectGit,
-  ensureProjectSkillGitignore,
   GitNotAvailableError,
   GitTooOldError,
   HomeProjectRootError,
@@ -25,10 +24,10 @@ import {
   MCP_SERVER_NAME,
   ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
+  removeProjectSkillGitignoreBlock,
   reportSkillInstall,
   resolveSkillInstallReportSettings,
   USER_GLOBAL_BUNDLE_IDS,
-  untrackTrackedProjectSkillProjection,
   writeBundleDecision,
   writeRootGitignoreForNewRepo,
 } from '@inkeep/open-knowledge-server';
@@ -53,6 +52,7 @@ import {
   assertProjectPathSafe,
   type ProjectSkillResult,
   writeProjectSkill,
+  writeProjectSkillToHub,
 } from '../integrations/write-project-skill.ts';
 import { debugNativeLoadFailure } from '../native/load-native-config.ts';
 import { resolveHarnessWritePaths } from '../native/symlink-resolve.ts';
@@ -74,11 +74,15 @@ import { accent, dim, error, info, success, warning } from '../ui/colors.ts';
 import { isObject } from '../utils/is-object.ts';
 import {
   ALL_EDITOR_IDS,
+  droppedManagedKeys,
   EDITOR_LABELS,
   EDITOR_TARGETS,
   type EditorId,
   type EditorMcpTarget,
+  entryCarriesOwnChain,
+  isOwnManagedEntry,
   type McpInstallOptions,
+  managedEntryKeys,
   resolveEditorTargets,
 } from './editors.ts';
 import { existingFileMode, isCrlfDominant } from './jsonc-surgical.ts';
@@ -140,15 +144,6 @@ function jsonValueEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-const STANDARD_MANAGED_ENTRY_KEYS = ['command', 'args'] as const;
-const OPENCODE_MANAGED_ENTRY_KEYS = ['type', 'command'] as const;
-
-function managedEntryKeys(entry: Record<string, unknown>): readonly string[] {
-  return entry.type === 'local' && Array.isArray(entry.command)
-    ? OPENCODE_MANAGED_ENTRY_KEYS
-    : STANDARD_MANAGED_ENTRY_KEYS;
-}
-
 function managedEntryFieldsEqual(
   existing: unknown,
   desired: Record<string, unknown>,
@@ -168,7 +163,7 @@ function detectJsonIndent(body: string): { insertSpaces: boolean; tabSize: numbe
 }
 
 type JsonUpsertOutcome =
-  | { kind: 'written' | 'overwritten' }
+  | { kind: 'written' | 'overwritten' | 'unchanged' }
   | { kind: 'declined'; reason: McpDeclineReason };
 
 export function serverMapPath(
@@ -205,8 +200,11 @@ function upsertJsonMcpConfig(
   serverName: string,
   entry: Record<string, unknown>,
   subKey?: string,
+  replaceEntry = false,
+  pruneOnly = false,
 ): JsonUpsertOutcome {
   if (!existsSync(configPath)) {
+    if (pruneOnly) return { kind: 'unchanged' };
     writeJsonConfig(configPath, freshServerMapObject(topLevelKey, subKey, serverName, entry));
     return { kind: 'written' };
   }
@@ -218,6 +216,7 @@ function upsertJsonMcpConfig(
     return { kind: 'declined', reason: 'unparseable' };
   }
   if (raw.trim() === '') {
+    if (pruneOnly) return { kind: 'unchanged' };
     writeJsonConfig(configPath, freshServerMapObject(topLevelKey, subKey, serverName, entry));
     return { kind: 'written' };
   }
@@ -235,8 +234,12 @@ function upsertJsonMcpConfig(
   const existing = isObject(container) ? container[serverName] : undefined;
   const entryExists = existing !== undefined;
   const managedKeys = managedEntryKeys(entry);
-  if (entryExists && managedEntryFieldsEqual(existing, entry, managedKeys)) {
-    return { kind: 'overwritten' };
+  const exactMatch =
+    entryExists && replaceEntry
+      ? isOwnManagedEntry(existing)
+      : entryExists && managedEntryFieldsEqual(existing, entry, managedKeys);
+  if (exactMatch) {
+    return { kind: pruneOnly ? 'unchanged' : 'overwritten' };
   }
 
   const hasBom = raw.charCodeAt(0) === 0xfeff;
@@ -245,7 +248,12 @@ function upsertJsonMcpConfig(
   const formattingOptions = { ...detectJsonIndent(body), eol };
   const entryPath = serverMapPath(topLevelKey, subKey, serverName);
   let editedBody = body;
-  if (entryExists && isObject(existing)) {
+  if (pruneOnly) {
+    for (const key of entryExists ? droppedManagedKeys(existing, entry) : []) {
+      const edits = modifyJsonc(editedBody, [...entryPath, key], undefined, { formattingOptions });
+      editedBody = applyJsoncEdits(editedBody, edits);
+    }
+  } else if (entryExists && !replaceEntry && entryCarriesOwnChain(existing)) {
     for (const key of managedKeys) {
       const edits = modifyJsonc(editedBody, [...entryPath, key], entry[key], {
         formattingOptions,
@@ -260,11 +268,12 @@ function upsertJsonMcpConfig(
   if (newText !== raw) {
     atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
   }
+  if (pruneOnly && newText === raw) return { kind: 'unchanged' };
   return { kind: entryExists ? 'overwritten' : 'written' };
 }
 
 type TomlUpsertOutcome =
-  | { kind: 'written' | 'overwritten' }
+  | { kind: 'written' | 'overwritten' | 'unchanged' }
   | { kind: 'declined'; reason: McpDeclineReason };
 
 function upsertTomlMcpConfig(
@@ -273,6 +282,8 @@ function upsertTomlMcpConfig(
   topLevelKey: string,
   serverName: string,
   entry: Record<string, unknown>,
+  replaceEntry = false,
+  pruneOnly = false,
 ): TomlUpsertOutcome {
   let raw = '';
   if (existsSync(configPath)) {
@@ -284,6 +295,7 @@ function upsertTomlMcpConfig(
     }
   }
   const blank = raw.trim() === '';
+  if (blank && pruneOnly) return { kind: 'unchanged' };
 
   if (engine.backend === 'fallback') {
     if (!blank) return { kind: 'declined', reason: 'no-native-writer' };
@@ -297,8 +309,24 @@ function upsertTomlMcpConfig(
   const wantTrailingNewline = blank || body.endsWith('\n');
 
   let result: TomlUpsertResult;
+  let replacing = false;
   try {
-    result = engine.upsertEntry(body, serverName, entry);
+    const existing = existingTomlEntry(engine, body, topLevelKey, serverName);
+    if (pruneOnly) {
+      let pruned = body;
+      for (const key of existing === undefined ? [] : droppedManagedKeys(existing, entry)) {
+        pruned = engine.removeEntryKey(pruned, serverName, key).text;
+      }
+      result = { text: pruned, existed: existing !== undefined };
+    } else {
+      const plan = tomlWritePlan(existing, entry, replaceEntry);
+      replacing = plan.kind === 'replace';
+      let base = replacing ? engine.removeEntry(body, serverName).text : body;
+      if (plan.kind === 'merge') {
+        for (const key of plan.prune) base = engine.removeEntryKey(base, serverName, key).text;
+      }
+      result = engine.upsertEntry(base, serverName, entry);
+    }
   } catch (err) {
     debugNativeLoadFailure('upsertEntry failed', err);
     return { kind: 'declined', reason: 'unparseable' };
@@ -318,11 +346,36 @@ function upsertTomlMcpConfig(
   if (newText !== raw) {
     atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
   }
-  return { kind: result.existed ? 'overwritten' : 'written' };
+  if (pruneOnly && newText === raw) return { kind: 'unchanged' };
+  return { kind: result.existed || replacing ? 'overwritten' : 'written' };
+}
+
+function existingTomlEntry(
+  engine: TomlConfigEngine,
+  body: string,
+  topLevelKey: string,
+  serverName: string,
+): Record<string, unknown> | undefined {
+  if (body.trim() === '') return undefined;
+  const container = engine.parseToObject(body)[topLevelKey];
+  const existing = isObject(container) ? container[serverName] : undefined;
+  return isObject(existing) ? existing : undefined;
+}
+
+type TomlWritePlan = { kind: 'merge'; prune: readonly string[] } | { kind: 'replace' };
+
+function tomlWritePlan(
+  existing: Record<string, unknown> | undefined,
+  entry: Record<string, unknown>,
+  replaceEntry: boolean,
+): TomlWritePlan {
+  if (existing === undefined || isOwnManagedEntry(existing)) return { kind: 'merge', prune: [] };
+  if (replaceEntry || !entryCarriesOwnChain(existing)) return { kind: 'replace' };
+  return { kind: 'merge', prune: droppedManagedKeys(existing, entry) };
 }
 
 type YamlUpsertOutcome =
-  | { kind: 'written' | 'overwritten' }
+  | { kind: 'written' | 'overwritten' | 'unchanged' }
   | { kind: 'declined'; reason: McpDeclineReason };
 
 function upsertYamlMcpConfig(
@@ -330,6 +383,8 @@ function upsertYamlMcpConfig(
   topLevelKey: string,
   serverName: string,
   entry: Record<string, unknown>,
+  replaceEntry = false,
+  pruneOnly = false,
 ): YamlUpsertOutcome {
   let raw = '';
   if (existsSync(configPath)) {
@@ -341,6 +396,7 @@ function upsertYamlMcpConfig(
     }
   }
   if (raw.trim() === '') {
+    if (pruneOnly) return { kind: 'unchanged' };
     writeYamlConfig(configPath, { [topLevelKey]: { [serverName]: entry } });
     return { kind: 'written' };
   }
@@ -359,9 +415,22 @@ function upsertYamlMcpConfig(
     doc.deleteIn([topLevelKey]);
   }
   const existingEntryNode = doc.getIn(path, true);
-  if (entryExists && isCollection(existingEntryNode)) {
+  const mergeInPlace =
+    entryExists &&
+    isCollection(existingEntryNode) &&
+    (replaceEntry
+      ? isOwnManagedEntry(existingEntryNode.toJSON())
+      : entryCarriesOwnChain(existingEntryNode.toJSON()));
+  if (pruneOnly) {
+    if (entryExists && isCollection(existingEntryNode)) {
+      for (const key of droppedManagedKeys(existingEntryNode.toJSON(), entry)) {
+        doc.deleteIn([...path, key]);
+      }
+    }
+  } else if (mergeInPlace) {
     for (const key of managedEntryKeys(entry)) {
-      doc.setIn([...path, key], doc.createNode(entry[key]));
+      if (entry[key] === undefined) doc.deleteIn([...path, key]);
+      else doc.setIn([...path, key], doc.createNode(entry[key]));
     }
   } else {
     doc.setIn(path, doc.createNode(entry));
@@ -383,6 +452,7 @@ function upsertYamlMcpConfig(
   if (newText !== raw) {
     atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
   }
+  if (pruneOnly && newText === raw) return { kind: 'unchanged' };
   return { kind: entryExists ? 'overwritten' : 'written' };
 }
 
@@ -610,7 +680,11 @@ export type SharingOutcome =
 
 export const LAUNCH_CONFIG_NAME = 'open-knowledge-ui';
 
-function isEditorTargetAvailable(target: EditorMcpTarget, cwd: string, home?: string): boolean {
+export function isEditorTargetAvailable(
+  target: EditorMcpTarget,
+  cwd: string,
+  home?: string,
+): boolean {
   try {
     const probePath = target.detectPath?.(cwd, home) ?? dirname(target.configPath(cwd, home));
     return existsSync(probePath);
@@ -619,7 +693,7 @@ function isEditorTargetAvailable(target: EditorMcpTarget, cwd: string, home?: st
   }
 }
 
-function writeWouldFabricateDetection(
+export function writeWouldFabricateDetection(
   target: EditorMcpTarget,
   cwd: string,
   home?: string,
@@ -652,6 +726,18 @@ export function writeEditorMcpConfig(
       configPath: '',
       serverName,
       error: err instanceof Error ? err.message : String(err),
+    };
+  }
+
+  const pruneOnly = installOptions.pruneOnly === true;
+  if (pruneOnly && (target.format === 'file' || !existsSync(configPath))) {
+    return {
+      editorId: target.id,
+      label: target.label,
+      action: 'skipped-flag',
+      configPath,
+      serverName,
+      ...(configPathOverride !== undefined ? { configScope: 'project' as const } : {}),
     };
   }
 
@@ -707,7 +793,7 @@ export function writeEditorMcpConfig(
   }
 
   try {
-    mkdirSync(dirname(configPath), { recursive: true });
+    if (!pruneOnly) mkdirSync(dirname(configPath), { recursive: true });
   } catch (err) {
     return {
       editorId: target.id,
@@ -721,7 +807,7 @@ export function writeEditorMcpConfig(
   }
 
   const captured: {
-    action: 'written' | 'overwritten' | 'declined';
+    action: 'written' | 'overwritten' | 'unchanged' | 'declined';
     declineReason?: McpDeclineReason;
   } = { action: 'written' };
   let lockErr: Error | undefined;
@@ -730,7 +816,7 @@ export function writeEditorMcpConfig(
       `${configPath}.lock`,
       () => {
         const writePath = resolveHarnessWritePaths(configPath).writePath;
-        mkdirSync(dirname(writePath), { recursive: true });
+        if (!pruneOnly) mkdirSync(dirname(writePath), { recursive: true });
         if (target.format === 'toml') {
           const tomlOutcome = upsertTomlMcpConfig(
             getTomlConfigEngine(),
@@ -738,6 +824,8 @@ export function writeEditorMcpConfig(
             target.topLevelKey,
             serverName,
             targetEntry,
+            installOptions.replaceEntry === true,
+            installOptions.pruneOnly === true,
           );
           captured.action = tomlOutcome.kind;
           if (tomlOutcome.kind === 'declined') captured.declineReason = tomlOutcome.reason;
@@ -749,6 +837,8 @@ export function writeEditorMcpConfig(
             target.topLevelKey,
             serverName,
             targetEntry,
+            installOptions.replaceEntry === true,
+            installOptions.pruneOnly === true,
           );
           captured.action = yamlOutcome.kind;
           if (yamlOutcome.kind === 'declined') captured.declineReason = yamlOutcome.reason;
@@ -760,6 +850,8 @@ export function writeEditorMcpConfig(
           serverName,
           targetEntry,
           target.serverMapSubKey,
+          installOptions.replaceEntry === true,
+          installOptions.pruneOnly === true,
         );
         captured.action = outcome.kind;
         if (outcome.kind === 'declined') captured.declineReason = outcome.reason;
@@ -799,7 +891,7 @@ export function writeEditorMcpConfig(
   return {
     editorId: target.id,
     label: target.label,
-    action: captured.action,
+    action: captured.action === 'unchanged' ? 'skipped-flag' : captured.action,
     configPath,
     serverName,
     ...(configPathOverride !== undefined ? { configScope: 'project' as const } : {}),
@@ -908,6 +1000,8 @@ function collectProjectConfig(
 export interface UserMcpConfigsOptions {
   editors: EditorId[];
   home?: string;
+  replaceEntry?: boolean;
+  pruneOnly?: boolean;
 }
 
 export async function writeUserMcpConfigs(opts: UserMcpConfigsOptions): Promise<EditorMcpResult[]> {
@@ -915,6 +1009,8 @@ export async function writeUserMcpConfigs(opts: UserMcpConfigsOptions): Promise<
   const installOptions: McpInstallOptions = {
     mode: 'published',
     skipAvailabilityCheck: true,
+    ...(opts.replaceEntry === true ? { replaceEntry: true } : {}),
+    ...(opts.pruneOnly === true ? { pruneOnly: true } : {}),
   };
   return targets.map((target) => writeEditorMcpConfig(target, '', installOptions, opts.home));
 }
@@ -1093,16 +1189,14 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   }
 
   try {
-    ensureProjectSkillGitignore(projectRoot);
+    if (removeProjectSkillGitignoreBlock(projectRoot) === 'removed') {
+      console.warn(
+        '[ok] Removed the OpenKnowledge project-skill lines from .gitignore. The skill is ordinary project content now — commit it if your team wants it on clone.',
+      );
+    }
   } catch (err) {
     console.warn(
-      `[ok] Skipping project-skill .gitignore entry at ${projectRoot}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  const untrackResult = await untrackTrackedProjectSkillProjection(projectRoot);
-  if (untrackResult.kind === 'untracked') {
-    console.warn(
-      `[ok] Untracked the OpenKnowledge project skill (${untrackResult.dirs.join(', ')}) — it is now local-only. Teammates will see this as a deletion on their next pull.`,
+      `[ok] Skipping project-skill .gitignore cleanup at ${projectRoot}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
@@ -1173,6 +1267,11 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     writtenSkillPaths.add(skillPath);
     projectSkillResults.push(writeProjectSkill(target, projectRoot, { home: options.home }));
   }
+  const hubSkill = writeProjectSkillToHub(
+    projectRoot,
+    projectTargets.map((t) => t.id),
+  );
+  if (hubSkill) projectSkillResults.push(hubSkill);
 
   const installedForEditors = projectSkillResults
     .filter((r) => r.action === 'written' || r.action === 'overwritten')
@@ -1688,6 +1787,7 @@ export function buildInitJsonSummary(
 export function detectInstalledEditors(cwd: string, home?: string): EditorId[] {
   const detected: EditorId[] = [];
   for (const id of ALL_EDITOR_IDS) {
+    if (id === 'claude-desktop') continue;
     if (isEditorTargetAvailable(EDITOR_TARGETS[id], cwd, home)) {
       detected.push(id);
     }

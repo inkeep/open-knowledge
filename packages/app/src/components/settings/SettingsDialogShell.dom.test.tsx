@@ -187,14 +187,28 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Settings content' })).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy();
+    expect(screen.getByText('Agents')).toBeTruthy();
     expect(screen.getByText('User')).toBeTruthy();
     expect(screen.getByText('This project')).toBeTruthy();
+    expect(screen.getByTestId('settings-sidebar-item-agent-connections')).toBeTruthy();
+    expect(screen.queryByTestId('settings-sidebar-item-configure-agents')).toBeNull();
+    expect(screen.queryByTestId('settings-sidebar-item-ai-tools')).toBeNull();
+    expect(screen.queryByTestId('settings-sidebar-item-project-ai-tools')).toBeNull();
     expect(screen.queryByTestId('settings-sidebar-item-attachments')).toBeNull();
     expect(screen.queryByText('Integrations') === null).toBe(true);
     expect(
       screen.getByTestId('settings-sidebar-item-preferences').getAttribute('aria-current'),
     ).toBe('page');
     expect(probeProps.at(-1)?.activeId).toBe('preferences');
+  });
+
+  test('the retired configure-agents deep link redirects to the merged Agents page in one hop', () => {
+    render(<SettingsDialogShell open initialSection="configure-agents" onOpenChange={() => {}} />);
+
+    expect(probeProps.at(-1)?.activeId).toBe('agent-connections');
+    expect(
+      screen.getByTestId('settings-sidebar-item-agent-connections').getAttribute('aria-current'),
+    ).toBe('page');
   });
 
   test('disables project sections with an announced caption when no project is loaded', () => {

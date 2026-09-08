@@ -19,7 +19,7 @@ const MIGRATED_MODULES: ReadonlyArray<readonly [path: string, messages: number]>
   ['src/lib/share/receive-flow.ts', 6],
   ['src/lib/share/publish-wizard.ts', 7],
   ['src/hooks/use-folder-config.ts', 2],
-  ['src/lib/install-onboarding-toast.ts', 8],
+  ['src/lib/install-onboarding-toast.ts', 9],
   ['src/lib/install-deep-link-listener.ts', 1],
   ['src/components/handoff/useHandoffDispatch.ts', 7],
   ['src/editor/utils/editor-strings.ts', 2],

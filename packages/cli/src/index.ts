@@ -23,6 +23,7 @@ export { redactContent } from './commands/bug-report-redact.ts';
 export {
   ALL_EDITOR_IDS,
   buildManagedServerEntry,
+  droppedManagedKeys,
   EDITOR_LABELS,
   EDITOR_TARGETS,
   type EditorId,
@@ -99,6 +100,10 @@ export {
 } from './integrations/path-shim.ts';
 export type { IntegrationWriteOutcome } from './integrations/project-integration-writers.ts';
 export {
+  type CliProbeContext,
+  createCliProbeResolver,
+} from './integrations/registry-probes.ts';
+export {
   type ResolveProjectRootOptions,
   type ResolveProjectRootResult,
   resolveProjectRoot,
@@ -119,6 +124,12 @@ export {
   removeProjectSkill,
   writeProjectSkill,
 } from './integrations/write-project-skill.ts';
+export {
+  removeUserSkill,
+  type UserSkillWriteResult,
+  userSkillPresentAnywhere,
+  writeUserSkill,
+} from './integrations/write-user-skill.ts';
 export { getNativeTomlMcpEditor } from './native/toml-config-engine.ts';
 export {
   type CollectReportBundleOptions,

@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
-import { PROJECT_SKILL_PROJECTION_IGNORE_PATHS } from '@inkeep/open-knowledge-core';
+import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';
@@ -137,7 +137,7 @@ export function deinitOps(
   const removeRelPaths = new Set<string>([
     ...getOkArtifactPaths(projectRoot),
     ...getInstalledSkillProjectionPaths(projectRoot),
-    ...PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+    ...PROJECT_SKILL_PROJECTION_PATHS,
   ]);
   for (const rel of removeRelPaths) {
     const bare = rel.replace(/\/$/, '');

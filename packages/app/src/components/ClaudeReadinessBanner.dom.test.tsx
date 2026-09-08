@@ -97,6 +97,45 @@ describe('ClaudeReadinessBanner', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  test('a project-local-only MCP entry renders nothing (the tools ARE connected)', () => {
+    const { bridge } = makeBridge();
+    const { container } = render(
+      <ClaudeReadinessBanner
+        readiness={{
+          claude: 'present',
+          mcp: 'wired',
+          mcpScopes: { global: false, project: true },
+          mcpPreApprovable: true,
+        }}
+        bridge={bridge}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  test('neither scope wired still nudges, and its action re-arms wiring', async () => {
+    const { bridge, rewireClaudeMcp } = makeBridge();
+    render(
+      <ClaudeReadinessBanner
+        readiness={{
+          claude: 'present',
+          mcp: 'needs-rewire',
+          mcpScopes: { global: false, project: false },
+          mcpPreApprovable: false,
+        }}
+        bridge={bridge}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/tools aren't connected/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
+    });
+    expect(rewireClaudeMcp).toHaveBeenCalledTimes(1);
+  });
+
   test('unknown probe verdict renders nothing (no false "not installed")', () => {
     const { bridge } = makeBridge();
     const { container } = render(

@@ -34,10 +34,10 @@ function openSettingsSection(sectionId: string): void {
   if (window.location.hash !== target) window.location.hash = target;
 }
 
-const CONFIGURE_AGENTS_SECTION = 'configure-agents';
+const AGENT_SETTINGS_SECTION = 'agent-connections';
 
 export function openAgentSettings(): void {
-  openSettingsSection(CONFIGURE_AGENTS_SECTION);
+  openSettingsSection(AGENT_SETTINGS_SECTION);
 }
 
 const PROJECT_SYNC_SECTION = 'sync';

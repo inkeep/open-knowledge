@@ -269,7 +269,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     await user.click(button);
 
     expect(launchAgentThread).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(window.location.hash).toBe('#settings/agent-connections');
   });
 
   test('the tab list mirrors the store: add + remove', async () => {
@@ -647,7 +647,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       });
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
   });
 
@@ -683,7 +683,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an agent the user disabled is never what a pickerless launch leads with', () => {
@@ -693,7 +693,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an agent with no launchable build on this host is not what a launch leads with', () => {
@@ -707,7 +707,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an explicitly persisted default still wins over the presented agent', () => {
@@ -728,7 +728,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
 
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       act(() => control.current?.rerender());
@@ -742,7 +742,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       mockRegisteredAgent = null;
       const control = makeControl();
       render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
 
       window.location.hash = '#settings/some-other-tab';
       act(() => control.current?.rerender());

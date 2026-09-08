@@ -58,7 +58,11 @@ describe('repairLaunchJson (remove sweep)', () => {
     const written = JSON.parse(readFileSync(configPath, 'utf-8'));
     expect(written.configurations).toHaveLength(1);
     expect(written.configurations[0]).toEqual(FOREIGN);
-    expect(logEvents).toContainEqual({ event: 'launch-json-repair-removed', configPath });
+    expect(logEvents).toContainEqual({
+      event: 'launch-json-repair-removed',
+      severity: 'info',
+      configPath,
+    });
   });
 
   it("keeps the file when OK's entry was the only configuration", () => {
@@ -104,7 +108,7 @@ describe('repairLaunchJson (remove sweep)', () => {
     expect(result.repairedCount).toBe(0);
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
     expect(logEvents).toEqual([
-      { event: 'launch-json-repair-skipped', reason: 'reclaim-disabled' },
+      { event: 'launch-json-repair-skipped', severity: 'info', reason: 'reclaim-disabled' },
     ]);
   });
 
@@ -112,7 +116,35 @@ describe('repairLaunchJson (remove sweep)', () => {
     const result = repairLaunchJson({ projectDir, logger, reclaimDisableEnv: '1' });
     expect(result.outcome.outcome).toBe('skipped-reclaim-disabled');
     expect(logEvents).toEqual([
-      { event: 'launch-json-repair-skipped', reason: 'reclaim-disabled' },
+      { event: 'launch-json-repair-skipped', severity: 'info', reason: 'reclaim-disabled' },
+    ]);
+  });
+});
+
+describe('repairLaunchJson (write failure)', () => {
+  it('warns with the config path when the removal throws, and reports write-failed', () => {
+    const events: LaunchJsonRepairLogEvent[] = [];
+    const result = repairLaunchJson({
+      projectDir: '/nowhere/project',
+      logger: (event) => events.push(event),
+      removeOwnLaunchEntryFn: () => {
+        throw new Error('EACCES: permission denied');
+      },
+    });
+    expect(result).toEqual({
+      outcome: {
+        configPath: join('/nowhere/project', '.claude', 'launch.json'),
+        outcome: 'write-failed',
+        error: 'EACCES: permission denied',
+      },
+      repairedCount: 0,
+    });
+    expect(events).toEqual([
+      {
+        event: 'launch-json-repair-write-failed',
+        severity: 'warn',
+        configPath: join('/nowhere/project', '.claude', 'launch.json'),
+      },
     ]);
   });
 });

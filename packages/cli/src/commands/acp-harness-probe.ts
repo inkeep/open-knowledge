@@ -12,7 +12,7 @@ export interface OwnManagedMcpEntryHit {
   configPath: string;
 }
 
-function ownServerMatcherFor(editorId: EditorId): (entry: unknown) => boolean {
+export function ownServerMatcherFor(editorId: EditorId): (entry: unknown) => boolean {
   if (editorId === 'opencode') return openCodeEntryRunsOwnManagedServer;
   return entryRunsOwnManagedServer;
 }

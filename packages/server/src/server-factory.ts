@@ -60,6 +60,7 @@ import { AcpPermissionStore } from './acp/permissions.ts';
 import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
+import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
 import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
@@ -298,6 +299,7 @@ export interface ServerOptions {
   configHomedirOverride?: string;
   mdManager?: MarkdownManager;
   detectGh?: DetectGhFn;
+  agentIntegrations?: AgentRegistryHostSeam;
   detectGhAccounts?: DetectGhAccountsFn;
   tokenStore?: ProbeTokenStore | null;
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
@@ -1918,6 +1920,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       resolveEmbed,
       getBridgeLossReporter: () => bridgeLossReporter,
       getPrincipal: () => loadedPrincipal,
+      agentIntegrations: options.agentIntegrations,
       acpRegistry,
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       homeDirOverride: configHomedirOverride,
@@ -2067,6 +2070,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       const source = document.getText('source').toString();
       if (!source.includes(needle)) continue;
       try {
+        // (precedent #24). Re-render uses the same FILE_WATCHER
         document.transact(() => {
           applyDiskContentToDoc(document, source, resolveEmbed, docName);
         }, FILE_WATCHER_ORIGIN);

@@ -1,5 +1,9 @@
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
-import type { OkNoteWindowMainAction } from '@inkeep/open-knowledge-core/desktop-bridge';
+import type {
+  OkDeepLinkPayload,
+  OkNoteWindowMainAction,
+  OkOnboardingToastPayload,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   OkDesktopConfig,
   OkLocalOpAuthEvent,
@@ -41,17 +45,7 @@ export interface EventChannels {
   'ok:update:whats-new-dismissed': { payload: { version: string } };
   'ok:update:stuck-hint': { payload: { downloadUrl: string } };
   'ok:update:manual-check': { payload: { phase: 'started' | 'settled' } };
-  'ok:deep-link': {
-    payload: {
-      doc: string;
-      kind: 'doc' | 'folder';
-      branch?: string | null;
-      multiCandidate?: boolean;
-      targetMissing?: boolean;
-      repositoryPath?: string;
-      contentRootDepth?: number;
-    };
-  };
+  'ok:deep-link': { payload: OkDeepLinkPayload };
   'ok:share:received': { payload: OkShareReceivedPayload };
   'ok:mcp-wiring:show': {
     payload: {
@@ -65,33 +59,7 @@ export interface EventChannels {
     payload: OnboardingShowPayload;
   };
   'ok:onboarding:toast': {
-    payload:
-      | { readonly kind: 'ancestor-promote'; readonly ancestorPath: string }
-      | {
-          readonly kind: 'git-root-promote';
-          readonly gitRoot: string;
-          readonly pickedPath: string;
-        }
-      | {
-          readonly kind: 'startup-reclaim';
-          readonly mcp:
-            | { readonly status: 'none' }
-            | { readonly status: 'repaired'; readonly editors: readonly string[] }
-            | { readonly status: 'failed'; readonly editors: readonly string[] };
-          readonly path:
-            | { readonly status: 'none' }
-            | { readonly status: 'installed'; readonly summary: string }
-            | { readonly status: 'failed'; readonly summary: string };
-        }
-      | {
-          readonly kind: 'sharing-refused-tracked';
-          readonly tracked: readonly string[];
-          readonly remediation: string;
-        }
-      | {
-          readonly kind: 'sharing-no-git';
-          readonly requestedMode: 'local-only';
-        };
+    payload: OkOnboardingToastPayload;
   };
 
   'ok:local-op:auth:event': {

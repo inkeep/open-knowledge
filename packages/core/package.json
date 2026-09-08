@@ -17,6 +17,12 @@
       "types": "./dist/shadow-repo-layout.d.mts",
       "default": "./dist/shadow-repo-layout.mjs"
     },
+    "./skill-folder-state": {
+      "@inkeep/source": "./src/skill-folder-state.ts",
+      "development": "./src/skill-folder-state.ts",
+      "types": "./dist/skill-folder-state.d.mts",
+      "default": "./dist/skill-folder-state.mjs"
+    },
     "./git-repository": {
       "@inkeep/source": "./src/git-repository.ts",
       "development": "./src/git-repository.ts",

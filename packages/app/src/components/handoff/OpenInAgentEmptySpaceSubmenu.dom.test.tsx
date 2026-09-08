@@ -241,7 +241,7 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
 
     window.location.hash = '';
     await userEvent.click(screen.getByTestId('empty-space-open-in-settings'));
-    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(window.location.hash).toBe('#settings/agent-connections');
     expect(threadLaunchCalls).toEqual([]);
   });
 

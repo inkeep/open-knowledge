@@ -283,9 +283,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
           const subRoot =
             id === 'agents'
               ? AGENTS_SKILLS_ROOT
-              : ((scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT)[
-                  id as EditorId
-                ] ?? null);
+              : (skillProjectionRoots(scope)[id as EditorId] ?? null);
           if (subRoot !== null) aliasMaterializes.push(subRoot);
         }
       }
@@ -299,9 +297,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
             const subRoot =
               id === 'agents'
                 ? AGENTS_SKILLS_ROOT
-                : ((scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT)[
-                    id as EditorId
-                  ] ?? null);
+                : (skillProjectionRoots(scope)[id as EditorId] ?? null);
             if (subRoot !== null) aliasUnfollows.push(subRoot);
           }
           hostSet.delete(id);
@@ -532,7 +528,7 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
 
       for (const editor of fanned.hosts) {
         const editorRoot =
-          editor === 'agents' ? AGENTS_SKILLS_ROOT : EDITOR_PROJECT_SKILL_ROOT[editor];
+          editor === 'agents' ? AGENTS_SKILLS_ROOT : skillProjectionRoots(scope)[editor];
         if (editorRoot === null || editorRoot === input.canonicalRootRel) continue;
         const copyAbs = resolve(base, editorRoot, name);
         let isLink = false;

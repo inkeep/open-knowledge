@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -11,7 +12,7 @@ import {
 import { mkdtemp, rm } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { idleShutdownToMs } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
@@ -168,6 +169,38 @@ function fetchText(
     });
     req.on('error', reject);
     req.end();
+  });
+}
+
+function postJson(
+  port: number,
+  path: string,
+  payload: unknown,
+): Promise<{ status: number; body: string }> {
+  const encoded = Buffer.from(JSON.stringify(payload), 'utf-8');
+  return new Promise((resolveFetch, reject) => {
+    const req = httpRequest(
+      {
+        hostname: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': encoded.length },
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf-8');
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolveFetch({ status: res.statusCode ?? 0, body });
+        });
+        res.on('error', reject);
+      },
+    );
+    req.on('error', reject);
+    req.end(encoded);
   });
 }
 
@@ -450,10 +483,92 @@ describe('bootStartServer (integration)', () => {
       skipAutoInit: true,
       repairMcpConfigsFn: (opts) => {
         captured.push(opts as { projectDir: string });
+        return { outcomes: [], repairedCount: 0 };
       },
     });
     expect(captured).toHaveLength(1);
     expect(captured[0].projectDir).toBe(tmpDir);
+  });
+
+  test('warns about a sweep that detected a tamper it could not heal', async () => {
+    const warned: unknown[] = [];
+    const debugged: unknown[] = [];
+    const log = {
+      warn: (ctx: unknown) => warned.push(ctx),
+      debug: (ctx: unknown) => debugged.push(ctx),
+      info: () => {},
+      error: () => {},
+      child: () => log,
+    };
+    booted = await bootStartServer({
+      config: makeTestConfig(),
+      cwd: tmpDir,
+      host: TEST_HOST,
+      skipAutoInit: true,
+      log: log as unknown as NonNullable<Parameters<typeof bootStartServer>[0]['log']>,
+      repairMcpConfigsFn: (opts) => {
+        opts.logger?.({ event: 'mcp-config-repair-prune-unchanged', severity: 'warn' });
+        opts.logger?.({ event: 'mcp-config-repair-declined', severity: 'warn' });
+        opts.logger?.({ event: 'mcp-config-repair-pruned', severity: 'info' });
+        opts.logger?.({ event: 'mcp-config-repair-something-new' });
+        return {
+          outcomes: [
+            {
+              scope: 'user',
+              editorId: 'claude',
+              configPath: '/home/x/.claude.json',
+              outcome: 'prune-unchanged',
+            },
+            {
+              scope: 'user',
+              editorId: 'codex',
+              configPath: '/home/x/.codex/config.toml',
+              outcome: 'declined',
+              reason: 'no-native-writer',
+            },
+            {
+              scope: 'user',
+              editorId: 'cursor',
+              configPath: '/home/x/.cursor/mcp.json',
+              outcome: 'canonical',
+            },
+          ],
+          repairedCount: 0,
+        };
+      },
+    });
+    const warnedEvents = warned
+      .map((ctx) => (ctx as { event?: { event?: string } }).event?.event)
+      .filter((name): name is string => typeof name === 'string');
+    expect(warnedEvents).toEqual([
+      'mcp-config-repair-prune-unchanged',
+      'mcp-config-repair-declined',
+      'mcp-config-repair-something-new',
+    ]);
+    expect(
+      debugged.some(
+        (ctx) =>
+          (ctx as { event?: { event?: string } }).event?.event === 'mcp-config-repair-pruned',
+      ),
+    ).toBe(true);
+    const unhealed = warned
+      .map((ctx) => (ctx as { unhealed?: unknown }).unhealed)
+      .find((value) => Array.isArray(value));
+    expect(unhealed).toEqual([
+      {
+        scope: 'user',
+        editorId: 'claude',
+        configPath: '/home/x/.claude.json',
+        outcome: 'prune-unchanged',
+      },
+      {
+        scope: 'user',
+        editorId: 'codex',
+        configPath: '/home/x/.codex/config.toml',
+        outcome: 'declined',
+        reason: 'no-native-writer',
+      },
+    ]);
   });
 
   test('continues booting even when repairMcpConfigsFn throws', async () => {
@@ -467,6 +582,31 @@ describe('bootStartServer (integration)', () => {
       },
     });
     expect(booted.port).toBeGreaterThan(0);
+  });
+
+  test('the AI-tool connections batch reaches the CLI writers and probes injected at boot', async () => {
+    booted = await bootStartServer({
+      config: makeTestConfig(),
+      cwd: tmpDir,
+      host: TEST_HOST,
+      skipAutoInit: true,
+    });
+
+    const satisfierId = 'claude/mcp/project/config-entry';
+    const res = await postJson(booted.port, '/api/agent-integrations/apply', {
+      intents: [{ satisfierId, desired: 'present' }],
+    });
+
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body) as {
+      actions: { satisfierId: string; action: string; errorId?: string }[];
+      snapshot: { probes: { satisfiers: Record<string, { state: string }> } };
+    };
+    const step = body.actions.find((action) => action.satisfierId === satisfierId);
+    expect(step?.action).toBe('written');
+    expect(step?.errorId).toBeUndefined();
+    expect(existsSync(resolve(tmpDir, '.mcp.json'))).toBe(true);
+    expect(body.snapshot.probes.satisfiers[satisfierId]?.state).toBe('satisfied');
   });
 
   test('invokes repairLaunchJsonFn with the project cwd before bootServer', async () => {
@@ -484,6 +624,52 @@ describe('bootStartServer (integration)', () => {
     expect(captured[0].projectDir).toBe(tmpDir);
   });
 
+  test('the real launch.json sweep logs a removal as routine, not as a problem', async () => {
+    const warned: unknown[] = [];
+    const debugged: unknown[] = [];
+    const log = {
+      warn: (ctx: unknown) => warned.push(ctx),
+      debug: (ctx: unknown) => debugged.push(ctx),
+      info: () => {},
+      error: () => {},
+      child: () => log,
+    };
+    mkdirSync(join(tmpDir, '.claude'), { recursive: true });
+    writeFileSync(
+      join(tmpDir, '.claude', 'launch.json'),
+      JSON.stringify(
+        {
+          configurations: [
+            {
+              name: 'open-knowledge-ui',
+              runtimeExecutable: '/bin/sh',
+              runtimeArgs: ['-l', '-c', '# ok-ui-v1\nexit 0'],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    booted = await bootStartServer({
+      config: makeTestConfig(),
+      cwd: tmpDir,
+      host: TEST_HOST,
+      skipAutoInit: true,
+      log: log as unknown as NonNullable<Parameters<typeof bootStartServer>[0]['log']>,
+      repairMcpConfigsFn: () => ({ outcomes: [], repairedCount: 0 }),
+    });
+    const eventNames = (list: unknown[]) =>
+      list
+        .map((ctx) => (ctx as { event?: { event?: string } }).event?.event)
+        .filter((name): name is string => typeof name === 'string');
+    expect(eventNames(debugged)).toContain('launch-json-repair-removed');
+    expect(eventNames(warned)).not.toContain('launch-json-repair-removed');
+    expect(
+      JSON.parse(readFileSync(join(tmpDir, '.claude', 'launch.json'), 'utf-8')).configurations,
+    ).toEqual([]);
+  });
+
   test('continues booting even when repairLaunchJsonFn throws', async () => {
     booted = await bootStartServer({
       config: makeTestConfig(),
@@ -497,40 +683,44 @@ describe('bootStartServer (integration)', () => {
     expect(booted.port).toBeGreaterThan(0);
   });
 
-  test('invokes repairSkillsFn with the project cwd before bootServer', async () => {
-    const captured: { projectDir: string; reclaimDisableEnv: string | null }[] = [];
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      repairSkillsFn: async (opts) => {
-        captured.push(opts as { projectDir: string; reclaimDisableEnv: string | null });
-      },
-    });
-    expect(captured).toHaveLength(1);
-    expect(captured[0].projectDir).toBe(tmpDir);
+  test('writes no SKILL.md anywhere on boot', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-start-home-'));
+    const prevHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      booted = await bootStartServer({
+        config: makeTestConfig(),
+        cwd: tmpDir,
+        host: TEST_HOST,
+        skipAutoInit: true,
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      const wrote: string[] = [];
+      const walk = (dir: string): void => {
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+          const p = join(dir, e.name);
+          if (e.isDirectory()) walk(p);
+          else if (e.name === 'SKILL.md') wrote.push(relative(home, p));
+        }
+      };
+      walk(home);
+      expect(wrote).toEqual([]);
+      expect(existsSync(join(tmpDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+        false,
+      );
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
-  test('continues booting even when repairSkillsFn throws', async () => {
-    booted = await bootStartServer({
-      config: makeTestConfig(),
-      cwd: tmpDir,
-      host: TEST_HOST,
-      skipAutoInit: true,
-      repairSkillsFn: () => {
-        throw new Error('synthetic skill repair failure');
-      },
-    });
-    expect(booted.port).toBeGreaterThan(0);
-  });
-
-  test('AC-C4: OK_RECLAIM_DISABLE=1 forwards reclaimDisableEnv to all three sweep fns', async () => {
+  test('AC-C4: OK_RECLAIM_DISABLE=1 forwards reclaimDisableEnv to both sweep fns', async () => {
     const prevEnv = process.env.OK_RECLAIM_DISABLE;
     process.env.OK_RECLAIM_DISABLE = '1';
     const mcpCaptures: Array<{ reclaimDisableEnv: string | null }> = [];
     const launchCaptures: Array<{ reclaimDisableEnv: string | null }> = [];
-    const skillCaptures: Array<{ reclaimDisableEnv: string | null }> = [];
     try {
       booted = await bootStartServer({
         config: makeTestConfig(),
@@ -543,9 +733,6 @@ describe('bootStartServer (integration)', () => {
         repairLaunchJsonFn: (opts) => {
           launchCaptures.push(opts as { reclaimDisableEnv: string | null });
         },
-        repairSkillsFn: async (opts) => {
-          skillCaptures.push(opts as { reclaimDisableEnv: string | null });
-        },
       });
     } finally {
       if (prevEnv === undefined) delete process.env.OK_RECLAIM_DISABLE;
@@ -554,10 +741,9 @@ describe('bootStartServer (integration)', () => {
 
     expect(mcpCaptures[0]?.reclaimDisableEnv).toBe('1');
     expect(launchCaptures[0]?.reclaimDisableEnv).toBe('1');
-    expect(skillCaptures[0]?.reclaimDisableEnv).toBe('1');
   });
 
-  test('default (no OK_RECLAIM_DISABLE) forwards reclaimDisableEnv=null to all three sweeps', async () => {
+  test('default (no OK_RECLAIM_DISABLE) forwards reclaimDisableEnv=null to both sweeps', async () => {
     const prevEnv = process.env.OK_RECLAIM_DISABLE;
     delete process.env.OK_RECLAIM_DISABLE;
     const captured: Array<{ reclaimDisableEnv: string | null }> = [];
@@ -573,14 +759,11 @@ describe('bootStartServer (integration)', () => {
         repairLaunchJsonFn: (opts) => {
           captured.push(opts as { reclaimDisableEnv: string | null });
         },
-        repairSkillsFn: async (opts) => {
-          captured.push(opts as { reclaimDisableEnv: string | null });
-        },
       });
     } finally {
       if (prevEnv !== undefined) process.env.OK_RECLAIM_DISABLE = prevEnv;
     }
-    expect(captured).toHaveLength(3);
+    expect(captured).toHaveLength(2);
     for (const c of captured) expect(c.reclaimDisableEnv).toBeNull();
   });
 

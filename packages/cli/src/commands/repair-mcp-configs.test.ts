@@ -1,9 +1,15 @@
 import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildManagedServerEntry, resolveClaudeCodeConfigPath } from './editors.ts';
+import { writeEditorMcpConfig } from './init.ts';
 import { type RepairLogEvent, repairMcpConfigs } from './repair-mcp-configs.ts';
+
+vi.mock('./init.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./init.ts')>();
+  return { ...actual, writeEditorMcpConfig: vi.fn(actual.writeEditorMcpConfig) };
+});
 
 const CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 const WIN_CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published', platformName: 'win32' });
@@ -76,6 +82,7 @@ describe('repairMcpConfigs', () => {
       expect(written.mcpServers['open-knowledge']).toEqual(CHAIN_ENTRY);
       expect(logEvents).toContainEqual({
         event: 'mcp-config-migrate',
+        severity: 'info',
         scope: 'user',
         surface: 'cli-repair',
         editorId: 'claude',
@@ -116,7 +123,7 @@ describe('repairMcpConfigs', () => {
     const configPath = writeClaude({
       command: '/bin/sh',
       args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
-      env: { KEEP: 'yes' },
+      cwd: '/srv/notes',
     });
     const before = readFileSync(configPath, 'utf-8');
 
@@ -125,6 +132,34 @@ describe('repairMcpConfigs', () => {
     expect(result.repairedCount).toBe(0);
     expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('canonical');
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('prunes a foreign env from a future launcher without touching its body', () => {
+    const events: RepairLogEvent[] = [];
+    const configPath = writeClaude({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      cwd: '/srv/notes',
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome, logger: (e) => events.push(e) });
+
+    expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('repaired');
+    const after = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(after.mcpServers['open-knowledge']).toEqual({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      cwd: '/srv/notes',
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-config-repair-pruned',
+        severity: 'info',
+        editorId: 'claude',
+        keys: ['env'],
+      }),
+    );
   });
 
   it('keeps a recognized future project launcher byte-unchanged', () => {
@@ -153,7 +188,7 @@ describe('repairMcpConfigs', () => {
       (item) => item.scope === 'project' && item.editorId === 'claude',
     );
 
-    expect(outcome).toMatchObject({ outcome: 'declined', reason: 'foreign-command' });
+    expect(outcome).toMatchObject({ outcome: 'foreign', reason: 'foreign-command' });
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
   });
 
@@ -194,7 +229,9 @@ describe('repairMcpConfigs', () => {
     expect(result.repairedCount).toBe(0);
     expect(result.outcomes).toEqual([]);
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
-    expect(logEvents).toEqual([{ event: 'mcp-config-repair-skipped', reason: 'reclaim-disabled' }]);
+    expect(logEvents).toEqual([
+      { event: 'mcp-config-repair-skipped', severity: 'info', reason: 'reclaim-disabled' },
+    ]);
   });
 
   it('OK_RECLAIM_DISABLE values other than "1" do NOT disable the sweep', () => {
@@ -210,5 +247,129 @@ describe('repairMcpConfigs', () => {
         result.outcomes.find((o) => o.editorId === 'claude')?.outcome,
       );
     }
+  });
+  it('rewrites our current launcher when an env map was added after we wrote it', () => {
+    const configPath = writeClaude({
+      ...CHAIN_ENTRY,
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome });
+
+    expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('repaired');
+    const after = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(after.mcpServers['open-knowledge']).toEqual(CHAIN_ENTRY);
+  });
+
+  it('rewrites our current project launcher when an env map was added after we wrote it', () => {
+    const configPath = writeProjectClaude({
+      ...CHAIN_ENTRY,
+      cwd: '/srv/notes',
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome });
+    const outcome = result.outcomes.find(
+      (item) => item.scope === 'project' && item.editorId === 'claude',
+    );
+
+    expect(outcome?.outcome).toBe('repaired');
+    const after = JSON.parse(readFileSync(configPath, 'utf-8'));
+    expect(after.mcpServers['open-knowledge']).toEqual({ ...CHAIN_ENTRY, cwd: '/srv/notes' });
+  });
+  it('does not claim a prune when the write fails, and reports write-failed', () => {
+    const events: RepairLogEvent[] = [];
+    const configPath = writeClaude({
+      ...CHAIN_ENTRY,
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+    const before = readFileSync(configPath, 'utf-8');
+    vi.mocked(writeEditorMcpConfig).mockImplementationOnce((target, _cwd, _opts, _home) => ({
+      editorId: target.id,
+      label: target.label,
+      action: 'failed',
+      configPath,
+      serverName: 'open-knowledge',
+      error: 'EACCES',
+    }));
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome, logger: (e) => events.push(e) });
+
+    expect(result.outcomes.find((o) => o.editorId === 'claude')).toMatchObject({
+      outcome: 'write-failed',
+      error: 'EACCES',
+    });
+    expect(events.some((e) => e.event === 'mcp-config-repair-pruned')).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-config-repair-write-failed',
+        severity: 'warn',
+        editorId: 'claude',
+      }),
+    );
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('reports a planned prune that removed nothing as prune-unchanged, not as canonical or repaired', () => {
+    const events: RepairLogEvent[] = [];
+    const configPath = writeClaude({
+      ...CHAIN_ENTRY,
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+    vi.mocked(writeEditorMcpConfig).mockImplementationOnce((target) => ({
+      editorId: target.id,
+      label: target.label,
+      action: 'skipped-flag',
+      configPath,
+      serverName: 'open-knowledge',
+    }));
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome, logger: (e) => events.push(e) });
+
+    expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('prune-unchanged');
+    expect(result.repairedCount).toBe(0);
+    expect(events.some((e) => e.event === 'mcp-config-repair-pruned')).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-config-repair-prune-unchanged',
+        severity: 'warn',
+        editorId: 'claude',
+        keys: ['env'],
+      }),
+    );
+  });
+  it('carries the decline reason and a warn severity when the writer refuses a prune', () => {
+    const events: RepairLogEvent[] = [];
+    const configPath = writeClaude({
+      ...CHAIN_ENTRY,
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+    const before = readFileSync(configPath, 'utf-8');
+    vi.mocked(writeEditorMcpConfig).mockImplementationOnce((target) => ({
+      editorId: target.id,
+      label: target.label,
+      action: 'declined',
+      configPath,
+      serverName: 'open-knowledge',
+      declineReason: 'no-native-writer',
+    }));
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome, logger: (e) => events.push(e) });
+
+    expect(result.outcomes.find((o) => o.editorId === 'claude')).toMatchObject({
+      outcome: 'declined',
+      reason: 'no-native-writer',
+    });
+    expect(result.repairedCount).toBe(0);
+    expect(events).toContainEqual({
+      event: 'mcp-config-repair-declined',
+      severity: 'warn',
+      scope: 'user',
+      editorId: 'claude',
+      configPath,
+      reason: 'no-native-writer',
+    });
+    expect(events.some((e) => e.event === 'mcp-config-repair-pruned')).toBe(false);
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
   });
 });

@@ -39,6 +39,9 @@ function releaseNotesUrl(version: string): string {
 }
 
 const LEGACY_SECTION_ALIASES: Record<string, { sectionId: string; anchor: string }> = {
+  'ai-tools': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
+  'project-ai-tools': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
+  'configure-agents': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
   'content-rules': { sectionId: 'project-preferences', anchor: 'section:content-rules' },
   terminal: { sectionId: 'project-preferences', anchor: 'section:terminal' },
   sharing: { sectionId: 'sync', anchor: 'section:sharing' },
@@ -149,17 +152,27 @@ export function SettingsDialogShell({
 
   const groups: SidebarGroup[] = [
     {
+      id: 'agents',
+      label: t`Agents`,
+      enabled: true,
+      items: [
+        {
+          id: 'agent-connections',
+          label: t`Agent connections`,
+          keywords: [t`AI tools`, t`Configure agents`],
+        },
+      ],
+    },
+    {
       id: 'user',
       label: t`User`,
       enabled: true,
       items: [
         { id: 'preferences', label: t`Preferences` },
-        { id: 'configure-agents', label: t`Configure agents` },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
         { id: 'user-plugins-manage', label: t`Plugins` },
         { id: 'user-skills', label: t`Skills Studio` },
-        ...(isOkDesktopHost ? [{ id: 'ai-tools', label: t`AI tools & CLI` }] : []),
       ],
     },
     {
@@ -188,7 +201,6 @@ export function SettingsDialogShell({
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Remote control` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills Studio` },

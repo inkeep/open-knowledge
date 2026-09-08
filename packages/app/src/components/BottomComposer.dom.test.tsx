@@ -636,7 +636,7 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     await user.click(screen.getByTestId('ask-ai-agent-trigger'));
     await user.click(await screen.findByTestId('ask-ai-agent-option-settings'));
 
-    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(window.location.hash).toBe('#settings/agent-connections');
     expect(startThreadCalls).toHaveLength(0);
     expect(dispatchCalls).toHaveLength(0);
   });

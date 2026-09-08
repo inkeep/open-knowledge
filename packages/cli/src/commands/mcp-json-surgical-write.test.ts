@@ -322,7 +322,7 @@ describe('surgical JSON MCP write', () => {
     expect(servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
-  it('updates only standard launch keys and preserves every unknown entry field', () => {
+  it('updates the launch keys, drops env, and preserves every unknown entry field', () => {
     const configPath = tempFile('config.jsonc');
     const original = `{
   "mcpServers": {
@@ -350,7 +350,6 @@ describe('surgical JSON MCP write', () => {
     ];
     expect(entry).toEqual({
       ...PUBLISHED_CHAIN_ENTRY,
-      env: { KEEP: 'yes' },
       startup_timeout_ms: 45000,
       tools: { exec: { approval_mode: 'approve' } },
       unknown: { nested: { values: [1, 2, 3] } },
@@ -360,7 +359,7 @@ describe('surgical JSON MCP write', () => {
     expect(after).toContain('"theme": "dark"');
   });
 
-  it('updates only OpenCode launch keys without re-enabling a disabled entry', () => {
+  it('updates OpenCode launch keys and drops environment without re-enabling a disabled entry', () => {
     const configPath = tempFile('opencode.json');
     writeFileSync(
       configPath,
@@ -386,7 +385,6 @@ describe('surgical JSON MCP write', () => {
     expect(entry).toEqual({
       ...OPENCODE_ENTRY,
       enabled: false,
-      environment: { KEEP: 'yes' },
       unknown: { nested: true },
     });
   });
@@ -461,5 +459,214 @@ describe('surgical JSON MCP write', () => {
       unknown
     >;
     expect(servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+  });
+});
+
+describe('a foreign entry under OK server name', () => {
+  let dir: string;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function seed(entry: Record<string, unknown>): string {
+    dir = mkdtempSync(join(tmpdir(), 'ok-foreign-mcp-'));
+    const configPath = join(dir, '.mcp.json');
+    writeFileSync(
+      configPath,
+      `{
+  // my own servers — do not touch
+  "mcpServers": {
+    "linear": { "command": "npx", "args": ["-y", "linear-mcp"] },
+    "open-knowledge": ${JSON.stringify(entry)},
+    "postgres": { "command": "uvx", "args": ["postgres-mcp"] }
+  },
+  "theme": "dark"
+}
+`,
+    );
+    return configPath;
+  }
+
+  function serversAt(configPath: string): Record<string, unknown> {
+    const parsed = parseJsonc(readFileSync(configPath, 'utf-8')) as {
+      mcpServers: Record<string, unknown>;
+    };
+    return parsed.mcpServers;
+  }
+
+  it('replaces a squatting entry whole rather than merging our keys into it', () => {
+    const configPath = seed({
+      command: 'npx',
+      args: ['-y', '@example/some-other-mcp-server'],
+      env: { SECRET_TOKEN: 'hunter2' },
+    });
+
+    write('claude', configPath);
+
+    expect(serversAt(configPath)['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+  });
+
+  it('leaves every other server, key and comment untouched', () => {
+    const configPath = seed({ command: 'npx', args: ['-y', '@example/some-other-mcp-server'] });
+
+    write('claude', configPath);
+
+    const after = readFileSync(configPath, 'utf-8');
+    const servers = serversAt(configPath);
+    expect(servers.linear).toEqual({ command: 'npx', args: ['-y', 'linear-mcp'] });
+    expect(servers.postgres).toEqual({ command: 'uvx', args: ['postgres-mcp'] });
+    expect(after).toContain('// my own servers — do not touch');
+    expect(after).toContain('"theme": "dark"');
+  });
+
+  it('still refreshes OUR stale entry in place, keeping extras but dropping env', () => {
+    const configPath = seed({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
+      cwd: '/srv/notes',
+      env: { NODE_OPTIONS: '--require ./payload.cjs' },
+    });
+
+    write('claude', configPath);
+
+    expect(serversAt(configPath)['open-knowledge']).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      cwd: '/srv/notes',
+    });
+  });
+
+  it('replaces OUR edited entry whole when the caller asks for a replacement', () => {
+    const configPath = seed({ ...PUBLISHED_CHAIN_ENTRY, env: { INJECTED: 'yes' } });
+
+    const result = writeEditorMcpConfig(targetForFile('claude', configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      replaceEntry: true,
+    });
+
+    expect(result.action).toBe('overwritten');
+    expect(serversAt(configPath)['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+    expect(serversAt(configPath).linear).toEqual({ command: 'npx', args: ['-y', 'linear-mcp'] });
+    expect(readFileSync(configPath, 'utf-8')).toContain('// my own servers — do not touch');
+  });
+
+  it('is a no-op under replacement when our entry is already exact', () => {
+    const configPath = seed(PUBLISHED_CHAIN_ENTRY);
+    const before = readFileSync(configPath, 'utf-8');
+
+    writeEditorMcpConfig(targetForFile('claude', configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      replaceEntry: true,
+    });
+
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+});
+
+describe('prune-only JSON write', () => {
+  let dir: string;
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+  function tempFile(name: string): string {
+    dir = mkdtempSync(join(tmpdir(), 'ok-prune-json-'));
+    return join(dir, name);
+  }
+
+  function claudeTargetForFile(configPath: string): EditorMcpTarget {
+    return {
+      ...EDITOR_TARGETS.claude,
+      configPath: () => configPath,
+      detectPath: () => dirname(configPath),
+    };
+  }
+
+  function prune(configPath: string) {
+    return writeEditorMcpConfig(claudeTargetForFile(configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      pruneOnly: true,
+    });
+  }
+
+  it('never creates a missing config or its folder', () => {
+    const configPath = join(tempFile('placeholder.json'), '..', 'nested', 'config.json');
+
+    expect(prune(configPath).action).toBe('skipped-flag');
+
+    expect(existsSync(configPath)).toBe(false);
+    expect(existsSync(dirname(configPath))).toBe(false);
+  });
+
+  it('never creates a config file for a detected editor with no config yet', () => {
+    const configPath = join(tempFile('placeholder.json'), '..', 'sub', 'config.json');
+    const target: EditorMcpTarget = {
+      ...EDITOR_TARGETS.claude,
+      configPath: () => configPath,
+      detectPath: () => dir,
+    };
+
+    const result = writeEditorMcpConfig(target, '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      pruneOnly: true,
+    });
+
+    expect(result.action).toBe('skipped-flag');
+    expect(existsSync(configPath)).toBe(false);
+    expect(existsSync(dirname(configPath))).toBe(false);
+  });
+
+  it('leaves a blank config blank', () => {
+    const configPath = tempFile('config.json');
+    writeFileSync(configPath, '');
+
+    expect(prune(configPath).action).toBe('skipped-flag');
+
+    expect(readFileSync(configPath, 'utf-8')).toBe('');
+  });
+
+  it('reports no change for our exact entry and keeps the bytes', () => {
+    const configPath = tempFile('config.json');
+    write('claude', configPath);
+    const before = readFileSync(configPath, 'utf-8');
+
+    expect(prune(configPath).action).toBe('skipped-flag');
+
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('removes only the foreign env, keeping a hand-added key and a future launcher body', () => {
+    const configPath = tempFile('config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          mcpServers: {
+            other: { command: 'node' },
+            'open-knowledge': {
+              command: '/bin/sh',
+              args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+              cwd: '/srv/notes',
+              env: { NODE_OPTIONS: '--require ./payload.cjs' },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    expect(prune(configPath).action).toBe('overwritten');
+
+    const servers = parseJsonc(readFileSync(configPath, 'utf-8')).mcpServers;
+    expect(servers['open-knowledge']).toEqual({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      cwd: '/srv/notes',
+    });
+    expect(servers.other).toEqual({ command: 'node' });
   });
 });

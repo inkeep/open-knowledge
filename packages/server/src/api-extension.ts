@@ -19,12 +19,15 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Document, Extension, Hocuspocus } from '@hocuspocus/server';
+import type { EnvTier } from '@inkeep/open-knowledge-core';
 import {
   type AdvisoryWarning,
   AGENT_ICON_COLORS,
   AGENTS_SKILLS_ROOT,
   AgentActivitySuccessSchema,
   AgentBurstDiffSuccessSchema,
+  AgentIntegrationsApplyRequestSchema,
+  AgentIntegrationsApplySuccessSchema,
   AgentPatchRequestSchema,
   AgentPatchSuccessSchema,
   AgentUndoRequestSchema,
@@ -48,7 +51,6 @@ import {
   type DiskEditReconciledWarning,
   type DocumentListEntry,
   detectFmRegion,
-  EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   EmptyRequestSchema,
   estimateSkillCost,
@@ -184,6 +186,8 @@ import { captureEffect } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
+import { type AgentRegistryHostSeam, applyAgentRegistryIntents } from './agent-registry-apply.ts';
+import { collectServerHostSnapshot } from './agent-registry-probes.ts';
 import {
   AgentSessionCapacityError,
   type AgentSessionManager,
@@ -293,6 +297,7 @@ import {
   resolvedHosts,
   resolveSkillTargets,
   reverseProjectSkill,
+  skillProjectionEditorIds,
   skillProjectionRoots,
   validateSkillForInstall,
 } from './skill-projection.ts';
@@ -434,6 +439,7 @@ import type { GuardedFetch } from './link-preview/metadata.ts';
 import {
   checkLocalOpSecurity as checkLocalOpSecurityBase,
   createConcurrencyGuard,
+  isLoopbackRequest,
   isSafeLocalPath,
 } from './local-op-security.ts';
 import { localTargetInventoryFromIndexes } from './local-target-inventory.ts';
@@ -1477,6 +1483,7 @@ export interface ApiExtensionOptions {
   getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
+  agentIntegrations?: AgentRegistryHostSeam;
   savedThemeLockTimeoutMs?: number;
   acpRegistry?: AcpRegistry;
   loadAcpCustomAgents?: () => Promise<CustomAgentEntry[]>;
@@ -1587,6 +1594,7 @@ export function createApiExtension(
     getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
+    agentIntegrations,
     savedThemeLockTimeoutMs,
     acpRegistry,
     loadAcpCustomAgents,
@@ -5951,14 +5959,16 @@ export function createApiExtension(
   function resolveBuiltinSkillDir(
     base: string,
     name: string,
+    scope: 'project' | 'global',
     host?: string,
   ): { dir: string; skillMd: string; hosts: string[]; relPath: string } | null {
     const hosts: string[] = [];
     let chosenDir: string | null = null;
+    const scopeRoots = skillProjectionRoots(scope);
     const roots: Array<{ id: string; root: string }> = [
-      ...PROJECT_SKILL_EDITOR_IDS.map((editorId) => ({
+      ...skillProjectionEditorIds(scope).map((editorId) => ({
         id: editorId as string,
-        root: EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '',
+        root: scopeRoots[editorId] ?? '',
       })),
       { id: 'agents', root: AGENTS_SKILLS_ROOT },
     ];
@@ -5991,9 +6001,13 @@ export function createApiExtension(
     };
   }
 
-  function synthBuiltinLockEntry(base: string, name: string): SkillsLock['skills'][string] | null {
+  function synthBuiltinLockEntry(
+    base: string,
+    name: string,
+    scope: 'project' | 'global',
+  ): SkillsLock['skills'][string] | null {
     if (!isInternalBundleSkillName(name)) return null;
-    const resolved = resolveBuiltinSkillDir(base, name);
+    const resolved = resolveBuiltinSkillDir(base, name, scope);
     if (!resolved) return null;
     const contentHash = parseSkillDir(resolved.dir)?.contentHash ?? '';
     let importedAt: string;
@@ -6122,7 +6136,7 @@ export function createApiExtension(
     size?: ReturnType<typeof estimateSkillCost>;
     origin?: ReturnType<typeof skillOriginFor>;
   } | null {
-    const resolved = resolveBuiltinSkillDir(base, name);
+    const resolved = resolveBuiltinSkillDir(base, name, scope);
     const skillMd = resolved?.skillMd ?? shippedBundleSkillMd(name);
     if (skillMd === null) return null;
     let description: string | undefined;
@@ -6130,7 +6144,7 @@ export function createApiExtension(
       const { frontmatter } = parseFrontmatterDoc(readFileSync(skillMd, 'utf-8'));
       if (typeof frontmatter.description === 'string') description = frontmatter.description;
     } catch {}
-    const synthEntry = synthBuiltinLockEntry(base, name);
+    const synthEntry = synthBuiltinLockEntry(base, name, scope);
     const parsed = parseSkillDir(dirname(skillMd));
     return {
       name,
@@ -6176,7 +6190,7 @@ export function createApiExtension(
     const installed = await removeSkillInstall(base, name);
     const scanBaseForPurge = scope === 'project' ? contentDir : skillsHome;
     if (opts.purge !== undefined) {
-      reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
+      reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
       for (const dir of removableSkillOccurrenceDirs(
         scanBaseForPurge,
         scope,
@@ -6211,13 +6225,13 @@ export function createApiExtension(
           canonicalHash: entry.contentHash,
           name,
           cwd: base,
-          targets: [...PROJECT_SKILL_EDITOR_IDS],
+          targets: [...skillProjectionEditorIds(scope)],
           roots: skillProjectionRoots(scope),
         });
         return installed !== null;
       }
     }
-    reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
+    reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
     return installed !== null;
   }
 
@@ -6532,7 +6546,7 @@ export function createApiExtension(
               const entry =
                 tracked && selfPlugin === null
                   ? (lock?.skills[s.name] ??
-                    synthBuiltinLockEntry(contentDir, s.name) ??
+                    synthBuiltinLockEntry(contentDir, s.name, 'project') ??
                     synthPluginLockEntry(s.name, detectedIdentity, skillAbsDir))
                   : undefined;
               const origin = entry ? skillOrigin(entry) : undefined;
@@ -6647,7 +6661,7 @@ export function createApiExtension(
               if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };
               const entry =
                 globalLock.skills[s.name] ??
-                synthBuiltinLockEntry(skillsHome, s.name) ??
+                synthBuiltinLockEntry(skillsHome, s.name, 'global') ??
                 synthPluginLockEntry(s.name, detectedIdentity, globalAbsDir);
               if (!entry) return {};
               const globallyModified =
@@ -6762,7 +6776,7 @@ export function createApiExtension(
         if (isInternalBundleSkillName(name)) {
           const base = scope === 'global' ? skillsHome : projectDir;
           const builtin = base
-            ? resolveBuiltinSkillDir(base, name, url.searchParams.get('host') ?? undefined)
+            ? resolveBuiltinSkillDir(base, name, scope, url.searchParams.get('host') ?? undefined)
             : null;
           if (builtin) {
             const { frontmatter, body } = parseFrontmatterDoc(
@@ -7168,9 +7182,9 @@ export function createApiExtension(
             : [];
         const priorHosts = [
           ...new Set([
-            ...(priorInstall ? resolvedHosts(priorInstall.hosts) : []),
-            ...(renameScanEntry ? resolvedHosts(renameScanEntry.hosts) : []),
-            ...resolvedHosts(renameAliasAudience),
+            ...(priorInstall ? resolvedHosts(priorInstall.hosts, body.scope) : []),
+            ...(renameScanEntry ? resolvedHosts(renameScanEntry.hosts, body.scope) : []),
+            ...resolvedHosts(renameAliasAudience, body.scope),
           ]),
         ];
 
@@ -7525,9 +7539,9 @@ export function createApiExtension(
             : [];
         const priorHosts = [
           ...new Set([
-            ...(priorInstall ? resolvedHosts(priorInstall.hosts) : []),
-            ...(scanEntry ? resolvedHosts(scanEntry.hosts) : []),
-            ...resolvedHosts(aliasAudience),
+            ...(priorInstall ? resolvedHosts(priorInstall.hosts, fromScope) : []),
+            ...(scanEntry ? resolvedHosts(scanEntry.hosts, fromScope) : []),
+            ...resolvedHosts(aliasAudience, fromScope),
           ]),
         ];
 
@@ -7927,7 +7941,9 @@ export function createApiExtension(
             : projectDir
           : undefined;
         const builtinHost = url.searchParams.get('host') ?? undefined;
-        const builtin = builtinBase ? resolveBuiltinSkillDir(builtinBase, name, builtinHost) : null;
+        const builtin = builtinBase
+          ? resolveBuiltinSkillDir(builtinBase, name, scope, builtinHost)
+          : null;
         if (rel === '' || rel.includes('\x00')) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill file path.', {
             handler: 'skill-file-get',
@@ -8582,7 +8598,7 @@ export function createApiExtension(
         new Date().toISOString(),
         { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(bundleDir) },
       ) ??
-      synthBuiltinLockEntry(scope === 'global' ? skillsHome : contentDir, name) ??
+      synthBuiltinLockEntry(scope === 'global' ? skillsHome : contentDir, name, scope) ??
       synthPluginLockEntry(name, resolveProjectIdentity(projectDir ?? contentDir), bundleDir)
     );
   }
@@ -9792,7 +9808,10 @@ export function createApiExtension(
           return;
         }
 
-        const priorHosts = resolvedHosts(readInstalledSkills(base).skills[body.name]?.hosts ?? []);
+        const priorHosts = resolvedHosts(
+          readInstalledSkills(base).skills[body.name]?.hosts ?? [],
+          body.scope,
+        );
         const dropped = priorHosts.filter((h) => !targets.includes(h));
         if (dropped.length > 0)
           reverseProjectSkill(body.name, base, dropped, skillProjectionRoots(body.scope));
@@ -10510,6 +10529,62 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
+  const handleAgentIntegrationsApply = withValidation(
+    AgentIntegrationsApplyRequestSchema,
+    catchErrors(
+      async (req, res, body) => {
+        const bodyObj = body as unknown as Record<string, unknown>;
+        const actor = extractActorIdentity(bodyObj, getPrincipal);
+        if (actor.kind === 'invalid-summary') {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
+            handler: 'agent-integrations-apply',
+          });
+          return;
+        }
+
+        const envTier: EnvTier = isLoopbackRequest(req) ? 'local-web' : 'remote-web';
+        const { report, snapshot } = await applyAgentRegistryIntents(body.intents, {
+          execute: agentIntegrations?.execute,
+          env: envTier,
+          snapshot: () =>
+            collectServerHostSnapshot({ env: envTier, resolve: agentIntegrations?.probe }),
+          decisionHome: homeDirOverride ?? homedir(),
+          ...(agentIntegrations?.userSkillPresentAnywhere !== undefined
+            ? { userSkillPresentAnywhere: agentIntegrations.userSkillPresentAnywhere }
+            : {}),
+          projectDir,
+        });
+
+        log.info(
+          {
+            actor: actor.kind,
+            applied: report.actions.length,
+            failed: report.actions.filter((action) => action.errorId !== undefined).length,
+            conflicts: report.conflicts.map((conflict) => conflict.kind),
+          },
+          '[agent-integrations] batch applied',
+        );
+
+        successResponse(
+          res,
+          200,
+          AgentIntegrationsApplySuccessSchema,
+          { ...report, snapshot },
+          { handler: 'agent-integrations-apply' },
+        );
+      },
+      {
+        handler: 'agent-integrations-apply',
+        title: 'Failed to apply AI tool connections.',
+      },
+    ),
+    {
+      handler: 'agent-integrations-apply',
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: 'agent-integrations-apply' }),
+    },
+  );
   let lintConfigEpoch = 0;
   function signalLintConfigChanged(): void {
     lintConfigEpoch += 1;
@@ -10994,6 +11069,7 @@ export function createApiExtension(
     '/api/agent-burst-diff': handleAgentBurstDiff,
     '/api/save-version': handleSaveVersion,
     '/api/rollback': handleRollback,
+    '/api/agent-integrations/apply': handleAgentIntegrationsApply,
     '/api/install-skill': handleInstallSkill,
   };
 
@@ -11037,6 +11113,7 @@ export function createApiExtension(
     '/api/skills/reimport-bulk',
     '/api/skill/revert',
     '/api/skill/track-in-git',
+    '/api/agent-integrations/apply',
   ]);
 
   const apiRouteTable: ApiRouteTable = {
@@ -11244,6 +11321,7 @@ export function createApiExtension(
     log,
     checkLocalOpSecurity,
     installedAgentsCache,
+    agentIntegrations,
   });
   const folderTemplateRoutes = createFolderTemplateRoutes({
     contentDir,

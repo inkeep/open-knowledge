@@ -63,7 +63,6 @@
     "03wKPg": ["A report helps us find the cause. Nothing is sent until you review it."],
     "04JR6L": ["Connect your AI tools"],
     "04RA0-": ["Failed to enable sync — ", ["detail"]],
-    "04XyCH": ["Adds a managed block to ", ["0"]],
     "05F1GY": ["The original text was deleted. You can re-place this comment on selected text."],
     "05n5wS": ["Doc mention suggestions"],
     "06SZfb": ["Template \"", ["trimmedTitle"], "\" created"],
@@ -156,6 +155,7 @@
     "1DahsC": ["Search settings"],
     "1EcCom": [["keyName"], " value"],
     "1FLarN": ["Describe what you want to create to continue"],
+    "1FXL-O": ["This could not be set up because the MCP server entry it needs was not written."],
     "1GhYxC": ["of ", ["totalPages"]],
     "1HBhDS": ["Checking out files"],
     "1J0c0X": ["Still couldn't reach ", ["displayName"], " — try one more time?"],
@@ -233,11 +233,17 @@
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
     "2Yt22K": ["Hide original"],
+    "2gXnCO": ["Global MCP server"],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
     "2jUGEP": ["Count skill installs publicly"],
     "2l293S": ["You can restore this file from the Recycle Bin."],
+    "2lJAvH": [
+      "The terminal and desktop rows for ",
+      ["label"],
+      " share one setup, so removing it disconnects both."
+    ],
     "2m_bmh": [["label"], " (", ["0"], ")"],
     "2myNzt": ["We've filed it with the team and attached your logs."],
     "2n3oDU": [
@@ -327,6 +333,9 @@
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
+    "3n7lnE": [
+      "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
+    ],
     "3nICSW": [
       "Adds an OpenKnowledge MCP entry and the project skill to <0>",
       ["toolList"],
@@ -355,6 +364,13 @@
     "49Mb7P": ["We couldn't check whether Slidev is installed. Return to this window to retry."],
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
+    "4C2RCg": [
+      "This setup is shared with ",
+      ["peers"],
+      ". Removing it here removes it for ",
+      ["peers"],
+      " too."
+    ],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
@@ -389,6 +405,7 @@
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
+    "4sE6E9": ["Couldn't check which tools are connected."],
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
@@ -411,6 +428,7 @@
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
     "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
     "5BlXTD": ["Couldn't load the version preview. You can still choose how to resolve it below."],
+    "5CHuXn": [["0"], " needs ", ["1"], ". Turn both off, or keep both on."],
     "5ClEAu": ["Inline hashtag for cross-doc grouping."],
     "5D3Ior": ["Hide folder"],
     "5F5HYj": [["ahead"], " ahead, ", ["behind"], " behind"],
@@ -429,6 +447,9 @@
     "5OqaJi": ["Enter a project name"],
     "5PHgV2": ["You can also create one from a terminal with <0>ok bug-report</0>."],
     "5QGTaA": ["Could not copy relative path"],
+    "5RiC8D": [
+      "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
+    ],
     "5SwVv1": ["Not installed"],
     "5Szq6N": [
       "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
@@ -586,6 +607,12 @@
     "7IsvrP": ["Checking for updates"],
     "7JtSLi": ["Failed to delete path"],
     "7MSbAT": ["Available in"],
+    "7Ny8bV": [
+      ["dependent"],
+      " needs ",
+      ["prerequisite"],
+      ", and OpenKnowledge could not find this agent on this machine."
+    ],
     "7O7REc": ["Couldn’t restore ", ["0"], ". Try again."],
     "7OhaRy": ["Source search"],
     "7Ongq0": ["Condense my AGENTS.md file to less than 40k characters"],
@@ -713,6 +740,7 @@
     "8uGMP8": ["Hidden content goes here."],
     "8vCZcs": ["Failed to open file."],
     "8vETh9": ["Show"],
+    "8wwkVu": ["This entry changed after OpenKnowledge wrote it. Turning it on replaces it."],
     "8x6zk9": ["Hide ", ["0"], " editor"],
     "9-lMCF": [["slot"], " color — ", ["0"]],
     "90-wKT": ["OpenKnowledge read the history of ", ["subject"]],
@@ -842,7 +870,6 @@
     "AYoYhU": ["Update failed: ", ["0"]],
     "AaC-CE": ["Empty board"],
     "AcK_r0": ["Claude CLI"],
-    "AczYxH": ["Custom open-knowledge entry — not managed by OpenKnowledge"],
     "AdcGcG": ["Applying your change"],
     "AddR83": ["Could not create project. Try again or pick a different location."],
     "AeHuzT": ["# One pattern per line.\n# Examples:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
@@ -867,6 +894,7 @@
     "AkA6DO": ["Part of the ", ["0"], " plugin — read-only; open it to edit a copy"],
     "Al8HPP": ["Accept current version for conflict ", ["0"]],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
+    "ApNWRQ": ["Remove OpenKnowledge from ", ["0"], "?"],
     "ApeA0n": ["Undid ", ["dropCount"], " edits on ", ["docName"]],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["API key set"],
@@ -908,6 +936,9 @@
     "BGtzlf": [["uploadFolderName"], " — 1 file"],
     "BH56dn": ["Custom display text"],
     "BKI4hX": ["Find in file"],
+    "BMoSQy": [
+      "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
+    ],
     "BOsvJ8": [
       "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
     ],
@@ -979,11 +1010,7 @@
     "CU3AiE": ["Switching branches"],
     "CUmCwI": ["Insert row below"],
     "CWjM1r": ["docs directly in ", ["0"], "/"],
-    "CWzc2T": [
-      "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
-    ],
     "CXDYfm": ["Couldn't read whether this project's skill is installed."],
-    "CXTwen": ["Can't safely edit this project config"],
     "CXcveY": [
       "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
     ],
@@ -1015,14 +1042,17 @@
       "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
     ],
     "CxVk-w": ["Comment on ", ["address"]],
+    "CxnZP4": ["Choose what OpenKnowledge sets up."],
     "Cz-K13": ["15 minutes"],
     "D-NlUC": ["System"],
-    "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D-_B7l": ["Connected — this endpoint returns ", ["0"], "-dimension vectors."],
     "D0CegO": ["A second skill with this name — rename it (or delete one) to manage it fully."],
     "D12vtS": ["(detached)"],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
+    "D4I0F9": [
+      "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
+    ],
     "D7gKrd": [
       "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
     ],
@@ -1106,6 +1136,7 @@
     "E1_c72": ["Task list"],
     "E1tG2u": ["Get Claude Code"],
     "E2Mv-X": ["Copy source"],
+    "E35Meh": ["Remove ", ["rowLabel"]],
     "E4XYYH": ["Enable terminal for this project"],
     "E5WeIy": ["Reopen the most recently closed editor tab."],
     "E6lrpp": [
@@ -1115,7 +1146,9 @@
     "E91VZY": ["Open in New Window"],
     "E9bKSA": ["Creating"],
     "E9gh86": ["You can attach up to ", ["MAX_ATTACHMENTS"], " images."],
+    "EBP_hA": ["Adds an OpenKnowledge MCP entry to this project's agent config."],
     "EBVbtP": ["Could not duplicate item"],
+    "EDD3UL": ["Not detected on this machine"],
     "EDl9kS": ["Subscribe"],
     "EDm3wJ": ["Loading diff renderer"],
     "EEYbdt": ["Publish"],
@@ -1203,6 +1236,7 @@
     "EvPX7f": ["Opens a folder picker to choose where to clone the repository."],
     "EvXKHE": ["OpenKnowledge searched the knowledge base"],
     "Evq3lu": ["Orphan mode"],
+    "Evsh6U": ["Your documents are not touched."],
     "ExPiRQ": ["Move to the next CodeMirror lint diagnostic."],
     "ExUzM4": ["skill \"", ["0"], "\""],
     "F-1xhe": [
@@ -1236,7 +1270,6 @@
     "FEqWFL": ["Guides your AI agents on how to work here."],
     "FEr96N": ["Theme"],
     "FF7V5K": ["Actual Size"],
-    "FK57sK": ["repaired ", ["names"], " MCP integration"],
     "FKVmcC": [
       "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
     ],
@@ -1329,6 +1362,12 @@
       "Any .mdx file. The format is .md-only, so a reader scanning for .md never opens it — and if a .md of the same name exists, reads that one instead."
     ],
     "GSYWCm": ["Hide document panel"],
+    "GTvYzA": [
+      ["dependent"],
+      " needs ",
+      ["prerequisite"],
+      ", which OpenKnowledge cannot set up for you. Its setup guide has the manual steps."
+    ],
     "GU1Y4A": [
       "Local-only requested but no git repository was created. Switch later via Settings → Sync & sharing once the project is in a git repo."
     ],
@@ -1394,6 +1433,11 @@
     ],
     "H86f9p": ["Collapse"],
     "H8DVOJ": ["Identical in both — ", ["pick"], " still reads them."],
+    "H8tj8y": [
+      "This setup is shared with ",
+      ["peers"],
+      ", and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
+    ],
     "HAkEqR": ["Recent files"],
     "HAvHev": ["Auto-update off for \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
@@ -1408,7 +1452,6 @@
       "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
     ],
     "HSI88F": ["Delete table"],
-    "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
     "HZ7fEu": ["Theme name"],
     "HbcQYf": [
       "Replace the symlink at ",
@@ -1596,6 +1639,7 @@
     "KPW5WC": ["moved template"],
     "KQGZuq": ["Reused if it already exists, created if not."],
     "KRJ6xh": ["No tags yet. Continue typing to create one."],
+    "KTxoDA": ["OpenKnowledge does not recognize this entry. Turning it on replaces it."],
     "KUjOb9": ["running"],
     "KWL_Ih": ["Blog post"],
     "KX1MZR": ["Your repositories"],
@@ -1629,6 +1673,7 @@
     "KsAPaB": ["This branch is checked out in:"],
     "KtACeE": ["Default: <0>", ["0"], "</0>"],
     "KujtjC": ["Find"],
+    "Kuw5NN": ["How to set up ", ["rowLabel"]],
     "KvwJv8": ["Some files are not listed — the working tree has too many changes."],
     "Kx881F": ["Restored ", ["0"], "."],
     "L-rMC9": ["Reset to default"],
@@ -1690,7 +1735,6 @@
     ],
     "LaskKp": ["Send to chat (", ["0"], ")"],
     "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
-    "LbmLyU": ["Can't safely edit this tool's config"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
     "LdKIHS": ["Draft a spec"],
     "LeGeTf": ["OpenKnowledge on GitHub"],
@@ -1717,6 +1761,7 @@
     "Lrsl_h": ["Missing file ", ["identity"], ". Go to reference."],
     "LtI9AS": ["Owner"],
     "LtSYdi": ["Reveal in Finder"],
+    "LtiJ5c": ["Project skill"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -1836,9 +1881,6 @@
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
     "NJyQi_": ["Branch ", ["shareBranch"], " no longer exists on the remote."],
     "NKkZXl": ["Initialize and open"],
-    "NNJsn7": [
-      "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
-    ],
     "NOHyEE": ["Retry push"],
     "NORKZU": ["Pattern warnings: ", ["summary"]],
     "NQ8llq": ["Add item"],
@@ -1898,7 +1940,6 @@
     "O0Z2Xr": ["Outgoing"],
     "O2UpM1": ["Browse"],
     "O3oNi5": ["Email"],
-    "O4PnDd": ["AI tool management is only available in the OpenKnowledge desktop app."],
     "O6H89R": ["Resolved"],
     "O6yEPk": ["Create a new OpenKnowledge project in the folder of your choice."],
     "O7_W_a": ["Open with AI"],
@@ -1961,7 +2002,6 @@
     "OlFVNr": ["Ask AI About Selection"],
     "Oo_WWc": ["No pages found"],
     "Oos8fo": ["Copy command"],
-    "OplnBG": ["Managing AI tools is unavailable in this build."],
     "OqqecQ": ["30 seconds"],
     "OsSaYm": ["Clone failed: ", ["title"]],
     "OuQezS": ["Applies when you pick this conversation back up"],
@@ -1989,6 +2029,11 @@
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
     "P8AnMN": ["Checking for Slidev"],
+    "P9rQN2": [
+      "The terminal and desktop rows for ",
+      ["label"],
+      " share one setup, so connecting either connects both."
+    ],
     "PB4upl": ["Find previous match"],
     "PBQwGb": [
       "Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette."
@@ -2084,6 +2129,7 @@
     "QDZbvN": [["diffDays"], "d ago"],
     "QGWzup": ["Loading OpenKnowledge skills"],
     "QHCx0c": ["Bug report history"],
+    "QHcLEN": ["Connected"],
     "QIrBIx": ["Expand all files"],
     "QIzioS": [["agentName"], " doesn't accept image attachments."],
     "QKgePK": ["Aligned ", ["editor"], " to the source (its bytes are backed up)"],
@@ -2152,6 +2198,7 @@
     "RD6H9q": [
       "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
     ],
+    "RD8cCw": ["Managing agent connections is unavailable in this build."],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
     "REkvLz": [
@@ -2185,6 +2232,7 @@
     "RSqaSd": ["Project root"],
     "RVZJWQ": ["Search projects..."],
     "RXEbZy": ["In app"],
+    "RXYvxn": ["This option cannot be changed automatically."],
     "RY6Bq1": ["Open shared ", ["targetNoun"]],
     "RZXTlY": ["Auto-fix (", ["count"], ")"],
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
@@ -2229,6 +2277,9 @@
     "S33tz3": ["Not connected"],
     "S3qu11": ["It was a trial or one-off project"],
     "S48xcO": ["pending"],
+    "S6SbxA": [
+      "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+    ],
     "S6eHlw": ["Open a project first."],
     "S6l5dv": ["Could not start creating a new item"],
     "S9Vnum": ["Remove ", ["patternText"]],
@@ -2461,7 +2512,6 @@
     "VFQXPl": [
       "External link previews show a card with the site name, page title, and description when you hover a link."
     ],
-    "VIwCaD": ["Entry"],
     "VJaBca": ["Choose a skill folder"],
     "VL6VsE": ["Accept current"],
     "VM7H66": ["This file is binary and can't be shown as text."],
@@ -2524,6 +2574,7 @@
     "W9NSe0": ["Checking links"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
     "WBNpt9": ["Couldn’t read this theme (", ["0"], ")"],
+    "WEYdDv": ["Recommended"],
     "WFEbV1": ["Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."],
     "WG3MZ4": [["0"], " skills selected"],
     "WGMoTY": ["Bugs, crashes, or it felt unreliable"],
@@ -2595,19 +2646,19 @@
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
     "XDzAnp": ["Opens in a new tab"],
-    "XEfNPL": [
-      "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
-    ],
     "XF1kgP": ["Everything from ", ["source"], " is already up to date"],
-    "XFpEgc": [
-      "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
-    ],
     "XGKy1z": ["Image couldn't be displayed"],
     "XH30C4": ["document"],
     "XIltnd": ["A skill named \"", ["trimmed"], "\" already exists here"],
     "XJOV1Y": ["Activity"],
     "XK5cbh": ["Traverse OpenKnowledge navigation history forward."],
     "XNBGZw": ["Message not sent: ", ["0"]],
+    "XNdXMR": [
+      ["dependent"],
+      " needs ",
+      ["prerequisite"],
+      ", and this agent has no file of that kind on this machine yet. Open the agent once, then try again."
+    ],
     "XPJ0sN": [["settingsDescriptorLabel"], " properties"],
     "XPqe3B": ["Create new tag #", ["tagValue"]],
     "XRuL0i": ["Create page"],
@@ -2661,6 +2712,12 @@
     "Xp7Kq4": ["Another sync operation is in progress. Try again in a moment."],
     "Xp94R1": ["Try one more time"],
     "XpIZmv": ["Fenced code block with monospace text."],
+    "XrPvMT": [
+      ["dependent"],
+      " needs ",
+      ["prerequisite"],
+      ", and OpenKnowledge cannot safely replace that entry in this file's format."
+    ],
     "Xs1kjx": ["Check for updates every"],
     "Xs7IcT": ["Couldn't reach ", ["displayName"], " — try again?"],
     "XszXjc": ["Renamed to ", ["0"]],
@@ -2680,6 +2737,7 @@
       ["pickedRelative"],
       "</1> because it contains a <2>.git</2> folder (one .ok/ per git repo). <3>Content directory</3> defaults to <4>.</4> (the whole repo); type a sub-folder to narrow it."
     ],
+    "Y1wa2r": ["Remove OpenKnowledge?"],
     "Y2tU6I": ["Delete ", ["0"]],
     "Y5la_5": ["Install into"],
     "Y6PKd1": ["Remove ", ["name"], " from recent projects"],
@@ -2803,9 +2861,6 @@
     "ZWwYwM": ["Base branch"],
     "ZWxfrc": ["cleared folder properties"],
     "ZWyHmq": ["This project"],
-    "ZYtq3m": [
-      "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
-    ],
     "Z_nNa2": ["Name your theme"],
     "ZatAO_": ["Failed to enable link previews — ", ["detail"]],
     "Zf0w-R": [
@@ -2851,7 +2906,6 @@
       ["label"],
       " uses instead of the plugin's — it stops tracking plugin updates."
     ],
-    "_5qBNl": ["AI tools & CLI"],
     "_6FVBz": ["Jump to tab 1-8"],
     "_7UQ7y": ["Whole word"],
     "_8quCH": ["From template"],
@@ -2864,6 +2918,7 @@
       ["currentLabel"],
       "</1>."
     ],
+    "_9rYSZ": ["repaired MCP integration for ", ["names"]],
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creating…"],
     "_G7A92": ["Maintain index.md"],
@@ -2875,7 +2930,6 @@
     "_JOGC0": ["Send feedback…"],
     "_LczaQ": ["Denied — ", ["optionName"]],
     "_NWEid": ["Search schema files by path"],
-    "_NX6gG": ["Managing project AI tools is unavailable in this build."],
     "_O7dJS": ["Different version here — click to compare and resolve"],
     "_PACVa": ["Release notes"],
     "_PBJRl": ["Add at least one letter or number."],
@@ -2903,6 +2957,9 @@
     "_ci9Bj": ["Server returned an incomplete folder response."],
     "_eguJc": ["Uploading"],
     "_fQGOp": ["Spaces aren't allowed in the path"],
+    "_fZSIY": [
+      "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
+    ],
     "_gO_m8": ["Waiting for your approval"],
     "_gkGSK": ["deleted template"],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
@@ -2910,6 +2967,7 @@
     "_rP3HI": [["minutes"], "m ago"],
     "_tekeB": ["updated folder properties"],
     "_tjopj": ["Paste duplicate"],
+    "_uxBz5": ["Add MCP & skill for ", ["rowLabel"]],
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
     "a-cKXz": ["Select all source"],
     "a3LDKx": ["Security"],
@@ -3023,6 +3081,7 @@
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
     "bnOTEz": ["Retrieving…"],
+    "bn_MDX": ["Why this needs attention"],
     "bpMVIA": ["Link target \"", ["shown"], "\" could not be resolved to a project-local target."],
     "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
@@ -3147,6 +3206,7 @@
     "d3dX3w": ["Look Up \"", ["word"], "\""],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
     "d6qW27": [["agentName"], " reported: ", ["headline"]],
+    "dCforW": ["Writing this file failed. Check the OpenKnowledge log for the reason."],
     "dD7NPy": ["Outline"],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
@@ -3158,6 +3218,7 @@
       ["currentBaseLabel"],
       "</1>, in its own worktree under <2>.ok/worktrees/</2>."
     ],
+    "dGcsnU": ["Remove for both"],
     "dIYSqk": ["remote"],
     "dJw2_7": ["Saved with the project for your team."],
     "dMsx3p": ["Home page and navigation hub."],
@@ -3172,6 +3233,9 @@
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
     "dXCi3J": ["Something broke"],
     "dXOolp": ["Syncing your changes"],
+    "da7Yfw": [
+      "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+    ],
     "darW93": [
       [
         "pageCount",
@@ -3261,6 +3325,7 @@
     ],
     "eh3QBq": ["Excalidraw board failed to load."],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
+    "ejiJeW": ["OpenKnowledge discovery skill"],
     "ekSPiP": [["0"], " was already deleted."],
     "el2KyL": ["Slidev found in this project. Decks will use the project's version."],
     "emMrXQ": ["Server returned a malformed duplicate response."],
@@ -3276,6 +3341,7 @@
     "euc6Ns": ["Duplicate"],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Shell session"],
+    "ewlFNL": ["MCP auto-repair failed for ", ["failures"]],
     "ezUmoU": ["Allowed element values (empty = any)"],
     "f-k37b": ["Install this skill"],
     "f1-q9m": ["keeps the skills"],
@@ -3326,6 +3392,23 @@
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo6CCk": ["pane ", ["0"]],
+    "followup.approve-once": [
+      "One more step: run ",
+      ["agent"],
+      " in this project and approve OpenKnowledge once."
+    ],
+    "followup.enable-manually": [
+      "One more step: enable it in ",
+      ["agent"],
+      " → Settings → Tools & MCP (",
+      ["agent"],
+      " leaves project servers off until you turn them on)."
+    ],
+    "followup.trust-gated": [
+      "Connects automatically the next time you open this project in a trusted ",
+      ["agent"],
+      " session."
+    ],
     "fqSfXY": ["Replace"],
     "ft-BOm": ["Report a bug…"],
     "fuJZKk": ["Search branches"],
@@ -3333,6 +3416,15 @@
     "fwhX-N": ["Indent or outdent source"],
     "fwrPh4": ["Please enter a valid email."],
     "fxbCNQ": ["Synced. The link is up to date."],
+    "fybwfg": [
+      "This setup is shared with ",
+      ["peers"],
+      " through <0>",
+      ["path"],
+      "</0>. Removing it here removes it for ",
+      ["peers"],
+      " too."
+    ],
     "g-dkjJ": ["Local file details aren't available yet."],
     "g12y1g": ["Invalid YAML"],
     "g1ZTh_": [
@@ -3353,7 +3445,6 @@
         }
       ]
     ],
-    "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],
     "g4XBm0": ["Small section heading."],
     "g4e0hS": ["Ask ", ["agentName"]],
     "g58Kwy": [
@@ -3415,6 +3506,7 @@
     "gfb-CM": ["Could not fetch branch — sign in to GitHub and try again."],
     "gfdqcY": ["Couldn't apply the change: ", ["0"]],
     "gfohmY": ["Connect tools"],
+    "ggMMa7": ["Project MCP server"],
     "ggm6JX": [
       "This page doesn't exist yet. Open it to create the page in the editor and collapse the graph."
     ],
@@ -3433,6 +3525,40 @@
     "gpbKxw": ["Link validation is unavailable."],
     "gqk-3R": ["Moved ", ["0"], " to ", ["destination"], "."],
     "gtEbeW": ["Highlight"],
+    "guidance.mcp.managed-file": [
+      "Writes a small bridge file ",
+      ["agent"],
+      " loads from this project to reach OpenKnowledge."
+    ],
+    "guidance.mcp.project-config": [
+      "Adds OpenKnowledge to the MCP config ",
+      ["agent"],
+      " reads in this project, so it can read, search, and edit these documents."
+    ],
+    "guidance.mcp.session-injection": [
+      ["agent"],
+      " gets OpenKnowledge's tools each time OpenKnowledge launches it; nothing is written to its config."
+    ],
+    "guidance.mcp.user-config": [
+      "Adds OpenKnowledge to ",
+      ["agent"],
+      "'s own MCP config, so every project on this machine is reachable."
+    ],
+    "guidance.skill.central-store": [
+      "Puts the OpenKnowledge skill in the central skills store ",
+      ["agent"],
+      " reads."
+    ],
+    "guidance.skill.project": [
+      "Puts the OpenKnowledge skill in ",
+      ["agent"],
+      "'s skills folder for this project, so its edits stay attributed."
+    ],
+    "guidance.skill.user": [
+      "Puts the OpenKnowledge discovery skill in ",
+      ["agent"],
+      "'s machine-wide skills folder, so it can find OpenKnowledge in any project."
+    ],
     "gv5w9J": ["owner/repo, a git URL, or a local path"],
     "gvApb7": [
       "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
@@ -3445,6 +3571,14 @@
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
     "h2N-1n": ["Installed in ", ["0"]],
+    "h2QPvj": [
+      ["dependent"],
+      " needs ",
+      ["prerequisite"],
+      ", and OpenKnowledge does not recognize that entry. Tick ",
+      ["prerequisite"],
+      " to replace it, then save again."
+    ],
     "h3QZcB": [
       "A branch named ",
       ["shareBranch"],
@@ -3554,7 +3688,6 @@
     "iH8pgl": ["Back"],
     "iHAJDj": ["Resolving default location"],
     "iIaSUD": ["Whitespace"],
-    "iKS6gg": ["Skills moved to Skills Studio."],
     "iKSP5j": ["Word wrap"],
     "iKZkk1": ["Property value"],
     "iKvAeG": ["Checking"],
@@ -3603,6 +3736,7 @@
     "ij-Elv": ["Image preview"],
     "ijLc3m": ["Bullet list"],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
+    "inJhKB": ["Replace and save"],
     "ioMn4Z": ["New from Template…"],
     "iodl3p": ["Server returned a malformed upload response."],
     "ipCibE": ["Empty folder names aren't allowed (//)"],
@@ -3618,6 +3752,7 @@
     "irnKr_": ["Updated ", ["updatedRelative"]],
     "irrm_E": ["Remove selection"],
     "isRobC": ["New"],
+    "itchkf": ["Connects the agent to OpenKnowledge in every project on this machine."],
     "iuTKci": ["No edits yet."],
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
     "iycx_A": ["Pushing"],
@@ -3797,6 +3932,7 @@
     "kfL8BJ": ["Import failed: ", ["0"]],
     "kj9pAE": ["Creating page"],
     "kjlQ9D": ["becomes a symlink"],
+    "kjrq_8": ["More information"],
     "kknhfj": ["No changes"],
     "kkux8f": ["Couldn’t delete ", ["0"], ". Try again."],
     "klPS-L": ["Original file — before this agent's edits."],
@@ -3852,6 +3988,7 @@
     "l87Deg": ["Choose what a new tab starts"],
     "l9s3IX": [["agentName"], " couldn't start a conversation."],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
+    "lBN3T6": ["Agent connections"],
     "lCC_D5": ["Subscribing..."],
     "lGs_bQ": ["Page <0>*</0>"],
     "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
@@ -3934,9 +4071,6 @@
     "mHo0kp": [
       "The request to enable Open Knowledge tools timed out. This thread runs without them."
     ],
-    "mLAjyL": [
-      "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
-    ],
     "mPoOmg": ["install a skill here first"],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
@@ -3954,6 +4088,7 @@
     "maDWIB": ["Mirror source <0>api-spec</0>"],
     "makN88": ["No patterns yet. Type a folder or file name below to start hiding files."],
     "mdKFEy": ["You cancelled loading \"", ["docName"], "\"."],
+    "mdWhUY": ["OpenKnowledge could not find this agent on this machine."],
     "mdzKSV": [["nodeCount", "plural", { "one": ["#", " node"], "other": ["#", " nodes"] }]],
     "mf37rL": ["Retrying"],
     "mg0YGL": ["Source multi-cursor and multi-select"],
@@ -4013,6 +4148,7 @@
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
+    "n11Jj7": ["Installs the OpenKnowledge project skill for this agent."],
     "n2XqGH": ["editor pane"],
     "n2lRue": ["Commit or stash changes to switch:"],
     "n3T3EE": ["Installed in ", ["label"], " — click to remove"],
@@ -4028,9 +4164,6 @@
     ],
     "n7aopT": ["Editor mode"],
     "n81AV0": [["owner"], "/", ["name"], " already exists. Pick a different name."],
-    "n8DwqQ": [
-      "Connects automatically the next time you open this project in a trusted Codex session."
-    ],
     "nBHvPL": ["Cancel editing"],
     "nBgzKO": ["Make this the source — the skill's real folder moves here"],
     "nCzR-G": ["Copy code ", ["userCode"]],
@@ -4094,6 +4227,9 @@
     "nsM-_m": ["Browse hundreds of themes"],
     "nsUDL8": [["0"], " of ", ["1"], " projects selected"],
     "nskygk": ["Choose agent"],
+    "nta97o": [
+      "Gives the agent instructions for working with your documents and keeps its edits attributed."
+    ],
     "nwtY4N": ["Something went wrong"],
     "nxlOpL": ["OpenKnowledge is using this GitHub account."],
     "ny6vNn": [
@@ -4159,6 +4295,9 @@
       "\" could not be cleared. Reload to retry."
     ],
     "oxdGJn": ["Before you go, mind sharing why?"],
+    "oxj8er": [
+      "Connects the agent to this project so it can read, search, and edit your documents."
+    ],
     "oy5bJW": ["You can add"],
     "oyBV3W": ["Custom skills folder path"],
     "p0Iq25": ["Insert link"],
@@ -4232,7 +4371,6 @@
       ["2"],
       "\" skill. Anything in SKILL.md that points at it will break until it's recreated."
     ],
-    "psfGPX": ["MCP connections"],
     "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
     "ptQ3_N": ["unlink"],
     "pvnfJD": ["Dark"],
@@ -4246,6 +4384,7 @@
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
     "q4efaG": [["filePath"], " is no longer in this skill"],
     "q6-JVU": ["Loading pages"],
+    "q63KUv": ["Add MCP & skill"],
     "q7F5am": ["title"],
     "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
     "qAQVSD": ["Page headings response was not JSON"],
@@ -4316,10 +4455,12 @@
     "qlAIQ1": ["Remote"],
     "qo4zCg": ["Path cannot contain backslashes"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
+    "qr2gAH": ["Choose what OpenKnowledge sets up for ", ["0"], "."],
     "qribBG": ["schema ", ["deleteTarget"]],
     "qtnmEX": ["Enter a valid theme name."],
     "qvWGzP": ["Collapse all"],
     "qyLmWw": ["Source editor search panel"],
+    "qze9od": ["This folder is also ", ["alsoAffects"], "'s."],
     "r-OJYm": ["Enter a valid branch name (no spaces, no leading dot, no \"..\")."],
     "r2eKE3": ["Sign in to ", ["agentName"], " first"],
     "r4R7AZ": ["Network error during cleanup"],
@@ -4411,6 +4552,9 @@
     "s1c0ja": ["Bullet List"],
     "s3caR3": ["Deleting"],
     "s7us1p": ["Only PNG, JPEG, or WebP images are allowed."],
+    "s8difl": [
+      "Without the skill the agent still works, but it loses edit attribution and the live preview."
+    ],
     "sAP9XO": [["0"], " plugin · ", ["1"]],
     "sE7R19": [
       "Could not load templates: ",
@@ -4502,6 +4646,9 @@
     "tA0b9E": ["the default skills folder (the exact path appears once saved)"],
     "tA2-xC": ["\"", ["0"], "\" was already added (identical content)."],
     "tAPZEx": ["Below"],
+    "tCE-ZH": [
+      "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
+    ],
     "tCyvAw": ["Attach a file"],
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
@@ -4544,6 +4691,52 @@
     "tnG-m6": ["Auto-sync is paused — sign in to resume."],
     "toyw51": ["Mermaid diagram controls"],
     "tqQBwN": ["Any scripts are shown for review, never run."],
+    "troubleshooting.claude-desktop.per-tool-approval": [
+      ["agent"],
+      " asks you to approve each OpenKnowledge tool the first time it is used."
+    ],
+    "troubleshooting.claude.project-entry-not-approved": [
+      "If ",
+      ["agent"],
+      " shows no OpenKnowledge tools, run it in this project and approve the OpenKnowledge server once."
+    ],
+    "troubleshooting.codex.desktop-project-config": [
+      "The ",
+      ["agent"],
+      " desktop app ignores this project config; only the ",
+      ["agent"],
+      " CLI reads it."
+    ],
+    "troubleshooting.copilot.shared-workspace-config": [
+      ["agent"],
+      " reads the workspace MCP config OpenKnowledge writes for ",
+      ["sourceAgent"],
+      "; removing it for one removes it for both."
+    ],
+    "troubleshooting.cursor.project-entry-not-loaded": [
+      "If ",
+      ["agent"],
+      " shows no OpenKnowledge tools, turn the server on under Settings → Tools & MCP; ",
+      ["agent"],
+      " leaves project servers off until you do."
+    ],
+    "troubleshooting.lm-studio.config-path-mismatch": [
+      "If ",
+      ["agent"],
+      " shows no OpenKnowledge tools, check that its MCP config path in its settings matches the file OpenKnowledge wrote."
+    ],
+    "troubleshooting.openclaw.central-store-missing": [
+      ["agent"],
+      "'s central skills store does not exist yet; start ",
+      ["agent"],
+      " once so it creates it, then try again."
+    ],
+    "troubleshooting.pi.folder-trust": [
+      ["agent"],
+      " loads project extensions only in folders you have trusted; trust this folder in ",
+      ["agent"],
+      " if the tools do not appear."
+    ],
     "tsiTqO": ["Paste your API key"],
     "tvMvze": [
       "Could not move \"",
@@ -4598,6 +4791,7 @@
     "uUCrBv": ["symlink"],
     "uV3EYs": ["Your images"],
     "uVbUP8": ["Settings…"],
+    "uVhq9B": ["Installs the OpenKnowledge discovery skill for this agent."],
     "uX85yl": [
       "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
     ],
@@ -4723,6 +4917,7 @@
     "vvWZnu": ["Diff unavailable"],
     "vwV-kH": ["Fixing files stopped unexpectedly."],
     "vy_VIN": ["Tracked in git — updates flow through your repo (pull or CI), not auto-update"],
+    "vyjTYE": [["changeCount", "plural", { "one": ["#", " change"], "other": ["#", " changes"] }]],
     "w0YVAE": ["Show skill nodes"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
     "w3vFfL": ["Hide Files"],
@@ -4758,6 +4953,7 @@
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wQvvZY": ["New skill file"],
     "wRni1Z": ["Disable Slidev"],
+    "wSBXaS": ["Manage ", ["rowLabel"]],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
     "wTcjov": ["No workspace"],
     "wU8WyK": ["Element fields"],
@@ -4783,7 +4979,9 @@
     "wdxz7K": ["Source"],
     "wdzBgi": ["Config sharing is now Only me."],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
+    "wfZwqe": ["Install ", ["rowLabel"]],
     "wgNoIs": ["Select all"],
+    "wgj--j": ["Adds a global OpenKnowledge MCP entry for this agent."],
     "wk_v1X": [
       "Sync is set to Auto (Pull and Push) for this worktree, inherited from ",
       ["project"],
@@ -4925,7 +5123,6 @@
     "yZmvQ4": ["This project's server (v", ["0"], ") is newer than this app (v", ["1"], ")."],
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["What happened?"],
-    "yaPGPa": ["Open a project to manage its AI tool connections."],
     "ybPMz3": ["Couldn't pin ", ["name"]],
     "ycIX5i": ["You're signed out — sign in to resume syncing."],
     "yckias": ["Rename file"],
@@ -4947,9 +5144,6 @@
       ["source"],
       "</0> — agents running here can't load it. Copy it in to edit."
     ],
-    "yhdqox": [
-      "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
-    ],
     "yhy5h-": ["See all ", ["count"], " skills"],
     "yit5dF": ["No folders in this project yet."],
     "yjExfe": ["Branch <0>", ["shareBranch"], "</0> is checked out in:"],
@@ -4962,7 +5156,6 @@
     "yvG-l1": ["Open source lint panel"],
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Stop fixing. Files already fixed stay fixed."],
-    "ywVfOE": ["This project's skill moved to Skills Studio."],
     "yxF19Y": [["0", "plural", { "one": ["#", " plugin"], "other": ["#", " plugins"] }]],
     "yz7wBu": ["Close"],
     "yzF66j": ["Link"],

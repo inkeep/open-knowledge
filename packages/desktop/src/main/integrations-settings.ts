@@ -1,6 +1,12 @@
-import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
-import type { IpcMain } from 'electron';
+import {
+  EMPTY_DETECTION_SNAPSHOT,
+  EMPTY_PROBE_SNAPSHOT,
+  TERMINAL_CLI_IDS,
+} from '@inkeep/open-knowledge-core';
+import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
+  AgentIntegrationsApplyRequest,
+  AgentIntegrationsApplyResult,
   IntegrationsComponentRef,
   IntegrationsEditorState,
   IntegrationsEditorStatus,
@@ -34,6 +40,16 @@ export interface IntegrationsCliSurface {
   isOwnEntry(entry: unknown): boolean;
   editorConfigPath(editorId: McpWiringEditorId): string | null;
   editorEntryLocator(editorId: McpWiringEditorId): string;
+  recordUserSkillDecision?(enabled: boolean): void;
+  userSkillPresentAnywhere(): boolean;
+  writeUserSkill(editorId: McpWiringEditorId): {
+    action: 'written' | 'overwritten' | 'skipped-unsupported' | 'failed';
+    error?: string;
+  };
+  removeUserSkill(editorId: McpWiringEditorId): {
+    action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed';
+    error?: string;
+  };
   writeUserMcpConfigs(opts: { editors: McpWiringEditorId[]; home?: string }): Promise<
     Array<{
       editorId: McpWiringEditorId;
@@ -89,6 +105,10 @@ export interface RegisterIntegrationsSettingsOpts {
   fs?: McpWiringFsOps;
   now?: () => Date;
   logger?: IntegrationsLogger;
+  applyBatch?: (
+    event: IpcMainInvokeEvent,
+    request: AgentIntegrationsApplyRequest,
+  ) => Promise<AgentIntegrationsApplyResult>;
 }
 
 export interface IntegrationsSettingsHandle {
@@ -128,6 +148,7 @@ export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<Mcp
   }
   if (scheme('codex')) detected.add('codex' as McpWiringEditorId);
   if (scheme('cursor')) detected.add('cursor' as McpWiringEditorId);
+  if (scheme('lm-studio')) detected.add('lm-studio' as McpWiringEditorId);
   return detected;
 }
 
@@ -154,6 +175,7 @@ export function registerIntegrationsSettings(
     skills,
     fs,
     now,
+    applyBatch,
     logger = DEFAULT_LOGGER,
   } = opts;
   const nowDate = (): Date => (now ? now() : new Date());
@@ -349,9 +371,35 @@ export function registerIntegrationsSettings(
     return run;
   }
 
+  function dispatchApplyBatch(
+    event: IpcMainInvokeEvent,
+    request: AgentIntegrationsApplyRequest,
+  ): Promise<AgentIntegrationsApplyResult> {
+    const run = mutationChain.then(async (): Promise<AgentIntegrationsApplyResult> => {
+      if (applyBatch === undefined) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:integrations:dispatch',
+          reason: 'apply-batch-unwired',
+          handler: 'integrationsDispatch',
+        });
+        return {
+          ok: false,
+          error: 'Managing AI tool connections is unavailable in this build.',
+          report: { actions: [], conflicts: [], withheld: [] },
+          snapshot: { probes: EMPTY_PROBE_SNAPSHOT, detection: EMPTY_DETECTION_SNAPSHOT },
+        };
+      }
+      return applyBatch(event, request);
+    });
+    mutationChain = run.catch(() => {});
+    return run;
+  }
+
   const register = createHandler(ipcMain as IpcMain);
-  register('ok:integrations:dispatch', async (_event, request) => {
+  register('ok:integrations:dispatch', async (event, request) => {
     if (request?.kind === 'set') return dispatchSet(request);
+    if (request?.kind === 'apply-batch') return dispatchApplyBatch(event, request);
     return computeStatus();
   });
 

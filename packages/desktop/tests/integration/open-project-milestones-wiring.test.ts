@@ -31,7 +31,6 @@ const FUNNEL_MILESTONES = [
   'initializing project content',
   'initialized project content',
   'project artifacts written',
-  'reclaiming project skills',
   'creating project window',
   'project window created',
 ] as const;

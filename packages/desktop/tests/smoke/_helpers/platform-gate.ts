@@ -50,6 +50,7 @@ export const SPEC_PLATFORM_GATES = {
   'slidev-render-readiness.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'terminal-dock-state.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-dock.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-launch-argv.e2e.ts': ['!PTY_PLATFORM_SUPPORTED', 'WINDOWS'],
   'terminal-links.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-movement.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-process-restart.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],

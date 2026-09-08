@@ -330,6 +330,12 @@ msgstr "{0}에서 {1} 확인 없이 작업할 수 있습니다"
 msgid "{0} needs {1}"
 msgstr "{0}에 {1} 필요"
 
+#. placeholder {0}: removed.dependent
+#. placeholder {1}: removed.prerequisite
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{0} needs {1}. Turn both off, or keep both on."
+msgstr "{0}에는 {1}이(가) 필요합니다. 둘 다 끄거나, 둘 다 켜 두세요."
+
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "{0} needs replacing"
@@ -470,6 +476,31 @@ msgstr "{0}년 전"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (충돌)"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude-desktop.per-tool-approval"
+msgstr "{agent}은(는) 각 OpenKnowledge 도구를 처음 사용할 때 승인을 요청합니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.session-injection"
+msgstr "OpenKnowledge가 {agent}을(를) 실행할 때마다 OpenKnowledge 도구를 전달합니다. 설정에는 아무것도 기록되지 않습니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.pi.folder-trust"
+msgstr "{agent}은(는) 신뢰한 폴더에서만 프로젝트 확장을 불러옵니다. 도구가 나타나지 않으면 {agent}에서 이 폴더를 신뢰하세요."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.copilot.shared-workspace-config"
+msgstr "{agent}은(는) OpenKnowledge가 {sourceAgent}을(를) 위해 작성한 워크스페이스 MCP 설정을 읽습니다. 한쪽에서 제거하면 양쪽 모두에서 제거됩니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.openclaw.central-store-missing"
+msgstr "{agent}의 중앙 스킬 저장소가 아직 없습니다. {agent}을(를) 한 번 시작해 저장소를 만들게 한 뒤 다시 시도하세요."
+
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 대화 시작 실패."
@@ -519,6 +550,10 @@ msgstr "{boldName}은 <0>{0}</0> 플러그인의 일부입니다{pluginVersion}.
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName}은 이 프로젝트 외부의 <0>{source}</0>에 있습니다. 여기에서 실행되는 에이전트는 불러올 수 없으므로 편집하려면 복사하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{changeCount, plural, one {# change} other {# changes}}"
+msgstr "{changeCount, plural, one {#개 변경} other {#개 변경}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -609,6 +644,26 @@ msgstr "{days, plural, other {#일 전}}"
 msgid "{days}d ago"
 msgstr "{days}일 전"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge cannot safely replace that entry in this file's format."
+msgstr "{dependent}에는 {prerequisite}이(가) 필요하지만, OpenKnowledge가 이 파일 형식에서 해당 항목을 안전하게 교체할 수 없습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge could not find this agent on this machine."
+msgstr "{dependent}에는 {prerequisite}이(가) 필요하지만, OpenKnowledge가 이 컴퓨터에서 이 에이전트를 찾지 못했습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge does not recognize that entry. Tick {prerequisite} to replace it, then save again."
+msgstr "{dependent}에는 {prerequisite}이(가) 필요하지만 OpenKnowledge가 해당 항목을 인식하지 못합니다. {prerequisite}을(를) 선택해 대체한 뒤 다시 저장하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and this agent has no file of that kind on this machine yet. Open the agent once, then try again."
+msgstr "{dependent}에는 {prerequisite}이(가) 필요하지만, 이 에이전트에는 아직 이 컴퓨터에 그런 종류의 파일이 없습니다. 에이전트를 한 번 연 뒤 다시 시도하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, which OpenKnowledge cannot set up for you. Its setup guide has the manual steps."
+msgstr "{dependent}에는 {prerequisite}이(가) 필요하지만, OpenKnowledge가 대신 설정할 수 없습니다. 설정 가이드에 수동 단계가 있습니다."
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{descriptorLabel} — render error, source editable below"
 msgstr "{descriptorLabel}, 렌더링 오류, 아래에서 소스를 편집할 수 있습니다"
@@ -650,7 +705,7 @@ msgstr "{displayName} ({bin}) 미설치 또는 PATH 미등록"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
 
@@ -660,7 +715,7 @@ msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI, {hint}"
 
 #: src/components/handoff/agent-launcher-labels.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
@@ -1063,10 +1118,6 @@ msgstr "<{componentName}>는 알려진 컴포넌트가 아닙니다. 다른 곳�
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 컴포넌트를 렌더링하지 못했습니다. 잘못된 속성 때문일 수 있습니다. 문제를 확인하려면 소스를 복사하거나 블록을 삭제하세요."
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
-msgstr "<0>~/.ok/bin</0> 및 <1>~/.ok/env.sh</1>는 어느 경우에도 유지됩니다. 앱이 항상 관리합니다."
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1493,6 +1544,14 @@ msgstr "{keyName}에 항목 추가"
 msgid "Add link"
 msgstr "링크 추가"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill"
+msgstr "MCP 및 스킬 추가"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill for {rowLabel}"
+msgstr "{rowLabel}에 MCP 및 스킬 추가"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
 msgstr "검색에 의미 기반 순위를 추가하여 공통 키워드가 없어도 개념적으로 관련된 페이지가 나타나게 합니다."
@@ -1531,10 +1590,9 @@ msgstr "탭 추가"
 msgid "Add tag"
 msgstr "태그 추가"
 
-#. Checkbox in Settings → AI tools & CLI that adds the ok CLI to the user's shell PATH
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Add the <0>ok</0> command to your terminal"
 msgstr "터미널에 <0>ok</0> 명령 추가"
 
@@ -1568,15 +1626,14 @@ msgstr "이 메시지에 댓글 남기기"
 msgid "Added"
 msgstr "추가됨"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds a global OpenKnowledge MCP entry for this agent."
+msgstr "이 에이전트에 전역 OpenKnowledge MCP 항목을 추가합니다."
+
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Adds a managed block to"
 msgstr "관리 블록을 다음 대상에 추가합니다"
-
-#. placeholder {0}: status.path.rcFilesToTouch.join(', ')
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a managed block to {0}"
-msgstr "{0}에 관리 블록 추가"
 
 #. Subtext under the project AI-tools checkbox
 #: src/components/ProjectAiToolsField.tsx
@@ -1587,6 +1644,20 @@ msgstr "<0>{toolList}</0>에 OpenKnowledge MCP 항목과 프로젝트 스킬을 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
 msgstr "<0>{connectToolList}</0>에 OpenKnowledge MCP 항목을 추가해 에이전트가 파일을 읽고 편집할 수 있게 합니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds an OpenKnowledge MCP entry to this project's agent config."
+msgstr "이 프로젝트의 에이전트 설정에 OpenKnowledge MCP 항목을 추가합니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.user-config"
+msgstr "{agent} 자체 MCP 설정에 OpenKnowledge를 추가하여 이 컴퓨터의 모든 프로젝트에 접근할 수 있게 합니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.project-config"
+msgstr "{agent}이(가) 이 프로젝트에서 읽는 MCP 설정에 OpenKnowledge를 추가하여 이 문서들을 읽고, 검색하고, 편집할 수 있게 합니다."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1640,6 +1711,11 @@ msgstr "에이전트 채팅"
 msgid "Agent configuration file"
 msgstr "에이전트 설정 파일"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Agent connections"
+msgstr "에이전트 연결"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "에이전트 모드"
@@ -1661,22 +1737,13 @@ msgid "Agent transcript"
 msgstr "에이전트 대화 기록"
 
 #: src/components/ExploreSkills.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "에이전트"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "AI 도구 관리는 OpenKnowledge 데스크톱 앱에서만 사용할 수 있습니다."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
 msgstr "AI 도구"
-
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "AI tools & CLI"
-msgstr "AI 도구 및 CLI"
 
 #: src/editor/bubble-menu/ImageAlignButtons.tsx
 msgid "Align center"
@@ -2397,14 +2464,6 @@ msgstr "콜아웃은 중요한 정보에 주의를 집중시킵니다."
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "프로젝트를 중첩할 수 없습니다. <0>{rootPath}</0>에 OpenKnowledge 프로젝트가 이미 있습니다. 그 밖의 위치를 선택하거나 대신 해당 프로젝트를 여세요."
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Can't safely edit this project config"
-msgstr "이 프로젝트 config를 안전하게 편집할 수 없습니다."
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Can't safely edit this tool's config"
-msgstr "이 도구의 config를 안전하게 편집할 수 없습니다."
-
 #: src/lib/share/run-share-action.ts
 msgid "Can't share this path."
 msgstr "이 경로는 공유할 수 없습니다."
@@ -2433,6 +2492,7 @@ msgstr "이 경로는 공유할 수 없습니다."
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/NetworkAccessSection.tsx
@@ -2659,6 +2719,15 @@ msgstr "아이콘 선택"
 msgid "Choose what a new tab starts"
 msgstr "새 탭 시작 화면 선택"
 
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up for {0}."
+msgstr "OpenKnowledge가 {0}에 대해 설정할 항목을 선택하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up."
+msgstr "OpenKnowledge가 설정할 항목을 선택하세요."
+
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "댓글 보낼 곳을 선택합니다"
@@ -2671,9 +2740,9 @@ msgstr "이 메시지를 보낼 곳 선택"
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 msgstr "이 프로젝트의 OpenKnowledge 설정과 AI 도구 연결을 프로젝트와 함께 저장해 팀원도 사용하게 할지, 아니면 이 컴퓨터에만 보관할지 선택합니다."
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
-msgstr "앱의 에이전트 메뉴에 포함할 에이전트를 선택합니다. Ask AI, Open with AI, ＋ 새 채팅 버튼 등이 해당합니다. 에이전트를 끄면 모든 메뉴에서 숨깁니다."
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
+msgstr "앱의 에이전트 메뉴에 포함할 에이전트를 선택하고, 문서를 읽고 업데이트할 수 있도록 설정하세요."
 
 #. Section label above the light/dark/system cards in the first-launch dialog
 #: src/components/McpConsentDialogBody.tsx
@@ -3147,7 +3216,6 @@ msgstr "구성 경고"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -3212,10 +3280,6 @@ msgstr "계속하려면 GitHub에 연결하세요."
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr "OpenKnowledge를 사용하는 다른 도구에 연결합니다."
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
-msgstr "이 프로젝트에서 사용하는 AI 도구를 연결합니다. 이 파일은 프로젝트 폴더에 있으므로 누구나 프로젝트를 열면 같은 설정을 사용합니다."
-
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3243,6 +3307,10 @@ msgstr "AI 도구 연결"
 #: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "AI 도구를 이 프로젝트에 연결"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Connected"
+msgstr "연결됨"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -3292,10 +3360,18 @@ msgstr "연결 오류. 다시 시도하세요."
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "연결 끊김. 이 탭을 열어 두면 다시 연결된 뒤 편집 내용도 동기화됩니다."
 
-#. Next step for a Codex project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connects automatically the next time you open this project in a trusted Codex session."
-msgstr "다음에 신뢰할 수 있는 Codex 세션에서 이 프로젝트를 열면 자동으로 연결됩니다."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.trust-gated"
+msgstr "다음에 신뢰할 수 있는 {agent} 세션에서 이 프로젝트를 열면 자동으로 연결됩니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to OpenKnowledge in every project on this machine."
+msgstr "이 컴퓨터의 모든 프로젝트에서 에이전트를 OpenKnowledge에 연결합니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to this project so it can read, search, and edit your documents."
+msgstr "에이전트를 이 프로젝트에 연결하여 문서를 읽고 검색하고 편집할 수 있게 합니다."
 
 #: src/components/acp/working-status.ts
 msgid "Contemplating…"
@@ -3663,15 +3739,18 @@ msgid "Couldn't add that comment."
 msgstr "댓글 추가에 실패했습니다."
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "변경사항을 적용하지 못했습니다: {0}"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Couldn't check which tools are connected."
+msgstr "어떤 도구가 연결되었는지 확인하지 못했습니다."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -3948,7 +4027,7 @@ msgstr "협업 서버 연결 실패: {errorDetail}. <0>ok status</0> 실행 또�
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub에 연결할 수 없습니다. 다시 시도할까요?"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Couldn't reach the agent registry."
 msgstr "에이전트 레지스트리에 연결하지 못했습니다."
 
@@ -4401,11 +4480,6 @@ msgstr "사용자 지정 엔드포인트"
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr "실시간 미리보기 창이 있는 사용자 지정 HTML입니다. 샌드박스 처리된 iframe입니다."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
-msgstr "사용자 지정 OpenKnowledge 항목, OpenKnowledge에서 관리하지 않음"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Custom skills folder path"
 msgstr "사용자 지정 스킬 폴더 경로"
@@ -4775,6 +4849,10 @@ msgstr "연결 해제"
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnecting"
 msgstr "연결 해제 중"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
+msgstr "검색 스킬은 모든 AI 도구에서 함께 관리됩니다. 설정 → 스킬 스튜디오에서 이 스킬을 설치하세요."
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -5260,17 +5338,17 @@ msgstr "시작 콘텐츠 비어 있음"
 #. placeholder {0}: agent.name
 #. placeholder {0}: plugin.label
 #. placeholder {0}: rule.name
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Enable {0}"
 msgstr "{0} 활성화"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} CLI"
 msgstr "{displayName} CLI 활성화"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} Desktop"
 msgstr "{displayName} Desktop 활성화"
 
@@ -5416,11 +5494,6 @@ msgstr "유효한 URL을 입력하세요. 예: https://notes.example.com"
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "터널이 제공하는 공개 오리진을 입력하세요. 예: https://notes.example.com"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Entry"
-msgstr "항목"
-
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "오류"
@@ -5563,7 +5636,7 @@ msgstr "노출하면 포트가 고정되어 재시작해도 터널의 대상이 
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "외부 앱"
 
@@ -5947,8 +6020,6 @@ msgstr "필드"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
 #: src/lib/native-menu-catalog.ts
@@ -6356,9 +6427,9 @@ msgstr "GitHub, git URL 또는 로컬 경로입니다."
 msgid "Give it a name before editing its colors."
 msgstr "색상을 편집하기 전에 이름을 지정합니다."
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
-msgstr "사용하는 AI 도구에 프로젝트를 읽고 업데이트할 권한을 부여합니다. 확인란을 선택하면 즉시 설정하고, 선택을 해제하면 제거합니다."
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Gives the agent instructions for working with your documents and keeps its edits attributed."
+msgstr "에이전트에게 문서 작업에 대한 지침을 제공하고 편집 내역의 작성자 정보를 유지합니다."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6369,6 +6440,10 @@ msgstr "이 스키마가 적용되는 glob 패턴"
 #: src/lib/skill-scope.ts
 msgid "Global"
 msgstr "전역"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Global MCP server"
+msgstr "전역 MCP 서버"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Global outside text fields"
@@ -6509,6 +6584,7 @@ msgstr "도움말"
 
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Help your agents discover and use OpenKnowledge in any project."
 msgstr "에이전트가 어떤 프로젝트에서든 OpenKnowledge를 찾아 사용할 수 있도록 돕습니다."
 
@@ -6718,15 +6794,13 @@ msgstr "이 컴퓨터가 원격에서 변경 사항을 가져오는 주기입니
 msgid "How to push manually"
 msgstr "수동으로 푸시하는 방법"
 
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "How to set up"
 msgstr "설정 방법"
 
-#. placeholder {0}: editor.label
-#: src/components/settings/AiToolsSection.tsx
-msgid "How to set up {0} (opens in browser)"
-msgstr "{0} 설정 방법(브라우저에서 열림)"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "How to set up {rowLabel}"
+msgstr "{rowLabel} 설정 방법"
 
 #: src/components/settings/builtin-skill-copy.ts
 msgid "How to set up new projects with OpenKnowledge."
@@ -6784,6 +6858,21 @@ msgstr "ID: {0}"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Identical in both — {pick} still reads them."
 msgstr "양쪽이 동일하며 {pick}에서 계속 읽을 수 있습니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.lm-studio.config-path-mismatch"
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 설정에 있는 MCP 설정 경로가 OpenKnowledge가 작성한 파일과 일치하는지 확인하세요."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 이 프로젝트에서 실행한 뒤 OpenKnowledge 서버를 한 번 승인하세요."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Settings → Tools & MCP에서 서버를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -6888,7 +6977,7 @@ msgstr "인덱스 문서에서는 항목이 섹션 제목 아래에 있고 각 �
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "앱 내"
@@ -7075,6 +7164,7 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror 기본 키맵을 통해 소스 편집기 줄을 삽입, 삭제, 이동, 복사하고 들여씁니다."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
@@ -7095,6 +7185,10 @@ msgstr "{0} 설치"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} 설치 →"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Install {rowLabel}"
+msgstr "{rowLabel} 설치"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "install a skill here first"
@@ -7172,21 +7266,11 @@ msgstr "gh CLI 설치"
 msgid "Install this skill"
 msgstr "이 스킬 설치"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "설치됨"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "설치됨, 외부 터미널에서 ok를 사용할 수 있습니다. 선택을 해제하면 제거되며, OpenKnowledge 기본 제공 터미널과 AI 도구는 계속 작동합니다."
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
-msgstr "설치됨 — 외부 터미널에서 ok를 사용할 수 있습니다. 선택을 해제하면 제거되며, AI 도구는 계속 작동합니다."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -7244,6 +7328,14 @@ msgstr "모든 프로젝트에 설치됨"
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installs into this project"
 msgstr "이 프로젝트에 설치됨"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge discovery skill for this agent."
+msgstr "이 에이전트에 OpenKnowledge 검색 스킬을 설치합니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge project skill for this agent."
+msgstr "이 에이전트에 OpenKnowledge 프로젝트 스킬을 설치합니다."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Installs the skill to {path} — the first location holds its own copy"
@@ -7643,7 +7735,7 @@ msgstr "{fileName} 불러오는 중"
 msgid "Loading agent activity"
 msgstr "에이전트 활동 불러오는 중"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "에이전트 불러오는 중…"
 
@@ -7866,10 +7958,15 @@ msgstr "잘못된 listPacks 응답"
 msgid "Malformed plan response"
 msgstr "잘못된 plan 응답"
 
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Manage"
 msgstr "관리"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Manage {rowLabel}"
+msgstr "{rowLabel} 관리"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7884,13 +7981,10 @@ msgstr "스킬 폴더 관리"
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr "OpenKnowledge가 저장소를 탐색하고 동기화할 때 사용하는 GitHub 계정을 관리합니다."
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Managing AI tools is unavailable in this build."
-msgstr "이 빌드에서는 AI 도구를 관리할 수 없습니다."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Managing project AI tools is unavailable in this build."
-msgstr "이 빌드에서는 프로젝트 AI 도구를 관리할 수 없습니다."
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Managing agent connections is unavailable in this build."
+msgstr "이 빌드에서는 에이전트 연결 관리를 사용할 수 없습니다."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -7946,12 +8040,9 @@ msgstr "에이전트 최대 실행 수 도달"
 msgid "MCP auto-repair failed"
 msgstr "MCP 자동 복구 실패"
 
-#. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
-#. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "MCP connections"
-msgstr "MCP 연결"
+#: src/lib/install-onboarding-toast.ts
+msgid "MCP auto-repair failed for {failures}"
+msgstr "{failures}의 MCP 자동 복구에 실패했습니다"
 
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "MCP servers"
@@ -8067,6 +8158,10 @@ msgstr "링크 대상, 앵커, 표시 레이블을 수정합니다."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "더 보기"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "More information"
+msgstr "추가 정보"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8537,7 +8632,7 @@ msgstr "아직 설정된 에이전트 없음. 전송 메뉴에서 선택하세�
 msgid "no agents — saved, not installed anywhere"
 msgstr "에이전트 없음 — 저장만 되고 어디에도 설치되지 않음"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "사용 가능한 에이전트 없음."
 
@@ -8546,7 +8641,7 @@ msgstr "사용 가능한 에이전트 없음."
 msgid "No agents enabled"
 msgstr "활성화된 에이전트 없음"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "검색과 일치하는 에이전트 없음."
 
@@ -8910,17 +9005,22 @@ msgstr "응답하지 않음"
 msgid "Not attached to desktop bridge"
 msgstr "데스크톱 브리지에 연결되지 않음"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not available on this platform"
 msgstr "이 플랫폼에서 사용할 수 없음"
 
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not connected"
 msgstr "연결되지 않음"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Not connected to GitHub."
 msgstr "GitHub에 연결되지 않음"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine"
+msgstr "이 컴퓨터에서 감지되지 않음"
 
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
@@ -8932,7 +9032,7 @@ msgstr "사이드바에 없음"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "설치되지 않음"
 
@@ -9065,15 +9165,15 @@ msgstr "선택 텍스트: <0>{address}</0>"
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "루트 인덱스에서 okf_version은 \"0.2\"와 같은 따옴표 문자열로 작성됩니다. 따옴표가 없으면 YAML이 숫자로 읽어 0.10이 조용히 0.1로 바뀝니다."
 
-#. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
-msgstr "한 단계 더 필요합니다. Cursor → 설정 → Tools & MCP에서 활성화합니다(Cursor는 프로젝트 서버를 직접 켜기 전까지 꺼 둡니다)."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "한 단계 더 필요합니다. {agent} → 설정 → Tools & MCP에서 활성화합니다({agent}는 프로젝트 서버를 직접 켜기 전까지 꺼 둡니다)."
 
-#. Next step for a Claude Code project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
-msgstr "한 단계 더 필요합니다. 이 프로젝트에서 <0>claude</0>를 실행하고 OpenKnowledge를 한 번 승인합니다."
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.approve-once"
+msgstr "한 단계 더 필요합니다. 이 프로젝트에서 {agent}를 실행하고 OpenKnowledge를 한 번 승인합니다."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."
@@ -9163,10 +9263,6 @@ msgstr "먼저 프로젝트를 여세요."
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "편집할 프로젝트를 엽니다."
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Open a project to manage its AI tool connections."
-msgstr "AI 도구 연결을 관리하려면 프로젝트를 엽니다."
 
 #: src/components/NavigatorApp.tsx
 msgid "Open a single markdown file — no project setup."
@@ -9506,6 +9602,10 @@ msgstr "OpenKnowledge에서 충돌 확인"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge에서 프로젝트 확인"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge could not find this agent on this machine."
+msgstr "OpenKnowledge가 이 컴퓨터에서 이 에이전트를 찾지 못했습니다."
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge가 .ok/local/config.yml의 terminal.shell을 읽을 수 없습니다. 대신 사용 가능한 Windows 셸을 사용합니다."
@@ -9533,6 +9633,18 @@ msgstr "OpenKnowledge에서 {subject} 삭제"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge deleted a document"
 msgstr "OpenKnowledge에서 문서 삭제"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge discovery skill"
+msgstr "OpenKnowledge 검색 스킬"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
+msgstr "OpenKnowledge가 이 항목을 인식하지 못하며, 이 파일 형식에서는 안전하게 대체할 수 없습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+msgstr "OpenKnowledge가 이 항목을 인식하지 못합니다. 켜면 이 항목을 대체합니다."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"
@@ -9577,6 +9689,10 @@ msgstr "OpenKnowledge는 gh CLI가 제공하는 GitHub 계정을 사용 중입�
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge가 이 GitHub 계정을 사용 중입니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
+msgstr "OpenKnowledge가 이 파일을 안전하게 파싱할 수 없어 파일을 변경하지 않았습니다. 파일을 직접 수정한 뒤 다시 시도하세요."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
@@ -10289,10 +10405,6 @@ msgstr "프로젝트"
 msgid "Project"
 msgstr "프로젝트"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "프로젝트 AI 도구 관리는 OpenKnowledge 데스크톱 앱에서만 사용할 수 있습니다."
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Project details"
 msgstr "프로젝트 세부 정보"
@@ -10300,6 +10412,10 @@ msgstr "프로젝트 세부 정보"
 #: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "프로젝트 폴더는 생성되었지만 git init에 실패했습니다. 다시 시도하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project MCP server"
+msgstr "프로젝트 MCP 서버"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -10313,6 +10429,10 @@ msgstr "프로젝트 플러그인은 이 프로젝트의 작성 표준입니다.
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "프로젝트 루트"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project skill"
+msgstr "프로젝트 스킬"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -10468,6 +10588,21 @@ msgstr "{pushed} 푸시"
 msgid "Pushing"
 msgstr "푸시 중"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.user"
+msgstr "{agent}의 전역 스킬 폴더에 OpenKnowledge 탐색 스킬을 넣어 어떤 프로젝트에서든 OpenKnowledge를 찾을 수 있게 합니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.project"
+msgstr "이 프로젝트의 {agent} 스킬 폴더에 OpenKnowledge 스킬을 넣어 편집 내역의 작성자가 유지되게 합니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.central-store"
+msgstr "{agent}이(가) 읽는 중앙 스킬 저장소에 OpenKnowledge 스킬을 넣습니다."
+
 #: src/components/acp/working-status.ts
 msgid "Puzzling…"
 msgstr "퍼즐 해결 중…"
@@ -10585,6 +10720,10 @@ msgstr "최근 프로젝트"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "최근 열기"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Recommended"
+msgstr "권장"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Recommended agent skill"
@@ -10721,6 +10860,8 @@ msgstr "원격 제어"
 msgid "Remote skill source"
 msgstr "원격 스킬 소스"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
@@ -10761,6 +10902,10 @@ msgstr "{patternText} 제거"
 msgid "Remove {projectName} from recent projects"
 msgstr "프로젝트 \"{projectName}\"을 최근 프로젝트에서 제거"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove {rowLabel}"
+msgstr "{rowLabel} 제거"
+
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "{tag} 제거"
@@ -10772,6 +10917,10 @@ msgstr "제거 실패: {error}"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Remove field {field}"
 msgstr "필드 {field} 제거"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove for both"
+msgstr "둘 다 제거"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
@@ -10791,6 +10940,15 @@ msgstr "링크 제거"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Remove OpenKnowledge from {0}"
 msgstr "{0}에서 OpenKnowledge 제거"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge from {0}?"
+msgstr "{0}에서 OpenKnowledge를 제거할까요?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge?"
+msgstr "OpenKnowledge를 제거할까요?"
 
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
@@ -10935,7 +11093,7 @@ msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
 msgstr "새 로컬 협업 캐시로 \"{docName}\"을 다시 여는 중입니다."
 
 #: src/lib/install-onboarding-toast.ts
-msgid "repaired {names} MCP integration"
+msgid "repaired MCP integration for {names}"
 msgstr "{names} MCP 통합 복구됨"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -10950,6 +11108,10 @@ msgstr "{keyName} 바꾸기"
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace all matches"
 msgstr "일치 항목 모두 바꾸기"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replace and save"
+msgstr "교체 후 저장"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace current match"
@@ -10982,6 +11144,10 @@ msgstr "이 복사본을 소스를 가리키는 심볼릭 링크로 바꿀까요
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "이 심볼릭 링크를 독립적인 복사본으로 바꿀까요?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgstr "이 파일의 기존 \"open-knowledge\" 항목을 대체합니다. 파일의 다른 서버는 그대로 유지됩니다."
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -11239,7 +11405,7 @@ msgstr "가져오는 중…"
 #: src/components/ConnectingBanner.tsx
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "다시 시도"
@@ -11379,6 +11545,7 @@ msgstr "샌드박스 처리된 HTML 삽입입니다. HTML을 작성하면 렌더
 msgid "Save"
 msgstr "저장"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Save changes"
 msgstr "변경 사항 저장"
@@ -11429,6 +11596,7 @@ msgstr "팀을 위해 프로젝트와 함께 저장됨."
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "<0>~/Downloads/openknowledge.skill</0>에 저장 후 Claude Desktop App 열기. PATH에 Node.js 또는 Bun 필요."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Saving"
 msgstr "저장 중"
@@ -11482,7 +11650,7 @@ msgstr "“{semanticSubmitQuery}”를 의미로 검색"
 msgid "Search ({searchShortcutLabel})"
 msgstr "검색 ({searchShortcutLabel})"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
 msgstr "에이전트 검색"
 
@@ -12066,8 +12234,7 @@ msgstr "{0}개 더 보기"
 msgid "Show {hidden} more"
 msgstr "{hidden}개 더 보기"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show {hiddenCount} more"
 msgstr "{hiddenCount}개 더 보기"
 
@@ -12133,8 +12300,7 @@ msgid "Show in Explorer"
 msgstr "탐색기에서 보기"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
 msgstr "적게 보기"
 
@@ -12341,11 +12507,6 @@ msgstr "{0}/{1}의 스킬."
 msgid "Skills from OpenKnowledge"
 msgstr "OpenKnowledge 스킬"
 
-#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Skills moved to Skills Studio."
-msgstr "스킬이 스킬 스튜디오로 이동했습니다."
-
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
 msgstr "스킬 재할당됨"
@@ -12501,6 +12662,7 @@ msgstr "피드백을 보내는 중 문제가 발생했습니다. 다시 시도�
 msgid "Something went wrong starting the terminal."
 msgstr "터미널 시작 중 문제 발생."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Something went wrong. Please try again."
 msgstr "문제가 발생했습니다. 다시 시도하세요."
@@ -13074,7 +13236,6 @@ msgstr "템플릿"
 msgid "Templates available"
 msgstr "사용 가능한 템플릿"
 
-#. Group label above the shell-PATH row in Settings → AI tools & CLI
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13083,8 +13244,7 @@ msgstr "사용 가능한 템플릿"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -13211,6 +13371,11 @@ msgstr "{0} 다운로드 요청 시간 초과."
 #: src/components/SkillsTree.tsx
 msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
 msgstr "{0} 플러그인이 캐시에서 이 스킬들을 제공합니다 — OK는 이를 편집하거나 업데이트하지 않습니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.desktop-project-config"
+msgstr "{agent} 데스크톱 앱은 이 프로젝트 설정을 무시합니다. {agent} CLI만 이 설정을 읽습니다."
 
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
@@ -13452,6 +13617,14 @@ msgstr "소스 폴더 자체는 이동하지 않습니다."
 msgid "The template's filename (without `.md`)."
 msgstr "템플릿 파일 이름입니다(`.md` 제외)."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
+msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공유하므로, 하나를 연결하면 둘 다 연결됩니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
+msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공유하므로, 이를 제거하면 둘 다 연결이 끊깁니다."
+
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "이 프로젝트의 터미널 꺼짐. 다시 켜면 여기서 명령 실행 가능."
@@ -13608,6 +13781,14 @@ msgstr "이 에이전트는 슬래시 명령을 제공하지 않습니다"
 msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
 msgstr "이 에이전트는 슬래시 명령을 제공하지 않습니다. 메시지는 일반 텍스트로 전송됩니다"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
+msgstr "이 에이전트는 OpenKnowledge가 대신 설정할 수 있는 방법을 제공하지 않습니다. 설정 가이드에 수동 단계가 안내되어 있습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
+msgstr "이 에이전트에는 아직 이 컴퓨터에 해당 종류의 파일이 없습니다. 에이전트를 한 번 실행한 뒤 다시 확인하세요."
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "이 에이전트는 아직 명령을 알리지 않았습니다"
@@ -13651,6 +13832,14 @@ msgstr "이 댓글, 속성 전체에 적용됨"
 msgid "This conflict is resolved."
 msgstr "이 충돌은 해결되었습니다."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This could not be set up because the MCP server entry it needs was not written."
+msgstr "필요한 MCP 서버 항목이 기록되지 않아 설정할 수 없었습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+msgstr "아래 나열된 MCP 서버 항목과 스킬 파일을 삭제합니다. 다시 추가할 때까지 에이전트가 문서에 접근할 수 없습니다."
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "이 문서"
@@ -13682,6 +13871,10 @@ msgstr "이 문서는 삭제되었습니다"
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
 msgstr "이 엔드포인트는 설정한 벡터 크기를 무시했습니다. <0>search.semantic.dimensions</0>를 제거하면 모델의 자체 크기를 사용합니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This entry changed after OpenKnowledge wrote it. Turning it on replaces it."
+msgstr "OpenKnowledge가 작성한 뒤 이 항목이 변경되었습니다. 켜면 덮어씁니다."
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
@@ -13734,6 +13927,10 @@ msgstr "이 폴더는 {actualOwner}/{actualRepo} 클론이며 {expectedOwner}/{e
 #: src/lib/share/receive-flow.ts
 msgid "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
 msgstr "이 폴더는 {actualHost}의 {expectedOwner}/{expectedRepo} 클론이며 {expectedHost} 클론이 아닙니다. {expectedHost}에서 클론한 폴더를 선택하시겠습니까?"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This folder is also {alsoAffects}'s."
+msgstr "이 폴더는 {alsoAffects}의 폴더이기도 합니다."
 
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
@@ -13793,6 +13990,7 @@ msgstr "이 항목"
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This machine"
@@ -13817,6 +14015,10 @@ msgstr "이 규칙은 열린 문서만이 아니라 파일을 확인해야 하�
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
 msgstr "이 스킬은 AI 도구가 OpenKnowledge와 함께 작동하는 방법을 가르칩니다. 프로젝트 폴더에 있으므로 프로젝트를 여는 모든 사람에게 설치됩니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This option cannot be changed automatically."
+msgstr "이 옵션은 자동으로 변경할 수 없습니다."
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -13873,6 +14075,7 @@ msgid "This permanently removes {path}. Agents that reference this template by n
 msgstr "{path}이 영구적으로 삭제됩니다. 이 템플릿을 이름으로 참조하는 에이전트는 템플릿을 다시 만들거나 상위 폴더의 템플릿으로 교체할 때까지 실패합니다."
 
 #: src/components/PanelScopeHeader.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This project"
@@ -13921,11 +14124,6 @@ msgstr "이 프로젝트에서 실행 중인 서버는 실시간 편집을 지�
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "이 프로젝트의 서버(v{0})가 이 앱(v{1})보다 최신입니다."
 
-#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This project's skill moved to Skills Studio."
-msgstr "이 프로젝트의 스킬이 스킬 스튜디오로 이동했습니다."
-
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "이 작업은 Mac과 아래에서 선택한 프로젝트에서 OpenKnowledge의 설정과 통합을 제거하지만, markdown 콘텐츠와 직접 작성한 스킬은 유지합니다."
@@ -13962,6 +14160,18 @@ msgstr "이 설정은 컴퓨터별로 적용되며 공동 작업자와 공유되
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "이 설정은 컴퓨터별로 적용되며 공동 작업자와 공유되지 않습니다. 엔드포인트가 키를 요구하지 않는 로컬 서버가 아니면 API 키(아래에서 설정)가 필요합니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers} through <0>{path}</0>. Removing it here removes it for {peers} too."
+msgstr "이 설정은 <0>{path}</0>을(를) 통해 {peers}와(과) 공유됩니다. 여기서 제거하면 {peers}에서도 제거됩니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}, and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
+msgstr "이 설정은 {peers}과(와) 공유되며 OpenKnowledge가 여기서 변경할 수 없습니다. 먼저 Skills Studio에서 폴더 연결을 해제하세요."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}. Removing it here removes it for {peers} too."
+msgstr "이 설정은 {peers}와(과) 공유됩니다. 여기서 제거하면 {peers}에서도 제거됩니다."
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -14283,7 +14493,6 @@ msgid "Type to find a doc"
 msgstr "문서를 찾으려면 입력"
 
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr "이 플랫폼에서 사용 불가"
 
@@ -14917,8 +15126,7 @@ msgstr "AI 작업 내용? (선택 사항)"
 msgid "What the agent may read, write, and surface."
 msgstr "에이전트가 읽고, 쓰고, 표시할 수 있는 항목입니다."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "What this checkbox changes"
 msgstr "이 체크박스의 변경 내용"
 
@@ -14994,6 +15202,10 @@ msgstr "에이전트가 사용자의 컨텍스트를 가질 수 있도록 사용
 msgid "Whole word"
 msgstr "전체 단어"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Why this needs attention"
+msgstr "주의가 필요한 이유"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Wiki link"
 msgstr "위키 링크"
@@ -15030,6 +15242,10 @@ msgstr "창"
 #: src/components/CreateProjectDialog.tsx
 msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
 msgstr "연결된 AI 도구가 없으면 팩의 {packSkillCount, plural, one {스킬 #개} other {스킬 #개}}는 설치되지 않습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Without the skill the agent still works, but it loses edit attribution and the live preview."
+msgstr "스킬이 없어도 에이전트는 계속 작동하지만, 편집 내역의 작성자 정보와 실시간 미리보기를 잃게 됩니다."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
@@ -15078,6 +15294,11 @@ msgstr "워크트리"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Markdown 소스 편집기에서 긴 줄을 자동으로 줄바꿈합니다."
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.managed-file"
+msgstr "{agent}이(가) 이 프로젝트에서 불러와 OpenKnowledge에 연결하는 작은 브리지 파일을 작성합니다."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "다음에 항목을 씁니다"
@@ -15085,6 +15306,10 @@ msgstr "다음에 항목을 씁니다"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "작성 중"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Writing this file failed. Check the OpenKnowledge log for the reason."
+msgstr "이 파일을 쓰지 못했습니다. 이유는 OpenKnowledge 로그를 확인하세요."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
@@ -15232,6 +15457,10 @@ msgstr "브랜치 <0>{shareBranch}</0> 사본에 GitHub에 없는 변경 사항�
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "현재 버전이 먼저 저장되므로 되돌릴 수 있습니다."
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Your documents are not touched."
+msgstr "문서는 변경되지 않습니다."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx

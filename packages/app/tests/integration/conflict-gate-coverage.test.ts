@@ -121,6 +121,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleSkillInstall',
   'handleSkillUninstall',
   'handleSkillTargets',
+  'handleAgentIntegrationsApply',
   'handleSkillRestore',
   'handleSkillRevert',
   'handleSkillsManagement',

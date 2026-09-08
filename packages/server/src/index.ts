@@ -16,6 +16,16 @@ export { AgentFocusBroadcaster } from './agent-focus.ts';
 export { AGENT_ID_MAX_LEN, AGENT_ID_RE, toBroadcasterKey, validateAgentId } from './agent-id.ts';
 export { AgentPresenceBroadcaster } from './agent-presence.ts';
 export {
+  type ObserveReadinessInput,
+  observeReadiness,
+  type ReadinessObservationLogger,
+} from './agent-registry-gate.ts';
+export {
+  collectServerHostSnapshot,
+  createServerProbeResolver,
+  type ServerProbeOptions,
+} from './agent-registry-probes.ts';
+export {
   AGENT_WRITE_ORIGIN,
   type AgentDirectConnection,
   AgentSessionCapacityError,
@@ -257,13 +267,13 @@ export {
   type BuildConfigYmlOptions,
   buildConfigYmlContent,
   CONFIG_FILENAME,
-  ensureProjectSkillGitignore,
   type InitContentOptions,
   type InitContentResult,
   initContent,
   OK_OKIGNORE_TEMPLATE,
   packageVersionMajorMinor,
   ROOT_GITIGNORE_TEMPLATE,
+  removeProjectSkillGitignoreBlock,
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 export {
@@ -405,11 +415,6 @@ export {
   ensureProjectGit,
   ProjectGitInitError,
 } from './project-git.ts';
-export {
-  type UntrackProjectSkillResult,
-  type UntrackSkipReason,
-  untrackTrackedProjectSkillProjection,
-} from './project-skill-git.ts';
 export {
   type BlockConflict,
   CONFLICT_MARKER_RE,

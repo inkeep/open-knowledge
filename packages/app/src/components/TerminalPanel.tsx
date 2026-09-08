@@ -554,7 +554,8 @@ function TerminalSession({
             if (!cancelled) setReadiness(fresh);
             return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
-              autoApproveOkTools: autoApproveOkToolsRef.current && fresh.mcpPreApprovable === true,
+              autoApproveOkTools:
+                autoApproveOkToolsRef.current && fresh.okToolsAutoApprovable === true,
             });
           }
           if (!cancelled) {
@@ -632,7 +633,9 @@ function TerminalSession({
       }
 
       let launchCommand: string | TerminalLaunchCommand | undefined;
+      let launchCli: TerminalCli | undefined;
       if (launch !== null && adoptPtyId === null) {
+        launchCli = launch.cli;
         launchCommand = await resolveLaunchCommand(launch);
         if (cancelled) return;
       } else if (commandId !== null && adoptPtyId === null) {
@@ -644,7 +647,12 @@ function TerminalSession({
 
       let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
       try {
-        result = await bridge.terminal.create({ cols: term.cols, rows: term.rows, launchCommand });
+        result = await bridge.terminal.create({
+          cols: term.cols,
+          rows: term.rows,
+          launchCommand,
+          launchCli,
+        });
       } catch (err) {
         console.error('[terminal] create() failed:', err);
         if (cancelled) return;

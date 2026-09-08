@@ -89,7 +89,7 @@ Both are **consent-gated**, but at different moments. Declining `open-knowledge-
 
 ### Setting up a project
 
-When you initialize or open a project, the app scaffolds the same project files the CLI's `ok init` creates, and registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical** — it adds only its own entry and leaves your other settings, comments, and formatting byte-for-byte intact.
+When you initialize or open a project, the app scaffolds the same project files the CLI's `ok init` creates, and registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical** — it touches only its own entry and leaves your other settings, comments, and formatting byte-for-byte intact. "Its own entry" means the one named `open-knowledge`; if that name is already taken by something OpenKnowledge does not recognize, see [Opt-outs in one place](#opt-outs-in-one-place).
 
 | Path | What it is | Scope |
 | --- | --- | --- |
@@ -127,7 +127,9 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
-On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/`) **only when they are missing and you previously installed them** — a bundle you never installed or declined is not seeded, and an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
+On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
+
+**Skills are never installed by a sweep.** OpenKnowledge writes a skill only when you ask for one — the first-launch setup dialog, the Settings toggles, Skills Studio, or `ok init`. A launch does two housekeeping passes over skills and writes nothing new: it removes superseded pre-split `open-knowledge` copies OpenKnowledge itself left in your agent folders, and it removes a bundle you switched off that is still on disk.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -167,7 +169,7 @@ Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops t
 
 ### `ok init`
 
-`ok init` turns a folder into an OpenKnowledge project. It scaffolds the project's `.ok/` directory, and — unless you pass `--no-mcp` — registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical**: it adds only its own entry and leaves your other settings, comments, and formatting byte-for-byte intact (if a config can't be parsed safely, it's left untouched and reported).
+`ok init` turns a folder into an OpenKnowledge project. It scaffolds the project's `.ok/` directory, and — unless you pass `--no-mcp` — registers the `open-knowledge` MCP server with the AI editors it detects. The MCP registration is **surgical**: it touches only the entry named `open-knowledge` and leaves your other settings, comments, and formatting byte-for-byte intact (if a config can't be parsed safely, it's left untouched and reported).
 
 | Path | What it is | Scope |
 | --- | --- | --- |
@@ -248,10 +250,9 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | What it re-checks | Where | Scope |
 | --- | --- | --- |
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
-| OpenKnowledge skill bundles (`open-knowledge-discovery`, `open-knowledge-write-skill`) | Project (`.claude/skills/…`) and user-global — `~/.agents/skills/` plus each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/` | In-project **and** outside-project (home dir) |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
-Disable all three with `OK_RECLAIM_DISABLE=1`.
+Disable both with `OK_RECLAIM_DISABLE=1`. `ok start` does not touch skill files; `ok repair-skills` is the explicit command for that.
 
 ### `ok mcp`
 
@@ -292,7 +293,9 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 
 To review the footprint after the fact, `ok diagnose` reports what's on disk (and the desktop `path-install.json` records exactly which shell/`PATH` changes were made). To reverse it, `ok deinit` removes OpenKnowledge from one project and `ok uninstall` removes it from the whole machine — both keep your markdown content, and your global skills in your editors' skill dirs (`~/.agents/skills`, `~/.claude/skills`, and the like) are never touched, and both take `--dry-run` to preview. See the [CLI reference](./cli.mdx) for the full semantics.
 
-In the desktop app you don't need the CLI for finer control, and the split follows what each thing is. **Settings → AI tools & CLI** (under User) lists the *connections* OpenKnowledge manages — each editor's `open-knowledge` MCP entry and the `ok` PATH command — with a checkbox reflecting live installed state; toggling a row installs or removes just that component. **Settings → This project → AI tools** does the same for the open project's project-scoped MCP configs. *Skills* live on their own page at both scopes: **Settings → Skills Studio** carries the skills OpenKnowledge ships (user scope) or the project's own skill (project scope), each with an explicit Install/Uninstall button behind a confirmation naming every path it touches, plus the folders your AI tools read skills from. Removal keeps the same guest discipline as install: only entries OpenKnowledge recognizably wrote are removed, and anything you customized is left intact.
+In the desktop app you don't need the CLI for finer control, and the split follows what each thing is. **Settings → Agent connections** lists every agent OpenKnowledge can wire up, grouped by how you reach it — In app, Terminal, External apps. Each row says whether OpenKnowledge can reach that agent's tools and offers the one action that fits: **Add MCP & skill** when nothing is set up, **Manage** when something is, and **Remove** when files are still on disk for a tool you have turned off or uninstalled. A tool that is not on this machine offers **Install** instead, or **How to set up** when OpenKnowledge has no download link for it; neither writes anything. Both scopes are chosen in the same place: the dialog behind those actions groups what it writes under *This project* and *This machine*, so a project-scoped MCP config and a user-global one sit side by side, each naming the file it touches. *Skills* live on their own page at both scopes: **Settings → Skills Studio** carries the skills OpenKnowledge ships (user scope) or the project's own skill (project scope), each with an explicit Install/Uninstall button behind a confirmation naming every path it touches, plus the folders your AI tools read skills from. Removal keeps the guest discipline you would expect: only entries OpenKnowledge recognizably wrote are removed, and anything you customized is left intact.
+
+One case works differently, and it is the only place OpenKnowledge replaces something it did not write. If the entry named `open-knowledge` is there but OpenKnowledge does not recognize it, because you edited it by hand or another tool claimed the name, that row is offered as an overwrite rather than left dead. It opens unticked with a warning naming the file, so nothing happens until you ask for it, and ticking it replaces that one entry outright rather than merging into it. Other servers in the file are untouched. This is offered only where the config is JSON; for Codex, Hermes, and Pi the entry is left alone, because on those formats OpenKnowledge merges its own keys into an existing entry instead of replacing it, and a merge would leave part of the entry you edited attached to a server OpenKnowledge starts. Removal never takes an unrecognized entry away, in any format.
 
 ## What leaves your machine
 

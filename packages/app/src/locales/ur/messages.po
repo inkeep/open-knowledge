@@ -330,6 +330,12 @@ msgstr "{0} کی بدولت {1} بغیر پوچھے عمل کرتا ہے"
 msgid "{0} needs {1}"
 msgstr "{0} کو {1} درکار ہے"
 
+#. placeholder {0}: removed.dependent
+#. placeholder {1}: removed.prerequisite
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{0} needs {1}. Turn both off, or keep both on."
+msgstr "{0} کو {1} درکار ہے۔ دونوں کو بند کریں، یا دونوں کو آن رکھیں۔"
+
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "{0} needs replacing"
@@ -470,6 +476,31 @@ msgstr "{0} سال پہلے"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (تصادم)"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude-desktop.per-tool-approval"
+msgstr "{agent} ہر OpenKnowledge ٹول کے پہلے استعمال پر آپ سے منظوری مانگتا ہے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.session-injection"
+msgstr "جب بھی OpenKnowledge {agent} کو چلاتا ہے، اسے OpenKnowledge کے ٹولز ملتے ہیں؛ اس کی کنفیگ میں کچھ نہیں لکھا جاتا۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.pi.folder-trust"
+msgstr "{agent} پروجیکٹ ایکسٹینشنز صرف انہی فولڈرز میں لوڈ کرتا ہے جن پر آپ نے اعتماد کیا ہو؛ اگر ٹولز نظر نہ آئیں تو {agent} میں اس فولڈر پر اعتماد کریں۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.copilot.shared-workspace-config"
+msgstr "{agent} وہی ورک اسپیس MCP کنفیگ پڑھتا ہے جو OpenKnowledge {sourceAgent} کے لیے لکھتا ہے؛ ایک کے لیے ہٹانے پر یہ دونوں کے لیے ہٹ جاتی ہے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.openclaw.central-store-missing"
+msgstr "{agent} کا مرکزی اسکل اسٹور ابھی موجود نہیں؛ {agent} کو ایک بار چلائیں تاکہ وہ اسے بنا لے، پھر دوبارہ کوشش کریں۔"
+
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} گفتگو شروع نہ کر سکا۔"
@@ -519,6 +550,10 @@ msgstr "{boldName} <0>{0}</0> پلگ اِن{pluginVersion} کا حصہ ہے — 
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} اس پروجیکٹ سے باہر، <0>{source}</0> پر ہے — یہاں چلنے والے ایجنٹ اسے لوڈ نہیں کر سکتے۔ ترمیم کے لیے اسے یہاں کاپی کریں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{changeCount, plural, one {# change} other {# changes}}"
+msgstr "{changeCount, plural, one {# تبدیلی} other {# تبدیلیاں}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -609,6 +644,26 @@ msgstr "{days, plural, one {# دن پہلے} other {# دن پہلے}}"
 msgid "{days}d ago"
 msgstr "{days} دن پہلے"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge cannot safely replace that entry in this file's format."
+msgstr "{dependent} کو {prerequisite} درکار ہے، اور OpenKnowledge اس فائل کے فارمیٹ میں اس اندراج کو محفوظ طریقے سے تبدیل نہیں کر سکتا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge could not find this agent on this machine."
+msgstr "{dependent} کو {prerequisite} درکار ہے، اور OpenKnowledge کو اس مشین پر یہ ایجنٹ نہیں ملا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge does not recognize that entry. Tick {prerequisite} to replace it, then save again."
+msgstr "{dependent} کو {prerequisite} درکار ہے، اور OpenKnowledge اس اندراج کو نہیں پہچانتا۔ اسے تبدیل کرنے کے لیے {prerequisite} منتخب کریں، پھر دوبارہ محفوظ کریں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and this agent has no file of that kind on this machine yet. Open the agent once, then try again."
+msgstr "{dependent} کو {prerequisite} درکار ہے، اور اس مشین پر اس ایجنٹ کی اس قسم کی کوئی فائل ابھی موجود نہیں۔ ایجنٹ کو ایک بار کھولیں، پھر دوبارہ کوشش کریں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, which OpenKnowledge cannot set up for you. Its setup guide has the manual steps."
+msgstr "{dependent} کو {prerequisite} درکار ہے، جسے OpenKnowledge آپ کے لیے سیٹ اپ نہیں کر سکتا۔ اس کی سیٹ اپ گائیڈ میں دستی مراحل موجود ہیں۔"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{descriptorLabel} — render error, source editable below"
 msgstr "{descriptorLabel} — رینڈر کی خرابی، سورس نیچے قابلِ ترمیم ہے"
@@ -650,7 +705,7 @@ msgstr "{displayName} ({bin}) نصب نہیں ہے یا آپ کے PATH میں ن
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
 
@@ -660,7 +715,7 @@ msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI، {hint}"
 
 #: src/components/handoff/agent-launcher-labels.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
@@ -1063,10 +1118,6 @@ msgstr "<{componentName}> کوئی معلوم جزو نہیں ہے۔ اسے کہ
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> رینڈر نہیں ہو سکا (غالباً کوئی غلط پراپ)۔ خرابی دیکھنے کے لیے سورس کاپی کریں، یا بلاک حذف کر دیں۔"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
-msgstr "<0>~/.ok/bin</0> اور <1>~/.ok/env.sh</1> دونوں صورتوں میں رہتے ہیں — ایپ ہمیشہ ان کی دیکھ بھال کرتی ہے۔"
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1493,6 +1544,14 @@ msgstr "{keyName} میں آئٹم شامل کریں"
 msgid "Add link"
 msgstr "لنک شامل کریں"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill"
+msgstr "MCP اور اسکل شامل کریں"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill for {rowLabel}"
+msgstr "{rowLabel} کے لیے MCP اور اسکل شامل کریں"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
 msgstr "تلاش میں معنی پر مبنی درجہ بندی شامل کریں تاکہ تصوراتی طور پر متعلقہ صفحات اس وقت بھی سامنے آئیں جب ان میں کوئی مشترک کلیدی الفاظ نہ ہوں۔"
@@ -1531,10 +1590,9 @@ msgstr "ٹیب شامل کریں"
 msgid "Add tag"
 msgstr "ٹیگ شامل کریں"
 
-#. Checkbox in Settings → AI tools & CLI that adds the ok CLI to the user's shell PATH
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Add the <0>ok</0> command to your terminal"
 msgstr "اپنے ٹرمینل میں <0>ok</0> کمانڈ شامل کریں"
 
@@ -1568,15 +1626,14 @@ msgstr "اس پیغام میں اپنے تبصرے شامل کریں"
 msgid "Added"
 msgstr "شامل کر دیا گیا"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds a global OpenKnowledge MCP entry for this agent."
+msgstr "اس ایجنٹ کے لیے ایک عالمی OpenKnowledge MCP اندراج شامل کرتا ہے۔"
+
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Adds a managed block to"
 msgstr "منظم بلاک شامل کرتا ہے اِس میں"
-
-#. placeholder {0}: status.path.rcFilesToTouch.join(', ')
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a managed block to {0}"
-msgstr "{0} میں منظم بلاک شامل کرتا ہے"
 
 #. Subtext under the project AI-tools checkbox
 #: src/components/ProjectAiToolsField.tsx
@@ -1587,6 +1644,20 @@ msgstr "<0>{toolList}</0> میں OpenKnowledge کا MCP اندراج اور پر
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
 msgstr "<0>{connectToolList}</0> میں OpenKnowledge کا MCP اندراج شامل کرتا ہے تاکہ آپ کے ایجنٹس آپ کی فائلیں پڑھ اور ترمیم کر سکیں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds an OpenKnowledge MCP entry to this project's agent config."
+msgstr "اس پروجیکٹ کی ایجنٹ کنفیگریشن میں OpenKnowledge MCP کا اندراج شامل کرتا ہے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.user-config"
+msgstr "{agent} کی اپنی MCP کنفیگ میں OpenKnowledge شامل کرتا ہے، تاکہ اس مشین کے ہر پروجیکٹ تک رسائی ہو۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.project-config"
+msgstr "اس پروجیکٹ میں {agent} جو MCP کنفیگ پڑھتا ہے اس میں OpenKnowledge شامل کرتا ہے، تاکہ وہ یہ دستاویزات پڑھ، تلاش اور ترمیم کر سکے۔"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1640,6 +1711,11 @@ msgstr "ایجنٹ چیٹس"
 msgid "Agent configuration file"
 msgstr "ایجنٹ کی کنفیگریشن فائل"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Agent connections"
+msgstr "ایجنٹ کنکشنز"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "ایجنٹ موڈ"
@@ -1661,22 +1737,13 @@ msgid "Agent transcript"
 msgstr "ایجنٹ کا ٹرانسکرپٹ"
 
 #: src/components/ExploreSkills.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "ایجنٹس"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "AI ٹولز کا انتظام صرف OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب ہے۔"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
 msgstr "AI ٹولز"
-
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "AI tools & CLI"
-msgstr "AI ٹولز اور CLI"
 
 #: src/editor/bubble-menu/ImageAlignButtons.tsx
 msgid "Align center"
@@ -2397,14 +2464,6 @@ msgstr "کال آؤٹ اہم معلومات کی طرف توجہ دلاتے ہی
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "پروجیکٹس ایک دوسرے کے اندر نہیں ہو سکتے۔ <0>{rootPath}</0> پر پہلے سے ایک OpenKnowledge پروجیکٹ موجود ہے۔ اس سے باہر کوئی مقام منتخب کریں، یا اس کے بجائے وہی پروجیکٹ کھولیں۔"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Can't safely edit this project config"
-msgstr "اس پروجیکٹ کی کنفیگ محفوظ طریقے سے ترمیم نہیں کی جا سکتی"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Can't safely edit this tool's config"
-msgstr "اس ٹول کی کنفیگ محفوظ طریقے سے ترمیم نہیں کی جا سکتی"
-
 #: src/lib/share/run-share-action.ts
 msgid "Can't share this path."
 msgstr "یہ راستہ شیئر نہیں کیا جا سکتا۔"
@@ -2433,6 +2492,7 @@ msgstr "یہ راستہ شیئر نہیں کیا جا سکتا۔"
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/NetworkAccessSection.tsx
@@ -2659,6 +2719,15 @@ msgstr "آئیکن منتخب کریں"
 msgid "Choose what a new tab starts"
 msgstr "منتخب کریں کہ نیا ٹیب کیا شروع کرے"
 
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up for {0}."
+msgstr "منتخب کریں کہ OpenKnowledge {0} کے لیے کیا سیٹ اپ کرے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up."
+msgstr "منتخب کریں کہ OpenKnowledge کیا سیٹ اپ کرے۔"
+
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "منتخب کریں کہ یہ تبصرے کہاں بھیجے جائیں"
@@ -2671,9 +2740,9 @@ msgstr "منتخب کریں کہ یہ پیغام کہاں بھیجنا ہے"
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 msgstr "منتخب کریں کہ اس پروجیکٹ کا OpenKnowledge سیٹ اپ، بشمول اس کے AI ٹول کنکشنز، پروجیکٹ کے ساتھ محفوظ ہو تاکہ ساتھیوں کو بھی مل جائے، یا صرف آپ کے کمپیوٹر پر رہے۔"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
-msgstr "منتخب کریں کہ ایپ کے ایجنٹ مینیوز میں کون سے ایجنٹ نظر آئیں، جیسے Ask AI، Open with AI اور ＋ نئی چیٹ کا بٹن۔ کسی ایجنٹ کو بند کرنے سے وہ ان سب سے چھپ جائے گا۔"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
+msgstr "منتخب کریں کہ ایپ کے ایجنٹ مینیوز میں کون سے ایجنٹ نظر آئیں، اور انہیں اس طرح ترتیب دیں کہ وہ آپ کی دستاویزات پڑھ اور اپ ڈیٹ کر سکیں۔"
 
 #. Section label above the light/dark/system cards in the first-launch dialog
 #: src/components/McpConsentDialogBody.tsx
@@ -3147,7 +3216,6 @@ msgstr "کنفیگریشن کے انتباہات"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -3212,10 +3280,6 @@ msgstr "جاری رکھنے کے لیے GitHub منسلک کریں۔"
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr "OpenKnowledge کو اپنے استعمال کے دیگر ٹولز سے منسلک کریں۔"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
-msgstr "اپنے استعمال کے AI ٹولز کو اسی مخصوص پروجیکٹ سے منسلک کریں۔ یہ فائلیں پروجیکٹ کے فولڈر میں رہتی ہیں، اس لیے جو بھی اسے کھولے اسے وہی سیٹ اپ ملتا ہے۔"
-
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3243,6 +3307,10 @@ msgstr "اپنے AI ٹولز منسلک کریں"
 #: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "اپنے AI ٹولز کو اس پروجیکٹ سے جوڑیں"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Connected"
+msgstr "منسلک"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -3292,10 +3360,18 @@ msgstr "کنکشن کی خرابی — دوبارہ کوشش کریں"
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "کنکشن ختم ہو گیا — یہ ٹیب کھلا رکھیں، دوبارہ منسلک ہونے پر آپ کی ترامیم مطابق ہو جائیں گی"
 
-#. Next step for a Codex project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connects automatically the next time you open this project in a trusted Codex session."
-msgstr "اگلی بار جب آپ یہ پروجیکٹ کسی قابلِ اعتماد Codex سیشن میں کھولیں گے تو یہ خودکار طور پر منسلک ہو جائے گا۔"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.trust-gated"
+msgstr "اگلی بار جب آپ یہ پروجیکٹ کسی قابلِ اعتماد {agent} سیشن میں کھولیں گے تو یہ خودکار طور پر منسلک ہو جائے گا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to OpenKnowledge in every project on this machine."
+msgstr "ایجنٹ کو اس مشین کے ہر پروجیکٹ میں OpenKnowledge سے جوڑتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to this project so it can read, search, and edit your documents."
+msgstr "ایجنٹ کو اس پروجیکٹ سے جوڑتا ہے تاکہ وہ آپ کی دستاویزات پڑھ، تلاش اور ترمیم کر سکے۔"
 
 #: src/components/acp/working-status.ts
 msgid "Contemplating…"
@@ -3663,15 +3739,18 @@ msgid "Couldn't add that comment."
 msgstr "وہ تبصرہ شامل نہیں ہو سکا۔"
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "تبدیلی لاگو نہیں ہو سکی: {0}"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "{filePath} میں اب بھی کنفلکٹ ہے یا نہیں، جانچا نہ جا سکا — دوبارہ کوشش جاری۔"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Couldn't check which tools are connected."
+msgstr "معلوم نہیں ہو سکا کہ کون سے ٹولز منسلک ہیں۔"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -3948,7 +4027,7 @@ msgstr "اشتراکی سرور تک رسائی نہیں ہو سکی — {errorD
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "GitHub تک رسائی نہیں ہو سکی۔ دوبارہ کوشش کریں؟"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Couldn't reach the agent registry."
 msgstr "ایجنٹ رجسٹری تک رسائی نہیں ہو سکی۔"
 
@@ -4401,11 +4480,6 @@ msgstr "حسبِ ضرورت اینڈ پوائنٹ"
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr "براہِ راست پیش منظر کے پین کے ساتھ حسبِ ضرورت HTML (سینڈ باکسڈ iframe)۔"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
-msgstr "حسبِ ضرورت open-knowledge اندراج — OpenKnowledge کے زیرِ انتظام نہیں"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Custom skills folder path"
 msgstr "حسبِ ضرورت مہارت فولڈر کا راستہ"
@@ -4775,6 +4849,10 @@ msgstr "منقطع کریں"
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnecting"
 msgstr "منقطع کیا جا رہا ہے"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
+msgstr "دریافتی اسکلز کا انتظام تمام AI ٹولز کے لیے ایک ساتھ کیا جاتا ہے۔ اسے ترتیبات میں مہارت اسٹوڈیو سے انسٹال کریں۔"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -5260,17 +5338,17 @@ msgstr "خالی ابتدائی مواد"
 #. placeholder {0}: agent.name
 #. placeholder {0}: plugin.label
 #. placeholder {0}: rule.name
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Enable {0}"
 msgstr "{0} فعال کریں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} CLI"
 msgstr "{displayName} CLI فعال کریں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} Desktop"
 msgstr "{displayName} Desktop فعال کریں"
 
@@ -5416,11 +5494,6 @@ msgstr "ایک درست URL درج کریں، مثلاً https://notes.example.c
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "وہ عوامی اوریجن درج کریں جو آپ کا ٹنل سرو کرتا ہے، مثلاً https://notes.example.com"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Entry"
-msgstr "اندراج"
-
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "خرابی"
@@ -5563,7 +5636,7 @@ msgstr "ایکسپوز کرنا ایک مقررہ پورٹ طے کر دیتا ہ
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "بیرونی ایپس"
 
@@ -5947,8 +6020,6 @@ msgstr "فیلڈز"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
 #: src/lib/native-menu-catalog.ts
@@ -6356,9 +6427,9 @@ msgstr "GitHub، کوئی git URL، یا مقامی راستہ۔"
 msgid "Give it a name before editing its colors."
 msgstr "اس کے رنگوں میں ترمیم سے پہلے اسے نام دیں۔"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
-msgstr "اپنے استعمال کے AI ٹولز کو اپنے پروجیکٹس پڑھنے اور تازہ کرنے کی رسائی دیں۔ خانہ نشان زد کرنا اسے فوراً ترتیب دے دیتا ہے؛ نشان ہٹانا اسے ہٹا دیتا ہے۔"
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Gives the agent instructions for working with your documents and keeps its edits attributed."
+msgstr "ایجنٹ کو آپ کی دستاویزات کے ساتھ کام کرنے کی ہدایات دیتا ہے اور اس کی ترامیم کا انتساب برقرار رکھتا ہے۔"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6369,6 +6440,10 @@ msgstr "وہ glob پیٹرنز جن پر یہ اسکیما لاگو ہوتا ہ�
 #: src/lib/skill-scope.ts
 msgid "Global"
 msgstr "عالمی"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Global MCP server"
+msgstr "گلوبل MCP سرور"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Global outside text fields"
@@ -6509,6 +6584,7 @@ msgstr "مدد"
 
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Help your agents discover and use OpenKnowledge in any project."
 msgstr "اپنے ایجنٹس کو کسی بھی پروجیکٹ میں OpenKnowledge دریافت کرنے اور استعمال کرنے میں مدد دیں۔"
 
@@ -6718,15 +6794,13 @@ msgstr "یہ کمپیوٹر آپ کے ریموٹ سے کتنی بار تبدیل
 msgid "How to push manually"
 msgstr "دستی طور پر پُش کیسے کریں"
 
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "How to set up"
 msgstr "ترتیب کیسے دیں"
 
-#. placeholder {0}: editor.label
-#: src/components/settings/AiToolsSection.tsx
-msgid "How to set up {0} (opens in browser)"
-msgstr "{0} کیسے ترتیب دیں (براؤزر میں کھلتا ہے)"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "How to set up {rowLabel}"
+msgstr "{rowLabel} کو ترتیب کیسے دیں"
 
 #: src/components/settings/builtin-skill-copy.ts
 msgid "How to set up new projects with OpenKnowledge."
@@ -6784,6 +6858,21 @@ msgstr "ID: {0}"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Identical in both — {pick} still reads them."
 msgstr "دونوں میں ایک جیسی ہیں — {pick} پھر بھی انہیں پڑھتا رہے گا۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.lm-studio.config-path-mismatch"
+msgstr "اگر {agent} میں OpenKnowledge ٹولز نظر نہ آئیں تو جانچیں کہ اس کی ترتیبات میں MCP کنفیگ کا راستہ اس فائل سے میل کھاتا ہے جو OpenKnowledge نے لکھی ہے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "اگر {agent} میں OpenKnowledge ٹولز نظر نہ آئیں تو اسے اس پروجیکٹ میں چلائیں اور OpenKnowledge سرور کو ایک بار منظور کریں۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "اگر {agent} میں OpenKnowledge ٹولز نظر نہ آئیں تو Settings → Tools & MCP میں سرور آن کریں؛ جب تک آپ ایسا نہ کریں، {agent} پروجیکٹ سرورز بند رکھتا ہے۔"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -6888,7 +6977,7 @@ msgstr "انڈیکس دستاویز میں: اندراجات ایک سیکشن �
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "ایپ میں"
@@ -7075,6 +7164,7 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror کے طے شدہ کی میپ کے ذریعے سورس ایڈیٹر کی سطریں داخل کریں، حذف کریں، منتقل کریں، نقل کریں اور کھسکائیں۔"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
@@ -7095,6 +7185,10 @@ msgstr "{0} نصب کریں"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} نصب کریں ←"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Install {rowLabel}"
+msgstr "{rowLabel} نصب کریں"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "install a skill here first"
@@ -7172,21 +7266,11 @@ msgstr "gh CLI نصب کریں"
 msgid "Install this skill"
 msgstr "یہ مہارت نصب کریں"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "نصب شدہ"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "نصب شدہ — ok بیرونی ٹرمینلز میں دستیاب ہے۔ نشان ہٹانے سے یہ ہٹ جاتا ہے؛ OpenKnowledge کا بلٹ اِن ٹرمینل اور AI ٹولز کام کرتے رہتے ہیں۔"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
-msgstr "نصب شدہ — ok بیرونی ٹرمینلز میں دستیاب ہے۔ نشان ہٹانے سے یہ ہٹ جائے گا؛ آپ کے AI ٹولز کام کرتے رہیں گے۔"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -7244,6 +7328,14 @@ msgstr "آپ کے تمام پروجیکٹس کے لیے نصب ہوگا"
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installs into this project"
 msgstr "اس پروجیکٹ میں نصب ہوگا"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge discovery skill for this agent."
+msgstr "اس ایجنٹ کے لیے OpenKnowledge دریافت اسکل انسٹال کرتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge project skill for this agent."
+msgstr "اس ایجنٹ کے لیے OpenKnowledge پروجیکٹ اسکل انسٹال کرتا ہے۔"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Installs the skill to {path} — the first location holds its own copy"
@@ -7643,7 +7735,7 @@ msgstr "{fileName} لوڈ ہو رہی ہے"
 msgid "Loading agent activity"
 msgstr "ایجنٹ کی سرگرمی لوڈ ہو رہی ہے"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "ایجنٹس لوڈ ہو رہے ہیں…"
 
@@ -7866,10 +7958,15 @@ msgstr "listPacks کا جواب بگڑا ہوا ہے"
 msgid "Malformed plan response"
 msgstr "پلان کا جواب بگڑا ہوا ہے"
 
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Manage"
 msgstr "انتظام کریں"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Manage {rowLabel}"
+msgstr "{rowLabel} کا انتظام کریں"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7884,13 +7981,10 @@ msgstr "مہارت کے فولڈرز سنبھالیں"
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr "وہ GitHub اکاؤنٹ سنبھالیں جو OpenKnowledge آپ کی ریپازٹریز براؤز اور مطابق کرنے کے لیے استعمال کرتا ہے۔"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Managing AI tools is unavailable in this build."
-msgstr "اس بلڈ میں AI ٹولز کا انتظام دستیاب نہیں۔"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Managing project AI tools is unavailable in this build."
-msgstr "اس بلڈ میں پروجیکٹ کے AI ٹولز کا انتظام دستیاب نہیں۔"
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Managing agent connections is unavailable in this build."
+msgstr "اس بلڈ میں ایجنٹ کنکشنز کا انتظام دستیاب نہیں ہے۔"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -7946,12 +8040,9 @@ msgstr "زیادہ سے زیادہ ایجنٹس پہلے ہی چل رہے ہیں
 msgid "MCP auto-repair failed"
 msgstr "MCP کی خودکار مرمت ناکام رہی"
 
-#. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
-#. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "MCP connections"
-msgstr "MCP کنکشنز"
+#: src/lib/install-onboarding-toast.ts
+msgid "MCP auto-repair failed for {failures}"
+msgstr "{failures} کے لیے MCP خودکار مرمت ناکام رہی"
 
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "MCP servers"
@@ -8067,6 +8158,10 @@ msgstr "لنک کا ہدف، اینکر اور ظاہری لیبل تبدیل ک
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "مزید"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "More information"
+msgstr "مزید معلومات"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8537,7 +8632,7 @@ msgstr "ابھی کوئی ایجنٹ ترتیب نہیں دیا گیا — بھ�
 msgid "no agents — saved, not installed anywhere"
 msgstr "کوئی ایجنٹ نہیں — محفوظ، کہیں نصب نہیں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "کوئی ایجنٹ دستیاب نہیں۔"
 
@@ -8546,7 +8641,7 @@ msgstr "کوئی ایجنٹ دستیاب نہیں۔"
 msgid "No agents enabled"
 msgstr "کوئی ایجنٹ فعال نہیں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "آپ کی تلاش سے کوئی ایجنٹ مماثل نہیں۔"
 
@@ -8910,17 +9005,22 @@ msgstr "جواب نہیں دیا گیا"
 msgid "Not attached to desktop bridge"
 msgstr "ڈیسک ٹاپ برج سے منسلک نہیں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not available on this platform"
 msgstr "اس پلیٹ فارم پر دستیاب نہیں"
 
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not connected"
 msgstr "منسلک نہیں"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Not connected to GitHub."
 msgstr "GitHub سے منسلک نہیں۔"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine"
+msgstr "اس مشین پر شناخت نہیں ہوا"
 
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
@@ -8932,7 +9032,7 @@ msgstr "سائیڈ بار میں نہیں"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "نصب نہیں"
 
@@ -9065,15 +9165,15 @@ msgstr "<0>{address}</0> میں منتخب متن پر"
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "روٹ انڈیکس پر، okf_version کو \"0.2\" کی طرح کوٹڈ سٹرنگ کے طور پر لکھا جاتا ہے۔ بغیر حوالہ، YAML اسے ایک نمبر کے طور پر پڑھتا ہے اور 0.10 خاموشی سے 0.1 بن جاتا ہے۔"
 
-#. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
-msgstr "ایک اور مرحلہ: اسے Cursor ← ترتیبات ← ٹولز اور MCP میں فعال کریں (Cursor پروجیکٹ کے سرورز اس وقت تک بند رکھتا ہے جب تک آپ انہیں فعال نہ کریں)۔"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "ایک اور مرحلہ: اسے {agent} ← ترتیبات ← ٹولز اور MCP میں فعال کریں ({agent} پروجیکٹ کے سرورز اس وقت تک بند رکھتا ہے جب تک آپ انہیں فعال نہ کریں)۔"
 
-#. Next step for a Claude Code project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
-msgstr "ایک اور مرحلہ: اس پروجیکٹ میں <0>claude</0> چلائیں اور ایک بار OpenKnowledge کو منظور کریں۔"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.approve-once"
+msgstr "ایک اور مرحلہ: اس پروجیکٹ میں {agent} چلائیں اور ایک بار OpenKnowledge کو منظور کریں۔"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."
@@ -9163,10 +9263,6 @@ msgstr "پہلے کوئی پروجیکٹ کھولیں۔"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "ترمیم کے لیے کوئی پروجیکٹ کھولیں۔"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Open a project to manage its AI tool connections."
-msgstr "کسی پروجیکٹ کے AI ٹول کنکشنز سنبھالنے کے لیے اسے کھولیں۔"
 
 #: src/components/NavigatorApp.tsx
 msgid "Open a single markdown file — no project setup."
@@ -9506,6 +9602,10 @@ msgstr "OpenKnowledge نے تنازعات کی جانچ کی"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge نے پروجیکٹ کی جانچ کی"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge could not find this agent on this machine."
+msgstr "OpenKnowledge کو اس مشین پر یہ ایجنٹ نہیں ملا۔"
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge .ok/local/config.yml میں terminal.shell نہیں پڑھ سکا۔ اس کے بجائے دستیاب Windows شیل استعمال کیا جا رہا ہے۔"
@@ -9533,6 +9633,18 @@ msgstr "OpenKnowledge نے {subject} حذف کیا"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge deleted a document"
 msgstr "OpenKnowledge نے ایک دستاویز حذف کی"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge discovery skill"
+msgstr "OpenKnowledge دریافت اسکل"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
+msgstr "OpenKnowledge اس اندراج کو نہیں پہچانتا، اور اس فائل کی فارمیٹ میں اسے محفوظ طریقے سے تبدیل نہیں کر سکتا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+msgstr "OpenKnowledge اس اندراج کو نہیں پہچانتا۔ اسے آن کرنے پر یہ تبدیل ہو جائے گا۔"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"
@@ -9577,6 +9689,10 @@ msgstr "OpenKnowledge وہ GitHub اکاؤنٹ استعمال کر رہا ہے �
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge یہی GitHub اکاؤنٹ استعمال کر رہا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
+msgstr "OpenKnowledge نے اس فائل کو تبدیل نہیں کیا کیونکہ وہ اسے محفوظ طریقے سے پارس نہیں کر سکا۔ فائل کو خود درست کریں، پھر دوبارہ کوشش کریں۔"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
@@ -10289,10 +10405,6 @@ msgstr "پروجیکٹ"
 msgid "Project"
 msgstr "پروجیکٹ"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "پروجیکٹ کے AI ٹولز کا انتظام صرف OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب ہے۔"
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Project details"
 msgstr "پروجیکٹ کی تفصیلات"
@@ -10300,6 +10412,10 @@ msgstr "پروجیکٹ کی تفصیلات"
 #: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "پروجیکٹ کا فولڈر بن گیا، مگر git init ناکام رہا۔ دوبارہ کوشش کریں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project MCP server"
+msgstr "پروجیکٹ MCP سرور"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -10313,6 +10429,10 @@ msgstr "پروجیکٹ کے پلگ اِنز آپ کے پروجیکٹ کا تصن
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "پروجیکٹ کی جڑ"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project skill"
+msgstr "پروجیکٹ اسکل"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -10468,6 +10588,21 @@ msgstr "{pushed} بھیجا گیا"
 msgid "Pushing"
 msgstr "پُش کیا جا رہا ہے"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.user"
+msgstr "{agent} کے مشین بھر کے اسکل فولڈر میں OpenKnowledge دریافت اسکل رکھتا ہے، تاکہ وہ کسی بھی پروجیکٹ میں OpenKnowledge تلاش کر سکے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.project"
+msgstr "اس پروجیکٹ کے لیے {agent} کے اسکل فولڈر میں OpenKnowledge اسکل رکھتا ہے، تاکہ اس کی ترامیم کا انتساب برقرار رہے۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.central-store"
+msgstr "{agent} جو مرکزی اسکل اسٹور پڑھتا ہے اس میں OpenKnowledge اسکل رکھتا ہے۔"
+
 #: src/components/acp/working-status.ts
 msgid "Puzzling…"
 msgstr "پہیلی سلجھائی جا رہی ہے…"
@@ -10585,6 +10720,10 @@ msgstr "حالیہ پروجیکٹ"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "حال ہی میں کھولے گئے"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Recommended"
+msgstr "تجویز کردہ"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Recommended agent skill"
@@ -10721,6 +10860,8 @@ msgstr "ریموٹ کنٹرول"
 msgid "Remote skill source"
 msgstr "ریموٹ مہارت کا ماخذ"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
@@ -10761,6 +10902,10 @@ msgstr "{patternText} ہٹائیں"
 msgid "Remove {projectName} from recent projects"
 msgstr "{projectName} کو حالیہ پروجیکٹس سے ہٹائیں"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove {rowLabel}"
+msgstr "{rowLabel} ہٹائیں"
+
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "{tag} ہٹائیں"
@@ -10772,6 +10917,10 @@ msgstr "ہٹانا ناکام: {error}"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Remove field {field}"
 msgstr "فیلڈ {field} ہٹائیں"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove for both"
+msgstr "دونوں کے لیے ہٹائیں"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
@@ -10791,6 +10940,15 @@ msgstr "لنک ہٹائیں"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Remove OpenKnowledge from {0}"
 msgstr "OpenKnowledge کو {0} سے ہٹائیں"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge from {0}?"
+msgstr "{0} سے OpenKnowledge ہٹائیں؟"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge?"
+msgstr "OpenKnowledge ہٹائیں؟"
 
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
@@ -10935,7 +11093,7 @@ msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
 msgstr "«{docName}» کو نئی مقامی اشتراکی کیشے کے ساتھ دوبارہ کھولا جا رہا ہے۔"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "repaired {names} MCP integration"
+msgid "repaired MCP integration for {names}"
 msgstr "{names} کا MCP انٹیگریشن درست کر دیا گیا"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -10950,6 +11108,10 @@ msgstr "{keyName} تبدیل کریں"
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace all matches"
 msgstr "تمام مماثلتیں تبدیل کریں"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replace and save"
+msgstr "بدلیں اور محفوظ کریں"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace current match"
@@ -10982,6 +11144,10 @@ msgstr "کیا ان نقول کو ماخذ کے سِم لنکس سے بدل دی
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "کیا ان سِم لنکس کو خودمختار نقول سے بدل دیا جائے؟"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgstr "اس فائل میں موجود \"open-knowledge\" اندراج کو تبدیل کرتا ہے۔ فائل کے دیگر سرورز میں کوئی تبدیلی نہیں ہوتی۔"
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -11239,7 +11405,7 @@ msgstr "حاصل کیا جا رہا ہے…"
 #: src/components/ConnectingBanner.tsx
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "دوبارہ کوشش کریں"
@@ -11379,6 +11545,7 @@ msgstr "سینڈ باکسڈ HTML ایمبیڈ — HTML لکھیں، رینڈر �
 msgid "Save"
 msgstr "محفوظ کریں"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Save changes"
 msgstr "تبدیلیاں محفوظ کریں"
@@ -11429,6 +11596,7 @@ msgstr "آپ کی ٹیم کے لیے پروجیکٹ کے ساتھ محفوظ۔"
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "فائل کو <0>~/Downloads/openknowledge.skill</0> میں محفوظ کرتا ہے اور Claude Desktop App کھولتا ہے۔ آپ کے PATH میں Node.js یا Bun درکار ہے۔"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Saving"
 msgstr "محفوظ کیا جا رہا ہے"
@@ -11482,7 +11650,7 @@ msgstr "«{semanticSubmitQuery}» کو معنی کے لحاظ سے تلاش کر
 msgid "Search ({searchShortcutLabel})"
 msgstr "تلاش ({searchShortcutLabel})"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
 msgstr "ایجنٹس تلاش کریں"
 
@@ -12066,8 +12234,7 @@ msgstr "{0} مزید دکھائیں"
 msgid "Show {hidden} more"
 msgstr "{hidden} مزید دکھائیں"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show {hiddenCount} more"
 msgstr "{hiddenCount} مزید دکھائیں"
 
@@ -12133,8 +12300,7 @@ msgid "Show in Explorer"
 msgstr "ایکسپلورر میں دکھائیں"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
 msgstr "کم دکھائیں"
 
@@ -12341,11 +12507,6 @@ msgstr "{0}/{1} سے مہارتیں۔"
 msgid "Skills from OpenKnowledge"
 msgstr "OpenKnowledge کی مہارتیں"
 
-#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Skills moved to Skills Studio."
-msgstr "مہارتیں مہارت اسٹوڈیو میں منتقل ہو گئیں۔"
-
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
 msgstr "مہارتیں دوبارہ تفویض ہوئیں"
@@ -12501,6 +12662,7 @@ msgstr "آپ کی رائے بھیجتے ہوئے کچھ غلط ہو گیا۔ ب�
 msgid "Something went wrong starting the terminal."
 msgstr "ٹرمینل شروع کرتے ہوئے کچھ غلط ہو گیا۔"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Something went wrong. Please try again."
 msgstr "کچھ غلط ہو گیا۔ براہِ کرم دوبارہ کوشش کریں۔"
@@ -13074,7 +13236,6 @@ msgstr "ٹیمپلیٹس"
 msgid "Templates available"
 msgstr "دستیاب ٹیمپلیٹس"
 
-#. Group label above the shell-PATH row in Settings → AI tools & CLI
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13083,8 +13244,7 @@ msgstr "دستیاب ٹیمپلیٹس"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -13211,6 +13371,11 @@ msgstr "{0} کی ڈاؤن لوڈ درخواست کا وقت ختم ہو گیا۔
 #: src/components/SkillsTree.tsx
 msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
 msgstr "{0} پلگ اِن یہ مہارتیں اپنے کیش سے فراہم کرتا ہے — OK انہیں کبھی ترمیم یا اپڈیٹ نہیں کرتا۔"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.desktop-project-config"
+msgstr "{agent} ڈیسک ٹاپ ایپ اس پروجیکٹ کنفیگ کو نظر انداز کرتی ہے؛ اسے صرف {agent} CLI پڑھتا ہے۔"
 
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
@@ -13452,6 +13617,14 @@ msgstr "ماخذ فولڈر خود نہیں ہلتا۔"
 msgid "The template's filename (without `.md`)."
 msgstr "ٹیمپلیٹ کی فائل کا نام (`.md` کے بغیر)۔"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
+msgstr "{label} کی ٹرمینل اور ڈیسک ٹاپ قطاریں ایک ہی ترتیب استعمال کرتی ہیں، اس لیے کسی ایک کو منسلک کرنے سے دونوں منسلک ہو جاتی ہیں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
+msgstr "{label} کی ٹرمینل اور ڈیسک ٹاپ قطاریں ایک ہی ترتیب استعمال کرتی ہیں، اس لیے اسے ہٹانے سے دونوں کا رابطہ منقطع ہو جائے گا۔"
+
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "اس پروجیکٹ کے لیے ٹرمینل بند ہے۔ یہاں کمانڈز چلانے کے لیے اسے دوبارہ فعال کریں۔"
@@ -13608,6 +13781,14 @@ msgstr "یہ ایجنٹ سلیش کمانڈ پیش نہیں کرتا"
 msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
 msgstr "یہ ایجنٹ سلیش کمانڈ پیش نہیں کرتا — آپ کا پیغام سادہ متن کے طور پر بھیجا جائے گا"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
+msgstr "یہ ایجنٹ OpenKnowledge کو آپ کی جانب سے یہ ترتیب دینے کا کوئی طریقہ نہیں دیتا۔ اس کی سیٹ اپ گائیڈ میں دستی مراحل موجود ہیں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
+msgstr "اس مشین پر اس ایجنٹ کی اس قسم کی کوئی فائل ابھی موجود نہیں۔ ایجنٹ کو ایک بار کھولیں، پھر دوبارہ جانچیں۔"
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "اس ایجنٹ نے ابھی تک اپنی کمانڈز کا اعلان نہیں کیا"
@@ -13651,6 +13832,14 @@ msgstr "یہ تبصرہ پوری خصوصیت پر ہے"
 msgid "This conflict is resolved."
 msgstr "یہ تنازع حل ہو گیا ہے۔"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This could not be set up because the MCP server entry it needs was not written."
+msgstr "اسے سیٹ اپ نہیں کیا جا سکا کیونکہ اس کے لیے درکار MCP سرور اندراج نہیں لکھا گیا۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+msgstr "یہ ذیل میں درج MCP سرور اندراجات اور اسکل فائلیں حذف کر دیتا ہے۔ دوبارہ شامل کرنے تک ایجنٹ آپ کی دستاویزات تک رسائی کھو دے گا۔"
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "یہ دستاویز"
@@ -13682,6 +13871,10 @@ msgstr "یہ دستاویز حذف کر دی گئی تھی"
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
 msgstr "اس اینڈ پوائنٹ نے آپ کا مقرر کردہ ویکٹر حجم نظر انداز کر دیا۔ ماڈل کا اپنا حجم استعمال کرنے کے لیے <0>search.semantic.dimensions</0> ہٹا دیں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This entry changed after OpenKnowledge wrote it. Turning it on replaces it."
+msgstr "OpenKnowledge کے لکھنے کے بعد یہ اندراج تبدیل ہو گیا۔ اسے آن کرنے سے یہ بدل جائے گا۔"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
@@ -13734,6 +13927,10 @@ msgstr "یہ فولڈر {actualOwner}/{actualRepo} کا کلون ہے، {expecte
 #: src/lib/share/receive-flow.ts
 msgid "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
 msgstr "یہ فولڈر {actualHost} پر موجود {expectedOwner}/{expectedRepo} کا کلون ہے، {expectedHost} کا نہیں۔ {expectedHost} سے کلون کیا گیا کوئی فولڈر منتخب کریں؟"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This folder is also {alsoAffects}'s."
+msgstr "یہ فولڈر {alsoAffects} کا بھی ہے۔"
 
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
@@ -13793,6 +13990,7 @@ msgstr "یہ آئٹم"
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "یہ کسی ڈرائیو کی جڑ لگتی ہے (مثلاً C:\\)۔ یہاں ڈھانچہ بنانا پوری ڈرائیو اسکین کرے گا۔"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This machine"
@@ -13817,6 +14015,10 @@ msgstr "اس کو آپ کی فائلوں کو دیکھنے کی ضرورت ہے�
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
 msgstr "یہ آپ کے AI ٹولز کو OpenKnowledge کے ساتھ کام کرنا سکھاتی ہے۔ یہ پروجیکٹ فولڈر میں رہتی ہے، اس لیے یہ ہر اس شخص کے لیے نصب ہوتی ہے جو پروجیکٹ کھولتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This option cannot be changed automatically."
+msgstr "یہ آپشن خودکار طور پر تبدیل نہیں کیا جا سکتا۔"
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -13873,6 +14075,7 @@ msgid "This permanently removes {path}. Agents that reference this template by n
 msgstr "یہ {path} کو مستقل طور پر ہٹا دیتا ہے۔ جو ایجنٹس اس ٹیمپلیٹ کا نام سے حوالہ دیتے ہیں وہ اس کے دوبارہ بننے یا کسی والد فولڈر کے ٹیمپلیٹ سے بدلنے تک ناکام رہیں گے۔"
 
 #: src/components/PanelScopeHeader.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This project"
@@ -13921,11 +14124,6 @@ msgstr "اس پروجیکٹ کا چلتا ہوا سرور براہِ راست ت
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "اس پروجیکٹ کا سرور (v{0}) اس ایپ (v{1}) سے نیا ہے۔"
 
-#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This project's skill moved to Skills Studio."
-msgstr "اس پروجیکٹ کی مہارت مہارت اسٹوڈیو میں منتقل ہو گئی۔"
-
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "یہ OpenKnowledge کی ترتیبات اور انضمامات کو آپ کے Mac اور نیچے منتخب کیے گئے پروجیکٹس سے ہٹا دیتا ہے، مگر آپ کا Markdown مواد اور لکھی گئی مہارتیں برقرار رکھتا ہے۔"
@@ -13962,6 +14160,18 @@ msgstr "یہ ترتیب ہر مشین کے لیے الگ ہے اور ساتھی�
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "یہ ترتیب ہر مشین کے لیے الگ ہے اور ساتھیوں کے ساتھ مشترک نہیں ہوتی۔ اسے ایک API کلید درکار ہے (نیچے مقرر کریں) الّا یہ کہ آپ کا اینڈ پوائنٹ کوئی مقامی سرور ہو جسے اس کی ضرورت نہ ہو۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers} through <0>{path}</0>. Removing it here removes it for {peers} too."
+msgstr "یہ سیٹ اپ <0>{path}</0> کے ذریعے {peers} کے ساتھ مشترک ہے۔ اسے یہاں ہٹانے سے یہ {peers} کے لیے بھی ہٹ جاتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}, and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
+msgstr "یہ سیٹ اپ {peers} کے ساتھ مشترک ہے، اور OpenKnowledge اسے یہاں سے تبدیل نہیں کر سکتا۔ پہلے Skills Studio میں فولڈر کو ان لنک کریں۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}. Removing it here removes it for {peers} too."
+msgstr "یہ سیٹ اپ {peers} کے ساتھ مشترک ہے۔ اسے یہاں ہٹانے سے یہ {peers} کے لیے بھی ہٹ جاتا ہے۔"
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -14283,7 +14493,6 @@ msgid "Type to find a doc"
 msgstr "دستاویز ڈھونڈنے کے لیے لکھیں"
 
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr "اس پلیٹ فارم پر دستیاب نہیں"
 
@@ -14917,8 +15126,7 @@ msgstr "AI کو کیا کرنا چاہیے؟ (اختیاری)"
 msgid "What the agent may read, write, and surface."
 msgstr "ایجنٹ کیا پڑھ، لکھ اور ظاہر کر سکتا ہے۔"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "What this checkbox changes"
 msgstr "یہ چیک باکس کیا بدلتا ہے"
 
@@ -14994,6 +15202,10 @@ msgstr "آپ کون ہیں، تاکہ ایجنٹ کو آپ کا سیاق معل�
 msgid "Whole word"
 msgstr "پورا لفظ"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Why this needs attention"
+msgstr "اس پر توجہ کیوں درکار ہے"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Wiki link"
 msgstr "وکی لنک"
@@ -15030,6 +15242,10 @@ msgstr "ونڈو"
 #: src/components/CreateProjectDialog.tsx
 msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
 msgstr "منسلک AI ٹول کے بغیر پیک کی {packSkillCount, plural, one {# مہارت} other {# مہارتیں}} انسٹال نہیں ہوں گی۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Without the skill the agent still works, but it loses edit attribution and the live preview."
+msgstr "اسکل کے بغیر ایجنٹ پھر بھی کام کرتا ہے، لیکن وہ ترامیم کا انتساب اور براہِ راست پیش منظر کھو دیتا ہے۔"
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
@@ -15078,6 +15294,11 @@ msgstr "ورک ٹریز"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Markdown سورس ایڈیٹر میں لمبی سطریں لپیٹیں۔"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.managed-file"
+msgstr "ایک چھوٹی برج فائل لکھتا ہے جسے {agent} اس پروجیکٹ سے لوڈ کر کے OpenKnowledge تک پہنچتا ہے۔"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "اس میں ایک اندراج لکھتا ہے"
@@ -15085,6 +15306,10 @@ msgstr "اس میں ایک اندراج لکھتا ہے"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "لکھائی"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Writing this file failed. Check the OpenKnowledge log for the reason."
+msgstr "یہ فائل لکھنے میں ناکامی ہوئی۔ وجہ جاننے کے لیے OpenKnowledge لاگ دیکھیں۔"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
@@ -15232,6 +15457,10 @@ msgstr "برانچ <0>{shareBranch}</0> کی آپ کی نقل میں ایسی ت
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "آپ کا موجودہ ورژن پہلے محفوظ ہو جاتا ہے، اس لیے یہ واپس لیا جا سکتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Your documents are not touched."
+msgstr "آپ کی دستاویزات میں کوئی تبدیلی نہیں کی جائے گی۔"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx

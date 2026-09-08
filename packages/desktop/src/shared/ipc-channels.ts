@@ -1,10 +1,12 @@
 import type {
+  ApplyReport,
   BranchInfoResponse,
   CheckoutResponse,
   CreateNewBannerKind,
   EditorId,
   HandoffFailureReason,
   HandoffScope,
+  HostSnapshot,
   LanguagePreference,
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
@@ -300,7 +302,7 @@ export type IntegrationsSetResult =
 export type ProjectIntegrationsFollowUp =
   | 'approve-once'
   | 'enable-manually'
-  | 'auto-connect'
+  | 'trust-gated'
   | 'none';
 
 export interface ProjectIntegrationsEditorStatus {
@@ -342,6 +344,25 @@ export interface ProjectIntegrationsSetRequest {
 export type ProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: ProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: ProjectIntegrationsStatus };
+
+export interface AgentIntegrationsIntent {
+  readonly satisfierId: string;
+  readonly desired: 'present' | 'absent';
+}
+
+export interface AgentIntegrationsApplyRequest {
+  readonly intents: readonly AgentIntegrationsIntent[];
+}
+
+export type AgentIntegrationsApplyResult =
+  | { readonly ok: true; readonly report: ApplyReport; readonly snapshot: HostSnapshot }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly unavailable?: boolean;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    };
 
 interface DialogOpenFolderOpts {
   readonly defaultPath?: string;
@@ -573,8 +594,13 @@ export interface RequestChannels {
   'ok:spellcheck:toggle': { args: []; result: boolean };
 
   'ok:integrations:dispatch': {
-    args: [request: { kind: 'status' } | ({ kind: 'set' } & IntegrationsSetRequest)];
-    result: IntegrationsStatus | IntegrationsSetResult;
+    args: [
+      request:
+        | { kind: 'status' }
+        | ({ kind: 'set' } & IntegrationsSetRequest)
+        | ({ kind: 'apply-batch' } & AgentIntegrationsApplyRequest),
+    ];
+    result: IntegrationsStatus | IntegrationsSetResult | AgentIntegrationsApplyResult;
   };
 
   'ok:project-integrations:dispatch': {
@@ -650,6 +676,7 @@ export interface RequestChannels {
         cols: number;
         rows: number;
         launchCommand?: string | TerminalLaunchCommand;
+        launchCli?: TerminalCli;
       },
     ];
     result: OkPtyCreateResult;

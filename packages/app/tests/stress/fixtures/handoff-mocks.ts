@@ -568,6 +568,17 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             },
           }),
         },
+        agentIntegrations: {
+          apply: async () => ({
+            ok: false as const,
+            error: 'unavailable in tests',
+            report: { actions: [], conflicts: [], withheld: [] },
+            snapshot: {
+              probes: { env: 'desktop' as const, satisfiers: {} },
+              detection: { detected: [], probed: false },
+            },
+          }),
+        },
         remoteAccess: {
           probePort: async () => true,
         },

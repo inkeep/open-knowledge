@@ -1,12 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { CONFIG_SCHEMA_MAJOR_PATH, LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
 import {
-  CONFIG_SCHEMA_MAJOR_PATH,
-  LOCAL_DIR,
-  OK_DIR,
-  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
-} from '@inkeep/open-knowledge-core';
-import { tracedMkdirSync, tracedWriteFileSync } from './fs-traced.ts';
+  tracedMkdirSync,
+  tracedRenameSync,
+  tracedRmSync,
+  tracedWriteFileSync,
+} from './fs-traced.ts';
 import { assertNotHomeProjectRoot } from './home-project-root.ts';
 
 export const CONFIG_FILENAME = 'config.yml';
@@ -142,6 +143,62 @@ function ensureGitignoreEntries(
   return 'updated';
 }
 
+const RETIRED_PROJECT_SKILL_GITIGNORE_PATHS = [
+  '.claude/skills/open-knowledge/',
+  '.cursor/skills/open-knowledge/',
+  '.codex/skills/open-knowledge/',
+  '.github/skills/open-knowledge/',
+  '.opencode/skills/open-knowledge/',
+  '.pi/skills/open-knowledge/',
+];
+
+const RETIRED_PROJECT_SKILL_GITIGNORE_HEADER = [
+  '# OpenKnowledge regenerates its built-in project skill on every open, and',
+  '# different app builds version-stamp it differently. It is a per-machine',
+  "# artifact — keep it out of git so teammates don't collide under auto-sync.",
+];
+
+export function removeProjectSkillGitignoreBlock(projectDir: string): 'removed' | 'unchanged' {
+  const filePath = join(projectDir, '.gitignore');
+  assertNotSymlink(filePath, '.gitignore');
+  if (!existsSync(filePath)) return 'unchanged';
+  const original = readFileSync(filePath, 'utf-8');
+  const paths = new Set(RETIRED_PROJECT_SKILL_GITIGNORE_PATHS.map((p) => p.trim()));
+  const lines = original.split('\n');
+  if (!lines.some((l) => paths.has(l.trim()))) return 'unchanged';
+  const header = new Set(RETIRED_PROJECT_SKILL_GITIGNORE_HEADER);
+  const isBlank = (l: string): boolean => l.trim() === '';
+  const kept: string[] = [];
+  let atSeam = false;
+  for (const line of lines) {
+    if (paths.has(line.trim()) || header.has(line.trim())) {
+      atSeam = true;
+      continue;
+    }
+    if (atSeam && isBlank(line)) {
+      const previous = kept[kept.length - 1];
+      if (previous === undefined || isBlank(previous)) {
+        atSeam = false;
+        continue;
+      }
+    }
+    atSeam = false;
+    kept.push(line);
+  }
+  const next = kept.join('\n');
+  const tmpPath = `${filePath}.tmp.${randomUUID()}`;
+  try {
+    tracedWriteFileSync(tmpPath, next, 'utf-8');
+    tracedRenameSync(tmpPath, filePath);
+  } catch (err) {
+    try {
+      tracedRmSync(tmpPath, { force: true });
+    } catch {}
+    throw err;
+  }
+  return 'removed';
+}
+
 const OK_GITIGNORE_CONTENT = `# .ok/local/ holds per-machine runtime state. Anything inside is
 # machine-local and never committed. New runtime files (caches, locks,
 # manifests, telemetry, error logs) are auto-ignored — no edit needed here.
@@ -245,20 +302,4 @@ export function writeRootGitignoreForNewRepo(projectDir: string): 'created' | 's
   return writeIfMissing(join(projectDir, '.gitignore'), ROOT_GITIGNORE_TEMPLATE, '.gitignore')
     ? 'created'
     : 'skipped';
-}
-
-const PROJECT_SKILL_GITIGNORE_BLOCK = `# OpenKnowledge regenerates its built-in project skill on every open, and
-# different app builds version-stamp it differently. It is a per-machine
-# artifact — keep it out of git so teammates don't collide under auto-sync.
-${PROJECT_SKILL_PROJECTION_IGNORE_PATHS.join('\n')}
-`;
-
-export function ensureProjectSkillGitignore(
-  projectDir: string,
-): 'created' | 'updated' | 'unchanged' {
-  return ensureGitignoreEntries(
-    join(projectDir, '.gitignore'),
-    PROJECT_SKILL_GITIGNORE_BLOCK,
-    '.gitignore',
-  );
 }

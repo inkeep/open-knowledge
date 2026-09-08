@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
-import { reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
+import { reconcileUserGlobalSkillBundles } from './skill-reclaim.ts';
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const BUNDLES = [{ id: 'discovery', name: 'open-knowledge-discovery' }] as const;
@@ -59,7 +59,7 @@ function installAt(home: string, root: string): void {
 }
 
 function run(home: string, bundle: string) {
-  return reclaimUserSkillsOnLaunch({
+  return reconcileUserGlobalSkillBundles({
     home,
     isPackaged: true,
     platform: 'darwin',
@@ -78,7 +78,7 @@ function run(home: string, bundle: string) {
   });
 }
 
-describe('reclaimUserSkillsOnLaunch placement', () => {
+describe('reconcileUserGlobalSkillBundles placement', () => {
   test('seeds the default host set when the bundle is nowhere (first run)', async () => {
     const home = homeWithAllHosts();
 

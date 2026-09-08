@@ -151,6 +151,21 @@ describe('settings dialog search', () => {
     expect(screen.getByTestId('settings-sidebar-item-preferences')).toBeDefined();
   });
 
+  test('the merged Agents page is findable under both of its former names', async () => {
+    const user = userEvent.setup();
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    const input = screen.getByTestId('settings-search-input');
+
+    for (const query of ['AI tools', 'Configure agents', 'connections']) {
+      await user.clear(input);
+      await user.type(input, query);
+      expect(
+        await screen.findByTestId('settings-search-result-section:agent-connections'),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('settings-search-result-section:configure-agents')).toBeNull();
+    }
+  });
+
   test('a markdownlint rule is searchable when the plugin is enabled', async () => {
     const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);

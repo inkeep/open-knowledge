@@ -1,4 +1,5 @@
 export { VFileMessage } from 'vfile-message';
+export * from './agent-registry/index.ts';
 // Bridge — observer/CRDT-bridge shared utilities (precedent #14)
 export {
   addsBlankLines,
@@ -105,6 +106,7 @@ export {
   toBridgeInvariantLog,
   tryLineLevelCombine,
 } from './bridge/index.ts';
+
 export {
   clampToCodeUnits,
   isBlankNoteContent,
@@ -410,7 +412,7 @@ export {
   HOSTS_WITH_USER_SKILL_DIR,
   HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
-  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+  PROJECT_SKILL_PROJECTION_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
   receivesProjectIntegrationWrite,
   skillRootActivationPath,
@@ -501,7 +503,6 @@ export {
   isSkillRefCandidate,
   OPENKNOWLEDGE_SKILLS_REPO,
   PACK_SKILL_PREFIX,
-  projectSkillDecisionKey,
   RENAMED_PACK_SKILLS,
   rewriteSkillRefs,
   SKILL_REF_RE,
@@ -1063,6 +1064,16 @@ export {
   type AgentEffectEntryWire,
   AgentEffectsDocSchema,
   type AgentEffectsDocWire,
+  AgentIntegrationsAppliedStepSchema,
+  type AgentIntegrationsApplyRequest,
+  AgentIntegrationsApplyRequestSchema,
+  type AgentIntegrationsApplySuccess,
+  AgentIntegrationsApplySuccessSchema,
+  AgentIntegrationsIntentSchema,
+  type AgentIntegrationsIntentWire,
+  AgentIntegrationsPlanConflictSchema,
+  AgentIntegrationsProbeSchema,
+  AgentIntegrationsSnapshotSchema,
   type AgentPatchRequest,
   AgentPatchRequestSchema,
   type AgentPatchSuccess,

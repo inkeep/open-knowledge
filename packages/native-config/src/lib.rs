@@ -70,6 +70,23 @@ pub fn remove_mcp_server(toml_text: String, server_name: String) -> napi::Result
     })
 }
 
+/// Remove one key from `[mcp_servers.<server_name>]`, leaving every other key
+/// of the entry and its decor in place. Throws only for unparseable TOML.
+#[napi]
+pub fn remove_mcp_server_key(
+    toml_text: String,
+    server_name: String,
+    key: String,
+) -> napi::Result<McpEditResult> {
+    let outcome = mcp_edit::remove_mcp_server_key(&toml_text, &server_name, &key)
+        .map_err(napi::Error::from_reason)?;
+    Ok(McpEditResult {
+        text: outcome.text,
+        changed: outcome.changed,
+        existed: outcome.existed,
+    })
+}
+
 /// Where to read the existing config from and where to write the updated one
 /// after following any symlink chain. `read_path` is absent when the chain
 /// cycles or can't be resolved, in which case `write_path` is the original path

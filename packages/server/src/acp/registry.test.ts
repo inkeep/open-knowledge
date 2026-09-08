@@ -4,13 +4,41 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
 import {
+  ACP_AGENT_EDITOR_IDS,
   AcpRegistry,
+  FEATURED_AGENT_IDS,
   loadCustomAgents,
   normalizeAgentDisplayName,
   registryPlatformKey,
 } from './registry.ts';
 
 const log = getLogger('acp-registry-test');
+
+describe('per-agent tables', () => {
+  test('features the same six agents in the same display order', () => {
+    expect(FEATURED_AGENT_IDS).toEqual([
+      'claude-acp',
+      'codex-acp',
+      'gemini',
+      'cursor',
+      'github-copilot-cli',
+      'opencode',
+    ]);
+  });
+
+  test('maps the same four agents to the editor wiring their harness loads', () => {
+    expect(ACP_AGENT_EDITOR_IDS).toEqual({
+      'claude-acp': 'claude',
+      'codex-acp': 'codex',
+      opencode: 'opencode',
+      'pi-acp': 'pi',
+    });
+  });
+
+  test('leaves cursor unmapped, so session setup keeps injecting for it', () => {
+    expect(ACP_AGENT_EDITOR_IDS.cursor).toBeUndefined();
+  });
+});
 
 const CATALOG = JSON.stringify({
   version: 1,

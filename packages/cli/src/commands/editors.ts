@@ -8,6 +8,7 @@ import {
   type EditorId as CoreEditorId,
 } from '@inkeep/open-knowledge-core';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
+import { getTomlConfigEngine } from '../native/toml-config-engine.ts';
 
 export type EditorId = CoreEditorId;
 export const ALL_EDITOR_IDS: readonly EditorId[] = CORE_ALL_EDITOR_IDS;
@@ -39,6 +40,8 @@ exit 127`;
 export const CHAIN_WIN_VERSION_SENTINEL = '# ok-mcp-win-v1';
 
 const OK_MCP_CHAIN_MARKER = '# ok-mcp';
+
+const OK_PACKAGE_SPEC = '@inkeep/open-knowledge';
 
 export const CHAIN_WIN_V1 = `# ok-mcp-win-v1
 if ($env:PATHEXT -notmatch 'CMD') { $env:PATHEXT = '.COM;.EXE;.BAT;.CMD;' + $env:PATHEXT }
@@ -78,6 +81,8 @@ export interface McpInstallOptions {
   mode?: McpInstallMode;
   platformName?: NodeJS.Platform;
   skipAvailabilityCheck?: boolean;
+  replaceEntry?: boolean;
+  pruneOnly?: boolean;
   home?: string;
 }
 
@@ -89,7 +94,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
     if (!Array.isArray(e.args)) return false;
     if (e.args[0] !== '-l' || e.args[1] !== '-c') return false;
     const body = e.args[2];
-    return typeof body === 'string' && body.includes(CHAIN_VERSION_SENTINEL);
+    return scriptBodyOpensWith(body, CHAIN_VERSION_SENTINEL);
   }
 
   if (e.command === 'powershell') {
@@ -98,14 +103,14 @@ export function isEntryUpToDate(entry: unknown): boolean {
       return false;
     }
     const body = e.args[3];
-    return typeof body === 'string' && body.includes(CHAIN_WIN_VERSION_SENTINEL);
+    return scriptBodyOpensWith(body, CHAIN_WIN_VERSION_SENTINEL);
   }
 
   if (e.type === 'local' && Array.isArray(e.command)) {
     if (e.command[0] === '/bin/sh') {
       if (e.command[1] !== '-l' || e.command[2] !== '-c') return false;
       const body = e.command[3];
-      return typeof body === 'string' && body.includes(CHAIN_VERSION_SENTINEL);
+      return scriptBodyOpensWith(body, CHAIN_VERSION_SENTINEL);
     }
     if (e.command[0] === 'powershell') {
       if (
@@ -116,7 +121,7 @@ export function isEntryUpToDate(entry: unknown): boolean {
         return false;
       }
       const body = e.command[4];
-      return typeof body === 'string' && body.includes(CHAIN_WIN_VERSION_SENTINEL);
+      return scriptBodyOpensWith(body, CHAIN_WIN_VERSION_SENTINEL);
     }
     return false;
   }
@@ -237,8 +242,7 @@ function commandArgsMatchCanonical(
 }
 
 function chainArgvRunsOwnManagedServer(argv: unknown[], interpreter: string): boolean {
-  const bodyIsOk = (body: unknown): boolean =>
-    typeof body === 'string' && body.includes(OK_MCP_CHAIN_MARKER);
+  const bodyIsOk = (body: unknown): boolean => scriptBodyOpensWithMarker(body);
   if (interpreter === '/bin/sh') {
     return argv[0] === '-l' && argv[1] === '-c' && bodyIsOk(argv[2]);
   }
@@ -251,6 +255,86 @@ function chainArgvRunsOwnManagedServer(argv: unknown[], interpreter: string): bo
     );
   }
   return false;
+}
+
+export function writerReplacesForeignEntry(target: Pick<EditorMcpTarget, 'format'>): boolean {
+  if (target.format === 'toml') return getTomlConfigEngine().backend === 'native';
+  return target.format === 'json' || target.format === 'yaml';
+}
+
+function launchArgv(entry: Record<string, unknown>): unknown[] {
+  if (Array.isArray(entry.command)) return entry.command;
+  return [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])];
+}
+
+function scriptBodyOpensWith(value: unknown, sentinel: string): boolean {
+  return typeof value === 'string' && value.trimStart().startsWith(sentinel);
+}
+
+function scriptBodyOpensWithMarker(value: unknown): boolean {
+  return scriptBodyOpensWith(value, OK_MCP_CHAIN_MARKER);
+}
+
+function isOwnPackageSpec(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    (value === OK_PACKAGE_SPEC || value.startsWith(`${OK_PACKAGE_SPEC}@`))
+  );
+}
+
+export function entryCarriesOwnChain(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const argv = launchArgv(entry as Record<string, unknown>);
+  const scriptFlag = argv.findIndex((token) => token === '-c' || token === '-Command');
+  if (scriptFlag >= 0 && scriptBodyOpensWithMarker(argv[scriptFlag + 1])) return true;
+  return argv.some(isOwnPackageSpec);
+}
+
+export function isOwnDevEntry(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const argv = launchArgv(entry as Record<string, unknown>);
+  if (argv[0] !== DEV_MCP_SERVER_COMMAND || argv[2] !== 'mcp') return false;
+  try {
+    return argv[1] === resolveDevCliDistPath();
+  } catch {
+    return false;
+  }
+}
+
+const STANDARD_MANAGED_ENTRY_KEYS = ['command', 'args', 'env'] as const;
+const OPENCODE_MANAGED_ENTRY_KEYS = ['type', 'command', 'environment'] as const;
+
+export function managedEntryKeys(entry: Record<string, unknown>): readonly string[] {
+  return entry.type === 'local' && Array.isArray(entry.command)
+    ? OPENCODE_MANAGED_ENTRY_KEYS
+    : STANDARD_MANAGED_ENTRY_KEYS;
+}
+
+type ManagedEntry = ReturnType<NonNullable<EditorMcpTarget['buildEntry']>>;
+
+export function droppedManagedKeys(
+  existing: object | null | undefined,
+  canonical: ManagedEntry,
+): readonly string[] {
+  if (typeof existing !== 'object' || existing === null) return [];
+  const e = existing as Record<string, unknown>;
+  return managedEntryKeys(canonical).filter(
+    (key) => canonical[key] === undefined && e[key] !== undefined,
+  );
+}
+
+export function canonicalEntryFor(
+  target: EditorMcpTarget,
+  cwd: string,
+): Record<string, unknown> | null {
+  return target.format === 'file' ? null : target.buildEntry(cwd, {});
+}
+
+export function entryCarriesDroppedManagedKey(
+  existing: object | null | undefined,
+  canonical: ManagedEntry,
+): boolean {
+  return droppedManagedKeys(existing, canonical).length > 0;
 }
 
 export function entryRunsOwnManagedServer(entry: unknown): boolean {
@@ -432,21 +516,31 @@ export function resolveLmStudioConfigPath(options: AppSupportOptions = {}): stri
   return documented.file;
 }
 
-export interface EditorMcpTarget {
+interface EditorMcpTargetBase {
   id: EditorId;
   label: string;
   configPath: (cwd: string, home?: string) => string;
-  format: 'json' | 'toml' | 'yaml' | 'file';
   topLevelKey: 'mcpServers' | 'servers' | 'mcp_servers' | 'mcp';
   serverMapSubKey?: string;
   offerOnlyWhenDetected?: boolean;
   serverName: (cwd: string) => string;
-  buildEntry: (cwd: string, options?: McpInstallOptions) => Record<string, unknown>;
   scope: 'project' | 'global';
   detectPath?: (cwd: string, home?: string) => string;
   projectConfigPath?: (cwd: string) => string;
   projectSkillPath?: (cwd: string) => string;
 }
+
+interface ManagedFileEditorTarget extends EditorMcpTargetBase {
+  format: 'file';
+  buildEntry?: undefined;
+}
+
+interface EntryEditorTarget extends EditorMcpTargetBase {
+  format: 'json' | 'toml' | 'yaml';
+  buildEntry: (cwd: string, options?: McpInstallOptions) => Record<string, unknown>;
+}
+
+export type EditorMcpTarget = ManagedFileEditorTarget | EntryEditorTarget;
 
 export function editorEntryLocator(target: EditorMcpTarget): string {
   const server = target.serverName('');
@@ -565,11 +659,6 @@ export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
     format: 'file',
     topLevelKey: 'mcpServers',
     serverName: () => MCP_SERVER_NAME,
-    buildEntry: () => {
-      throw new Error(
-        'Pi has no MCP entry shape; the managed bridge file is built by buildPiExtensionSource (integrations/pi-extension.ts).',
-      );
-    },
     scope: 'project',
     detectPath: (_cwd, home) => resolvePiAgentDirPath({ home }),
     projectConfigPath: (cwd) => join(cwd, '.pi', 'extensions', 'open-knowledge.ts'),

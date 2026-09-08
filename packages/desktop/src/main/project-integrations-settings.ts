@@ -4,6 +4,7 @@ import type {
   McpEntryClassification,
   McpRemoveOutcome,
 } from '@inkeep/open-knowledge';
+import { projectMcpConsentClass } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   IntegrationsEditorState,
@@ -24,14 +25,8 @@ import {
 } from './integrations-settings.ts';
 import { logIpcError } from './ipc-log.ts';
 
-const EDITOR_FOLLOW_UP: Partial<Record<McpWiringEditorId, ProjectIntegrationsFollowUp>> = {
-  claude: 'approve-once',
-  cursor: 'enable-manually',
-  codex: 'auto-connect',
-};
-
 function followUpFor(id: McpWiringEditorId): ProjectIntegrationsFollowUp {
-  return EDITOR_FOLLOW_UP[id] ?? 'none';
+  return projectMcpConsentClass(id);
 }
 
 export interface ProjectIntegrationsCliSurface {
@@ -72,8 +67,10 @@ export interface ProjectIntegrationsCliSurface {
   removeProjectSkill(
     id: McpWiringEditorId,
     projectDir: string,
-  ): { action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed'; error?: string };
-  recordProjectSkillDecision?(projectDir: string, enabled: boolean): void;
+  ): {
+    action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed';
+    error?: string;
+  };
   reportProjectSkillInstalled?(projectDir: string): void;
 }
 
@@ -267,6 +264,12 @@ export function registerProjectIntegrationsSettings(
     }
   }
 
+  function skillActionSucceeded(action: string, enabled: boolean): boolean {
+    return enabled
+      ? action === 'written' || action === 'overwritten'
+      : action === 'removed' || action === 'not-present';
+  }
+
   async function setSkill(
     projectDir: string,
     enabled: boolean,
@@ -281,7 +284,7 @@ export function registerProjectIntegrationsSettings(
         const result = enabled
           ? cli.writeProjectSkill(id, projectDir)
           : cli.removeProjectSkill(id, projectDir);
-        if (result.action === 'failed') {
+        if (!skillActionSucceeded(result.action, enabled)) {
           failures.push(`${cli.editorLabel(id)}${result.error ? ` (${result.error})` : ''}`);
         }
       } catch (err) {
@@ -290,7 +293,6 @@ export function registerProjectIntegrationsSettings(
         );
       }
     }
-    cli.recordProjectSkillDecision?.(projectDir, enabled);
     if (enabled && failures.length === 0) cli.reportProjectSkillInstalled?.(projectDir);
     if (failures.length > 0) {
       return {

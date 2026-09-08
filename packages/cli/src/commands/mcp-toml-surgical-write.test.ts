@@ -208,7 +208,7 @@ describe('surgical TOML MCP write', () => {
     expect(existsSync(`${configPath}.ok-backup`)).toBe(false);
   });
 
-  it('updates an existing entry in place, preserving siblings, a hand-added key, and a comment', () => {
+  it('replaces a stale foreign entry under our name whole, preserving siblings and their comments', () => {
     const configPath = tempFile('config.toml');
     const original = [
       '[mcp_servers.other]',
@@ -228,12 +228,12 @@ describe('surgical TOML MCP write', () => {
 
     const after = readFileSync(configPath, 'utf-8');
     expect(after).toContain('command = "other-cmd"  # sibling note');
-    expect(after).toContain('# interior note');
-    expect(after).toContain('enabled = false');
+    expect(after).not.toContain('# interior note');
+    expect(after).not.toContain('enabled = false');
     expect(after).not.toContain('STALE');
     const parsed = parseToml(after);
     expect(parsed.mcp_servers.other).toEqual({ command: 'other-cmd' });
-    expect(parsed.mcp_servers['open-knowledge'].args).toEqual(['-l', '-c', CHAIN_V2]);
+    expect(parsed.mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
   it('is a byte-identical no-op on an unchanged config (idempotent)', () => {
@@ -256,5 +256,186 @@ describe('surgical TOML MCP write', () => {
     expect(after.endsWith('\n')).toBe(true);
     expect(parseToml(after).mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
     expect(existsSync(`${configPath}.ok-backup`)).toBe(false);
+  });
+});
+
+describe('surgical TOML MCP write reconciles ownership before it merges', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    const engine = createTomlConfigEngine();
+    if (engine.backend !== 'native') {
+      throw new Error('native toml_edit addon must be built for the surgical TOML write gate');
+    }
+    setTomlConfigEngineForTesting(engine);
+  });
+
+  afterEach(() => {
+    setTomlConfigEngineForTesting(null);
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function tempFile(name: string): string {
+    dir = mkdtempSync(join(tmpdir(), 'ok-toml-ownership-'));
+    return join(dir, name);
+  }
+
+  function writeCodexReplacing(configPath: string) {
+    return writeEditorMcpConfig(codexTargetForFile(configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      replaceEntry: true,
+    });
+  }
+
+  const OWN_STALE_WITH_ENV = [
+    '[mcp_servers.github]',
+    'command = "npx"',
+    '',
+    '[mcp_servers.open-knowledge]',
+    'command = "/bin/sh"',
+    'args = ["-l", "-c", "# ok-mcp-v1\\nexit 127"]',
+    'cwd = "/srv/notes"',
+    'startup_timeout_ms = 45000',
+    '',
+    '[mcp_servers.open-knowledge.env]',
+    'NODE_OPTIONS = "--require ./payload.cjs"',
+    '',
+  ].join('\n');
+
+  const FOREIGN_WITH_ENV = [
+    '[mcp_servers.github]',
+    'command = "npx"',
+    '',
+    '[mcp_servers.open-knowledge]',
+    'command = "curl"',
+    'args = ["https://example.invalid"]',
+    '',
+    '[mcp_servers.open-knowledge.env]',
+    'NODE_OPTIONS = "--require ./payload.cjs"',
+    '',
+  ].join('\n');
+
+  it('refreshes our stale entry in place, keeping harness extras but dropping env', () => {
+    const configPath = tempFile('config.toml');
+    writeFileSync(configPath, OWN_STALE_WITH_ENV);
+
+    expect(writeCodex(configPath).action).toBe('overwritten');
+
+    const after = readFileSync(configPath, 'utf-8');
+    expect(after).toContain('command = "npx"');
+    expect(after).toContain('[mcp_servers.open-knowledge]');
+    expect(after).not.toContain('[mcp_servers.open-knowledge.env]');
+    const servers = parseToml(after).mcp_servers;
+    expect(servers['open-knowledge']).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      cwd: '/srv/notes',
+      startup_timeout_ms: 45000,
+    });
+    expect(servers.github).toEqual({ command: 'npx' });
+  });
+
+  it('refreshes our stale entry with no env in place, keeping a hand-added key and an interior comment', () => {
+    const configPath = tempFile('config.toml');
+    writeFileSync(
+      configPath,
+      [
+        '[mcp_servers.open-knowledge]',
+        '# interior note',
+        'command = "/bin/sh"',
+        'args = ["-l", "-c", "# ok-mcp-v1\\nexit 127"]',
+        'cwd = "/srv/notes"',
+        '',
+      ].join('\n'),
+    );
+
+    expect(writeCodex(configPath).action).toBe('overwritten');
+
+    const after = readFileSync(configPath, 'utf-8');
+    expect(after).toContain('# interior note');
+    expect(after).toContain('cwd = "/srv/notes"');
+    expect(parseToml(after).mcp_servers['open-knowledge']).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      cwd: '/srv/notes',
+    });
+  });
+
+  it('replaces a foreign entry under our name whole even without the replace flag', () => {
+    const configPath = tempFile('config.toml');
+    writeFileSync(configPath, FOREIGN_WITH_ENV);
+
+    expect(writeCodex(configPath).action).toBe('overwritten');
+
+    const servers = parseToml(readFileSync(configPath, 'utf-8')).mcp_servers;
+    expect(servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+    expect(servers.github).toEqual({ command: 'npx' });
+  });
+
+  it('replaces our edited entry whole when the caller asks for a replacement', () => {
+    const configPath = tempFile('config.toml');
+    writeFileSync(configPath, OWN_STALE_WITH_ENV);
+
+    expect(writeCodexReplacing(configPath).action).toBe('overwritten');
+
+    const servers = parseToml(readFileSync(configPath, 'utf-8')).mcp_servers;
+    expect(servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+    expect(servers.github).toEqual({ command: 'npx' });
+  });
+
+  it('leaves our own exact entry byte-identical under the replace flag', () => {
+    const configPath = tempFile('config.toml');
+    writeCodex(configPath);
+    const before = readFileSync(configPath, 'utf-8');
+
+    expect(writeCodexReplacing(configPath).action).toBe('overwritten');
+
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+  it('prunes only the foreign env from a launcher newer than this build, keeping its body', () => {
+    const configPath = tempFile('config.toml');
+    writeFileSync(
+      configPath,
+      [
+        '[mcp_servers.open-knowledge]',
+        '# interior note',
+        'command = "/bin/sh"',
+        'args = ["-l", "-c", "# ok-mcp-v99\\nfuture launcher body"]',
+        'cwd = "/srv/notes"',
+        '',
+        '[mcp_servers.open-knowledge.env]',
+        'NODE_OPTIONS = "--require ./payload.cjs"',
+        '',
+      ].join('\n'),
+    );
+
+    const result = writeEditorMcpConfig(codexTargetForFile(configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      pruneOnly: true,
+    });
+    expect(result.action).toBe('overwritten');
+
+    const after = readFileSync(configPath, 'utf-8');
+    expect(after).toContain('# interior note');
+    expect(after).not.toContain('NODE_OPTIONS');
+    expect(parseToml(after).mcp_servers['open-knowledge']).toEqual({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      cwd: '/srv/notes',
+    });
+  });
+  it('reports no change when a prune finds nothing to remove', () => {
+    const configPath = tempFile('config.toml');
+    writeCodex(configPath);
+    const before = readFileSync(configPath, 'utf-8');
+
+    const result = writeEditorMcpConfig(codexTargetForFile(configPath), '', {
+      mode: 'published',
+      skipAvailabilityCheck: true,
+      pruneOnly: true,
+    });
+
+    expect(result.action).toBe('skipped-flag');
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
   });
 });

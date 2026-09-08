@@ -1,6 +1,9 @@
+import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, test } from 'vitest';
 import type {
+  AgentIntegrationsApplyRequest,
+  AgentIntegrationsApplyResult,
   IntegrationsSetRequest,
   IntegrationsSetResult,
   IntegrationsStatus,
@@ -192,7 +195,9 @@ function setup(overrides: Partial<RegisterIntegrationsSettingsOpts> = {}) {
   const status = () => dispatch(EVENT, { kind: 'status' }) as Promise<IntegrationsStatus>;
   const set = (request: IntegrationsSetRequest) =>
     dispatch(EVENT, { kind: 'set', ...request }) as Promise<IntegrationsSetResult>;
-  return { ipcMain, cli, path, skills, fs, handle, status, set };
+  const applyBatch = (intents: AgentIntegrationsApplyRequest['intents']) =>
+    dispatch(EVENT, { kind: 'apply-batch', intents }) as Promise<AgentIntegrationsApplyResult>;
+  return { ipcMain, cli, path, skills, fs, handle, status, set, applyBatch };
 }
 
 describe('classifyEditorState', () => {
@@ -230,12 +235,17 @@ describe('detectedEditorsFromProbes', () => {
     ]).toEqual([]);
   });
 
-  test('lm-studio is never detected — it has no honest probe', () => {
-    const got = detectedEditorsFromProbes({
-      cliOnPath: { 'lm-studio': true } as Record<string, boolean>,
-      schemeHandler: { 'lm-studio': true },
-    });
-    expect([...got]).toEqual([]);
+  test('the LM Studio scheme detects it; a CLI claim still does not', () => {
+    expect([
+      ...detectedEditorsFromProbes({ ...none, schemeHandler: { 'lm-studio': true } }),
+    ]).toEqual(['lm-studio']);
+
+    expect([
+      ...detectedEditorsFromProbes({
+        cliOnPath: { 'lm-studio': true } as Record<string, boolean>,
+        schemeHandler: {},
+      }),
+    ]).toEqual([]);
   });
 
   test('a config directory cannot manufacture detection', () => {
@@ -511,6 +521,46 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     expect(failed.ok).toBe(false);
     const next = await set({ component: { kind: 'path' }, enabled: false });
     expect(next.ok).toBe(true);
+  });
+
+  test('a batch and a single toggle queue on one chain, never interleaved', async () => {
+    const order: string[] = [];
+    const path = makePath();
+    let releaseInstall: () => void = () => {};
+    path.install = async () => {
+      order.push('toggle-start');
+      await new Promise<void>((resolve) => {
+        releaseInstall = resolve;
+      });
+      order.push('toggle-end');
+      return { ok: true };
+    };
+    const { set, applyBatch } = setup({
+      path,
+      applyBatch: async () => {
+        order.push('batch');
+        return {
+          ok: true,
+          report: { actions: [], conflicts: [], withheld: [] },
+          snapshot: { probes: EMPTY_PROBE_SNAPSHOT, detection: EMPTY_DETECTION_SNAPSHOT },
+        };
+      },
+    });
+
+    const toggle = set({ component: { kind: 'path' }, enabled: true });
+    const batch = applyBatch([]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    releaseInstall();
+    await Promise.all([toggle, batch]);
+
+    expect(order).toEqual(['toggle-start', 'toggle-end', 'batch']);
+  });
+
+  test('a build with no batch writer wired refuses rather than crashing', async () => {
+    const { applyBatch } = setup();
+    const result = await applyBatch([{ satisfierId: 'claude/mcp/user/config-entry' }]);
+    expect(result.ok).toBe(false);
+    expect(result.report.actions).toEqual([]);
   });
 
   test('destroy removes the handler; a second destroy is a no-op', () => {

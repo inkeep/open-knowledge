@@ -49,7 +49,12 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
   test('all editors: 2 outcomes per editor; claude-desktop skips both as unsupported', () => {
     const result = writeProjectAiIntegrations(projectDir, ALL_EDITOR_IDS);
 
-    expect(result.integrations).toHaveLength(ALL_EDITOR_IDS.length * 2);
+    expect(result.integrations).toHaveLength(ALL_EDITOR_IDS.length * 2 + 1);
+
+    const hub = result.integrations.filter((o) => String(o.editorId) === 'agents');
+    expect(hub).toHaveLength(1);
+    expect(hub[0]?.action).toBe('written');
+    expect(hub[0]?.path).toContain('.agents/skills/open-knowledge/SKILL.md');
 
     const desktop = result.integrations.filter((o) => o.editorId === 'claude-desktop');
     expect(desktop).toHaveLength(2);

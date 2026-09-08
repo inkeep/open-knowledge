@@ -330,6 +330,12 @@ msgstr "{0} 允許 {1} 不必先詢問就執行"
 msgid "{0} needs {1}"
 msgstr "{0} 需要 {1}"
 
+#. placeholder {0}: removed.dependent
+#. placeholder {1}: removed.prerequisite
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{0} needs {1}. Turn both off, or keep both on."
+msgstr "{0} 需要 {1}。請同時關閉兩者，或同時保持開啟。"
+
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
 msgid "{0} needs replacing"
@@ -470,6 +476,31 @@ msgstr "{0} 年前"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel}（衝突）"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude-desktop.per-tool-approval"
+msgstr "{agent} 會在每個 OpenKnowledge 工具第一次使用時請你核准。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.session-injection"
+msgstr "每次 OpenKnowledge 啟動 {agent} 時都會把 OpenKnowledge 的工具交給它；不會寫入任何內容到它的設定。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.pi.folder-trust"
+msgstr "{agent} 只會在你信任過的資料夾中載入專案擴充功能；如果工具沒有出現，請在 {agent} 中信任這個資料夾。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.copilot.shared-workspace-config"
+msgstr "{agent} 讀取 OpenKnowledge 為 {sourceAgent} 寫入的工作區 MCP 設定；為其中一方移除就等於為雙方移除。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.openclaw.central-store-missing"
+msgstr "{agent} 的中央技能庫還不存在；先啟動一次 {agent} 讓它建立，然後再試。"
+
 #: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 無法開始對話。"
@@ -519,6 +550,10 @@ msgstr "{boldName} 屬於 <0>{0}</0> 外掛{pluginVersion}，為唯讀。{boldHa
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} 位於本專案之外的 <0>{source}</0>，在此執行的智慧體無法載入它。請將其複製進來以便編輯。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{changeCount, plural, one {# change} other {# changes}}"
+msgstr "{changeCount, plural, one {# 項變更} other {# 項變更}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -609,6 +644,26 @@ msgstr "{days, plural, other {# 天前}}"
 msgid "{days}d ago"
 msgstr "{days} 天前"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge cannot safely replace that entry in this file's format."
+msgstr "{dependent} 需要 {prerequisite}，而 OpenKnowledge 無法在此檔案格式中安全地取代該項目。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge could not find this agent on this machine."
+msgstr "{dependent} 需要 {prerequisite}，但 OpenKnowledge 在此裝置上找不到此智慧代理。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and OpenKnowledge does not recognize that entry. Tick {prerequisite} to replace it, then save again."
+msgstr "{dependent} 需要 {prerequisite}，而 OpenKnowledge 無法辨識該項目。勾選 {prerequisite} 以取代它，然後重新儲存。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, and this agent has no file of that kind on this machine yet. Open the agent once, then try again."
+msgstr "{dependent} 需要 {prerequisite}，而此智慧代理在此裝置上尚無這類檔案。請先開啟該智慧代理，然後再試一次。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{dependent} needs {prerequisite}, which OpenKnowledge cannot set up for you. Its setup guide has the manual steps."
+msgstr "{dependent} 需要 {prerequisite}，而 OpenKnowledge 無法為您設定它。其設定指南中有手動步驟。"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{descriptorLabel} — render error, source editable below"
 msgstr "{descriptorLabel} — 顯示出錯，可在下方編輯原始碼"
@@ -650,7 +705,7 @@ msgstr "{displayName}（{bin}）未安裝，也不在你的 PATH 中。"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} CLI"
 msgstr "{displayName} CLI"
 
@@ -660,7 +715,7 @@ msgid "{displayName} CLI, {hint}"
 msgstr "{displayName} CLI，{hint}"
 
 #: src/components/handoff/agent-launcher-labels.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
@@ -1063,10 +1118,6 @@ msgstr "<{componentName}> 不是已知的元件。複製原始碼以便在別處
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 顯示失敗（很可能是屬性有誤）。複製原始碼看看哪裡出了問題，或刪除這個區塊。"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
-msgstr "無論如何 <0>~/.ok/bin</0> 和 <1>~/.ok/env.sh</1> 都會保留——應用程式一律會維護它們。"
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1493,6 +1544,14 @@ msgstr "為 {keyName} 新增項目"
 msgid "Add link"
 msgstr "新增連結"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill"
+msgstr "新增 MCP 和技能"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Add MCP & skill for {rowLabel}"
+msgstr "為 {rowLabel} 新增 MCP 和技能"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
 msgstr "為搜尋加入以語意為基礎的排序，這樣即使沒有共同關鍵字，概念相關的頁面也能被找出來。"
@@ -1531,10 +1590,9 @@ msgstr "新增分頁"
 msgid "Add tag"
 msgstr "新增標籤"
 
-#. Checkbox in Settings → AI tools & CLI that adds the ok CLI to the user's shell PATH
 #. Toggle in the first-launch dialog that adds the ok CLI to the user's shell PATH
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Add the <0>ok</0> command to your terminal"
 msgstr "把 <0>ok</0> 指令加到你的終端機"
 
@@ -1568,15 +1626,14 @@ msgstr "把你的註解寫在這則訊息裡"
 msgid "Added"
 msgstr "已新增"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds a global OpenKnowledge MCP entry for this agent."
+msgstr "為此智慧代理新增全域 OpenKnowledge MCP 項目。"
+
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Adds a managed block to"
 msgstr "加入一個受管理的區塊到"
-
-#. placeholder {0}: status.path.rcFilesToTouch.join(', ')
-#: src/components/settings/AiToolsSection.tsx
-msgid "Adds a managed block to {0}"
-msgstr "加入一個受管理的區塊到 {0}"
 
 #. Subtext under the project AI-tools checkbox
 #: src/components/ProjectAiToolsField.tsx
@@ -1587,6 +1644,20 @@ msgstr "向 <0>{toolList}</0> 新增 OpenKnowledge 的 MCP 項目與專案技能
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
 msgstr "向 <0>{connectToolList}</0> 新增 OpenKnowledge 的 MCP 項目，讓你的智慧代理可以讀取並編輯你的檔案。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Adds an OpenKnowledge MCP entry to this project's agent config."
+msgstr "將 OpenKnowledge MCP 項目新增至此專案的智慧代理設定。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.user-config"
+msgstr "將 OpenKnowledge 加入 {agent} 自己的 MCP 設定，這台機器上的每個專案都能存取。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.project-config"
+msgstr "將 OpenKnowledge 加入 {agent} 在這個專案中讀取的 MCP 設定，讓它可以讀取、搜尋和編輯這些文件。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1640,6 +1711,11 @@ msgstr "智慧代理對話"
 msgid "Agent configuration file"
 msgstr "代理設定檔"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Agent connections"
+msgstr "智慧代理連線"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Agent mode"
 msgstr "代理模式"
@@ -1661,22 +1737,13 @@ msgid "Agent transcript"
 msgstr "代理記錄"
 
 #: src/components/ExploreSkills.tsx
+#: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
 msgstr "代理"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "AI 工具管理只在 OpenKnowledge 桌面應用程式中提供。"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
 msgstr "AI 工具"
-
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "AI tools & CLI"
-msgstr "AI 工具與 CLI"
 
 #: src/editor/bubble-menu/ImageAlignButtons.tsx
 msgid "Align center"
@@ -2397,14 +2464,6 @@ msgstr "標註框用於突顯關鍵資訊。"
 msgid "Can't nest projects. An OpenKnowledge project already exists at <0>{rootPath}</0>. Choose a location outside it, or open that project instead."
 msgstr "專案不能巢狀。<0>{rootPath}</0> 已經有一個 OpenKnowledge 專案了。請選它以外的位置，或者直接開啟那個專案。"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Can't safely edit this project config"
-msgstr "無法安全地編輯這個專案的設定"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Can't safely edit this tool's config"
-msgstr "無法安全地編輯這個工具的設定"
-
 #: src/lib/share/run-share-action.ts
 msgid "Can't share this path."
 msgstr "無法分享這個路徑。"
@@ -2433,6 +2492,7 @@ msgstr "無法分享這個路徑。"
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/LinkPreviewsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/NetworkAccessSection.tsx
@@ -2659,6 +2719,15 @@ msgstr "選擇圖示"
 msgid "Choose what a new tab starts"
 msgstr "選擇新分頁啟動的內容"
 
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up for {0}."
+msgstr "選擇 OpenKnowledge 為 {0} 設定的內容。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up."
+msgstr "選擇 OpenKnowledge 設定的內容。"
+
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "選擇要把這些註解送到哪裡"
@@ -2671,9 +2740,9 @@ msgstr "選擇要將這則訊息傳送到哪裡"
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
 msgstr "選擇這個專案的 OpenKnowledge 設定（包括它和 AI 工具的連接）要隨專案一起保存、讓隊友也能拿到，還是只留在你的電腦上。"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
-msgstr "選擇哪些智慧代理顯示在應用程式的代理選單中，例如 Ask AI、Open with AI 和 ＋ 新對話按鈕。關閉某個智慧代理即可在所有選單中隱藏它。"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Choose which agents appear in agent menus across the app, and set them up to read and update your documents."
+msgstr "選擇哪些智慧代理顯示在應用程式的代理選單中，並進行設定，讓它們能夠讀取和更新你的文件。"
 
 #. Section label above the light/dark/system cards in the first-launch dialog
 #: src/components/McpConsentDialogBody.tsx
@@ -3147,7 +3216,6 @@ msgstr "設定警告"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -3212,10 +3280,6 @@ msgstr "請先連接 GitHub 再繼續。"
 msgid "Connect OpenKnowledge to other tools you use."
 msgstr "把 OpenKnowledge 和你用的其他工具連接起來。"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connect the AI tools you use to this specific project. These files live in the project folder, so anyone who opens it gets the same setup."
-msgstr "把你用的 AI 工具連接到這個特定專案。這些檔案放在專案資料夾裡，所以開啟它的人都會得到同樣的設定。"
-
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileSidebar.tsx
 #: src/components/FileTree.tsx
@@ -3243,6 +3307,10 @@ msgstr "連接你的 AI 工具"
 #: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "將你的 AI 工具連接到這個專案"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Connected"
+msgstr "已連接"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -3292,10 +3360,18 @@ msgstr "連線出錯——請再試一次"
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "連線中斷——請讓這個分頁保持開啟，重新連上後你的編輯就會同步"
 
-#. Next step for a Codex project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Connects automatically the next time you open this project in a trusted Codex session."
-msgstr "下次你在受信任的 Codex 工作階段中開啟這個專案時會自動連接。"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.trust-gated"
+msgstr "下次你在受信任的 {agent} 工作階段中開啟這個專案時會自動連接。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to OpenKnowledge in every project on this machine."
+msgstr "將智慧代理連線至這台機器上所有專案中的 OpenKnowledge。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Connects the agent to this project so it can read, search, and edit your documents."
+msgstr "將智慧代理連線至此專案，使其可以讀取、搜尋和編輯你的文件。"
 
 #: src/components/acp/working-status.ts
 msgid "Contemplating…"
@@ -3663,15 +3739,18 @@ msgid "Couldn't add that comment."
 msgstr "無法加上那則註解。"
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "無法套用這項變更：{0}"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "無法確認 {filePath} 是否仍有衝突 — 正在重試。"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Couldn't check which tools are connected."
+msgstr "無法檢查哪些工具已連接。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -3948,7 +4027,7 @@ msgstr "無法連上協作伺服器——{errorDetail}。可以試試 <0>ok stat
 msgid "Couldn't reach GitHub. Try again?"
 msgstr "無法連上 GitHub。要再試一次嗎？"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Couldn't reach the agent registry."
 msgstr "無法連上代理登錄檔。"
 
@@ -4401,11 +4480,6 @@ msgstr "自訂端點"
 msgid "Custom HTML with a live preview pane (sandboxed iframe)."
 msgstr "帶即時預覽窗格的自訂 HTML（沙箱 iframe）。"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
-msgstr "自訂的 open-knowledge 項目——不由 OpenKnowledge 管理"
-
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "Custom skills folder path"
 msgstr "自訂技能資料夾路徑"
@@ -4775,6 +4849,10 @@ msgstr "中斷連接"
 #: src/components/settings/AccountSection.tsx
 msgid "Disconnecting"
 msgstr "正在中斷連接"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Discovery skills are managed for all AI tools together. Install this one from Settings → Skills Studio."
+msgstr "探索技能由所有 AI 工具統一管理。請從「設定」→「技能工作室」安裝此技能。"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -5260,17 +5338,17 @@ msgstr "起始內容為空"
 #. placeholder {0}: agent.name
 #. placeholder {0}: plugin.label
 #. placeholder {0}: rule.name
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Enable {0}"
 msgstr "啟用 {0}"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} CLI"
 msgstr "啟用 {displayName} CLI"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Enable {displayName} Desktop"
 msgstr "啟用 {displayName} Desktop"
 
@@ -5416,11 +5494,6 @@ msgstr "輸入有效的 URL，例如 https://notes.example.com"
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "輸入你的通道所提供服務的公開來源，例如 https://notes.example.com"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Entry"
-msgstr "項目"
-
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "錯誤"
@@ -5563,7 +5636,7 @@ msgstr "公開會鎖定一個固定連接埠，讓通道的目標在重新啟動
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "External apps"
 msgstr "外部應用程式"
 
@@ -5947,8 +6020,6 @@ msgstr "欄位"
 
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/editor/slash-command/component-items.tsx
 #: src/lib/native-menu-catalog.ts
@@ -6356,9 +6427,9 @@ msgstr "GitHub、一個 git URL，或一個本機路徑。"
 msgid "Give it a name before editing its colors."
 msgstr "請先為主題命名，再編輯色彩。"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
-msgstr "讓你用的 AI 工具能夠讀取和更新你的專案。勾選就會立刻設定好；取消勾選則會移除。"
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Gives the agent instructions for working with your documents and keeps its edits attributed."
+msgstr "為智慧代理提供處理你文件的說明，並保留其編輯的歸屬記錄。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
@@ -6369,6 +6440,10 @@ msgstr "這個結構描述適用的 glob 模式"
 #: src/lib/skill-scope.ts
 msgid "Global"
 msgstr "全域"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Global MCP server"
+msgstr "全域 MCP 伺服器"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Global outside text fields"
@@ -6509,6 +6584,7 @@ msgstr "說明"
 
 #. Subtext under the discovery-skill checkbox
 #: src/components/McpConsentDialogBody.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Help your agents discover and use OpenKnowledge in any project."
 msgstr "協助你的智慧代理在任何專案中探索並使用 OpenKnowledge。"
 
@@ -6718,15 +6794,13 @@ msgstr "這台電腦從你的遠端儲存庫拉取變更的頻率。"
 msgid "How to push manually"
 msgstr "如何手動推送"
 
-#. Link on an undetected tool row to its OpenKnowledge setup guide
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "How to set up"
 msgstr "如何設定"
 
-#. placeholder {0}: editor.label
-#: src/components/settings/AiToolsSection.tsx
-msgid "How to set up {0} (opens in browser)"
-msgstr "如何設定 {0}（在瀏覽器中開啟）"
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "How to set up {rowLabel}"
+msgstr "如何設定 {rowLabel}"
 
 #: src/components/settings/builtin-skill-copy.ts
 msgid "How to set up new projects with OpenKnowledge."
@@ -6784,6 +6858,21 @@ msgstr "ID：{0}"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Identical in both — {pick} still reads them."
 msgstr "兩邊完全相同，{pick} 仍會讀到它們。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.lm-studio.config-path-mismatch"
+msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請檢查它設定中的 MCP 設定路徑是否與 OpenKnowledge 寫入的檔案一致。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請在這個專案中執行它，並核准 OpenKnowledge 伺服器一次。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請到 Settings → Tools & MCP 開啟該伺服器；在你開啟之前，{agent} 會讓專案伺服器保持關閉。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -6888,7 +6977,7 @@ msgstr "在索引文件中：條目位於節標題下，每個條目都帶有連
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "在應用程式內"
@@ -7075,6 +7164,7 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "透過 CodeMirror 的預設按鍵對應，在原始碼編輯器中插入、刪除、移動、複製和縮排行。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
@@ -7095,6 +7185,10 @@ msgstr "安裝 {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "安裝 {brand} →"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Install {rowLabel}"
+msgstr "安裝 {rowLabel}"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "install a skill here first"
@@ -7172,21 +7266,11 @@ msgstr "安裝 gh CLI"
 msgid "Install this skill"
 msgstr "安裝此技能"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "已安裝"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
-msgstr "已安裝——ok 可以在外部終端機中使用。取消勾選會把它移除；OpenKnowledge 的內建終端機和 AI 工具照常可用。"
-
-#: src/components/settings/AiToolsSection.tsx
-msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
-msgstr "已安裝 — 可在外部終端機中使用 ok。取消勾選會將其移除；你的 AI 工具仍可正常使用。"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -7244,6 +7328,14 @@ msgstr "安裝後可用於你的所有專案"
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Installs into this project"
 msgstr "安裝到此專案"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge discovery skill for this agent."
+msgstr "為此智慧代理安裝 OpenKnowledge 探索技能。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Installs the OpenKnowledge project skill for this agent."
+msgstr "為此智慧代理安裝 OpenKnowledge 專案技能。"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Installs the skill to {path} — the first location holds its own copy"
@@ -7643,7 +7735,7 @@ msgstr "正在載入 {fileName}"
 msgid "Loading agent activity"
 msgstr "正在載入代理活動"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "正在載入代理…"
 
@@ -7866,10 +7958,15 @@ msgstr "listPacks 回應格式錯誤"
 msgid "Malformed plan response"
 msgstr "計畫回應格式錯誤"
 
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Manage"
 msgstr "管理"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Manage {rowLabel}"
+msgstr "管理 {rowLabel}"
 
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
@@ -7884,13 +7981,10 @@ msgstr "管理技能資料夾"
 msgid "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
 msgstr "管理 OpenKnowledge 用來瀏覽和同步你的儲存庫的那個 GitHub 帳戶。"
 
-#: src/components/settings/AiToolsSection.tsx
-msgid "Managing AI tools is unavailable in this build."
-msgstr "這個版本無法管理 AI 工具。"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Managing project AI tools is unavailable in this build."
-msgstr "這個版本無法管理專案的 AI 工具。"
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Managing agent connections is unavailable in this build."
+msgstr "此版本無法管理智慧代理連線。"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -7946,12 +8040,9 @@ msgstr "同時執行的代理已達上限"
 msgid "MCP auto-repair failed"
 msgstr "MCP 自動修復失敗"
 
-#. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
-#. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "MCP connections"
-msgstr "MCP 連接"
+#: src/lib/install-onboarding-toast.ts
+msgid "MCP auto-repair failed for {failures}"
+msgstr "{failures} 的 MCP 自動修復失敗"
 
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "MCP servers"
@@ -8067,6 +8158,10 @@ msgstr "修改連結目標、錨點和顯示標籤。"
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "更多"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "More information"
+msgstr "更多資訊"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8537,7 +8632,7 @@ msgstr "還沒有設定任何代理——請從傳送選單中挑一個。"
 msgid "no agents — saved, not installed anywhere"
 msgstr "未選擇代理 — 僅保存，不安裝到任何位置"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "沒有可用的代理。"
 
@@ -8546,7 +8641,7 @@ msgstr "沒有可用的代理。"
 msgid "No agents enabled"
 msgstr "沒有啟用任何代理"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "沒有代理符合你的搜尋。"
 
@@ -8910,17 +9005,22 @@ msgstr "未回答"
 msgid "Not attached to desktop bridge"
 msgstr "未連接到桌面橋接"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not available on this platform"
 msgstr "這個平台不支援"
 
 #: src/components/settings/AccountSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not connected"
 msgstr "未連接"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Not connected to GitHub."
 msgstr "尚未連接到 GitHub。"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine"
+msgstr "未在此電腦上偵測到"
 
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
@@ -8932,7 +9032,7 @@ msgstr "不在側邊欄中"
 
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "未安裝"
 
@@ -9065,15 +9165,15 @@ msgstr "在 <0>{address}</0> 中選取的文字上"
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "在根索引上，okf_version 被寫為引號的字串，如 \"0.2\"。不加引號，YAML 將其讀為數字，0.10 默默地變成 0.1。"
 
-#. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on)."
-msgstr "還差一步：到 Cursor → Settings → Tools & MCP 中啟用它（Cursor 預設會關閉專案伺服器，要你自己打開）。"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "還差一步：到 {agent} → Settings → Tools & MCP 中啟用它（{agent} 預設會關閉專案伺服器，要你自己打開）。"
 
-#. Next step for a Claude Code project MCP row
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "One more step: run <0>claude</0> in this project and approve OpenKnowledge once."
-msgstr "還差一步：在這個專案中執行 <0>claude</0>，並核准 OpenKnowledge 一次。"
+#. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.approve-once"
+msgstr "還差一步：在這個專案中執行 {agent}，並核准 OpenKnowledge 一次。"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."
@@ -9163,10 +9263,6 @@ msgstr "請先開啟一個專案。"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Open a project to edit."
 msgstr "請開啟一個專案才能編輯。"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Open a project to manage its AI tool connections."
-msgstr "請開啟一個專案，才能管理它和 AI 工具的連接。"
 
 #: src/components/NavigatorApp.tsx
 msgid "Open a single markdown file — no project setup."
@@ -9506,6 +9602,10 @@ msgstr "OpenKnowledge 檢查了衝突"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 檢查了專案"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge could not find this agent on this machine."
+msgstr "OpenKnowledge 未在此裝置上找到該代理程式。"
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge 無法讀取 .ok/local/config.yml 中的 terminal.shell，將改用可用的 Windows shell。"
@@ -9533,6 +9633,18 @@ msgstr "OpenKnowledge 刪除了 {subject}"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge deleted a document"
 msgstr "OpenKnowledge 刪除了一個文件"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge discovery skill"
+msgstr "OpenKnowledge 探索技能"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
+msgstr "OpenKnowledge 無法辨識此項目，且無法在此檔案格式中安全取代。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge does not recognize this entry. Turning it on replaces it."
+msgstr "OpenKnowledge 無法辨識此項目。啟用後將取代它。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge edited {subject}"
@@ -9577,6 +9689,10 @@ msgstr "OpenKnowledge 正在使用 gh CLI 提供的 GitHub 帳戶。沒有另外
 #: src/components/settings/AccountSection.tsx
 msgid "OpenKnowledge is using this GitHub account."
 msgstr "OpenKnowledge 正在使用這個 GitHub 帳戶。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "OpenKnowledge left this file alone because it could not parse it safely. Fix the file by hand, then try again."
+msgstr "OpenKnowledge 未修改此檔案，因為無法安全地解析它。請手動修正該檔案，然後再試一次。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
@@ -10289,10 +10405,6 @@ msgstr "專案"
 msgid "Project"
 msgstr "專案"
 
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project AI tool management is only available in the OpenKnowledge desktop app."
-msgstr "專案的 AI 工具管理只在 OpenKnowledge 桌面應用程式中提供。"
-
 #: src/components/CreateProjectDialog.tsx
 msgid "Project details"
 msgstr "專案詳細資料"
@@ -10300,6 +10412,10 @@ msgstr "專案詳細資料"
 #: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "專案資料夾已建立，但 git init 失敗。請再試一次。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project MCP server"
+msgstr "專案 MCP 伺服器"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -10313,6 +10429,10 @@ msgstr "專案外掛是你專案的寫作標準——在這裡開啟或關閉它
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "專案根目錄"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Project skill"
+msgstr "專案技能"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -10468,6 +10588,21 @@ msgstr "{pushed}推送"
 msgid "Pushing"
 msgstr "正在推送"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.user"
+msgstr "將 OpenKnowledge 探索技能放進 {agent} 的全域技能資料夾，讓它在任何專案中都能找到 OpenKnowledge。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.project"
+msgstr "將 OpenKnowledge 技能放進 {agent} 在這個專案中的技能資料夾，讓它的編輯保持署名。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.skill.central-store"
+msgstr "將 OpenKnowledge 技能放進 {agent} 讀取的中央技能庫。"
+
 #: src/components/acp/working-status.ts
 msgid "Puzzling…"
 msgstr "解謎中…"
@@ -10585,6 +10720,10 @@ msgstr "最近的專案"
 #: src/components/CommandPalette.tsx
 msgid "Recently opened"
 msgstr "最近開啟"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Recommended"
+msgstr "建議"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Recommended agent skill"
@@ -10721,6 +10860,8 @@ msgstr "遠端控制"
 msgid "Remote skill source"
 msgstr "遠端技能來源"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Remove"
@@ -10761,6 +10902,10 @@ msgstr "移除 {patternText}"
 msgid "Remove {projectName} from recent projects"
 msgstr "把 {projectName} 從最近的專案中移除"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove {rowLabel}"
+msgstr "移除 {rowLabel}"
+
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "移除 {tag}"
@@ -10772,6 +10917,10 @@ msgstr "移除失敗：{error}"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Remove field {field}"
 msgstr "移除欄位 {field}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove for both"
+msgstr "移除兩者"
 
 #: src/components/NavigatorApp.tsx
 #: src/components/recent-remove-controls.tsx
@@ -10791,6 +10940,15 @@ msgstr "移除連結"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Remove OpenKnowledge from {0}"
 msgstr "把 OpenKnowledge 從 {0} 中移除"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge from {0}?"
+msgstr "從 {0} 移除 OpenKnowledge？"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Remove OpenKnowledge?"
+msgstr "移除 OpenKnowledge？"
 
 #: src/components/TemplateForm.tsx
 msgid "Remove property"
@@ -10935,7 +11093,7 @@ msgid "Reopening \"{docName}\" with a fresh local collaboration cache."
 msgstr "正在用全新的本機協作快取重新開啟「{docName}」。"
 
 #: src/lib/install-onboarding-toast.ts
-msgid "repaired {names} MCP integration"
+msgid "repaired MCP integration for {names}"
 msgstr "已修復 {names} 的 MCP 整合"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
@@ -10950,6 +11108,10 @@ msgstr "取代 {keyName}"
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace all matches"
 msgstr "取代所有相符項"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replace and save"
+msgstr "取代並儲存"
 
 #: src/editor/find-replace/FindReplaceBar.tsx
 msgid "Replace current match"
@@ -10982,6 +11144,10 @@ msgstr "要把這些副本換成指向來源的符號連結嗎？"
 #: src/components/SkillInstallMenu.tsx
 msgid "Replace these symlinks with independent copies?"
 msgstr "要把這些符號連結換成獨立的副本嗎？"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Replaces the existing \"open-knowledge\" entry in this file. Other servers in the file are left alone."
+msgstr "取代此檔案中現有的 \"open-knowledge\" 項目。檔案中的其他伺服器維持不變。"
 
 #. placeholder {0}: formatToolList( replacing.map((e) => e.label), i18n.locale, )
 #: src/components/McpConsentDialogBody.tsx
@@ -11239,7 +11405,7 @@ msgstr "擷取中…"
 #: src/components/ConnectingBanner.tsx
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "重試"
@@ -11379,6 +11545,7 @@ msgstr "沙箱化的 HTML 嵌入——寫下 HTML，即時看到顯示結果。"
 msgid "Save"
 msgstr "儲存"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Save changes"
 msgstr "儲存變更"
@@ -11429,6 +11596,7 @@ msgstr "和專案一起保存，供你的團隊使用。"
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "把檔案存到 <0>~/Downloads/openknowledge.skill</0> 並開啟 Claude Desktop App。需要你的 PATH 中有 Node.js 或 Bun。"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SearchSection.tsx
 msgid "Saving"
 msgstr "正在儲存"
@@ -11482,7 +11650,7 @@ msgstr "按語意搜尋「{semanticSubmitQuery}」"
 msgid "Search ({searchShortcutLabel})"
 msgstr "搜尋（{searchShortcutLabel}）"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Search agents"
 msgstr "搜尋代理"
 
@@ -12066,8 +12234,7 @@ msgstr "再顯示 {0} 個"
 msgid "Show {hidden} more"
 msgstr "再顯示 {hidden} 個"
 
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show {hiddenCount} more"
 msgstr "再顯示 {hiddenCount} 個"
 
@@ -12133,8 +12300,7 @@ msgid "Show in Explorer"
 msgstr "在檔案總管中顯示"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
-#: src/components/settings/editor-list-fold.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
 msgstr "收合"
 
@@ -12341,11 +12507,6 @@ msgstr "來自 {0}/{1} 的技能。"
 msgid "Skills from OpenKnowledge"
 msgstr "來自 OpenKnowledge 的技能"
 
-#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Skills moved to Skills Studio."
-msgstr "技能已移至技能工作室。"
-
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
 msgstr "技能已重新指派"
@@ -12501,6 +12662,7 @@ msgstr "傳送你的意見回饋時出了點問題。請再試一次。"
 msgid "Something went wrong starting the terminal."
 msgstr "啟動終端機時出了點問題。"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Something went wrong. Please try again."
 msgstr "出了點問題。請再試一次。"
@@ -13074,7 +13236,6 @@ msgstr "範本"
 msgid "Templates available"
 msgstr "可用的範本"
 
-#. Group label above the shell-PATH row in Settings → AI tools & CLI
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13083,8 +13244,7 @@ msgstr "可用的範本"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/TerminalSection.tsx
 #: src/components/TerminalNewChatButton.tsx
@@ -13211,6 +13371,11 @@ msgstr "{0} 的下載要求逾時。"
 #: src/components/SkillsTree.tsx
 msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
 msgstr "{0} 外掛從其快取提供這些技能 — OK 絕不會編輯或更新它們。"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.desktop-project-config"
+msgstr "{agent} 桌面應用程式會忽略這個專案設定；只有 {agent} 命令列會讀取它。"
 
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
@@ -13452,6 +13617,14 @@ msgstr "來源資料夾本身不會移動。"
 msgid "The template's filename (without `.md`)."
 msgstr "範本的檔案名稱（不含 `.md`）。"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
+msgstr "{label} 的終端行與桌面行共用同一套設定，因此連接其中一個會同時連接兩者。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
+msgstr "{label} 的終端行與桌面行共用同一套設定，因此移除它會同時中斷兩者。"
+
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
 msgstr "這個專案關閉了終端機。重新開啟後才能在這裡執行指令。"
@@ -13608,6 +13781,14 @@ msgstr "此智慧代理不提供斜線指令"
 msgid "This agent doesn't offer slash commands — your message will be sent as plain text"
 msgstr "此智慧代理不提供斜線指令 — 你的訊息將以純文字傳送"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent gives OpenKnowledge no way to set this up for you. Its setup guide has the manual steps."
+msgstr "此代理程式未提供讓 OpenKnowledge 代為設定的方式。請參閱其設定指南中的手動步驟。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
+msgstr "此代理程式在此裝置上尚無這類檔案。請先開啟該代理程式，然後重新檢查。"
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent hasn't announced its commands yet"
 msgstr "此智慧代理尚未公布其指令"
@@ -13651,6 +13832,14 @@ msgstr "這則註解是針對整個屬性的"
 msgid "This conflict is resolved."
 msgstr "此衝突已解決。"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This could not be set up because the MCP server entry it needs was not written."
+msgstr "無法完成設定，因為它所需的 MCP 伺服器項目未寫入。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+msgstr "這會刪除下方列出的 MCP 伺服器項目和技能檔案。在重新新增之前，智慧代理將無法存取你的文件。"
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "這份文件"
@@ -13682,6 +13871,10 @@ msgstr "此文件已被刪除"
 #: src/components/settings/SearchSection.tsx
 msgid "This endpoint ignored the vector size you configured. Remove <0>search.semantic.dimensions</0> to use the model's own size."
 msgstr "這個端點忽略了你設定的向量維度。移除 <0>search.semantic.dimensions</0> 就會改用模型自己的維度。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This entry changed after OpenKnowledge wrote it. Turning it on replaces it."
+msgstr "OpenKnowledge 寫入後此項目已變更。啟用會將其取代。"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "This field carries additional schema keywords the editor does not show — they are preserved on save."
@@ -13734,6 +13927,10 @@ msgstr "這個資料夾是 {actualOwner}/{actualRepo} 的複本，而不是 {exp
 #: src/lib/share/receive-flow.ts
 msgid "This folder is a clone of {expectedOwner}/{expectedRepo} on {actualHost}, not {expectedHost}. Pick a folder cloned from {expectedHost}?"
 msgstr "這個資料夾是 {actualHost} 上 {expectedOwner}/{expectedRepo} 的複本，而不是 {expectedHost}。要換一個從 {expectedHost} 複製的資料夾嗎？"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This folder is also {alsoAffects}'s."
+msgstr "此資料夾同時也屬於 {alsoAffects}。"
 
 #: src/components/FolderOverview.tsx
 msgid "This folder is empty."
@@ -13793,6 +13990,7 @@ msgstr "這個項目"
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "這看起來像是磁碟機根目錄（例如 C:\\）。在這裡建立專案骨架會掃描整個磁碟機。"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This machine"
@@ -13817,6 +14015,10 @@ msgstr "這個需要查看您的文件，而不僅僅是打開的文檔，因此
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
 msgstr "這一個教你的 AI 工具如何使用 OpenKnowledge。它位於專案資料夾中，因此會為每個開啟這個專案的人安裝。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This option cannot be changed automatically."
+msgstr "無法自動變更此選項。"
 
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
@@ -13873,6 +14075,7 @@ msgid "This permanently removes {path}. Agents that reference this template by n
 msgstr "這會永久移除 {path}。在重新建立它，或由上層資料夾中的同名範本取代之前，用名稱參照這個範本的代理都會失敗。"
 
 #: src/components/PanelScopeHeader.tsx
+#: src/components/settings/AgentConnectionDialogs.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SkillScopeSegment.tsx
 msgid "This project"
@@ -13921,11 +14124,6 @@ msgstr "這個專案正在執行的伺服器不支援即時編輯。重新啟動
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "這個專案的伺服器（v{0}）比這個應用程式（v{1}）新。"
 
-#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This project's skill moved to Skills Studio."
-msgstr "這個專案的技能已移至技能工作室。"
-
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "這會從你的 Mac 以及你在下面選的專案中移除 OpenKnowledge 的設定和整合，但會保留你的 markdown 內容和你自己寫的技能。"
@@ -13962,6 +14160,18 @@ msgstr "這項設定按每台電腦生效，不會分享給協作者。"
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "這項設定按每台電腦生效，不會分享給協作者。除非你的端點是不需要金鑰的本機伺服器，否則需要一把 API 金鑰（在下面設定）。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers} through <0>{path}</0>. Removing it here removes it for {peers} too."
+msgstr "此設定透過 <0>{path}</0> 與 {peers} 共用。在此移除也會同時為 {peers} 移除。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}, and OpenKnowledge cannot change it from here. Unlink the folder in Skills Studio first."
+msgstr "此設定與 {peers} 共用，OpenKnowledge 無法在此處變更它。請先在 Skills Studio 中取消該資料夾的連結。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This setup is shared with {peers}. Removing it here removes it for {peers} too."
+msgstr "此設定與 {peers} 共用。在此移除也會同時為 {peers} 移除。"
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -14283,7 +14493,6 @@ msgid "Type to find a doc"
 msgstr "輸入以尋找文件"
 
 #: src/components/McpConsentDialogBody.tsx
-#: src/components/settings/AiToolsSection.tsx
 msgid "unavailable on this platform"
 msgstr "這個平台無法使用"
 
@@ -14917,8 +15126,7 @@ msgstr "希望 AI 做什麼？（選填）"
 msgid "What the agent may read, write, and surface."
 msgstr "代理可以讀取、寫入和呈現的內容。"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/OkCliPathRow.tsx
 msgid "What this checkbox changes"
 msgstr "這個核取方塊會改變什麼"
 
@@ -14994,6 +15202,10 @@ msgstr "你是誰，好讓代理知道你的背景。"
 msgid "Whole word"
 msgstr "全字相符"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Why this needs attention"
+msgstr "為什麼需要注意"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Wiki link"
 msgstr "維基連結"
@@ -15030,6 +15242,10 @@ msgstr "視窗"
 #: src/components/CreateProjectDialog.tsx
 msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
 msgstr "沒有已連接的 AI 工具，此入門套件的 {packSkillCount, plural, one {# 項技能} other {# 項技能}} 不會安裝。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Without the skill the agent still works, but it loses edit attribution and the live preview."
+msgstr "沒有該技能，智慧代理仍可運作，但會失去編輯歸屬與即時預覽。"
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
@@ -15078,6 +15294,11 @@ msgstr "Worktree"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "在 markdown 原始碼編輯器中把過長的行自動換行。"
 
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "guidance.mcp.managed-file"
+msgstr "寫入一個小型橋接檔案，{agent} 會從這個專案載入它來連接 OpenKnowledge。"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "寫入項目到"
@@ -15085,6 +15306,10 @@ msgstr "寫入項目到"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "寫作"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Writing this file failed. Check the OpenKnowledge log for the reason."
+msgstr "寫入此檔案失敗。請查看 OpenKnowledge 記錄檔以了解原因。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
@@ -15232,6 +15457,10 @@ msgstr "你本機的 <0>{shareBranch}</0> 分支副本有變更還沒推到 GitH
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "你目前的版本會先存起來，所以這一步可以回復。"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Your documents are not touched."
+msgstr "不會變更你的文件。"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx

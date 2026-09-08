@@ -36,10 +36,6 @@ function pathIsOurRepo(pathname: string): boolean {
   );
 }
 
-export function projectSkillDecisionKey(projectDir: string): string {
-  return `project-skill:${projectDir}`;
-}
-
 export const RENAMED_PACK_SKILLS: Readonly<Record<string, string>> = {
   'open-knowledge-pack-plain-notes': 'note-taking',
   'open-knowledge-pack-worldbuilding': 'worldbuilding',

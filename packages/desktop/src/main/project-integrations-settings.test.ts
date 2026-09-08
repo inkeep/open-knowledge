@@ -36,6 +36,7 @@ interface CliOverrides {
   skillInstalled?: boolean;
   skillWriteFails?: McpWiringEditorId[];
   skillRemoveFails?: McpWiringEditorId[];
+  skillWriteUnmet?: McpWiringEditorId[];
 }
 
 function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & {
@@ -43,11 +44,9 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
   removals: McpWiringEditorId[];
   skillWrites: McpWiringEditorId[];
   skillRemovals: McpWiringEditorId[];
-  decisions: Array<{ dir: string; enabled: boolean }>;
   reports: string[];
 } {
   const writes: McpWiringEditorId[] = [];
-  const decisions: Array<{ dir: string; enabled: boolean }> = [];
   const reports: string[] = [];
   const removals: McpWiringEditorId[] = [];
   const skillWrites: McpWiringEditorId[] = [];
@@ -96,6 +95,7 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
     writeProjectSkill: (id) => {
       skillWrites.push(id);
       if (overrides.skillWriteFails?.includes(id)) return { action: 'failed', error: 'nope' };
+      if (overrides.skillWriteUnmet?.includes(id)) return { action: 'skipped-prerequisite' };
       return { action: 'written' };
     },
     removeProjectSkill: (id) => {
@@ -103,13 +103,9 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
       if (overrides.skillRemoveFails?.includes(id)) return { action: 'failed', error: 'nope' };
       return { action: 'removed' };
     },
-    recordProjectSkillDecision: (dir, enabled) => {
-      decisions.push({ dir, enabled });
-    },
     reportProjectSkillInstalled: (dir) => {
       reports.push(dir);
     },
-    decisions,
     reports,
   };
 }
@@ -156,7 +152,7 @@ describe('registerProjectIntegrationsSettings — status', () => {
     expect(claude?.configPath).toBe('.mcp.json');
     expect(claude?.detected).toBe(false);
     expect(claude?.followUp).toBe('approve-once');
-    expect(s.editors.find((e) => e.id === 'codex')?.followUp).toBe('auto-connect');
+    expect(s.editors.find((e) => e.id === 'codex')?.followUp).toBe('trust-gated');
   });
 
   test('marks project rows detected from the shared machine-level probes', async () => {
@@ -304,12 +300,21 @@ describe('registerProjectIntegrationsSettings — set', () => {
     expect(cli.skillWrites).toEqual([]);
   });
 
+  test('an install blocked by an unmet prerequisite is not reported as installed', async () => {
+    const cli = makeCli({ skillWriteUnmet: ['claude'] });
+    const { set } = register(cli);
+
+    const r = await set({ component: { kind: 'skill' }, enabled: true });
+
+    expect(r.ok).toBe(false);
+    expect(cli.reports).toEqual([]);
+  });
+
   test('switching the skill ON records the decision and counts the install', async () => {
     const cli = makeCli();
     const { set } = register(cli);
     const r = await set({ component: { kind: 'skill' }, enabled: true });
     expect(r.ok).toBe(true);
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
     expect(cli.reports).toEqual([PROJECT]);
   });
 
@@ -318,7 +323,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const { set } = register(cli);
     const r = await set({ component: { kind: 'skill' }, enabled: false });
     expect(r.ok).toBe(true);
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: false }]);
     expect(cli.reports).toEqual([]);
   });
 
@@ -326,7 +330,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const cli = makeCli({ skillWriteFails: ['codex'] as McpWiringEditorId[] });
     const { set } = register(cli);
     await set({ component: { kind: 'skill' }, enabled: true });
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
     expect(cli.reports).toEqual([]);
   });
 
