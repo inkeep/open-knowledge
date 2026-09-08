@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 export { wait };
 
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import type { LocalTransactionOrigin } from '@hocuspocus/server';
+import type { Document, LocalTransactionOrigin } from '@hocuspocus/server';
 import {
   type BridgeInvariantViolation,
   BridgeInvariantViolationError,
@@ -775,8 +775,12 @@ export type ServerDocState = {
   connectionCount: number;
 };
 
+function getServerDoc(server: TestServer, docName: string): Document | null {
+  return server.instance.hocuspocus.documents.get(docName) ?? null;
+}
+
 export function getServerState(server: TestServer, docName: string): ServerDocState | null {
-  const document = server.instance.hocuspocus.documents.get(docName);
+  const document = getServerDoc(server, docName);
   if (!document) return null;
 
   const ytext = document.getText('source');
@@ -798,6 +802,44 @@ export function getServerState(server: TestServer, docName: string): ServerDocSt
     activityMap,
     connectionCount,
   };
+}
+
+function docsHaveConverged(a: Y.Doc, b: Y.Doc): boolean {
+  return Y.equalSnapshots(Y.snapshot(a), Y.snapshot(b));
+}
+
+export async function awaitConvergedServerText(
+  server: TestServer,
+  client: TestClient,
+  opts: { timeoutMs?: number; pollIntervalMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? 5_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 50;
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    const serverDoc = getServerDoc(server, client.docName);
+    if (serverDoc !== null && docsHaveConverged(serverDoc, client.doc)) {
+      return serverDoc.getText('source').toString();
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      let replicas = '\n  server has no document by that name';
+      if (serverDoc !== null) {
+        const serverText = serverDoc.getText('source').toString();
+        const clientText = client.ytext.toString();
+        replicas =
+          `\n  server Y.Text (${serverText.length} chars): ${JSON.stringify(serverText.slice(0, 200))}` +
+          `\n  client Y.Text (${clientText.length} chars): ${JSON.stringify(clientText.slice(0, 200))}`;
+      }
+      throw new Error(
+        `awaitConvergedServerText: server and client for ${client.docName} did not converge within ${timeoutMs} ms${replicas}`,
+      );
+    }
+
+    await wait(Math.min(pollIntervalMs, remainingMs));
+  }
 }
 
 const BRIDGE_ENFORCING_NON_PAIRED_ORIGINS: Set<LocalTransactionOrigin> = new Set([

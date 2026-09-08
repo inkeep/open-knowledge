@@ -7,6 +7,7 @@ import {
   agentWriteMd,
   assertAllConverged,
   attachBridgeInvariantWatcher,
+  awaitConvergedServerText,
   awaitDocQuiescence,
   createTestClient,
   createTestClients,
@@ -50,10 +51,7 @@ function mintRulePair(client: TestClient): void {
 }
 
 async function settled(client: TestClient): Promise<string> {
-  await awaitDocQuiescence(client.doc);
-  await pollUntil(() => getServerState(server, client.docName) !== null, 5_000);
-  await awaitDocQuiescence(client.doc);
-  return getServerState(server, client.docName)?.ytext.toString() ?? '';
+  return awaitConvergedServerText(server, client);
 }
 
 describe('Observer A drain', () => {
@@ -112,6 +110,8 @@ describe('Observer A drain', () => {
       });
       const withFm = await settled(client);
       expect(withFm).toBe(`---\ntitle: t\n---\n${guarded}`);
+
+      await awaitDocQuiescence(client.doc);
       expect(await settled(client)).toBe(withFm);
       expect(stripFrontmatter(withFm).body).toContain('x');
     } finally {
