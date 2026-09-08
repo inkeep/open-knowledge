@@ -505,31 +505,31 @@ describe('EditorTabs runtime behavior', () => {
     expect(txtTab.getAttribute('title')).toBeNull();
   });
 
-  test.each([
-    'glossary.csv',
-    'settings.json',
-  ])('%s without page metadata keeps its filename across tab and file-menu actions', async (docName) => {
-    activeDocName = docName;
-    activeTabId = docName;
-    openTabs = [docName];
-    visibleTabIds = [docName];
-    newTabIds = [];
-    pageMeta = new Map();
-    renderRealTabTargetMenuItems = true;
+  test.each(['glossary.csv', 'settings.json'])(
+    '%s without page metadata keeps its filename across tab and file-menu actions',
+    async (docName) => {
+      activeDocName = docName;
+      activeTabId = docName;
+      openTabs = [docName];
+      visibleTabIds = [docName];
+      newTabIds = [];
+      pageMeta = new Map();
+      renderRealTabTargetMenuItems = true;
 
-    await renderEditorTabs();
+      await renderEditorTabs();
 
-    expect(tabButton(docName).textContent).toBe(docName);
+      expect(tabButton(docName).textContent).toBe(docName);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
-    expect(screen.getByTestId('file-target-rename-dialog').textContent).toBe(docName);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+      expect(screen.getByTestId('file-target-rename-dialog').textContent).toBe(docName);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Relative path' }));
-    expect.soft(scheduleClipboardWrite).toHaveBeenCalledWith(docName);
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Relative path' }));
+      expect.soft(scheduleClipboardWrite).toHaveBeenCalledWith(docName);
 
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide this file' }));
-    expect.soft(okignorePatch).toHaveBeenCalledWith(`/${docName}\n`);
-  });
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Hide this file' }));
+      expect.soft(okignorePatch).toHaveBeenCalledWith(`/${docName}\n`);
+    },
+  );
 
   test('explicit Markdown metadata stays authoritative for an extension-shaped docName', async () => {
     const docName = 'notes.ts';

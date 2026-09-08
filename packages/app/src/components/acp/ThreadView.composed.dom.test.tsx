@@ -166,23 +166,24 @@ function transcriptRows(): [string, string][] {
 const noticeCards = (): HTMLElement[] => screen.queryAllByTestId('agent-thread-agent-notice');
 
 describe('composed transcript: a Codex warning becomes a warning card', () => {
-  test.each(
-    fixture.candidates.map((candidate) => [candidate.name, candidate] as const),
-  )('candidate %s arrives over the socket and draws one runtime-warning row', (_name, candidate) => {
-    render(<ThreadView info={openThread()} />);
+  test.each(fixture.candidates.map((candidate) => [candidate.name, candidate] as const))(
+    'candidate %s arrives over the socket and draws one runtime-warning row',
+    (_name, candidate) => {
+      render(<ThreadView info={openThread()} />);
 
-    pushEvent(su(candidate.update), 0);
+      pushEvent(su(candidate.update), 0);
 
-    const cards = noticeCards();
-    expect(cards).toHaveLength(1);
-    const card = cards[0];
-    expect(card).toBe(screen.getByRole('note'));
-    expect(card.textContent).toContain('Warning');
-    expect(card.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    const body = candidate.update.content.text.trim();
-    expect(card.textContent).toContain(body.split('\n')[0]);
-    expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
-  });
+      const cards = noticeCards();
+      expect(cards).toHaveLength(1);
+      const card = cards[0];
+      expect(card).toBe(screen.getByRole('note'));
+      expect(card.textContent).toContain('Warning');
+      expect(card.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      const body = candidate.update.content.text.trim();
+      expect(card.textContent).toContain(body.split('\n')[0]);
+      expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
+    },
+  );
 
   test('a config warning keeps its detail paragraphs inside the one card', () => {
     const detailed = fixture.candidates.find((c) => c.name === 'config-warning-with-details');
@@ -241,23 +242,24 @@ describe('composed transcript: a Codex warning becomes a warning card', () => {
 describe('composed transcript: near misses stay ordinary prose', () => {
   const SENTINEL = 'The refactor is safe.';
 
-  test.each(
-    fixture.negatives.map((negative) => [negative.name, negative] as const),
-  )('near miss %s draws no warning card', (_name, negative) => {
-    const agent = agentNamed((negative as { agent?: string }).agent);
-    render(<ThreadView info={openThread({ agent })} />);
+  test.each(fixture.negatives.map((negative) => [negative.name, negative] as const))(
+    'near miss %s draws no warning card',
+    (_name, negative) => {
+      const agent = agentNamed((negative as { agent?: string }).agent);
+      render(<ThreadView info={openThread({ agent })} />);
 
-    pushEvents([su(negative.update), chunk(SENTINEL, 'sentinel')], 0);
+      pushEvents([su(negative.update), chunk(SENTINEL, 'sentinel')], 0);
 
-    expect(noticeCards()).toHaveLength(0);
-    expect(screen.queryAllByRole('note')).toHaveLength(0);
-    const transcript = screen.getByTestId('agent-thread-transcript');
-    expect(transcript.textContent).toContain(SENTINEL);
-    const body = (negative.update as { content?: { type?: string; text?: string } }).content;
-    if (body?.type === 'text' && body.text !== undefined && body.text.trim() !== '') {
-      expect(transcript.textContent).toContain(body.text.trim());
-    }
-  });
+      expect(noticeCards()).toHaveLength(0);
+      expect(screen.queryAllByRole('note')).toHaveLength(0);
+      const transcript = screen.getByTestId('agent-thread-transcript');
+      expect(transcript.textContent).toContain(SENTINEL);
+      const body = (negative.update as { content?: { type?: string; text?: string } }).content;
+      if (body?.type === 'text' && body.text !== undefined && body.text.trim() !== '') {
+        expect(transcript.textContent).toContain(body.text.trim());
+      }
+    },
+  );
 
   test('an ordinary answer carrying an item id stays a reply bubble', () => {
     render(<ThreadView info={openThread()} />);

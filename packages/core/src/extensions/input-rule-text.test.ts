@@ -45,23 +45,24 @@ describe('renderInlineObjectText', () => {
 });
 
 describe('input-rule matching text is position-faithful', () => {
-  it.each(
-    inlineObjectTypes().map((type) => [type.name, type] as const),
-  )('%s contributes exactly the positions it occupies', (_name, type) => {
-    const node = sample(type);
-    expect(node).not.toBeNull();
-    const paragraph = schema.nodes.paragraph?.create(null, [
-      schema.text('x'),
-      node as PMNode,
-      schema.text('y'),
-    ]);
-    expect(paragraph).toBeDefined();
-    const doc = schema.nodes.doc?.createAndFill(null, [paragraph as PMNode]);
-    expect(doc).not.toBeNull();
-    const $end = (doc as PMNode).resolve(1 + (paragraph as PMNode).content.size);
+  it.each(inlineObjectTypes().map((type) => [type.name, type] as const))(
+    '%s contributes exactly the positions it occupies',
+    (_name, type) => {
+      const node = sample(type);
+      expect(node).not.toBeNull();
+      const paragraph = schema.nodes.paragraph?.create(null, [
+        schema.text('x'),
+        node as PMNode,
+        schema.text('y'),
+      ]);
+      expect(paragraph).toBeDefined();
+      const doc = schema.nodes.doc?.createAndFill(null, [paragraph as PMNode]);
+      expect(doc).not.toBeNull();
+      const $end = (doc as PMNode).resolve(1 + (paragraph as PMNode).content.size);
 
-    expect(getTextContentFromNodes($end)).toHaveLength($end.parentOffset);
-  });
+      expect(getTextContentFromNodes($end)).toHaveLength($end.parentOffset);
+    },
+  );
 
   it('never falls back to the six-character %leaf% sentinel', () => {
     for (const type of inlineObjectTypes()) {

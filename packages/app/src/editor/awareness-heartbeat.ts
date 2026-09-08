@@ -17,11 +17,10 @@ export class AwarenessHeartbeat {
   private started = false;
   private readonly renewIntervalMs: number;
   private readonly now: () => number;
+  private readonly ticker: HeartbeatTicker;
 
-  constructor(
-    private readonly ticker: HeartbeatTicker,
-    options: AwarenessHeartbeatOptions = {},
-  ) {
+  constructor(ticker: HeartbeatTicker, options: AwarenessHeartbeatOptions = {}) {
+    this.ticker = ticker;
     this.renewIntervalMs = options.renewIntervalMs ?? AWARENESS_RENEW_INTERVAL_MS;
     this.now = options.now ?? (() => Date.now());
   }

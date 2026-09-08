@@ -1,11 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { agentIdentityFields, summaryField } from './_shared.ts';
-import {
-  AdvisoryWarningsSchema,
-  ContentDivergenceWarningSchema,
-  SummaryResponseFieldSchema,
-} from './agent-write.ts';
+import { AdvisoryWarningsSchema, SummaryResponseFieldSchema } from './agent-write.ts';
 
 export const RenamedDocMappingSchema = z
   .object({
@@ -192,8 +188,6 @@ export const RollbackSuccessSchema = z
     restoredFrom: z.string().min(1),
     timestamp: z.string().min(1),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: ContentDivergenceWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;

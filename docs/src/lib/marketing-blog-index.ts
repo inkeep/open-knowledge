@@ -78,8 +78,10 @@ function quoteForMessage(value: string): string {
 
 class FeedStatusError extends Error {
   override readonly name = 'FeedStatusError';
-  constructor(readonly status: number) {
+  readonly status: number;
+  constructor(status: number) {
     super(`${BLOG_FEED_URL} responded ${status}`);
+    this.status = status;
   }
 }
 

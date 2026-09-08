@@ -12,19 +12,20 @@ describe('frozen pre-v2 reader compatibility oracle', () => {
     expect(frozenV1CustomSchemeOutcome(entry.uri)).toBe(entry.baseline);
   });
 
-  test.each(
-    fixture.validShares.filter((entry) => entry.version === 2),
-  )('$id remains unsupported in universal and deferred old-app delivery', (entry) => {
-    expect(frozenV1DecodeShareToken(entry.token)).toEqual({
-      kind: 'unsupported-version',
-      version: 2,
-    });
-    expect(
-      frozenV1DecodeShareToken(
-        new URL(`https://openknowledge.ai/d/${entry.token}`).pathname.slice(3),
-      ),
-    ).toEqual({ kind: 'unsupported-version', version: 2 });
-  });
+  test.each(fixture.validShares.filter((entry) => entry.version === 2))(
+    '$id remains unsupported in universal and deferred old-app delivery',
+    (entry) => {
+      expect(frozenV1DecodeShareToken(entry.token)).toEqual({
+        kind: 'unsupported-version',
+        version: 2,
+      });
+      expect(
+        frozenV1DecodeShareToken(
+          new URL(`https://openknowledge.ai/d/${entry.token}`).pathname.slice(3),
+        ),
+      ).toEqual({ kind: 'unsupported-version', version: 2 });
+    },
+  );
 });
 
 describe('parseOpenKnowledgeUrl — valid inputs', () => {
@@ -250,18 +251,19 @@ describe('parseOpenKnowledgeUrl — MCP producer/consumer round-trip', () => {
 });
 
 describe('parseShareUrl — universal-link happy path', () => {
-  test.each(
-    fixture.validShares.filter((entry) => entry.version === 2),
-  )('projects canonical $id to its content-relative target', (entry) => {
-    expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toMatchObject({
-      kind: 'ok',
-      source: 'universal-link',
-      payload: {
-        sharedUrl: entry.sharedUrl,
-        target: entry.target,
-      },
-    });
-  });
+  test.each(fixture.validShares.filter((entry) => entry.version === 2))(
+    'projects canonical $id to its content-relative target',
+    (entry) => {
+      expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toMatchObject({
+        kind: 'ok',
+        source: 'universal-link',
+        payload: {
+          sharedUrl: entry.sharedUrl,
+          target: entry.target,
+        },
+      });
+    },
+  );
 
   test.each(fixture.legacyAliases)('preserves tolerated v1 alias $id', (entry) => {
     expect(parseShareUrl(`https://openknowledge.ai/d/${entry.token}`)).toMatchObject({

@@ -1143,40 +1143,40 @@ describe('SyncEngine push gating — scheduled vs explicit', () => {
     return { git, localHead, originBefore };
   }
 
-  test.each([
-    'off',
-    'follow',
-  ] as const)("%s never pushes on the engine's own initiative", async (mode) => {
-    const { git, originBefore } = await projectWithUnpushedCommit();
-    const engine = makeEngine({ mode });
-    await engine.refreshRemote();
-    try {
-      await (engine as unknown as { runPushCycle: () => Promise<void> }).runPushCycle();
+  test.each(['off', 'follow'] as const)(
+    "%s never pushes on the engine's own initiative",
+    async (mode) => {
+      const { git, originBefore } = await projectWithUnpushedCommit();
+      const engine = makeEngine({ mode });
+      await engine.refreshRemote();
+      try {
+        await (engine as unknown as { runPushCycle: () => Promise<void> }).runPushCycle();
 
-      expect((await git.revparse(['origin/main'])).trim()).toBe(originBefore);
-      expect(engine.getStatus().lastPushedSha).toBeNull();
-    } finally {
-      await engine.destroy();
-    }
-  });
+        expect((await git.revparse(['origin/main'])).trim()).toBe(originBefore);
+        expect(engine.getStatus().lastPushedSha).toBeNull();
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
 
-  test.each([
-    'off',
-    'follow',
-  ] as const)('%s pushes when the user explicitly asks, without arming a loop', async (mode) => {
-    const { git, localHead } = await projectWithUnpushedCommit();
-    const engine = makeEngine({ mode });
-    await engine.refreshRemote();
-    try {
-      await engine.pushOnce();
+  test.each(['off', 'follow'] as const)(
+    '%s pushes when the user explicitly asks, without arming a loop',
+    async (mode) => {
+      const { git, localHead } = await projectWithUnpushedCommit();
+      const engine = makeEngine({ mode });
+      await engine.refreshRemote();
+      try {
+        await engine.pushOnce();
 
-      expect((await git.revparse(['origin/main'])).trim()).toBe(localHead);
-      expect(engine.getStatus().lastPushedSha).toBe(localHead);
-      expect(engine.getStatus().syncMode).toBe(mode);
-    } finally {
-      await engine.destroy();
-    }
-  });
+        expect((await git.revparse(['origin/main'])).trim()).toBe(localHead);
+        expect(engine.getStatus().lastPushedSha).toBe(localHead);
+        expect(engine.getStatus().syncMode).toBe(mode);
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
 
   test('refuses when there is no remote to push to', async () => {
     const engine = makeEngine({ mode: 'off' });
@@ -1370,66 +1370,64 @@ describe('SyncEngine unified pull — B1 in every mode', () => {
     }
   });
 
-  test.each([
-    'off',
-    'follow',
-    'full',
-  ] as const)('diverged committed history: Pull refuses, Pull-and-Push merges — mode %s (FR-5)', async (mode) => {
-    const { git, sister, sisterDir } = await projectWithSister();
-    writeFileSync(join(sisterDir, 'theirs.md'), 'theirs\n');
-    await sister.add('.');
-    await sister.commit('teammate commit');
-    await sister.push();
+  test.each(['off', 'follow', 'full'] as const)(
+    'diverged committed history: Pull refuses, Pull-and-Push merges — mode %s (FR-5)',
+    async (mode) => {
+      const { git, sister, sisterDir } = await projectWithSister();
+      writeFileSync(join(sisterDir, 'theirs.md'), 'theirs\n');
+      await sister.add('.');
+      await sister.commit('teammate commit');
+      await sister.push();
 
-    writeFileSync(join(projectDir, 'mine.md'), 'mine\n');
-    await git.add('.');
-    await git.commit('local commit');
+      writeFileSync(join(projectDir, 'mine.md'), 'mine\n');
+      await git.add('.');
+      await git.commit('local commit');
 
-    const engine = makeRootContentEngine(mode);
-    await engine.refreshRemote();
-    try {
-      expect(await engine.pullOnce()).toBe('refused');
-      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+      const engine = makeRootContentEngine(mode);
+      await engine.refreshRemote();
+      try {
+        expect(await engine.pullOnce()).toBe('refused');
+        expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
 
-      await engine.pullOnce('sync');
+        await engine.pullOnce('sync');
 
-      expect(engine.getStatus().pausedReason).toBeUndefined();
-      expect(existsSync(join(projectDir, 'theirs.md'))).toBe(true);
-      expect(existsSync(join(projectDir, 'mine.md'))).toBe(true);
-    } finally {
-      await engine.destroy();
-    }
-  });
+        expect(engine.getStatus().pausedReason).toBeUndefined();
+        expect(existsSync(join(projectDir, 'theirs.md'))).toBe(true);
+        expect(existsSync(join(projectDir, 'mine.md'))).toBe(true);
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
 
-  test.each([
-    'off',
-    'follow',
-    'full',
-  ] as const)('the Sync verb keeps the classic commit+merge machinery — mode %s', async (mode) => {
-    const { git, sister, sisterDir } = await projectWithSister();
-    const seeded = readFileSync(join(sisterDir, 'doc.md'), 'utf-8');
-    writeFileSync(join(sisterDir, 'doc.md'), seeded.replace('TOP', 'TOP-THEIRS'));
-    await sister.add('.');
-    await sister.commit('teammate edits top');
-    await sister.push();
+  test.each(['off', 'follow', 'full'] as const)(
+    'the Sync verb keeps the classic commit+merge machinery — mode %s',
+    async (mode) => {
+      const { git, sister, sisterDir } = await projectWithSister();
+      const seeded = readFileSync(join(sisterDir, 'doc.md'), 'utf-8');
+      writeFileSync(join(sisterDir, 'doc.md'), seeded.replace('TOP', 'TOP-THEIRS'));
+      await sister.add('.');
+      await sister.commit('teammate edits top');
+      await sister.push();
 
-    const local = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
-    writeFileSync(join(projectDir, 'doc.md'), local.replace('BOTTOM', 'BOTTOM-MINE'));
+      const local = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+      writeFileSync(join(projectDir, 'doc.md'), local.replace('BOTTOM', 'BOTTOM-MINE'));
 
-    const engine = makeRootContentEngine(mode);
-    await engine.refreshRemote();
-    try {
-      expect(await engine.pullOnce('sync')).toBe('succeeded');
+      const engine = makeRootContentEngine(mode);
+      await engine.refreshRemote();
+      try {
+        expect(await engine.pullOnce('sync')).toBe('succeeded');
 
-      const merged = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
-      expect(merged).toContain('TOP-THEIRS');
-      expect(merged).toContain('BOTTOM-MINE');
-      const log = await git.log();
-      expect(log.all.some((c) => c.message === 'Auto-save: interim before merge')).toBe(true);
-    } finally {
-      await engine.destroy();
-    }
-  });
+        const merged = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+        expect(merged).toContain('TOP-THEIRS');
+        expect(merged).toContain('BOTTOM-MINE');
+        const log = await git.log();
+        expect(log.all.some((c) => c.message === 'Auto-save: interim before merge')).toBe(true);
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
 
   test('follow mode keeps a local artifact edit that origin also changed (the phantom-offline fix)', async () => {
     const { sister, sisterDir } = await projectWithSister();
@@ -4898,7 +4896,7 @@ describe('SyncEngine declared-account resolution', () => {
         (e) => e.level === 'warn' && e.msg.includes('declared GitHub account'),
       );
       expect(miss?.data).toMatchObject({ declaredLogin: 'alice' });
-      expect((miss?.data as { resolvedLogin?: string }).resolvedLogin).toBeUndefined();
+      expect((miss?.data as { resolvedLogin?: string } | undefined)?.resolvedLogin).toBeUndefined();
       const failed = logs.entries.find(
         (e) => e.level === 'warn' && e.msg.includes('detectGhAccounts failed'),
       );

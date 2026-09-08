@@ -97,7 +97,7 @@ function parseJsoncObjectTree(raw: string): JsoncNode | null {
   const errors: JsoncParseError[] = [];
   const tree = parseJsoncTree(raw, errors, JSONC_PARSE_OPTIONS);
   if (errors.some((error) => !isBenignBomError(error, raw))) return null;
-  if (!tree || tree.type !== 'object') return null;
+  if (tree?.type !== 'object') return null;
   return tree;
 }
 

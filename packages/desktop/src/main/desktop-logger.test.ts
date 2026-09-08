@@ -20,8 +20,9 @@ describe('error serialization (what the raw-err discipline buys)', () => {
       getRootDesktopLogger() as unknown as Record<symbol, Record<string, unknown>>
     )[pino.symbols.serializersSym];
     for (const key of ['err', 'error'] as const) {
-      expect(serializers?.[key]).toBe(pino.stdSerializers.err);
-      const rendered = (serializers?.[key] as (e: Error) => { message?: string; stack?: string })(
+      const serializer = serializers?.[key];
+      expect(serializer).toBe(pino.stdSerializers.err);
+      const rendered = (serializer as (e: Error) => { message?: string; stack?: string })(
         new Error('boom-probe'),
       );
       expect(rendered.message).toBe('boom-probe');

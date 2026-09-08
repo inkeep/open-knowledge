@@ -34,6 +34,10 @@ See `.env.example` for optional settings (OpenTelemetry, a custom dev port).
 
 The repo pins **Node.js 24+** and **pnpm 10+** (via `.node-version`, the `packageManager` field, and `engines`). Enable pnpm with `corepack enable pnpm`, or install it standalone (`npm install -g pnpm@10`). With a Node version manager, use `fnm install`, `mise install`, or `volta install node@24`. pnpm enforces the engine range (`engine-strict`), so on older Node `pnpm install` fails fast — pin Node 24+ first.
 
+TypeScript is pinned twice on purpose. `@typescript/native` is this repo's alias for `typescript@~7.0.2`, the Go compiler the gates run; it owns the `tsc` binary, so `node_modules/.bin/tsc --version` at the root reports 7. The root's own `typescript` stays on `~6.0.3` only to supply tsserver to your editor, because TypeScript 7 ships none — that is an API resolution, not the compiler. The split means 7.0-only lib typings or an unchecked side-effect import can red a gate your editor calls clean. Open your editor at the repo root, not inside a package, or its language server falls back to a machine-global TypeScript. Any package that runs `tsc` in a script declares `"typescript": "~7.0.2"` of its own; `node scripts/check-typescript-resolution.mjs`, which `pnpm run check:drift:guards` runs, enforces the *resolved* 7.0 line rather than the declared range; the range is a tilde for that reason, because a caret installs clean today and reds once 7.1 ships. Its errors say why.
+
+The base `tsconfig.json` carries three settings that red a first build. `erasableSyntaxOnly: true` makes constructor parameter properties (`constructor(private foo: string)`) an error; write the assignment out. `verbatimModuleSyntax: true` makes a plain `import { SomeType }` an error; write `import type`. `types: []` turns off automatic `@types/*` inclusion, so a package that uses Node globals lists `"types": ["node"]` in its own `tsconfig.json` and `@types/node` in its own `package.json`.
+
 Patched dependencies (listed under `patchedDependencies` in `pnpm-workspace.yaml`, with the diffs in `patches/`) are authored with pnpm: run `pnpm patch <name>@<version>`, edit the printed temp directory, then `pnpm patch-commit <temp-dir>` to write the patch file and register it. A patch that fails to apply fails the install closed — it is never silently skipped.
 
 ## Common commands
@@ -45,6 +49,7 @@ pnpm run typecheck    # TypeScript
 pnpm run test         # tests
 pnpm run build        # build all packages
 pnpm run check        # lint + typecheck + test
+pnpm run check:drift:guards  # unused deps/exports, generated-artifact freshness, toolchain pins (not part of `check`)
 ```
 
 Run a single package's scripts from its directory, e.g. `cd packages/app && pnpm run test`.
@@ -64,8 +69,8 @@ First-time contributors are asked to sign our [Contributor License Agreement](./
 - Keep PRs focused and small enough to review.
 - Add tests — or a clear manual-verification note — for behavior changes.
 - Write no code comments outside the allowlist above — `pnpm run lint` fails on the rest.
-- Add a changeset by running `pnpm run changeset` if your pull request changes user-facing or programmatic behavior.
-- Run `pnpm run check` and confirm it passes.
+- Add a changeset by running `pnpm run changeset` if your pull request changes user-facing or programmatic behavior. Open Knowledge is pre-1.0, so a breaking change rides as `minor` and a `major` changeset is rejected — reaching 1.0.0 is a team decision, not one a single changeset makes.
+- Run `pnpm run check` and `pnpm run check:drift:guards` and confirm both pass.
 - Commit `pnpm-lock.yaml` when dependencies change, and run `pnpm run notices` to refresh `THIRD_PARTY_NOTICES.md` if third-party packages changed.
 - Never include secrets, credentials, customer data, or local machine paths.
 - Enable **Allow edits from maintainers** so reviewers can push fixes to your branch.

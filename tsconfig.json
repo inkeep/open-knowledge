@@ -12,7 +12,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "customConditions": ["@inkeep/source"],
+    "types": [],
+    "erasableSyntaxOnly": true
   },
   "exclude": ["node_modules", "dist"]
 }

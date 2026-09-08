@@ -55,8 +55,6 @@ function installMatchMedia(initialMatches: boolean): ControllableMql {
         listeners.delete(listener as Listener);
       }
     },
-    addListener() {},
-    removeListener() {},
     dispatchEvent() {
       return false;
     },

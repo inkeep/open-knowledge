@@ -336,7 +336,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
           const pmView = getEditorView(editor);
           if (!pmView) return;
           const currentNode = pmView.state.doc.nodeAt(pos);
-          if (!currentNode || currentNode.type.name !== 'rawMdxFallback') return;
+          if (currentNode?.type.name !== 'rawMdxFallback') return;
           if (!autonomousFragmentEditAllowed(editor)) return;
 
           const source = update.view.state.doc.toString();

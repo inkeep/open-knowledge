@@ -370,7 +370,7 @@ describe('rangeEncompassedBlockIds (range-encompass soft halo derivation)', () =
     let state = makeStateWithBridgeIds(docNode);
     const firstCalloutPos = 3;
     const firstCalloutNode = state.doc.nodeAt(firstCalloutPos);
-    if (!firstCalloutNode || firstCalloutNode.type.name !== 'jsxComponent') {
+    if (firstCalloutNode?.type.name !== 'jsxComponent') {
       throw new Error('test fixture: expected jsxComponent at pos 3');
     }
     const firstEnd = firstCalloutPos + firstCalloutNode.nodeSize;
@@ -449,16 +449,10 @@ describe('isBlockNavigationKey', () => {
     expect(isBlockNavigationKey(key)).toBe(true);
   });
 
-  test.each([
-    'a',
-    '1',
-    ' ',
-    'Shift',
-    'Control',
-    'Meta',
-    'F1',
-    '',
-  ])('returns false for non-navigation key %p', (key) => {
-    expect(isBlockNavigationKey(key)).toBe(false);
-  });
+  test.each(['a', '1', ' ', 'Shift', 'Control', 'Meta', 'F1', ''])(
+    'returns false for non-navigation key %p',
+    (key) => {
+      expect(isBlockNavigationKey(key)).toBe(false);
+    },
+  );
 });

@@ -42,7 +42,7 @@ describe('applyThemeSource happy path', () => {
     applyThemeSource(deps, 'dark');
     const warns = trace.filter((t) => t.step === 'warn');
     expect(warns).toHaveLength(1);
-    const line = (warns[0]?.args as { line: string }).line;
+    const line = (warns[0]?.args as { line: string } | undefined)?.line;
     expect(JSON.parse(line)).toEqual({
       event: 'theme-source-set',
       source: 'dark',
@@ -51,16 +51,15 @@ describe('applyThemeSource happy path', () => {
     });
   });
 
-  test.each([
-    ['system' as OkThemeSource],
-    ['light' as OkThemeSource],
-    ['dark' as OkThemeSource],
-  ])('accepts each user-intent value: %s', (source) => {
-    const { deps, getCurrent } = makeDeps('system');
-    const result = applyThemeSource(deps, source);
-    expect(result).toEqual({ ok: true });
-    expect(getCurrent()).toBe(source);
-  });
+  test.each([['system' as OkThemeSource], ['light' as OkThemeSource], ['dark' as OkThemeSource]])(
+    'accepts each user-intent value: %s',
+    (source) => {
+      const { deps, getCurrent } = makeDeps('system');
+      const result = applyThemeSource(deps, source);
+      expect(result).toEqual({ ok: true });
+      expect(getCurrent()).toBe(source);
+    },
+  );
 });
 
 describe('applyThemeSource defensive rejection', () => {
@@ -77,7 +76,7 @@ describe('applyThemeSource defensive rejection', () => {
     applyThemeSource(deps, 'rainbow' as unknown as OkThemeSource);
     const warns = trace.filter((t) => t.step === 'warn');
     expect(warns).toHaveLength(1);
-    const line = (warns[0]?.args as { line: string }).line;
+    const line = (warns[0]?.args as { line: string } | undefined)?.line;
     expect(JSON.parse(line)).toEqual({
       event: 'theme-source-set-rejected',
       received: 'rainbow',
@@ -95,32 +94,24 @@ describe('applyThemeSource side-effect boundaries', () => {
 });
 
 describe('isOkThemeSource type predicate', () => {
-  test.each([
-    ['system'],
-    ['light'],
-    ['dark'],
-  ])('accepts canonical OkThemeSource value: %s', (value) => {
-    expect(isOkThemeSource(value)).toBe(true);
-  });
+  test.each([['system'], ['light'], ['dark']])(
+    'accepts canonical OkThemeSource value: %s',
+    (value) => {
+      expect(isOkThemeSource(value)).toBe(true);
+    },
+  );
 
-  test.each([
-    ['auto'],
-    ['Light'],
-    [''],
-    ['SYSTEM'],
-    ['system '],
-  ])('rejects out-of-range string: %s', (value) => {
-    expect(isOkThemeSource(value)).toBe(false);
-  });
+  test.each([['auto'], ['Light'], [''], ['SYSTEM'], ['system ']])(
+    'rejects out-of-range string: %s',
+    (value) => {
+      expect(isOkThemeSource(value)).toBe(false);
+    },
+  );
 
-  test.each([
-    [null],
-    [undefined],
-    [42],
-    [true],
-    [{}],
-    [['system']],
-  ])('rejects non-string input: %p', (value) => {
-    expect(isOkThemeSource(value)).toBe(false);
-  });
+  test.each([[null], [undefined], [42], [true], [{}], [['system']]])(
+    'rejects non-string input: %p',
+    (value) => {
+      expect(isOkThemeSource(value)).toBe(false);
+    },
+  );
 });

@@ -52,7 +52,7 @@ export default defineConfig({
     build: {
       externalizeDeps: true,
       sourcemap: 'hidden',
-      rollupOptions: {
+      rolldownOptions: {
         // node-pty lives in optionalDependencies (a failed native build must
         // not fail `bun install` on toolchain-less machines), but electron-vite's
         // `externalizeDeps: true` externalizes `dependencies` ONLY. Without this
@@ -90,7 +90,7 @@ export default defineConfig({
   preload: {
     build: {
       sourcemap: 'hidden',
-      rollupOptions: {
+      rolldownOptions: {
         // ONE preload entry, deliberately. A sandboxed preload's `require` is
         // a polyfill over an allowlist of module NAMES (`electron`, a few node
         // builtins) and cannot resolve a relative path, so every preload must
@@ -147,7 +147,7 @@ export default defineConfig({
     build: {
       outDir: resolve(__dirname, 'out/renderer'),
       sourcemap: 'hidden',
-      rollupOptions: {
+      rolldownOptions: {
         // Keyed multi-entry: the editor shell plus the self-uninstall window.
         // Shared with `packages/app/vite.config.ts` via `vite.entries.ts` —
         // the app build is what a PACKAGED window loads (its `dist/` ships as

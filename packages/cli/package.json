@@ -31,7 +31,6 @@
   },
   "files": [
     "dist",
-    "scripts",
     "!dist/**/*.map"
   ],
   "engines": {
@@ -53,8 +52,9 @@
     "test": "pnpm run build:schema && vitest run",
     "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
+    "check:dts": "node scripts/check-published-dts.mjs",
     "verify:package": "node scripts/verify-package-surface.mjs",
-    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run verify:package"
+    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run check:dts && pnpm run verify:package"
   },
   "dependencies": {
     "@inquirer/checkbox": "^5.0.11",
@@ -89,7 +89,7 @@
     "@types/yazl": "^3.3.1",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
-    "tsdown": "^0.21.7",
-    "typescript": "^5.9.3"
+    "tsdown": "^0.22.14",
+    "typescript": "~7.0.2"
   }
 }

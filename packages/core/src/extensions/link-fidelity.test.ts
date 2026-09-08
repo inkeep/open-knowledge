@@ -1,9 +1,13 @@
+import Link from '@tiptap/extension-link';
 import { describe, expect, test } from 'vitest';
 import { LinkFidelity } from './link-fidelity.ts';
 
-const opts = LinkFidelity.config.addOptions?.call({ parent: undefined } as never) as {
+const opts = LinkFidelity.config.addOptions?.call({
+  parent: () => Link.config.addOptions?.call({ parent: undefined } as never),
+} as never) as {
   isAllowedUri: (url: string) => boolean;
-  validate: (url: string) => boolean;
+  shouldAutoLink: (url: string) => boolean;
+  validate?: (url: string) => boolean;
 };
 
 describe('LinkFidelity.isAllowedUri — allowlist posture', () => {
@@ -52,11 +56,46 @@ describe('LinkFidelity.isAllowedUri — allowlist posture', () => {
   });
 });
 
-describe('LinkFidelity.validate — same gate as isAllowedUri', () => {
-  test('shares the allowlist with isAllowedUri', () => {
-    expect(opts.validate('https://example.com')).toBe(true);
-    expect(opts.validate('javascript:alert(1)')).toBe(false);
-    expect(opts.validate('file:///etc/passwd')).toBe(false);
-    expect(opts.validate('/relative')).toBe(true);
+describe('LinkFidelity autolink gating — isAllowedUri is the sole allowlist', () => {
+  test('shouldAutoLink admits everything, leaving isAllowedUri as the only gate', () => {
+    expect(opts.isAllowedUri('https://example.com')).toBe(true);
+    expect(opts.isAllowedUri('javascript:alert(1)')).toBe(false);
+    expect(opts.isAllowedUri('file:///etc/passwd')).toBe(false);
+    expect(opts.isAllowedUri('/relative')).toBe(true);
+    expect(opts.shouldAutoLink('https://example.com')).toBe(true);
+    expect(opts.shouldAutoLink('javascript:alert(1)')).toBe(true);
+  });
+
+  test('the deprecated validate option is inherited, never redeclared as a second gate', () => {
+    const own = LinkFidelity.config.addOptions?.call({ parent: () => ({}) } as never) as Record<
+      string,
+      unknown
+    >;
+    expect('validate' in own).toBe(false);
+    expect('isAllowedUri' in own).toBe(true);
+    expect('shouldAutoLink' in own).toBe(true);
+  });
+});
+
+describe('LinkFidelity refuses to build against no parent', () => {
+  test('addOptions throws rather than returning an option set with no Link defaults', () => {
+    expect(() => LinkFidelity.config.addOptions?.call({ parent: undefined } as never)).toThrow(
+      /must be derived from the Link extension/,
+    );
+  });
+
+  test('addAttributes throws rather than spreading undefined over the attribute map', () => {
+    expect(() => LinkFidelity.config.addAttributes?.call({ parent: undefined } as never)).toThrow(
+      /must be derived from the Link extension/,
+    );
+  });
+
+  test('addAttributes keeps the inherited attributes when a parent is present', () => {
+    const attrs = LinkFidelity.config.addAttributes?.call({
+      parent: () => ({ href: { default: null } }),
+    } as never) as Record<string, unknown>;
+
+    expect('href' in attrs).toBe(true);
+    expect('linkStyle' in attrs).toBe(true);
   });
 });

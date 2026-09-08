@@ -164,7 +164,7 @@ export function MathInlineView({ node, selected, getPos, editor }: NodeViewProps
               const p = typeof getPos === 'function' ? getPos() : undefined;
               if (typeof p !== 'number') return;
               const curNode = editor.state.doc.nodeAt(p);
-              if (!curNode || curNode.type.name !== 'mathInline') return;
+              if (curNode?.type.name !== 'mathInline') return;
               const tr = editor.state.tr.setNodeMarkup(p, null, {
                 ...curNode.attrs,
                 [propName]: value ?? '',

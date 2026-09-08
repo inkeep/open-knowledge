@@ -1101,7 +1101,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const fixtureEntry = shareFixture.validShares.find(
       (entry) => entry.id === 'v2-one-segment-document',
     );
-    if (!fixtureEntry || fixtureEntry.version !== 2) throw new Error('missing v2 fixture');
+    if (fixtureEntry?.version !== 2) throw new Error('missing v2 fixture');
 
     registerProtocolHandler({
       app: env.app,

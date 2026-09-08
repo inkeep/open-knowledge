@@ -283,26 +283,27 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
     expect(result.ancestorPromoted).toBe(true);
   });
 
-  test.each([
-    1, 2, 3, 4, 5,
-  ])('promotes to ancestor at depth %i levels above picked', async (depth) => {
-    const segments = Array.from({ length: depth }, (_, i) => `level${i + 1}`);
-    const project = resolve(fakeHome, 'project');
-    const sub = resolve(project, ...segments);
-    mkdirSync(sub, { recursive: true });
-    writeOkConfig(project);
+  test.each([1, 2, 3, 4, 5])(
+    'promotes to ancestor at depth %i levels above picked',
+    async (depth) => {
+      const segments = Array.from({ length: depth }, (_, i) => `level${i + 1}`);
+      const project = resolve(fakeHome, 'project');
+      const sub = resolve(project, ...segments);
+      mkdirSync(sub, { recursive: true });
+      writeOkConfig(project);
 
-    const result = await discoverProject(sub, {
-      homeDir: fakeHome,
-      gitTopLevel: stubGitTopLevel({}),
-      dirSizeProbe: null,
-    });
+      const result = await discoverProject(sub, {
+        homeDir: fakeHome,
+        gitTopLevel: stubGitTopLevel({}),
+        dirSizeProbe: null,
+      });
 
-    expect(result.kind).toBe('managed');
-    if (result.kind !== 'managed') return;
-    expect(result.projectDir).toBe(project);
-    expect(result.ancestorPromoted).toBe(true);
-  });
+      expect(result.kind).toBe('managed');
+      if (result.kind !== 'managed') return;
+      expect(result.projectDir).toBe(project);
+      expect(result.ancestorPromoted).toBe(true);
+    },
+  );
 
   test('walk excludes home itself — a home .ok/ never promotes a child', async () => {
     writeOkConfig(fakeHome);

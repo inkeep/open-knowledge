@@ -50,15 +50,13 @@ describe('select-all probe view classification', () => {
     { outcome: 'partial', from: 3, to: 12, length: 12 },
     { outcome: 'empty', from: 4, to: 4, length: 12 },
     { outcome: 'unreadable', from: 0, to: undefined, length: 12 },
-  ])('CodeMirror $from-$to over a $length-character document reads $outcome', ({
-    outcome,
-    from,
-    to,
-    length,
-  }) => {
-    mountCodeMirror({ from, to }, length);
-    expect(repairFocusAndReadProbe(SOURCE_CONTENT_SELECTOR).viewSelection).toBe(outcome);
-  });
+  ])(
+    'CodeMirror $from-$to over a $length-character document reads $outcome',
+    ({ outcome, from, to, length }) => {
+      mountCodeMirror({ from, to }, length);
+      expect(repairFocusAndReadProbe(SOURCE_CONTENT_SELECTOR).viewSelection).toBe(outcome);
+    },
+  );
 
   test('CodeMirror is reached through the cmView handle when cmTile is absent', () => {
     mountCodeMirror({ from: 0, to: 9 }, 9, 'cmView');
@@ -77,15 +75,13 @@ describe('select-all probe view classification', () => {
     { outcome: 'partial', from: 4, to: 14, size: 14 },
     { outcome: 'empty', from: 3, to: 3, size: 14 },
     { outcome: 'unreadable', from: 0, to: undefined, size: 14 },
-  ])('ProseMirror $from-$to over a size-$size document reads $outcome', ({
-    outcome,
-    from,
-    to,
-    size,
-  }) => {
-    mountProseMirror({ from, to }, size);
-    expect(repairFocusAndReadProbe(WYSIWYG_SELECTOR).viewSelection).toBe(outcome);
-  });
+  ])(
+    'ProseMirror $from-$to over a size-$size document reads $outcome',
+    ({ outcome, from, to, size }) => {
+      mountProseMirror({ from, to }, size);
+      expect(repairFocusAndReadProbe(WYSIWYG_SELECTOR).viewSelection).toBe(outcome);
+    },
+  );
 
   test('a ProseMirror view whose dom is a different element falls through to the CodeMirror branch', () => {
     mountProseMirror({ from: 0, to: 14 }, 14);

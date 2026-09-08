@@ -92,21 +92,22 @@ describe('legacy Codex warning classification', () => {
     expect(agentMessages(model.items)).toHaveLength(1);
   });
 
-  test.each(
-    fixture.candidates.map((c) => [c.name, c] as const),
-  )('candidate %s folds to a single verbatim notice', (_name, candidate) => {
-    const model = buildThreadRenderModel([su(candidate.update)], CODEX);
+  test.each(fixture.candidates.map((c) => [c.name, c] as const))(
+    'candidate %s folds to a single verbatim notice',
+    (_name, candidate) => {
+      const model = buildThreadRenderModel([su(candidate.update)], CODEX);
 
-    expect(notices(model.items)).toEqual([
-      {
-        kind: 'agent_notice',
-        source: 'codex_legacy',
-        severity: 'warning',
-        text: candidate.update.content.text,
-        seq: 0,
-      },
-    ]);
-  });
+      expect(notices(model.items)).toEqual([
+        {
+          kind: 'agent_notice',
+          source: 'codex_legacy',
+          severity: 'warning',
+          text: candidate.update.content.text,
+          seq: 0,
+        },
+      ]);
+    },
+  );
 
   test('a config warning keeps its internal blank lines in one row', () => {
     const detailed = fixture.candidates.find((c) => c.name === 'config-warning-with-details');
@@ -128,19 +129,20 @@ describe('legacy Codex warning classification', () => {
     expect(notices(model.items)[0].text).toBe(mixed.update.content.text);
   });
 
-  test.each(
-    fixture.negatives.map((n) => [n.name, n] as const),
-  )('near miss %s keeps its bytes on the ordinary path', (_name, negative) => {
-    const agent = agentNamed((negative as { agent?: string }).agent);
+  test.each(fixture.negatives.map((n) => [n.name, n] as const))(
+    'near miss %s keeps its bytes on the ordinary path',
+    (_name, negative) => {
+      const agent = agentNamed((negative as { agent?: string }).agent);
 
-    const model = buildThreadRenderModel([su(negative.update)], agent);
+      const model = buildThreadRenderModel([su(negative.update)], agent);
 
-    expect(notices(model.items)).toHaveLength(0);
-    const content = (negative.update as { content?: { type?: string; text?: string } }).content;
-    if (content?.type === 'text' && typeof content.text === 'string') {
-      expect(messageText(model.items)).toBe(content.text);
-    }
-  });
+      expect(notices(model.items)).toHaveLength(0);
+      const content = (negative.update as { content?: { type?: string; text?: string } }).content;
+      if (content?.type === 'text' && typeof content.text === 'string') {
+        expect(messageText(model.items)).toBe(content.text);
+      }
+    },
+  );
 
   test('an ordinary answer carrying an item id stays prose', () => {
     const model = buildThreadRenderModel([su(fixture.ordinaryAnswer.update)], CODEX);

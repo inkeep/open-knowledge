@@ -2495,7 +2495,7 @@ describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
   test('the client-minted forced close never triggers a reauth', async () => {
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open('doc1');
-    if (!entry || entry.kind !== 'active') throw new Error('expected an active entry');
+    if (entry?.kind !== 'active') throw new Error('expected an active entry');
     const sendTokenSpy = vi
       .spyOn(entry.provider, 'sendToken')
       .mockImplementation(() => Promise.resolve());
@@ -3315,13 +3315,13 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     expect(clearOk2).toHaveBeenCalledTimes(1);
 
     const post1 = pool.entries.get(doc1);
-    if (!post1 || post1.kind !== 'active') throw new Error('expected active doc1 post-recycle');
+    if (post1?.kind !== 'active') throw new Error('expected active doc1 post-recycle');
     expect(post1.provider).not.toBe(preProvider1);
 
     expect(pool.has(doc3)).toBe(false);
 
     const post2 = pool.entries.get(doc2);
-    if (!post2 || post2.kind !== 'active') throw new Error('expected active doc2 still in pool');
+    if (post2?.kind !== 'active') throw new Error('expected active doc2 still in pool');
     expect(post2.provider).toBe(preProvider2);
     void preProvider3;
   });
@@ -3349,8 +3349,7 @@ describe('ProviderPool client-persistence attachment (US-003)', () => {
     await wait(60);
 
     const postActive = pool.entries.get(docActive);
-    if (!postActive || postActive.kind !== 'active')
-      throw new Error('expected active doc post-recycle');
+    if (postActive?.kind !== 'active') throw new Error('expected active doc post-recycle');
     expect(pool.getServerRestartRecoveryState()).toMatchObject({
       kind: 'recovering',
       phase: 'reconnecting',
@@ -3960,7 +3959,7 @@ describe('ProviderPool structured mismatch telemetry', () => {
       await wait(150);
 
       const neo = pool.entries.get(docName);
-      if (!neo || neo.kind !== 'active') throw new Error('expected recycled active entry');
+      if (neo?.kind !== 'active') throw new Error('expected recycled active entry');
 
       neo.observerCleanup = () => {};
       pool.__test_seedBufferedUpdate(docName, new Uint8Array([255, 0, 254]));

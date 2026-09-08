@@ -6,13 +6,15 @@
   "type": "module",
   "exports": {
     ".": {
+      "@inkeep/source": "./src/index.ts",
       "development": "./src/index.ts",
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
     "./parse-worker": {
+      "@inkeep/source": "./src/parse-worker.ts",
       "development": "./src/parse-worker.ts",
-      "types": "./src/parse-worker.ts",
+      "types": "./dist/parse-worker.d.mts",
       "default": "./dist/parse-worker.mjs"
     }
   },
@@ -79,13 +81,14 @@
   },
   "devDependencies": {
     "@types/mdast": "^4.0.4",
+    "@types/node": "^24.7.0",
     "@types/shell-quote": "^1.7.5",
     "@types/ws": "^8.18.1",
     "@types/yauzl": "^2.10.3",
     "@types/yazl": "^2.4.6",
     "lib0": "^0.2.117",
     "ts-morph": "^28.0.0",
-    "tsdown": "^0.21.7",
-    "typescript": "^5.9.3"
+    "tsdown": "^0.22.14",
+    "typescript": "~7.0.2"
   }
 }

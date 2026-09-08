@@ -1059,7 +1059,9 @@ describe('createServer() — config file watcher (US-007)', () => {
     expect(ytext.toString()).toBe(validContent);
     const warning = logs.getCalls('warn', 'project config invalid').at(-1);
     expect(warning?.payload.err).toBeInstanceOf(Error);
-    expect((warning?.payload.err as Error).cause).toMatchObject({ code: 'YAML_PARSE' });
+    expect((warning?.payload.err as Error | undefined)?.cause).toMatchObject({
+      code: 'YAML_PARSE',
+    });
 
     await srv.destroy();
   });
@@ -1278,15 +1280,16 @@ describe('createServer() — a removed key in project-local config does not disa
     expect(reportedRemovedKey).toBe(true);
   });
 
-  test.each(
-    REMOVED_KEYS.map((entry) => ({ entry, dotted: entry.path.join('.') })),
-  )('registry key $dotted beside autoSync.mode: full still resolves full', async ({ entry }) => {
-    writeProjectLocal(
-      stringifyYaml({ autoSync: { mode: 'full' }, ...nestRemovedKey(entry.path, false) }),
-    );
-    const srv = await boot();
-    expect(srv.syncEngine?.getStatus().syncMode).toBe('full');
-  });
+  test.each(REMOVED_KEYS.map((entry) => ({ entry, dotted: entry.path.join('.') })))(
+    'registry key $dotted beside autoSync.mode: full still resolves full',
+    async ({ entry }) => {
+      writeProjectLocal(
+        stringifyYaml({ autoSync: { mode: 'full' }, ...nestRemovedKey(entry.path, false) }),
+      );
+      const srv = await boot();
+      expect(srv.syncEngine?.getStatus().syncMode).toBe('full');
+    },
+  );
 
   test('a removed key beside linkPreviews.enabled: true resolves link previews enabled', async () => {
     const srv = await boot();

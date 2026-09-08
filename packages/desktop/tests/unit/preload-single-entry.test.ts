@@ -7,14 +7,14 @@ import { describe, expect, test } from 'vitest';
 const desktopRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 
 interface PreloadBuild {
-  rollupOptions?: { input?: Record<string, string> };
+  rolldownOptions?: { input?: Record<string, string> };
 }
 
 async function preloadInput(): Promise<Record<string, string>> {
   const config: { preload?: { build?: PreloadBuild } } = (
     await import('../../electron.vite.config')
   ).default;
-  const input = config.preload?.build?.rollupOptions?.input;
+  const input = config.preload?.build?.rolldownOptions?.input;
   if (input === undefined) throw new Error('preload build declares no entry input');
   return input;
 }

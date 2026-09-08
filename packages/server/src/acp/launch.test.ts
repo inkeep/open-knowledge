@@ -751,26 +751,25 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
     void dir;
   });
 
-  test.each([
-    'uvx',
-    'binary',
-    'custom',
-  ] as const)('%s-kind spawns still run from the record cwd (agent contract)', async (kind) => {
-    const dir = tmp();
-    const script = makeEchoCwdScript(dir);
-    const launch: ResolvedLaunch = {
-      cmd: 'node',
-      args: [script],
-      env: plainEnv(),
-      kind,
-      pathFromOverlay: false,
-    };
-    const child = spawnAcpAgent(launch, dir);
-    if (child.pid !== undefined) strayPids.push(child.pid);
-    await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
-    const observed = readFileSync(`${script}.out`, 'utf8');
-    expect(observed.endsWith(dir) || dir.endsWith(observed)).toBe(true);
-  });
+  test.each(['uvx', 'binary', 'custom'] as const)(
+    '%s-kind spawns still run from the record cwd (agent contract)',
+    async (kind) => {
+      const dir = tmp();
+      const script = makeEchoCwdScript(dir);
+      const launch: ResolvedLaunch = {
+        cmd: 'node',
+        args: [script],
+        env: plainEnv(),
+        kind,
+        pathFromOverlay: false,
+      };
+      const child = spawnAcpAgent(launch, dir);
+      if (child.pid !== undefined) strayPids.push(child.pid);
+      await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
+      const observed = readFileSync(`${script}.out`, 'utf8');
+      expect(observed.endsWith(dir) || dir.endsWith(observed)).toBe(true);
+    },
+  );
 });
 
 describe('preflightLaunch', () => {

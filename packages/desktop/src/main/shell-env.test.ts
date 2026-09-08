@@ -85,7 +85,7 @@ describe('harvestShellAuthSock', () => {
     expect(events).toContain('shell-authsock-harvest-failed');
     const failure = payloads.find((p) => p.event === 'shell-authsock-harvest-failed');
     expect(failure?.stderr).toMatch(/^zsh: bad substitution/);
-    expect((failure?.stderr as string).length).toBeLessThanOrEqual(300);
+    expect((failure?.stderr as string | undefined)?.length).toBeLessThanOrEqual(300);
   });
 
   it('returns null and logs on timeout', async () => {
@@ -117,7 +117,7 @@ describe('harvestShellAuthSock', () => {
     const failure = payloads.find((p) => p.event === 'shell-authsock-harvest-failed');
     expect(failure?.reason).toBe('marker-missing');
     expect(failure?.stdout).toMatch(/^rc noise only/);
-    expect((failure?.stdout as string).length).toBeLessThanOrEqual(300);
+    expect((failure?.stdout as string | undefined)?.length).toBeLessThanOrEqual(300);
   });
 
   it('returns null and logs when spawn throws', async () => {

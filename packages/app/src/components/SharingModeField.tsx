@@ -41,7 +41,7 @@ export function SharingModeField({
           <Trans>Share this setup with your team?</Trans>
         </span>
         <ConfigSharingInfoTooltip />
-        {}
+        {/* biome-ignore lint/a11y/noAmbiguousAnchorText: the accessible name comes from aria-label, which this rule only recognises as a string literal; the i18n directive requires the t macro. */}
         <a
           href={CONFIG_SHARING_DOCS_URL}
           target="_blank"

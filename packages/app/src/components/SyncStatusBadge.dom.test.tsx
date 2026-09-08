@@ -691,15 +691,18 @@ describe('SyncStatusBadge runtime behavior', () => {
     ['pulling', 'pulling', 'sync-popover-pull'],
     ['fetching', 'fetching', 'sync-popover-pull'],
     ['pushing', 'pushing', 'sync-popover-push'],
-  ] as const)('an automation-driven %s cycle spins the matching direction, never Pull and Push', async (_label, state, expectedTestId) => {
-    status = { ...baseStatus, state } as GitSyncStatus;
-    projectLocalConfig = { autoSync: { mode: 'full' } };
-    await renderBadge();
-    await openPopover();
+  ] as const)(
+    'an automation-driven %s cycle spins the matching direction, never Pull and Push',
+    async (_label, state, expectedTestId) => {
+      status = { ...baseStatus, state } as GitSyncStatus;
+      projectLocalConfig = { autoSync: { mode: 'full' } };
+      await renderBadge();
+      await openPopover();
 
-    expect(spinnerIn(expectedTestId)).not.toBeNull();
-    expect(spinnerIn('sync-popover-sync')).toBeNull();
-  });
+      expect(spinnerIn(expectedTestId)).not.toBeNull();
+      expect(spinnerIn('sync-popover-sync')).toBeNull();
+    },
+  );
 
   test.each([
     ['idle', { state: 'idle' }, 'Sync status: Up to date'],
@@ -707,12 +710,15 @@ describe('SyncStatusBadge runtime behavior', () => {
     ['fetching', { state: 'fetching' }, 'Sync status: Checking for updates'],
     ['offline', { state: 'offline' }, 'Sync status: Offline'],
     ['auth-error', { state: 'auth-error' }, 'Sync status: Reconnect required'],
-  ] as const)('pull-only %s renders a distinct following badge', async (_label, override, ariaName) => {
-    status = { ...baseStatus, syncMode: 'follow', ...override } as GitSyncStatus;
-    await renderBadge();
+  ] as const)(
+    'pull-only %s renders a distinct following badge',
+    async (_label, override, ariaName) => {
+      status = { ...baseStatus, syncMode: 'follow', ...override } as GitSyncStatus;
+      await renderBadge();
 
-    expect(screen.getByRole('button', { name: ariaName })).toBeTruthy();
-  });
+      expect(screen.getByRole('button', { name: ariaName })).toBeTruthy();
+    },
+  );
 
   test('pull-only conflict surfaces on the badge even though the engine stays idle', async () => {
     status = {

@@ -1,9 +1,10 @@
-import type {
-  AdvisoryWarning,
-  BrokenLink,
-  LintViolationWarning,
-  RenderWarning,
-  WriteWarning,
+import {
+  type AdvisoryWarning,
+  type BrokenLink,
+  type LintViolationWarning,
+  type RenderWarning,
+  WRITE_WARNING_KINDS,
+  type WriteWarning,
 } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
@@ -334,5 +335,26 @@ describe('unrecognized-kind fallback', () => {
     expect(lines.some((l) => l.includes('Content divergence'))).toBe(true);
     expect(lines.some((l) => l.toLowerCase().includes('mermaid'))).toBe(true);
     expect(lines.some((l) => l.includes('future-advisory-kind'))).toBe(true);
+  });
+});
+
+describe('the write-warning kind set is the one source both filters read', () => {
+  const fabricated = {
+    kind: 'byte-ledger-drift',
+    hint: 'from a newer server',
+  } as unknown as AdvisoryWarning;
+
+  test('a third write-shaped kind lands in the unrecognized channel, never in the integrity one', () => {
+    const lines = formatAdvisoryLines([DIVERGENCE, fabricated]);
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('Content divergence');
+    expect(lines[1]).toContain('byte-ledger-drift');
+    expect(lines[1]).toContain('see structuredContent.document.warnings');
+    expect(lines.some((l) => l.includes('from a newer server'))).toBe(false);
+  });
+
+  test('every kind in WRITE_WARNING_KINDS formats through the integrity channel', () => {
+    expect([...WRITE_WARNING_KINDS].sort()).toEqual(['content-divergence', 'disk-edit-reconciled']);
   });
 });

@@ -104,7 +104,7 @@ async function bootRig(): Promise<Rig> {
   await pollUntil(() => pool.getActive()?.provider.isSynced === true, 15_000, 50);
 
   const entry = pool.getActive();
-  if (!entry || entry.kind !== 'active') throw new Error('no active entry after sync');
+  if (entry?.kind !== 'active') throw new Error('no active entry after sync');
 
   const editor = mountCollabEditor(entry.provider.document, []);
   const live = { editor, destroyed: false };
@@ -176,7 +176,7 @@ async function restartAndAwaitRecycledSync(
   whileDown?: () => void,
 ): Promise<{ provider: { document: Y.Doc; isSynced: boolean } }> {
   const before = rig.pool.getActive();
-  if (!before || before.kind !== 'active') throw new Error('no active entry pre-restart');
+  if (before?.kind !== 'active') throw new Error('no active entry pre-restart');
   const providerBefore = before.provider;
 
   rig.srv.handle.killNetwork();
@@ -200,7 +200,7 @@ async function restartAndAwaitRecycledSync(
     50,
   );
   const fresh = rig.pool.getActive();
-  if (!fresh || fresh.kind !== 'active') throw new Error('no recycled entry');
+  if (fresh?.kind !== 'active') throw new Error('no recycled entry');
   if (fresh.provider.document === providerBefore.document) {
     throw new Error('expected a FRESH Y.Doc after recycle');
   }

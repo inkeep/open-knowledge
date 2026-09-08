@@ -6,63 +6,75 @@
   "type": "module",
   "exports": {
     ".": {
+      "@inkeep/source": "./src/index.ts",
       "development": "./src/index.ts",
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
     "./shadow-repo-layout": {
+      "@inkeep/source": "./src/shadow-repo-layout.ts",
       "development": "./src/shadow-repo-layout.ts",
-      "types": "./src/shadow-repo-layout.ts",
+      "types": "./dist/shadow-repo-layout.d.mts",
       "default": "./dist/shadow-repo-layout.mjs"
     },
     "./git-repository": {
+      "@inkeep/source": "./src/git-repository.ts",
       "development": "./src/git-repository.ts",
-      "types": "./src/git-repository.ts",
+      "types": "./dist/git-repository.d.mts",
       "default": "./dist/git-repository.mjs"
     },
     "./server": {
+      "@inkeep/source": "./src/server.ts",
       "development": "./src/server.ts",
-      "types": "./src/server.ts",
+      "types": "./dist/server.d.mts",
       "default": "./dist/server.mjs"
     },
     "./keepalive": {
+      "@inkeep/source": "./src/keepalive/keepalive.ts",
       "development": "./src/keepalive/keepalive.ts",
-      "types": "./src/keepalive/keepalive.ts",
+      "types": "./dist/keepalive.d.mts",
       "default": "./dist/keepalive.mjs"
     },
     "./helper-bundle": {
+      "@inkeep/source": "./src/helper-bundle.ts",
       "development": "./src/helper-bundle.ts",
-      "types": "./src/helper-bundle.ts",
+      "types": "./dist/helper-bundle.d.mts",
       "default": "./dist/helper-bundle.mjs"
     },
     "./skills-catalog": {
+      "@inkeep/source": "./src/skills-catalog/index.ts",
       "development": "./src/skills-catalog/index.ts",
-      "types": "./src/skills-catalog/index.ts",
+      "types": "./dist/skills-catalog.d.mts",
       "default": "./dist/skills-catalog.mjs"
     },
     "./acp/thread-protocol": {
+      "@inkeep/source": "./src/acp/thread-protocol.ts",
       "development": "./src/acp/thread-protocol.ts",
-      "types": "./src/acp/thread-protocol.ts",
+      "types": "./dist/acp-thread-protocol.d.mts",
       "default": "./dist/acp-thread-protocol.mjs"
     },
     "./acp/agent-posture": {
+      "@inkeep/source": "./src/acp/agent-posture.ts",
       "development": "./src/acp/agent-posture.ts",
-      "types": "./src/acp/agent-posture.ts",
+      "types": "./dist/acp-agent-posture.d.mts",
       "default": "./dist/acp-agent-posture.mjs"
     },
     "./acp/permissive-mode": {
+      "@inkeep/source": "./src/acp/permissive-mode.ts",
       "development": "./src/acp/permissive-mode.ts",
-      "types": "./src/acp/permissive-mode.ts",
+      "types": "./dist/acp-permissive-mode.d.mts",
       "default": "./dist/acp-permissive-mode.mjs"
     },
     "./acp/codex-legacy-notice": {
+      "@inkeep/source": "./src/acp/codex-legacy-notice.ts",
       "development": "./src/acp/codex-legacy-notice.ts",
-      "types": "./src/acp/codex-legacy-notice.ts",
+      "types": "./dist/acp-codex-legacy-notice.d.mts",
       "default": "./dist/acp-codex-legacy-notice.mjs"
     },
     "./desktop-bridge": {
+      "@inkeep/source": "./src/desktop-bridge.ts",
       "development": "./src/desktop-bridge.ts",
-      "types": "./src/desktop-bridge.ts",
+      "types": "./dist/desktop-bridge.d.mts",
       "default": "./dist/desktop-bridge.mjs"
     }
   },
@@ -131,9 +143,10 @@
     "zod": "^4.3.6"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && pnpm run verify:exports",
+    "verify:exports": "node scripts/verify-exports-targets.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src/ tests/contract/",
+    "test": "vitest run src/ tests/contract/ scripts/",
     "test:perf:bench": "RUN_BENCH=1 vitest run tests/perf/markdown-bench.test.ts",
     "test:perf:regression:unit": "vitest run tests/perf/regression-gate.test.ts",
     "test:perf:regression": "tsx tests/perf/run-regression-gate.ts",
@@ -161,8 +174,8 @@
     "mdast-util-to-hast": "^13.2.1",
     "micromark": "^4.0.2",
     "micromark-util-symbol": "^2.0.1",
-    "tsdown": "^0.21.7",
-    "typescript": "^5.9.3",
+    "tsdown": "^0.22.14",
+    "typescript": "~7.0.2",
     "y-prosemirror": "1.3.7"
   }
 }

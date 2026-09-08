@@ -28,15 +28,14 @@ describe('useDocumentStats', () => {
       source: '---\n{"name":"widget"}\n---\n',
       expected: { words: 1, chars: 26, tokens: 7 },
     },
-  ])('$docName counts its literal source instead of interpreting Markdown', async ({
-    docName,
-    source,
-    expected,
-  }) => {
-    expect(isEditableTextDocFile(docName)).toBe(true);
-    const provider = fakeProvider(source, docName);
-    const { result } = renderHook(() => useDocumentStats(provider, docName));
+  ])(
+    '$docName counts its literal source instead of interpreting Markdown',
+    async ({ docName, source, expected }) => {
+      expect(isEditableTextDocFile(docName)).toBe(true);
+      const provider = fakeProvider(source, docName);
+      const { result } = renderHook(() => useDocumentStats(provider, docName));
 
-    await waitFor(() => expect(result.current).toEqual(expected));
-  });
+      await waitFor(() => expect(result.current).toEqual(expected));
+    },
+  );
 });

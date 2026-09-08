@@ -9,7 +9,7 @@ export function imagePromoterPlugin() {
 
       if (node.children.length !== 1) return;
       const child = node.children[0];
-      if (!child || child.type !== 'image') return;
+      if (child?.type !== 'image') return;
 
       const image = child as Image;
       const element = buildImageElement(image, node);

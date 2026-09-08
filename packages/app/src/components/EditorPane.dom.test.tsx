@@ -380,17 +380,20 @@ describe('EditorPane auto-sync onboarding gate', () => {
       { autoSync: { enabled: null } },
       { autoSync: { default: true } },
     ],
-  ] as const)('stays closed when %s', async (_label, nextHasRemote, nextProjectSynced, nextSynced, nextProjectLocalConfig, nextProjectConfig) => {
-    hasRemote = nextHasRemote;
-    projectSynced = nextProjectSynced;
-    projectLocalSynced = nextSynced;
-    projectLocalConfig = nextProjectLocalConfig;
-    projectConfig = nextProjectConfig;
+  ] as const)(
+    'stays closed when %s',
+    async (_label, nextHasRemote, nextProjectSynced, nextSynced, nextProjectLocalConfig, nextProjectConfig) => {
+      hasRemote = nextHasRemote;
+      projectSynced = nextProjectSynced;
+      projectLocalSynced = nextSynced;
+      projectLocalConfig = nextProjectLocalConfig;
+      projectConfig = nextProjectConfig;
 
-    await renderEditorPane();
+      await renderEditorPane();
 
-    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
-  });
+      expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
+    },
+  );
 
   test('a denied push probe opens the pull-only variant', async () => {
     hasRemote = true;

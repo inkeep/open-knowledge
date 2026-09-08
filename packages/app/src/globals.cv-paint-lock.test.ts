@@ -53,34 +53,36 @@ describe('globals.css content-visibility paint-lock deferral contract', () => {
     expect(modeHidden?.declarations).toMatch(CV_HIDDEN);
   });
 
-  test.each(
-    cvHiddenBlocks.map((b) => [b.selector, b] as const),
-  )('rule %j defers its paint lock via an allow-discrete transition with a positive delay/duration', (_selector, block) => {
-    const transitions = [...block.declarations.matchAll(/transition[^:;]*:\s*([^;]*)/g)].map(
-      (m) => m[1],
-    );
-    const cvSegment = transitions
-      .flatMap((value) => splitTopLevelCommas(value))
-      .find((segment) => /content-visibility/.test(segment));
-    expect(
-      cvSegment,
-      'a content-visibility: hidden rule must declare a transition segment on content-visibility (defers lock formation to a rendering update)',
-    ).toBeDefined();
-    expect(
-      cvSegment,
-      'the content-visibility transition segment must use allow-discrete (discrete properties do not transition otherwise)',
-    ).toMatch(/allow-discrete/);
-    expect(
-      cvSegment,
-      'the content-visibility transition segment needs a positive delay or duration — with a combined duration of 0s no transition is created at all (CSS Transitions: starting requires combined duration > 0s), so the lock would form synchronously in the same style recalc',
-    ).toMatch(POSITIVE_TIME);
-  });
+  test.each(cvHiddenBlocks.map((b) => [b.selector, b] as const))(
+    'rule %j defers its paint lock via an allow-discrete transition with a positive delay/duration',
+    (_selector, block) => {
+      const transitions = [...block.declarations.matchAll(/transition[^:;]*:\s*([^;]*)/g)].map(
+        (m) => m[1],
+      );
+      const cvSegment = transitions
+        .flatMap((value) => splitTopLevelCommas(value))
+        .find((segment) => /content-visibility/.test(segment));
+      expect(
+        cvSegment,
+        'a content-visibility: hidden rule must declare a transition segment on content-visibility (defers lock formation to a rendering update)',
+      ).toBeDefined();
+      expect(
+        cvSegment,
+        'the content-visibility transition segment must use allow-discrete (discrete properties do not transition otherwise)',
+      ).toMatch(/allow-discrete/);
+      expect(
+        cvSegment,
+        'the content-visibility transition segment needs a positive delay or duration — with a combined duration of 0s no transition is created at all (CSS Transitions: starting requires combined duration > 0s), so the lock would form synchronously in the same style recalc',
+      ).toMatch(POSITIVE_TIME);
+    },
+  );
 
-  test.each(
-    cvHiddenBlocks.map((b) => [b.selector, b] as const),
-  )('rule %j pairs the paint lock with visibility: hidden (non-hit-testable during the deferral window)', (_selector, block) => {
-    expect(block.declarations).toMatch(BARE_VISIBILITY_HIDDEN);
-  });
+  test.each(cvHiddenBlocks.map((b) => [b.selector, b] as const))(
+    'rule %j pairs the paint lock with visibility: hidden (non-hit-testable during the deferral window)',
+    (_selector, block) => {
+      expect(block.declarations).toMatch(BARE_VISIBILITY_HIDDEN);
+    },
+  );
 
   test('no content-visibility: hidden under a .ProseMirror scope (PM blocks are live hit-test targets)', () => {
     const offenders = cvHiddenBlocks.filter((b) => b.selector.includes('.ProseMirror'));

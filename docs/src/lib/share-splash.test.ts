@@ -31,19 +31,20 @@ function expectedContentFilename(entry: (typeof fixture.validShares)[number]): s
 }
 
 describe('buildSplashViewModel', () => {
-  test.each(
-    fixture.validShares.filter((entry) => entry.version === 2),
-  )('decodes canonical $id and hands the unchanged token to the desktop', (entry) => {
-    const view = buildSplashViewModel(entry.token);
-    expect(view).toMatchObject({
-      kind: 'ok',
-      sharedUrl: entry.sharedUrl,
-      githubUrl: entry.sharedUrl,
-      customSchemeUrl: `openknowledge://share?token=${entry.token}`,
-      target: entry.target.kind,
-      filename: expectedContentFilename(entry),
-    });
-  });
+  test.each(fixture.validShares.filter((entry) => entry.version === 2))(
+    'decodes canonical $id and hands the unchanged token to the desktop',
+    (entry) => {
+      const view = buildSplashViewModel(entry.token);
+      expect(view).toMatchObject({
+        kind: 'ok',
+        sharedUrl: entry.sharedUrl,
+        githubUrl: entry.sharedUrl,
+        customSchemeUrl: `openknowledge://share?token=${entry.token}`,
+        target: entry.target.kind,
+        filename: expectedContentFilename(entry),
+      });
+    },
+  );
 
   test.each(fixture.invalidTokens)('rejects canonical fixture case $id', (entry) => {
     expect(buildSplashViewModel(entry.token)).toEqual({ kind: 'invalid' });

@@ -9,6 +9,8 @@ export const REQUIRED_PACK_FILES = ['README.md', 'dist/LICENSE', 'dist/THIRD_PAR
 
 export const REQUIRED_KEYWORDS = ['knowledge-base', 'markdown', 'local-first', 'mcp', 'ai', 'cli'];
 
+export const FORBIDDEN_PACK_PREFIXES = ['scripts/', 'src/', 'tests/'];
+
 export function validatePackageSurface(packageJson, packEntries) {
   const errors = [];
   const pack = Array.isArray(packEntries) ? packEntries[0] : undefined;
@@ -17,6 +19,10 @@ export function validatePackageSurface(packageJson, packEntries) {
   if (!pack) errors.push('npm pack returned no package entry');
   for (const file of REQUIRED_PACK_FILES) {
     if (!packedFiles.has(file)) errors.push(`packed artifact is missing ${file}`);
+  }
+  for (const file of packedFiles) {
+    const prefix = FORBIDDEN_PACK_PREFIXES.find((candidate) => file.startsWith(candidate));
+    if (prefix) errors.push(`packed artifact must not ship ${file} (dev-only ${prefix} tree)`);
   }
 
   if (typeof packageJson.description !== 'string' || packageJson.description.trim().length < 40) {

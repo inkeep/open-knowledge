@@ -33,11 +33,12 @@ class TableInsertControlsView {
   private readonly overlays = new Map<HTMLElement, TableOverlay>();
   private readonly mount: HTMLElement;
   private lastEditable: boolean;
+  private readonly view: EditorView;
+  private readonly editor: Editor;
 
-  constructor(
-    private readonly view: EditorView,
-    private readonly editor: Editor,
-  ) {
+  constructor(view: EditorView, editor: Editor) {
+    this.view = view;
+    this.editor = editor;
     this.mount = view.dom.parentElement ?? view.dom;
     this.lastEditable = editor.isEditable;
     this.reconcile();

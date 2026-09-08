@@ -113,7 +113,7 @@ function collectFiles(dataTransfer: DataTransfer | null, accept: (file: File) =>
   if (items) {
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i];
-      if (!it || it.kind !== 'file') continue;
+      if (it?.kind !== 'file') continue;
       const file = it.getAsFile();
       if (file === null) continue;
       itemsYieldedFiles = true;

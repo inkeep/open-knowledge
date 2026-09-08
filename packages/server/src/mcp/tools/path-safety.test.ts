@@ -120,14 +120,13 @@ describe('escapesRoot — win32 separators (PRD-8341)', () => {
     expect(escapesRoot(win32.relative(root, win32.resolve(root, candidate)))).toBe(true);
   });
 
-  test.each([
-    ['C:\\Windows\\win.ini'],
-    ['\\\\server\\share\\secrets.md'],
-    ['D:\\other.md'],
-  ])('refuses win32 absolute %s', (candidate) => {
-    const rel = win32.relative(root, win32.resolve(root, candidate));
-    expect(escapesRoot(rel) || win32.isAbsolute(rel)).toBe(true);
-  });
+  test.each([['C:\\Windows\\win.ini'], ['\\\\server\\share\\secrets.md'], ['D:\\other.md']])(
+    'refuses win32 absolute %s',
+    (candidate) => {
+      const rel = win32.relative(root, win32.resolve(root, candidate));
+      expect(escapesRoot(rel) || win32.isAbsolute(rel)).toBe(true);
+    },
+  );
 
   test.each([
     ['articles\\auth.md'],

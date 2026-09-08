@@ -65,13 +65,12 @@ describe('component dispositions', () => {
     );
   });
 
-  test.each([
-    'toString',
-    'constructor',
-    'valueOf',
-  ])('a name Object.prototype carries (%s) is refused, not resolved through the prototype', (name) => {
-    expect(() => body(`<${name} />`)).toThrow(/No serializer disposition/);
-  });
+  test.each(['toString', 'constructor', 'valueOf'])(
+    'a name Object.prototype carries (%s) is refused, not resolved through the prototype',
+    (name) => {
+      expect(() => body(`<${name} />`)).toThrow(/No serializer disposition/);
+    },
+  );
 
   test('flatten keeps the children and discards the tag', () => {
     expect(body('<Wrapper>\n\nkept text\n\n</Wrapper>', { Wrapper: 'flatten' })).toBe('kept text');
@@ -398,7 +397,8 @@ describe('a refusal names the page it came from', () => {
       }
     })();
 
-    expect((thrown?.cause as Error).message).toBe(
+    expect(thrown).toBeInstanceOf(Error);
+    expect(((thrown as Error).cause as Error).message).toBe(
       "No serializer disposition for <Unknown>. Add \"Unknown\" to the registry as 'flatten', 'drop', or a custom serializer.",
     );
   });

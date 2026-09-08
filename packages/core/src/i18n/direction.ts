@@ -2,7 +2,7 @@ import type { SupportedLocale } from './locales.ts';
 
 export type TextDirection = 'ltr' | 'rtl';
 
-interface TextInfoCapable extends Intl.Locale {
+interface TextInfoCapable {
   getTextInfo?: () => { readonly direction?: unknown };
 }
 
@@ -22,7 +22,7 @@ const STATIC_DIRECTIONS: Record<SupportedLocale, TextDirection> = {
 };
 
 export function localeDirection(locale: SupportedLocale): TextDirection {
-  const candidate: TextInfoCapable = new Intl.Locale(locale);
+  const candidate: Intl.Locale & TextInfoCapable = new Intl.Locale(locale);
   const direction = candidate.getTextInfo?.().direction;
   if (direction === 'rtl' || direction === 'ltr') return direction;
   return STATIC_DIRECTIONS[locale];

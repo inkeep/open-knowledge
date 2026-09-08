@@ -4,7 +4,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 function tableRectAt(state: EditorState, tablePos: number) {
   const table = state.doc.nodeAt(tablePos);
-  if (!table || table.type.name !== 'table') return null;
+  if (table?.type.name !== 'table') return null;
   const map = TableMap.get(table);
   return {
     map,

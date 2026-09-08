@@ -123,13 +123,12 @@ describe('proxy: Accept negotiation', () => {
     expect(negotiate(path, MARKDOWN).rewrittenTo).toBeNull();
   });
 
-  test.each([
-    '/docs/overview.md',
-    '/docs/overview.html.md',
-    '/docs/overview.mdx',
-  ])('%s is left to the rewrite rules rather than negotiated again', (path) => {
-    expect(negotiate(path, MARKDOWN).rewrittenTo).toBeNull();
-  });
+  test.each(['/docs/overview.md', '/docs/overview.html.md', '/docs/overview.mdx'])(
+    '%s is left to the rewrite rules rather than negotiated again',
+    (path) => {
+      expect(negotiate(path, MARKDOWN).rewrittenTo).toBeNull();
+    },
+  );
 
   test('host canonicalization wins over negotiation', () => {
     const res = proxy(

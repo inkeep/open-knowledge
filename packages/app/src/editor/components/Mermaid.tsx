@@ -193,7 +193,7 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
       const pos = h.getPos();
       if (typeof pos !== 'number') return;
       const node = h.editor.state.doc.nodeAt(pos);
-      if (!node || node.type.name !== 'jsxComponent') return;
+      if (node?.type.name !== 'jsxComponent') return;
       const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
       try {
         h.editor.view.dispatch(

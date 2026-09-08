@@ -132,6 +132,24 @@ export const WriteWarningSchema = z.discriminatedUnion('kind', [
 ]);
 export type WriteWarning = z.infer<typeof WriteWarningSchema>;
 
+const WRITE_WARNING_KIND_TABLE = {
+  'content-divergence': true,
+  'disk-edit-reconciled': true,
+} as const satisfies Record<WriteWarning['kind'], true>;
+
+export type WriteWarningKind = keyof typeof WRITE_WARNING_KIND_TABLE;
+export const WRITE_WARNING_KINDS = Object.keys(
+  WRITE_WARNING_KIND_TABLE,
+) as readonly WriteWarningKind[];
+
+export function isWriteWarningKind(kind: string): kind is WriteWarningKind {
+  return (WRITE_WARNING_KINDS as readonly string[]).includes(kind);
+}
+
+export function assertNeverWriteWarning(value: never): never {
+  throw new Error(`Unexpected WriteWarning variant: ${JSON.stringify(value)}`);
+}
+
 export const RenderWarningSchema = z
   .object({
     kind: z.literal('mermaid-parse-error'),
@@ -205,8 +223,6 @@ export const AgentWriteSuccessSchema = z
   .object({
     timestamp: z.string().min(1),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
@@ -219,8 +235,6 @@ export const AgentWriteMdSuccessSchema = z
     systemSubscriberCount: z.number().int().nonnegative(),
     hints: z.array(OrphanHintSchema).optional(),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
   })
@@ -233,8 +247,6 @@ export const AgentPatchSuccessSchema = z
     subscriberCount: z.number().int().nonnegative(),
     systemSubscriberCount: z.number().int().nonnegative(),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
   })
@@ -328,8 +340,6 @@ export const FrontmatterPatchSuccessSchema = z
     systemSubscriberCount: z.number().int().nonnegative(),
     appliedKeys: z.array(z.string()),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
   })

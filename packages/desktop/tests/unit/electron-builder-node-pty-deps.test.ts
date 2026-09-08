@@ -123,31 +123,34 @@ describe('node-pty desktop packaging config', () => {
   test.each([
     ['win32-x64', 0x8664],
     ['win32-arm64', 0xaa64],
-  ])('%s ships PE conpty addons with the Microsoft ConPTY pair beside them', (platformArch, peMachine) => {
-    for (const name of [
-      'conpty.node',
-      'conpty_console_list.node',
-      'conpty/conpty.dll',
-      'conpty/OpenConsole.exe',
-    ]) {
-      const file = resolve(
-        desktopRoot,
-        'node_modules',
-        'node-pty',
-        'prebuilds',
-        platformArch,
-        name,
-      );
-      expect(existsSync(file), `node-pty must ship ${platformArch}/${name}`).toBe(true);
-      const binary = readFileSync(file);
-      expect(binary.readUInt16LE(0), `${platformArch}/${name}: MZ magic`).toBe(0x5a4d);
-      const peOffset = binary.readUInt32LE(0x3c);
-      expect(binary.readUInt32LE(peOffset), `${platformArch}/${name}: PE signature`).toBe(0x4550);
-      expect(binary.readUInt16LE(peOffset + 4), `${platformArch}/${name}: PE machine word`).toBe(
-        peMachine,
-      );
-    }
-  });
+  ])(
+    '%s ships PE conpty addons with the Microsoft ConPTY pair beside them',
+    (platformArch, peMachine) => {
+      for (const name of [
+        'conpty.node',
+        'conpty_console_list.node',
+        'conpty/conpty.dll',
+        'conpty/OpenConsole.exe',
+      ]) {
+        const file = resolve(
+          desktopRoot,
+          'node_modules',
+          'node-pty',
+          'prebuilds',
+          platformArch,
+          name,
+        );
+        expect(existsSync(file), `node-pty must ship ${platformArch}/${name}`).toBe(true);
+        const binary = readFileSync(file);
+        expect(binary.readUInt16LE(0), `${platformArch}/${name}: MZ magic`).toBe(0x5a4d);
+        const peOffset = binary.readUInt32LE(0x3c);
+        expect(binary.readUInt32LE(peOffset), `${platformArch}/${name}: PE signature`).toBe(0x4550);
+        expect(binary.readUInt16LE(peOffset + 4), `${platformArch}/${name}: PE machine word`).toBe(
+          peMachine,
+        );
+      }
+    },
+  );
 
   test('asarUnpack covers node-pty lib/ and package.json (conout worker runs off the real filesystem)', () => {
     const patterns = readBuilderConfig().asarUnpack ?? [];
@@ -203,9 +206,9 @@ describe('node-pty desktop packaging config', () => {
 describe('node-pty electron-vite externalization', () => {
   test('node-pty is externalized in the main build despite optionalDependencies placement', async () => {
     const config = (await import('../../electron.vite.config.ts')).default as {
-      main?: { build?: { rollupOptions?: { external?: unknown } } };
+      main?: { build?: { rolldownOptions?: { external?: unknown } } };
     };
-    const external = config.main?.build?.rollupOptions?.external;
+    const external = config.main?.build?.rolldownOptions?.external;
     const externals = Array.isArray(external) ? external : [external];
     const pkg = readPkg();
     const autoExternalized = 'node-pty' in (pkg.dependencies ?? {});
@@ -213,7 +216,7 @@ describe('node-pty electron-vite externalization', () => {
       autoExternalized || externals.includes('node-pty'),
       'node-pty must be externalized in the electron-vite main build. It lives in optionalDependencies, ' +
         "which externalizeDeps: true does NOT cover (it reads pkg.dependencies only) — add 'node-pty' to " +
-        'main.build.rollupOptions.external in electron.vite.config.ts, or the bundled loader breaks every ' +
+        'main.build.rolldownOptions.external in electron.vite.config.ts, or the bundled loader breaks every ' +
         'packaged terminal spawn.',
     ).toBe(true);
   });

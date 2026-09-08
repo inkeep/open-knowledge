@@ -214,7 +214,7 @@
     "sirv": "^3.0.2",
     "size-limit": "^12.1.0",
     "ts-morph": "^28.0.0",
-    "typescript": "^5.9.3",
+    "typescript": "~7.0.2",
     "unified": "^11.0.5",
     "vite": "^8.0.0",
     "web-vitals": "^5.0.0",

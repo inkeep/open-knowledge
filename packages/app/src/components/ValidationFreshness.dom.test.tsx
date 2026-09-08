@@ -211,36 +211,36 @@ describe('ValidationFreshness', () => {
       expect(fetchUrls).toEqual(['/api/audit?counts=1']);
     });
 
-    test.each([
-      'local-targets',
-      'files',
-    ] as const)('re-audits when the local-target assessment plane changes via %s', async (channel) => {
-      countsBody = {
-        files: [
-          {
-            file: 'notes.md',
-            lint: { errorCount: 0, warningCount: 0 },
-            links: { errorCount: 0, warningCount: 1 },
-          },
-        ],
-        fileCount: 1,
-        errorCount: 0,
-        warningCount: 1,
-        warnings: [],
-      };
-      render(<ValidationFreshness />);
-      emitDocumentsChanged([channel]);
+    test.each(['local-targets', 'files'] as const)(
+      're-audits when the local-target assessment plane changes via %s',
+      async (channel) => {
+        countsBody = {
+          files: [
+            {
+              file: 'notes.md',
+              lint: { errorCount: 0, warningCount: 0 },
+              links: { errorCount: 0, warningCount: 1 },
+            },
+          ],
+          fileCount: 1,
+          errorCount: 0,
+          warningCount: 1,
+          warnings: [],
+        };
+        render(<ValidationFreshness />);
+        emitDocumentsChanged([channel]);
 
-      await waitFor(
-        () =>
-          expect(getValidationSnapshot().get('notes')).toEqual({
-            errorCount: 0,
-            warningCount: 1,
-          }),
-        { timeout: 3000 },
-      );
-      expect(fetchUrls).toEqual(['/api/audit?counts=1']);
-    });
+        await waitFor(
+          () =>
+            expect(getValidationSnapshot().get('notes')).toEqual({
+              errorCount: 0,
+              warningCount: 1,
+            }),
+          { timeout: 3000 },
+        );
+        expect(fetchUrls).toEqual(['/api/audit?counts=1']);
+      },
+    );
 
     test('docs the new config no longer flags drop out of the snapshot', async () => {
       render(<ValidationFreshness />);

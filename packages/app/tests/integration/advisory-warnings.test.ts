@@ -15,7 +15,6 @@ afterAll(async () => {
 
 interface WriteResponse {
   timestamp?: string;
-  warning?: { kind?: string };
   warnings?: AdvisoryWarning[];
   [key: string]: unknown;
 }
@@ -103,7 +102,7 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
 });
 
 describe('advisory warnings on POST /api/frontmatter-patch', () => {
-  test('a reconciled out-of-band edit reaches warnings[] alongside the deprecated slot', async () => {
+  test('a reconciled out-of-band edit reaches warnings[]', async () => {
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const docName = uniqueDoc('rw-fm');
@@ -125,8 +124,8 @@ describe('advisory warnings on POST /api/frontmatter-patch', () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as WriteResponse;
-    expect(body.warning?.kind).toBe('disk-edit-reconciled');
     expect(body.warnings?.map((w) => w.kind)).toEqual(['disk-edit-reconciled']);
+    expect(body.warning).toBeUndefined();
   });
 });
 
@@ -154,7 +153,7 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     expect(status).toBe(200);
     const kinds = (body.warnings ?? []).map((w) => w.kind).sort();
     expect(kinds).toEqual(['disk-edit-reconciled', 'mermaid-parse-error']);
-    expect(body.warning?.kind).toBe('disk-edit-reconciled');
+    expect(body.warning).toBeUndefined();
   });
 });
 

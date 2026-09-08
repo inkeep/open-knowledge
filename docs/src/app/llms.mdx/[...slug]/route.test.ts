@@ -72,27 +72,29 @@ describe('GET /docs/<slug>.md (markdown route handler)', () => {
     expect(missing).not.toBe(real);
   });
 
-  test.each(
-    NO_MARKDOWN_PREFIXES,
-  )('%s tells a real page apart from a URL no page holds', async (prefix) => {
-    const slug = [...prefix.replace('/docs/', '').split('/'), 'some-page'];
-    const [subtree, missing] = await Promise.all([
-      get(slug).then((r) => r.text()),
-      get(['nope']).then((r) => r.text()),
-    ]);
+  test.each(NO_MARKDOWN_PREFIXES)(
+    '%s tells a real page apart from a URL no page holds',
+    async (prefix) => {
+      const slug = [...prefix.replace('/docs/', '').split('/'), 'some-page'];
+      const [subtree, missing] = await Promise.all([
+        get(slug).then((r) => r.text()),
+        get(['nope']).then((r) => r.text()),
+      ]);
 
-    expect(subtree).not.toBe(missing);
-    expect(subtree).not.toContain('No OpenKnowledge documentation page exists');
-    expect(subtree).toContain(`https://openknowledge.ai${prefix}`);
-  });
+      expect(subtree).not.toBe(missing);
+      expect(subtree).not.toContain('No OpenKnowledge documentation page exists');
+      expect(subtree).toContain(`https://openknowledge.ai${prefix}`);
+    },
+  );
 
-  test.each(
-    NO_MARKDOWN_PREFIXES,
-  )('%s still answers with a hard 404 carrying the contract', async (prefix) => {
-    const res = await get([...prefix.replace('/docs/', '').split('/'), 'some-page']);
-    expect(res.status).toBe(404);
-    expect(res.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
-  });
+  test.each(NO_MARKDOWN_PREFIXES)(
+    '%s still answers with a hard 404 carrying the contract',
+    async (prefix) => {
+      const res = await get([...prefix.replace('/docs/', '').split('/'), 'some-page']);
+      expect(res.status).toBe(404);
+      expect(res.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+    },
+  );
 
   test('generateStaticParams delegates to the loader and yields slug-shaped params', () => {
     const params = generateStaticParams();

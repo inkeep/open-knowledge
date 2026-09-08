@@ -361,7 +361,7 @@ describe('probeCollabClients failure record', () => {
 
     const record = records.find((r) => r.msg === 'stop client-probe failed');
     expect(record?.obj).toMatchObject({ lockDir, outcome: 'unreachable' });
-    expect((record?.obj.err as Error).message).toContain('ECONNREFUSED');
+    expect((record?.obj.err as Error | undefined)?.message).toContain('ECONNREFUSED');
   });
 
   test('records a malformed answer distinctly from an unreachable one', async () => {

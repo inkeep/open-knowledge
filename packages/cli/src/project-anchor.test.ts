@@ -28,40 +28,29 @@ function makeProjectRoot(dir: string, configYaml = ''): void {
 describe('resolveProjectAnchor — command gating', () => {
   const stubHit = () => ({ rootPath: '/proj', distance: 2 });
 
-  test.each([
-    'start',
-    'stop',
-    'status',
-    'clean',
-    'ui',
-    'mcp',
-    'preview',
-    'auth',
-  ])('anchors lifecycle command %s', (name) => {
-    expect(resolveProjectAnchor(name, '/proj/sub/dir', stubHit)).toBe('/proj');
-  });
+  test.each(['start', 'stop', 'status', 'clean', 'ui', 'mcp', 'preview', 'auth'])(
+    'anchors lifecycle command %s',
+    (name) => {
+      expect(resolveProjectAnchor(name, '/proj/sub/dir', stubHit)).toBe('/proj');
+    },
+  );
 
   test('anchors the bare-`ok` dispatch (undefined command name)', () => {
     expect(resolveProjectAnchor(undefined, '/proj/sub/dir', stubHit)).toBe('/proj');
   });
 
-  test.each([
-    'init',
-    'seed',
-    'clone',
-    'open',
-    'ps',
-    'config',
-    'diagnose',
-  ])('keeps literal-cwd semantics for %s without probing the filesystem', (name) => {
-    let called = false;
-    const probe = () => {
-      called = true;
-      return stubHit();
-    };
-    expect(resolveProjectAnchor(name, '/proj/sub/dir', probe)).toBeNull();
-    expect(called).toBe(false);
-  });
+  test.each(['init', 'seed', 'clone', 'open', 'ps', 'config', 'diagnose'])(
+    'keeps literal-cwd semantics for %s without probing the filesystem',
+    (name) => {
+      let called = false;
+      const probe = () => {
+        called = true;
+        return stubHit();
+      };
+      expect(resolveProjectAnchor(name, '/proj/sub/dir', probe)).toBeNull();
+      expect(called).toBe(false);
+    },
+  );
 
   test('returns null when cwd is itself the project root (distance 0)', () => {
     expect(

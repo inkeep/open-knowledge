@@ -1600,17 +1600,17 @@ describe('non-crash minidumps', () => {
     expect(createCrashDetection(rig.deps).detectBootCrash()).not.toBeNull();
   });
 
-  test.each<NodeJS.Platform>([
-    'linux',
-    'win32',
-  ])('on %s the snapshot still arms, because the predicate is gated off there', (platform) => {
-    const rig = makeRig();
-    rig.deps.platform = platform;
-    afterCleanQuit(rig);
-    seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
+  test.each<NodeJS.Platform>(['linux', 'win32'])(
+    'on %s the snapshot still arms, because the predicate is gated off there',
+    (platform) => {
+      const rig = makeRig();
+      rig.deps.platform = platform;
+      afterCleanQuit(rig);
+      seedMinidump(rig, 'pending/watchdog.dmp', rig.tick(), rig.ownDumpSimulated);
 
-    expect(createCrashDetection(rig.deps).detectBootCrash()).not.toBeNull();
-  });
+      expect(createCrashDetection(rig.deps).detectBootCrash()).not.toBeNull();
+    },
+  );
 
   test('a snapshot alone offers no dump to attach', () => {
     const rig = makeRig();

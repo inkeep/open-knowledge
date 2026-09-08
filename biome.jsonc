@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.11/schema.json",
   "plugins": [
     "./biome-plugins/microcopy-ellipsis.grit",
     "./biome-plugins/no-hand-rolled-spinner.grit",
@@ -29,7 +29,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": {
         "noReactForwardRef": "error"
       },
@@ -443,6 +443,19 @@
         "biome-plugins/__fixtures__/no-inline-tolerance-class.fixture.tsx"
       ],
       "plugins": ["./biome-plugins/no-inline-tolerance-class.grit"]
+    },
+    {
+      // Biome 2.5 started parsing and linting standalone `.svg` files, which
+      // brings the JSX/HTML a11y rule set to bear on static assets. An asset
+      // file has no accessible name of its own: it gets one from whatever
+      // references it (`<img alt>`, a `role="img"` + `aria-label` wrapper, or
+      // `aria-hidden` when decorative), so requiring an inline `<title>` in the
+      // file is a category error. The nine files in scope are a favicon, docs
+      // page art, an app icon asset and two markdown-pipeline fixtures. The
+      // rule stays on for inline SVG in `.tsx`, which is where it means
+      // something.
+      "includes": ["**/*.svg"],
+      "linter": { "rules": { "a11y": { "noSvgWithoutTitle": "off" } } }
     }
   ],
   "files": {

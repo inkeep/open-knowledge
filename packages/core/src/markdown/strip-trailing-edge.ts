@@ -5,7 +5,7 @@ const MARK_WRAPPERS = new Set(['strong', 'emphasis', 'delete', 'link', 'mark', '
 const HTML_BREAK_SPELLING = '<br />';
 
 function isBareTrailingBreak(node: RootContent | undefined): node is Break {
-  if (!node || node.type !== 'break') return false;
+  if (node?.type !== 'break') return false;
   const sourceRaw = node.data?.sourceRaw;
   return typeof sourceRaw !== 'string' || sourceRaw.length === 0;
 }
@@ -17,7 +17,7 @@ function respellAsHtmlBreak(node: Break): void {
 }
 
 function isPlainText(node: RootContent | undefined): node is Text {
-  if (!node || node.type !== 'text') return false;
+  if (node?.type !== 'text') return false;
   const sourceRaw = (node.data as { sourceRaw?: unknown } | undefined)?.sourceRaw;
   return typeof sourceRaw !== 'string' || sourceRaw.length === 0;
 }

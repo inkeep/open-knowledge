@@ -1,4 +1,12 @@
-import { validationCoverageLines } from '@inkeep/open-knowledge-core';
+import {
+  isReLintFailedWarning,
+  isReLintFailureReason,
+  type LintFixResult,
+  RE_LINT_FAILED_WARNING_PREFIX,
+  type ReLintFailure,
+  ReLintFailureSchema,
+  validationCoverageLines,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -36,7 +44,10 @@ export const DESCRIPTION = [
 ].join('\n');
 
 export const LINT_WARNINGS_DESCRIPTION =
-  'Anything that made this run less than a full answer: unreadable files/dirs (audit), lint-config problems such as a broken frontmatter schema file, and selected lint plugins that threw. A source family named here is still listed in `ran` — it was selected, it just could not finish.';
+  'Anything that made this run less than a full answer: unreadable files/dirs (audit), lint-config problems such as a broken frontmatter schema file, and selected lint plugins that threw. A source family named here is still listed in `ran`: it was selected, it just could not finish. In fix mode this array carries the plugin failures from BOTH lint passes, so a post-write re-lint failure can appear here as the failing plugin, but never as the `Re-lint after fix failed: ` entry an older server sends, which is filtered out. The prose explanation is in `reLintFailure.message`, its machine-readable discriminant in `reLintFailure.reason`, and `diagnosticsArePreFix` is the flag to branch on.';
+
+const DIAGNOSTICS_ARE_PRE_FIX_DESCRIPTION =
+  'Fix mode only. Present and true when the server flags pre-fix diagnostics, supplies `reLintFailure`, or reports a legacy re-lint-failure warning; absent when none of those signals is present. The reported `files[].diagnostics` and their `errorCount`/`warningCount` describe the pre-fix set and may overstate what remains. Treat the fix as applied and re-run `lint` to confirm. A non-empty explanation, when available, is in `reLintFailure.message`, and `reLintFailure.reason` says which of the two failure shapes it was.';
 
 function singleDocFixHint(fixableCount: number, total: number): string {
   if (fixableCount === 0) {
@@ -77,14 +88,9 @@ interface LintDocPayload {
   ran?: string[];
 }
 
-interface LintFixPayload {
-  file?: string;
-  fixedCount?: number;
+type LintFixPayload = Omit<Partial<LintFixResult>, 'diagnostics'> & {
   diagnostics?: LintDiagnosticPayload[];
-  warning?: string;
-  warnings?: string[];
-  ran?: string[];
-}
+};
 
 interface LintAuditPayload {
   files?: LintDocPayload[];
@@ -136,11 +142,25 @@ export function register(server: ServerInstance, deps: LintDeps): void {
       outputSchema: outputSchemaWithText({
         files: looseObjectArray
           .optional()
-          .describe('Per-file diagnostics. For a single-doc lint, the one file (even if clean).'),
+          .describe(
+            'Per-file diagnostics. For a single-doc lint, the one file (even if clean). Pre-fix, and so possibly an overstatement, when `diagnosticsArePreFix` is true.',
+          ),
         fileCount: z.number().optional().describe('Audit only: total in-scope documents scanned.'),
-        errorCount: z.number().describe('Total error-severity violations.'),
-        warningCount: z.number().describe('Total warning-severity violations.'),
+        errorCount: z
+          .number()
+          .describe(
+            'Total error-severity violations. Pre-fix, and so possibly an overstatement, when `diagnosticsArePreFix` is true.',
+          ),
+        warningCount: z
+          .number()
+          .describe(
+            'Total warning-severity violations. Pre-fix, and so possibly an overstatement, when `diagnosticsArePreFix` is true.',
+          ),
         warnings: z.array(z.string()).optional().describe(LINT_WARNINGS_DESCRIPTION),
+        diagnosticsArePreFix: z.boolean().optional().describe(DIAGNOSTICS_ARE_PRE_FIX_DESCRIPTION),
+        reLintFailure: ReLintFailureSchema.optional().describe(
+          'Fix mode only: why the post-write re-lint could not report. `reason` is the machine-readable discriminant — `re-lint-threw` when the re-lint pass itself threw, `source-went-blind` when a lint source that read the pre-fix text failed on the post-fix text — and `message` is the trimmed, non-empty prose, normalized from the server’s typed failure or a legacy prefixed warning. When present, `diagnosticsArePreFix` is true; that flag can also be present without a failure.',
+        ),
         ran: z
           .array(z.string())
           .optional()
@@ -158,7 +178,9 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         fixedCount: z
           .number()
           .optional()
-          .describe('Fix mode only: problems resolved by the auto-fix.'),
+          .describe(
+            'Fix mode only: the server-reported number of problems resolved by auto-fix, or 0 if omitted. When `diagnosticsArePreFix` is true, the post-fix result is unavailable; do not treat 0 as evidence that nothing was fixed.',
+          ),
         cwd: z.string().describe('Absolute directory the lint ran against.'),
       }),
       annotations: {
@@ -215,32 +237,60 @@ async function fixLintDoc(
   const fixedCount = data.fixedCount ?? 0;
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.length - errorCount;
-  const responseWarnings = data.warnings ?? [];
+  const legacyReLintWarning =
+    typeof (rest as { warning?: unknown }).warning === 'string' &&
+    isReLintFailedWarning((rest as { warning: string }).warning)
+      ? (rest as { warning: string }).warning
+      : undefined;
+  const responseWarnings = [
+    ...(data.warnings ?? []),
+    ...(legacyReLintWarning === undefined ? [] : [legacyReLintWarning]),
+  ];
+  const legacyPrefixedWarning = responseWarnings.find(isReLintFailedWarning);
+  const warnings = responseWarnings.filter((warning) => !isReLintFailedWarning(warning));
+  const diagnosticsArePreFix =
+    data.diagnosticsArePreFix === true ||
+    data.reLintFailure !== undefined ||
+    legacyPrefixedWarning !== undefined;
+  const typedMessage =
+    typeof data.reLintFailure?.message === 'string' ? data.reLintFailure.message.trim() : '';
+  const typedFailure: ReLintFailure | undefined = typedMessage
+    ? {
+        reason: isReLintFailureReason(data.reLintFailure?.reason)
+          ? data.reLintFailure.reason
+          : 're-lint-threw',
+        message: typedMessage,
+      }
+    : undefined;
+  const legacyMessage = legacyPrefixedWarning?.slice(RE_LINT_FAILED_WARNING_PREFIX.length).trim();
+  const reLintFailure: ReLintFailure | undefined =
+    typedFailure ??
+    (legacyMessage ? { reason: 're-lint-threw' as const, message: legacyMessage } : undefined);
+  const reLintCause = reLintFailure ? ` (${reLintFailure.message})` : '';
   const coverageLines = validationCoverageLines(data.ran);
   const structured = {
     files: [{ file, diagnostics }],
     fixedCount,
     errorCount,
     warningCount,
-    ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(diagnosticsArePreFix ? { diagnosticsArePreFix: true } : {}),
+    ...(reLintFailure ? { reLintFailure } : {}),
     ...(data.ran === undefined ? {} : { ran: data.ran }),
     cwd,
   };
 
-  const header = data.warning
-    ? `Applied auto-fixes to ${file}, but re-lint failed (${data.warning}); the fix landed — problems below are the pre-fix set, re-run \`lint\` to confirm.`
+  const header = diagnosticsArePreFix
+    ? `Applied auto-fixes to ${file}, but re-lint failed${reLintCause}; the fix landed — problems below are the pre-fix set, re-run \`lint\` to confirm.`
     : fixedCount > 0
       ? `Fixed ${fixedCount} problem${fixedCount === 1 ? '' : 's'} in ${file}.`
-      : responseWarnings.length > 0
+      : warnings.length > 0
         ? `No auto-fixable problems in ${file}, but the lint could not fully complete.`
         : `No auto-fixable problems in ${file}.`;
   const lines = diagnostics.map(formatDiagnosticLine);
-  const warningBlock = degradationBlock(
-    'Lint',
-    responseWarnings.filter((warning) => warning !== data.warning),
-  );
+  const warningBlock = degradationBlock('Lint', warnings);
   const footer =
-    diagnostics.length > 0 && !data.warning
+    diagnostics.length > 0 && !diagnosticsArePreFix
       ? [
           `${diagnostics.length} problem${diagnostics.length === 1 ? '' : 's'} remain (${countSummary(errorCount, warningCount)}) — need content edits via \`edit\`/\`write\`.`,
         ]

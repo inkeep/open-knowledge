@@ -158,16 +158,14 @@ describe('dispatchHandoff — runtime exhaustiveness guard', () => {
     expect(result.detail ?? '').toContain('zed');
   });
 
-  test.each([
-    'copilot',
-    'opencode',
-    'pi',
-    'antigravity',
-  ] as const)('terminal-only target %s is refused by the deep-link dispatcher (defensive)', async (target) => {
-    const result = await dispatchHandoff({ ...BASE_PAYLOAD, target });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('invalid-payload');
-    expect(result.detail ?? '').toContain('terminal-only');
-  });
+  test.each(['copilot', 'opencode', 'pi', 'antigravity'] as const)(
+    'terminal-only target %s is refused by the deep-link dispatcher (defensive)',
+    async (target) => {
+      const result = await dispatchHandoff({ ...BASE_PAYLOAD, target });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe('invalid-payload');
+      expect(result.detail ?? '').toContain('terminal-only');
+    },
+  );
 });

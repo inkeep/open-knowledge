@@ -4,6 +4,7 @@
     "test-support/fixtures/share-url-v1-v2.json",
     "test-support/fixtures/codex-legacy-warning-envelopes.json",
     "pnpm-workspace.yaml",
+    "tsconfig.json",
     "patches/*.patch"
   ],
   "tasks": {
@@ -38,6 +39,14 @@
     "lint": {},
     "typecheck": {
       "dependsOn": ["^build"]
+    },
+    "@inkeep/open-knowledge#check:dts": {
+      "dependsOn": ["build"],
+      "inputs": [
+        "tsconfig.check.json",
+        "scripts/check-published-dts.mjs",
+        "$TURBO_ROOT$/scripts/read-jsonc.mjs"
+      ]
     },
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
@@ -104,6 +113,8 @@
         "src/**/*.tsx",
         "src/**/*.json",
         "tests/contract/**/*.ts",
+        "scripts/**/*.ts",
+        "scripts/**/*.mjs",
         "vitest.config.ts",
         "../../test-support/*.ts"
       ]
@@ -138,6 +149,26 @@
         "vitest.config.ts",
         "../../test-support/*.ts",
         "../server/src/**/*.ts"
+      ]
+    },
+    "@inkeep/open-knowledge-core#test": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "src/**/*.css",
+        "tests/contract/**/*.ts",
+        "scripts/**/*.mjs",
+        "scripts/**/*.test.ts",
+        "package.json",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "tests/lingui-macro-shim.tsx",
+        "tests/integration/idb-preload.ts",
+        "../../test-support/*.ts",
+        "../test-support/*.ts"
       ]
     },
     "test:dom": {
@@ -285,7 +316,7 @@
       ]
     },
     "test:e2e": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build"],
       "cache": false
     },
     "test:visual": {

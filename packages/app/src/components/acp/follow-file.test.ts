@@ -148,32 +148,30 @@ describe('followTargetFromToolCall', () => {
     ).toBeNull();
   });
 
-  test.each([
-    'read',
-    'search',
-    'execute',
-    'other',
-  ] as const)('flat docName on a %s-shaped tool call never follows', (kind) => {
-    expect(
-      followTargetFromToolCall(
-        call({
-          toolKind: kind,
-          rawInput: {
-            server: 'open-knowledge',
-            tool: 'history',
-            arguments: { docName: 'notes/today' },
-          },
-        }),
-        posix,
-      ),
-    ).toBeNull();
-    expect(
-      followTargetFromToolCall(
-        call({ toolKind: kind, rawInput: { docName: 'notes/today' } }),
-        posix,
-      ),
-    ).toBeNull();
-  });
+  test.each(['read', 'search', 'execute', 'other'] as const)(
+    'flat docName on a %s-shaped tool call never follows',
+    (kind) => {
+      expect(
+        followTargetFromToolCall(
+          call({
+            toolKind: kind,
+            rawInput: {
+              server: 'open-knowledge',
+              tool: 'history',
+              arguments: { docName: 'notes/today' },
+            },
+          }),
+          posix,
+        ),
+      ).toBeNull();
+      expect(
+        followTargetFromToolCall(
+          call({ toolKind: kind, rawInput: { docName: 'notes/today' } }),
+          posix,
+        ),
+      ).toBeNull();
+    },
+  );
 
   test('flat docName argument shape also resolves', () => {
     const target = followTargetFromToolCall(
@@ -357,19 +355,17 @@ describe('followTargetFromToolCall — exec commands never follow', () => {
 });
 
 describe('followTargetFromToolCall — location-based follow is write-only', () => {
-  test.each([
-    'execute',
-    'search',
-    'other',
-    'read',
-  ] as const)('%s never navigates from its locations (even when the doc exists)', (kind) => {
-    expect(
-      followTargetFromToolCall(
-        call({ toolKind: kind, locations: [{ path: '/home/me/notes/main.md' }] }),
-        posix,
-      ),
-    ).toBeNull();
-  });
+  test.each(['execute', 'search', 'other', 'read'] as const)(
+    '%s never navigates from its locations (even when the doc exists)',
+    (kind) => {
+      expect(
+        followTargetFromToolCall(
+          call({ toolKind: kind, locations: [{ path: '/home/me/notes/main.md' }] }),
+          posix,
+        ),
+      ).toBeNull();
+    },
+  );
 
   test('a move call names the destination — its location follows even when the doc does not exist yet', () => {
     expect(

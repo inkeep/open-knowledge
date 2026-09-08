@@ -25,8 +25,10 @@ export const MAX_DIMS_DRIFT_RESETS = 2;
 
 class DimsMismatchSignal extends Error {
   readonly name = 'DimsMismatchSignal';
-  constructor(readonly cause: EmbeddingDimsMismatchError) {
+  override readonly cause: EmbeddingDimsMismatchError;
+  constructor(cause: EmbeddingDimsMismatchError) {
     super(cause.message);
+    this.cause = cause;
   }
 }
 

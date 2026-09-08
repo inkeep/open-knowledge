@@ -385,7 +385,7 @@ describe('map-driven Observer A — default Path A behavior', () => {
         String(args[1]).includes('Map-driven splice'),
       );
       expect(spliceWarns).toHaveLength(1);
-      expect((spliceWarns[0]?.[0] as { err?: Error }).err?.message).toBe(
+      expect((spliceWarns[0]?.[0] as { err?: Error } | undefined)?.err?.message).toBe(
         'synthetic parser regression',
       );
 
@@ -440,7 +440,8 @@ describe('map-driven Observer A — default Path A behavior', () => {
         String(args[1]).includes('Spliced-body memo composition threw'),
       );
       expect(memoWarns).toHaveLength(1);
-      expect((memoWarns[0]?.[0] as { err?: Error }).err?.name).toBe('DataCloneError');
+      const memoWarn = memoWarns[0]?.[0] as { err?: Error } | undefined;
+      expect(memoWarn?.err?.name).toBe('DataCloneError');
 
       warnSpy.mockRestore();
       cleanup();

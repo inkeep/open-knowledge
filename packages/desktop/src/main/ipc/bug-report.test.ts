@@ -2238,7 +2238,7 @@ describe('handleBugReportCaptureScreenshot', () => {
     expect(await handleBugReportCaptureScreenshot(deps)).toBeNull();
     expect(store.has(7)).toBe(false);
     expect(warnings).toHaveLength(1);
-    expect((warnings[0]?.payload.err as Error).message).toContain('offscreen surface');
+    expect((warnings[0]?.payload.err as Error | undefined)?.message).toContain('offscreen surface');
   });
 });
 

@@ -5,7 +5,7 @@ const GUID_PREFIX = 'docs-internal-guid-';
 
 function unwrap(parent: Element | Root, index: number): void {
   const node = parent.children[index] as Element;
-  if (!node || node.type !== 'element') return;
+  if (node?.type !== 'element') return;
   parent.children.splice(index, 1, ...node.children);
 }
 

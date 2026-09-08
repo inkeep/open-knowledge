@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RE_LINT_FAILED_WARNING_PREFIX } from '@inkeep/open-knowledge-core';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
@@ -15,6 +16,8 @@ import { register as registerSearch } from './search.ts';
 import { AUDIT_WARNING_CAP, type ServerInstance } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
+
+const legacyReLint = (message: string) => `${RE_LINT_FAILED_WARNING_PREFIX}${message}`;
 
 interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
@@ -422,35 +425,82 @@ describe('audit and lint emitted coverage validates against the client schema', 
     );
   });
 
-  test('the deprecated fix `warning` rides `warnings` too, and renders once', async () => {
+  test('diagnosticsArePreFix drives the fix header, renders the bare reason once, and drops the remaining-problems footer', async () => {
     const captured = captureRegistration(registerLint, {
       config: BASE_CONFIG,
       resolveCwd: async () => newProject(),
       serverUrl: 'http://127.0.0.1:31337',
     });
-    const reLint = 'Re-lint after fix failed: boom';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({
-          file: 'notes.md',
-          fixedCount: 1,
-          diagnostics: [],
-          errorCount: 0,
-          warningCount: 0,
-          ran: ['markdownlint'],
-          warning: reLint,
-          warnings: [reLint],
-        }),
-      ),
-    );
+    const reLint = legacyReLint('boom');
+    const fixPayload = (
+      warnings: string[],
+      diagnosticsArePreFix?: boolean,
+    ): Record<string, unknown> => ({
+      file: 'notes.md',
+      fixedCount: diagnosticsArePreFix ? 0 : 1,
+      diagnostics: [warningDiagnostic('markdownlint')],
+      errorCount: 0,
+      warningCount: 1,
+      ran: ['markdownlint'],
+      warnings,
+      ...(diagnosticsArePreFix === undefined ? {} : { diagnosticsArePreFix }),
+    });
+    const call = async (warnings: string[], diagnosticsArePreFix?: boolean) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(fixPayload(warnings, diagnosticsArePreFix))),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    };
 
-    const result = await captured.handler({ document: 'notes', fix: true });
+    const result = await call([reLint], true);
 
-    const structured = result.structuredContent as { warnings?: string[] };
-    expect(structured.warnings).toEqual([reLint]);
+    expect(result.structuredContent).not.toHaveProperty('warnings');
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'boom' },
+    });
     const text = result.content[0]?.text ?? '';
-    expect(text.split(reLint)).toHaveLength(2);
+    expect(text.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+    expect(text).not.toContain('problem remain');
+
+    const legacyOnly = await (async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            errorCount: 0,
+            warningCount: 1,
+            ran: ['markdownlint'],
+            warning: reLint,
+          }),
+        ),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    })();
+    const legacyText = legacyOnly.content[0]?.text ?? '';
+    expect(legacyText.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(legacyText).not.toContain('problem remain');
+    expect(legacyOnly.structuredContent).not.toHaveProperty('warnings');
+    expect(legacyOnly.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'boom' },
+    });
+
+    const ordinary = await call(['source "markdownlint" lint failed on "notes.md": boom']);
+    const ordinaryStructured = ordinary.structuredContent as { diagnosticsArePreFix?: boolean };
+    expect(ordinaryStructured.diagnosticsArePreFix).toBeUndefined();
+    const ordinaryText = ordinary.content[0]?.text ?? '';
+    expect(ordinaryText.split('\n')[0]).toBe('Fixed 1 problem in notes.md.');
+    expect(ordinaryText).toContain('1 problem remain');
 
     const validator = new AjvJsonSchemaValidator();
     const validate = validator.getValidator(
@@ -460,6 +510,263 @@ describe('audit and lint emitted coverage validates against the client schema', 
       valid: boolean;
       errorMessage?: string;
     };
+    expect(validation.valid, validation.errorMessage).toBe(true);
+  });
+
+  test('the pre-fix signal survives a server that sends only the prefix or only the boolean', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const call = async (extra: Record<string, unknown>) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            errorCount: 0,
+            warningCount: 1,
+            ran: ['markdownlint'],
+            ...extra,
+          }),
+        ),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    };
+
+    const prefixOnly = await call({ warnings: [legacyReLint('boom')] });
+    expect(
+      (prefixOnly.structuredContent as { diagnosticsArePreFix?: boolean }).diagnosticsArePreFix,
+    ).toBe(true);
+    expect(prefixOnly.structuredContent).not.toHaveProperty('warnings');
+    expect(prefixOnly.structuredContent).toHaveProperty('reLintFailure', {
+      reason: 're-lint-threw',
+      message: 'boom',
+    });
+    const prefixText = prefixOnly.content[0]?.text ?? '';
+    expect(prefixText.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(prefixText).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+    expect(prefixText).not.toContain('problem remain');
+
+    const booleanOnly = await call({ diagnosticsArePreFix: true });
+    expect(booleanOnly.structuredContent).toHaveProperty('diagnosticsArePreFix', true);
+    expect(booleanOnly.structuredContent).not.toHaveProperty('reLintFailure');
+    expect((booleanOnly.content[0]?.text ?? '').split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed; the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+  });
+
+  test.each(['boom', ' \tboom\n '])(
+    'reLintFailure alone marks diagnostics as pre-fix and carries its message in both outputs (%j)',
+    async (message) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      const diagnostics = [warningDiagnostic('markdownlint')];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics,
+            ran: ['markdownlint'],
+            reLintFailure: { reason: 'source-went-blind', message },
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toBe(
+        'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+      );
+      expect(text.match(/boom/g)).toHaveLength(1);
+      expect(text).not.toContain('problem remain');
+      expect(result.structuredContent).toMatchObject({
+        files: [{ file: 'notes.md', diagnostics }],
+        fixedCount: 0,
+        errorCount: 0,
+        warningCount: 1,
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason: 'source-went-blind', message: 'boom' },
+      });
+      expect(result.structuredContent).not.toHaveProperty('warnings');
+      expect(result.structuredContent).not.toHaveProperty('warning');
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    },
+  );
+
+  test.each([{}, { reason: 're-lint-threw', message: '   ' }])(
+    'a malformed typed reLintFailure (%j) falls through to the legacy prefixed warning without throwing',
+    async (reLintFailure) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            ran: ['markdownlint'],
+            warnings: [legacyReLint('legacy reason')],
+            reLintFailure,
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason: 're-lint-threw', message: 'legacy reason' },
+      });
+      expect(result.structuredContent).not.toHaveProperty('warnings');
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toContain('re-lint failed (legacy reason);');
+      expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    },
+  );
+
+  test.each([
+    { reLintFailure: undefined, reason: 're-lint-threw', message: 'plural reason' },
+    {
+      reLintFailure: { reason: 'source-went-blind', message: '  typed reason  ' },
+      reason: 'source-went-blind',
+      message: 'typed reason',
+    },
+  ])(
+    'fix output keeps ordinary warnings and normalizes legacy failures to $message',
+    async ({ reLintFailure, reason, message }) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      const warnings = [
+        'source "markdownlint" fix failed on "notes.md": unavailable',
+        'frontmatter schema unavailable',
+      ];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            warnings: [
+              warnings[0],
+              legacyReLint('plural reason'),
+              warnings[1],
+              legacyReLint('another legacy reason'),
+            ],
+            warning: legacyReLint('singular reason'),
+            reLintFailure,
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      expect(result.structuredContent).toMatchObject({
+        warnings,
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason, message },
+      });
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toContain(`re-lint failed (${message});`);
+      expect(text).toContain('Lint incomplete — 2 warnings (findings may be partial):');
+      for (const warning of warnings) expect(text).toContain(warning);
+      expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+      expect(text).not.toContain('another legacy reason');
+      expect(text).not.toContain('singular reason');
+      expect(text).not.toContain('problem remain');
+    },
+  );
+
+  test('an older server that sends the same prefixed string in warning and warnings renders it once', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          file: 'notes.md',
+          fixedCount: 0,
+          diagnostics: [warningDiagnostic('markdownlint')],
+          ran: ['markdownlint'],
+          warning: legacyReLint('same'),
+          warnings: [legacyReLint('same')],
+        }),
+      ),
+    );
+
+    const result = await captured.handler({ document: 'notes', fix: true });
+
+    expect(result.structuredContent).not.toHaveProperty('warnings');
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'same' },
+    });
+    const text = result.content[0]?.text ?? '';
+    expect(text.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (same); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(text.match(/same/g)).toHaveLength(1);
+    expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+  });
+
+  test('a reason an older or newer server does not share normalizes to the closed discriminant', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          file: 'notes.md',
+          fixedCount: 0,
+          diagnostics: [warningDiagnostic('markdownlint')],
+          ran: ['markdownlint'],
+          reLintFailure: { reason: 'a-reason-from-the-future', message: 'still readable' },
+        }),
+      ),
+    );
+
+    const result = await captured.handler({ document: 'notes', fix: true });
+
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'still readable' },
+    });
+    const validate = new AjvJsonSchemaValidator().getValidator(
+      compileOutputSchemaForClient(captured.cfg.outputSchema),
+    );
+    const validation = validate(result.structuredContent);
     expect(validation.valid, validation.errorMessage).toBe(true);
   });
 

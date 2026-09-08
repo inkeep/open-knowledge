@@ -4,9 +4,10 @@
     "target": "ESNext",
     "module": "esnext",
     "lib": ["dom", "dom.iterable", "esnext"],
-    // @inkeep/open-knowledge-core resolves to its TS source (exports `types` →
-    // ./src/index.ts), whose internal imports carry explicit .ts extensions —
-    // same flag core/app set to consume it.
+    // @inkeep/open-knowledge-core resolves to its TS source: the base tsconfig
+    // sets `customConditions: ["@inkeep/source"]`, and core's exports list that
+    // condition first pointing at ./src/index.ts, whose internal imports carry
+    // explicit .ts extensions — same flag core/app set to consume it.
     "allowImportingTsExtensions": true,
     "allowJs": true,
     "noEmit": true,

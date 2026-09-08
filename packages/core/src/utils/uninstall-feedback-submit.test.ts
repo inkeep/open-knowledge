@@ -200,52 +200,50 @@ describe('postUninstallFeedback', () => {
     expect(seen[0]?.url).toBe('https://staging.example.com/api/feedback');
   });
 
-  test.each([
-    'me@',
-    'me.com',
-    'not an address',
-  ])('never spends a round trip on the obviously-broken address %s', async (email) => {
-    const seen = recordRequests(() => jsonResponse(200, { reference: 'OK-50' }));
+  test.each(['me@', 'me.com', 'not an address'])(
+    'never spends a round trip on the obviously-broken address %s',
+    async (email) => {
+      const seen = recordRequests(() => jsonResponse(200, { reference: 'OK-50' }));
 
-    const result = await postUninstallFeedback({
-      ...HOST_FACTS,
-      reason: 'unreliable',
-      note: 'kept crashing',
-      email,
-    });
+      const result = await postUninstallFeedback({
+        ...HOST_FACTS,
+        reason: 'unreliable',
+        note: 'kept crashing',
+        email,
+      });
 
-    expect(result).toEqual({ ok: true, reference: 'OK-50' });
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.body).toMatchObject({ reasons: ['unreliable'], message: 'kept crashing' });
-    expect(seen[0]?.body).not.toHaveProperty('email');
-  });
+      expect(result).toEqual({ ok: true, reference: 'OK-50' });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.body).toMatchObject({ reasons: ['unreliable'], message: 'kept crashing' });
+      expect(seen[0]?.body).not.toHaveProperty('email');
+    },
+  );
 
-  test.each([
-    'me@example.c',
-    'josé@example.com',
-    'a..b@example.com',
-  ])('refiles without the address when the intake rejects %s', async (email) => {
-    let attempts = 0;
-    const seen = recordRequests(() => {
-      attempts += 1;
-      return attempts === 1
-        ? new Response('', { status: 400 })
-        : jsonResponse(200, { reference: 'OK-51' });
-    });
+  test.each(['me@example.c', 'josé@example.com', 'a..b@example.com'])(
+    'refiles without the address when the intake rejects %s',
+    async (email) => {
+      let attempts = 0;
+      const seen = recordRequests(() => {
+        attempts += 1;
+        return attempts === 1
+          ? new Response('', { status: 400 })
+          : jsonResponse(200, { reference: 'OK-51' });
+      });
 
-    const result = await postUninstallFeedback({
-      ...HOST_FACTS,
-      reason: 'unreliable',
-      note: 'kept crashing',
-      email,
-    });
+      const result = await postUninstallFeedback({
+        ...HOST_FACTS,
+        reason: 'unreliable',
+        note: 'kept crashing',
+        email,
+      });
 
-    expect(result).toEqual({ ok: true, reference: 'OK-51' });
-    expect(seen).toHaveLength(2);
-    expect(seen[0]?.body).toMatchObject({ email });
-    expect(seen[1]?.body).toMatchObject({ reasons: ['unreliable'], message: 'kept crashing' });
-    expect(seen[1]?.body).not.toHaveProperty('email');
-  });
+      expect(result).toEqual({ ok: true, reference: 'OK-51' });
+      expect(seen).toHaveLength(2);
+      expect(seen[0]?.body).toMatchObject({ email });
+      expect(seen[1]?.body).toMatchObject({ reasons: ['unreliable'], message: 'kept crashing' });
+      expect(seen[1]?.body).not.toHaveProperty('email');
+    },
+  );
 
   test('retries at most once, so a body rejected for another reason still settles', async () => {
     const seen = recordRequests(() => new Response('', { status: 400 }));

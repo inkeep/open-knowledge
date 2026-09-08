@@ -65,10 +65,11 @@ describe('playwright worker density', () => {
     expect(config.workers).toBe(resolveWorkerCount(CI_RUNNER_LOGICAL_CPUS));
   });
 
-  test.each(
-    CONFIG_NAMES,
-  )('off-CI the %s config derives workers from the density resolver', async (which) => {
-    const config = await loadConfigWithCI(undefined, which);
-    expect(config.workers).toBe(resolveWorkerCount(availableParallelism()));
-  });
+  test.each(CONFIG_NAMES)(
+    'off-CI the %s config derives workers from the density resolver',
+    async (which) => {
+      const config = await loadConfigWithCI(undefined, which);
+      expect(config.workers).toBe(resolveWorkerCount(availableParallelism()));
+    },
+  );
 });

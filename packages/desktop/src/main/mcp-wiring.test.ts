@@ -1158,7 +1158,7 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     );
 
     expect(wc.sent).toHaveLength(1);
-    expect((wc.sent[0]?.payload as { pathInstall: unknown }).pathInstall).toEqual({
+    expect((wc.sent[0]?.payload as { pathInstall: unknown } | undefined)?.pathInstall).toEqual({
       shellDetected: false,
       rcFilesToTouch: [],
       alreadyInstalled: false,
@@ -1185,7 +1185,9 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     );
 
     expect(wc.sent).toHaveLength(1);
-    expect((wc.sent[0]?.payload as { globalSkills: unknown }).globalSkills).toEqual([]);
+    expect((wc.sent[0]?.payload as { globalSkills: unknown } | undefined)?.globalSkills).toEqual(
+      [],
+    );
     expect(events.some((e) => e.event === 'mcp-wiring-skill-descriptors-failed')).toBe(true);
     expect(ipcMain.handlers.has('ok:mcp-wiring:confirm')).toBe(true);
   });

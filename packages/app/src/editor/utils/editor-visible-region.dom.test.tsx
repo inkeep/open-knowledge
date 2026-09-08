@@ -120,44 +120,53 @@ describe('deriveEditorShiftOptions', () => {
     expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX + CONFLICT_FOOTER_HEIGHT_PX);
   });
 
-  test.each([
-    'top',
-    'top-start',
-  ] as const)('a %s placement absorbs a pending anchor gap by tightening the top inset', (placement) => {
-    const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
-    const options = deriveEditorShiftOptions(editor, {
-      pendingOffsetPx: PENDING_OFFSET_PX,
-    })({ placement });
-    expect(options.padding.top).toBe(TOOLBAR_HEIGHT + PENDING_OFFSET_PX);
-    expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX - PENDING_OFFSET_PX);
-  });
+  test.each(['top', 'top-start'] as const)(
+    'a %s placement absorbs a pending anchor gap by tightening the top inset',
+    (placement) => {
+      const { editor } = renderEditorInScroller();
+      document.documentElement.style.setProperty(
+        '--ask-composer-height',
+        `${COMPOSER_HEIGHT_PX}px`,
+      );
+      const options = deriveEditorShiftOptions(editor, {
+        pendingOffsetPx: PENDING_OFFSET_PX,
+      })({ placement });
+      expect(options.padding.top).toBe(TOOLBAR_HEIGHT + PENDING_OFFSET_PX);
+      expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX - PENDING_OFFSET_PX);
+    },
+  );
 
-  test.each([
-    'bottom',
-    'bottom-start',
-  ] as const)('a %s placement mirrors the compensation', (placement) => {
-    const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
-    const options = deriveEditorShiftOptions(editor, {
-      pendingOffsetPx: PENDING_OFFSET_PX,
-    })({ placement });
-    expect(options.padding.top).toBe(TOOLBAR_HEIGHT - PENDING_OFFSET_PX);
-    expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX + PENDING_OFFSET_PX);
-  });
+  test.each(['bottom', 'bottom-start'] as const)(
+    'a %s placement mirrors the compensation',
+    (placement) => {
+      const { editor } = renderEditorInScroller();
+      document.documentElement.style.setProperty(
+        '--ask-composer-height',
+        `${COMPOSER_HEIGHT_PX}px`,
+      );
+      const options = deriveEditorShiftOptions(editor, {
+        pendingOffsetPx: PENDING_OFFSET_PX,
+      })({ placement });
+      expect(options.padding.top).toBe(TOOLBAR_HEIGHT - PENDING_OFFSET_PX);
+      expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX + PENDING_OFFSET_PX);
+    },
+  );
 
-  test.each([
-    'left',
-    'right',
-  ] as const)('a %s placement needs no compensation — the pending gap is horizontal there', (placement) => {
-    const { editor } = renderEditorInScroller();
-    document.documentElement.style.setProperty('--ask-composer-height', `${COMPOSER_HEIGHT_PX}px`);
-    const options = deriveEditorShiftOptions(editor, {
-      pendingOffsetPx: PENDING_OFFSET_PX,
-    })({ placement });
-    expect(options.padding.top).toBe(TOOLBAR_HEIGHT);
-    expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX);
-  });
+  test.each(['left', 'right'] as const)(
+    'a %s placement needs no compensation — the pending gap is horizontal there',
+    (placement) => {
+      const { editor } = renderEditorInScroller();
+      document.documentElement.style.setProperty(
+        '--ask-composer-height',
+        `${COMPOSER_HEIGHT_PX}px`,
+      );
+      const options = deriveEditorShiftOptions(editor, {
+        pendingOffsetPx: PENDING_OFFSET_PX,
+      })({ placement });
+      expect(options.padding.top).toBe(TOOLBAR_HEIGHT);
+      expect(options.padding.bottom).toBe(COMPOSER_HEIGHT_PX);
+    },
+  );
 
   test('a top placement with no composer up drives the bottom inset negative', () => {
     const { editor } = renderEditorInScroller();

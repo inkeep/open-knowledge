@@ -228,7 +228,7 @@ async function countOtherRunningServers(exceptLockDir: string): Promise<number> 
 export function stopCommand(getConfig: () => Config): Command {
   return new Command('stop')
     .description(
-      'Stop open-knowledge server(s). With no argument: stops the server for the current directory. ' +
+      'Stop open-knowledge server(s). With no argument: stops the server for the enclosing project — run it from anywhere inside the project. ' +
         'Pass a port number, a directory path, or "all" to target globally.',
     )
     .argument('[target...]', 'port number, directory path (spaces OK), or "all"')

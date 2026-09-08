@@ -610,7 +610,7 @@ describe('placeholder contract — media descriptor src prop invariants', () => 
       expect(meta).toBeDefined();
       const src = meta?.props.find((p) => p.name === 'src');
       expect(src, `${name} must declare a src prop`).toBeDefined();
-      if (!src || src.type !== 'string') return;
+      if (src?.type !== 'string') return;
       expect(
         src.defaultValue,
         `${name}.src must have defaultValue '' so slash-insert pre-populates the placeholder predicate's =='' check`,

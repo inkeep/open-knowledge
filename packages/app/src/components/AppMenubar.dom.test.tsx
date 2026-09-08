@@ -60,15 +60,15 @@ describe('AppMenubar Help menu', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  test.each([
-    'win32',
-    'linux',
-  ] as const)('returns null in a %s note window, where app-wide menu chrome is intentionally absent', async (platform) => {
-    installBridge(platform, 'note');
-    const { AppMenubar } = await import('./AppMenubar');
-    const { container } = render(<AppMenubar />);
-    expect(container.firstChild).toBeNull();
-  });
+  test.each(['win32', 'linux'] as const)(
+    'returns null in a %s note window, where app-wide menu chrome is intentionally absent',
+    async (platform) => {
+      installBridge(platform, 'note');
+      const { AppMenubar } = await import('./AppMenubar');
+      const { container } = render(<AppMenubar />);
+      expect(container.firstChild).toBeNull();
+    },
+  );
 
   test('Send feedback dispatches the send-feedback menu action', async () => {
     const dispatch = installBridge('win32');

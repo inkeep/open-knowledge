@@ -237,6 +237,26 @@ export const LintFixRequestSchema = z
   .loose();
 export type LintFixRequest = z.infer<typeof LintFixRequestSchema>;
 
+export const RE_LINT_FAILED_WARNING_PREFIX = 'Re-lint after fix failed: ';
+
+export function isReLintFailedWarning(warning: string): boolean {
+  return warning.startsWith(RE_LINT_FAILED_WARNING_PREFIX);
+}
+
+export const RE_LINT_FAILURE_REASONS = ['re-lint-threw', 'source-went-blind'] as const;
+export type ReLintFailureReason = (typeof RE_LINT_FAILURE_REASONS)[number];
+export function isReLintFailureReason(reason: unknown): reason is ReLintFailureReason {
+  return (
+    typeof reason === 'string' && (RE_LINT_FAILURE_REASONS as readonly string[]).includes(reason)
+  );
+}
+
+export const ReLintFailureSchema = z.object({
+  reason: z.enum(RE_LINT_FAILURE_REASONS),
+  message: z.string().min(1),
+});
+export type ReLintFailure = z.infer<typeof ReLintFailureSchema>;
+
 export const LintFixResultSchema = z.object({
   file: z.string(),
   fixedCount: z.number(),
@@ -245,6 +265,7 @@ export const LintFixResultSchema = z.object({
   warningCount: z.number(),
   ran: RunSourcesSchema,
   warnings: z.array(z.string()).optional(),
-  warning: z.string().optional(),
+  diagnosticsArePreFix: z.boolean().optional(),
+  reLintFailure: ReLintFailureSchema.optional(),
 });
 export type LintFixResult = z.infer<typeof LintFixResultSchema>;

@@ -103,8 +103,9 @@ describe('desktop host contract single source', () => {
     }
 
     expect(corePackageJson.exports['./desktop-bridge']).toEqual({
+      '@inkeep/source': './src/desktop-bridge.ts',
       development: './src/desktop-bridge.ts',
-      types: './src/desktop-bridge.ts',
+      types: './dist/desktop-bridge.d.mts',
       default: './dist/desktop-bridge.mjs',
     });
 

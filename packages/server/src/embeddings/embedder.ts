@@ -36,24 +36,29 @@ export interface EmbeddingsKeyStore {
 }
 
 export class EmbeddingProviderError extends Error {
+  readonly reason: EmbeddingErrorReason;
+  readonly status?: number;
   constructor(
-    readonly reason: EmbeddingErrorReason,
+    reason: EmbeddingErrorReason,
     message: string,
-    readonly status?: number,
+    status?: number,
     options?: { cause?: unknown },
   ) {
     super(message, options);
+    this.reason = reason;
+    this.status = status;
     this.name = 'EmbeddingProviderError';
   }
 }
 
 export class EmbeddingDimsMismatchError extends EmbeddingProviderError {
   readonly name = 'EmbeddingDimsMismatchError';
-  constructor(
-    readonly expected: number,
-    readonly got: number,
-  ) {
+  readonly expected: number;
+  readonly got: number;
+  constructor(expected: number, got: number) {
     super('dims_mismatch', `embeddings provider returned ${got}-dim vectors, expected ${expected}`);
+    this.expected = expected;
+    this.got = got;
   }
 }
 

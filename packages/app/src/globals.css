@@ -2401,9 +2401,8 @@
  * placeholder visible. `:has()` is supported on Chrome 105+, Safari 15.4+,
  * Firefox 121+; older Firefox sees the pre-fix behavior (placeholder still
  * visible behind the panel) as graceful degradation. */
-.tiptap-editor:has(
-    .jsx-component-chrome button[data-slot="popover-trigger"][data-state="open"]
-  ) .ProseMirror
+.tiptap-editor:has(.jsx-component-chrome button[data-slot="popover-trigger"][data-state="open"])
+  .ProseMirror
   p.is-empty::before {
   content: none;
 }
@@ -4960,7 +4959,8 @@ html.electron-mode [data-slot="sidebar-inner"] {
 /* `.cm-focused` lands on `.cm-editor` (CM6's wrapper), not on this
  * outer host div — so the focused-selection rule must nest through it.
  * Sibling `.ok-prop-codemirror` uses the same nesting at line 3790. */
-  .ok-codepreview-cm .cm-editor.cm-focused
+  .ok-codepreview-cm
+  .cm-editor.cm-focused
   .cm-selectionBackground,
 .ok-codepreview-cm ::selection {
   background-color: var(--accent);
@@ -5464,8 +5464,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
    button via the hover rule above. */
 .jsx-component-wrapper[data-needs-config="true"]:not(
   :has(.component-children .jsx-component-wrapper:hover)
-)
-> .jsx-component-chrome {
+) > .jsx-component-chrome {
   opacity: 1;
   pointer-events: auto;
 }
@@ -5473,7 +5472,8 @@ html.electron-mode [data-slot="sidebar-inner"] {
    except the properties trigger so the gear is the only affordance shown. */
 .jsx-component-wrapper[data-needs-config="true"]:not(:hover):not(
     :has(.component-children .jsx-component-wrapper:hover)
-  ) > .jsx-component-chrome
+  )
+  > .jsx-component-chrome
   > button:not([aria-label*="properties"]) {
   display: none;
 }

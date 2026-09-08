@@ -36,7 +36,7 @@ export default defineConfig({
   options: {
     typeAware: true,
   },
-  jsPlugins: ['oxlint-plugin-eslint', NO_COMMENTS_PLUGIN],
+  jsPlugins: [{ name: 'eslint-js', specifier: 'oxlint-plugin-eslint' }, NO_COMMENTS_PLUGIN],
   rules: {
     [NO_COMMENTS_RULE]: NO_COMMENTS_SEVERITY,
     'eslint/logical-assignment-operators': [
@@ -56,6 +56,14 @@ export default defineConfig({
             message: 'Import test APIs directly from vitest.',
           },
         ],
+      },
+    ],
+    'eslint/no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
       },
     ],
     'typescript/no-floating-promises': 'off',

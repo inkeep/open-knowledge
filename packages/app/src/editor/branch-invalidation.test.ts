@@ -242,7 +242,7 @@ describe('handleBranchSwitched', () => {
       entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
       await pool.awaitMismatchSettled();
       const fresh = pool.entries.get(d1);
-      if (!fresh || fresh.kind !== 'active') throw new Error('expected a recycled entry');
+      if (fresh?.kind !== 'active') throw new Error('expected a recycled entry');
 
       pool.__test_seedBufferedUpdate(d1, new Uint8Array([0x01, 0x02]), { branch: 'main' });
       pool.setObservedBranch('feature');

@@ -114,16 +114,19 @@ describe('computeRowState — branch 1: pre-probe', () => {
     ['claude-code' as const, false],
     ['codex' as const, false],
     ['cursor' as const, false],
-  ])('row %s on isElectronHost=%s with installed:null is disabled with no tooltip', async (id, isElectronHost) => {
-    const { computeRowState } = await import('./OpenInAgentMenuItem');
-    const state = computeRowState({
-      target: targetById(id),
-      installState: { installed: null },
-      isElectronHost,
-    });
-    expect(state.enabled).toBe(false);
-    expect(state.tooltip).toBeNull();
-  });
+  ])(
+    'row %s on isElectronHost=%s with installed:null is disabled with no tooltip',
+    async (id, isElectronHost) => {
+      const { computeRowState } = await import('./OpenInAgentMenuItem');
+      const state = computeRowState({
+        target: targetById(id),
+        installState: { installed: null },
+        isElectronHost,
+      });
+      expect(state.enabled).toBe(false);
+      expect(state.tooltip).toBeNull();
+    },
+  );
 });
 
 describe('computeRowState — branch 3: not installed → install affordance only', () => {
@@ -195,20 +198,19 @@ describe('computeRowState — branch 4: installed → enabled', () => {
     expect(state.tooltip).toBeNull();
   });
 
-  test.each([
-    ['claude-cowork' as const],
-    ['claude-code' as const],
-    ['codex' as const],
-  ])('row %s on web with installed:true is enabled', async (id) => {
-    const { computeRowState } = await import('./OpenInAgentMenuItem');
-    const state = computeRowState({
-      target: targetById(id),
-      installState: { installed: true, lastChecked: 1 },
-      isElectronHost: false,
-    });
-    expect(state.enabled).toBe(true);
-    expect(state.tooltip).toBeNull();
-  });
+  test.each([['claude-cowork' as const], ['claude-code' as const], ['codex' as const]])(
+    'row %s on web with installed:true is enabled',
+    async (id) => {
+      const { computeRowState } = await import('./OpenInAgentMenuItem');
+      const state = computeRowState({
+        target: targetById(id),
+        installState: { installed: true, lastChecked: 1 },
+        isElectronHost: false,
+      });
+      expect(state.enabled).toBe(true);
+      expect(state.tooltip).toBeNull();
+    },
+  );
 });
 
 describe('install-state cardinality used by the dropdown', () => {

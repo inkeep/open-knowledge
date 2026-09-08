@@ -417,7 +417,9 @@ describe('navigator boot narration (the phase consent-dialog waits over)', () =>
     expect(h.intervals.every((i) => i.cleared)).toBe(true);
     const failure = h.lines.find((l) => l.event === 'desktop-navigator-load-failed');
     expect(failure).toMatchObject({ level: 'warn' });
-    expect((failure?.err as Error).message).toBe('ERR_FILE_NOT_FOUND');
+    const failureErr = failure?.err;
+    expect(failureErr).toBeInstanceOf(Error);
+    expect((failureErr as Error).message).toBe('ERR_FILE_NOT_FOUND');
     const resolved = h.lines.find((l) => l.event === 'desktop-navigator-load-resolved');
     expect(resolved).toBeUndefined();
   });

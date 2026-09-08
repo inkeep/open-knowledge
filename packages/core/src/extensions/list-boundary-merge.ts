@@ -62,7 +62,7 @@ function cursorOf(state: EditorState): ResolvedPos | null {
 
 function isNestedBoundaryBackspace(state: EditorState): boolean {
   const $cursor = cursorOf(state);
-  if (!$cursor || $cursor.parentOffset !== 0) return false;
+  if ($cursor?.parentOffset !== 0) return false;
   const li = listItemDepth($cursor);
   if (li === null) return false;
   if ($cursor.depth !== li + 1 || $cursor.index(li) !== 0) return false;

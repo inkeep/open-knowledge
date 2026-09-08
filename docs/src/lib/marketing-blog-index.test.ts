@@ -449,14 +449,14 @@ describe('failure posture', () => {
     expect(await settle(blogPostLinks(3600))).toEqual([]);
   });
 
-  test.each([
-    'preview',
-    'development',
-  ])('still builds without the posts on a %s deployment', async (env) => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    building({ VERCEL_ENV: env });
-    refuseConnection();
+  test.each(['preview', 'development'])(
+    'still builds without the posts on a %s deployment',
+    async (env) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      building({ VERCEL_ENV: env });
+      refuseConnection();
 
-    expect(await settle(blogPostLinks(3600))).toEqual([]);
-  });
+      expect(await settle(blogPostLinks(3600))).toEqual([]);
+    },
+  );
 });

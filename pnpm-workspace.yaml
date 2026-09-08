@@ -59,8 +59,14 @@ overrides:
   # effect. pnpm applies an out-of-range override silently; these are the ones
   # that would not surface on their own.
   #
-  # `next` is floored at the advisory patch line rather than its declared `^16`
-  # caret, to keep this a security-only change (a bare caret takes it to 16.3.x).
+  # `next` is floored at ~16.3.x, the first line on which Next type-checks
+  # through the project-local `tsc` CLI instead of the JavaScript compiler API
+  # that TypeScript 7 no longer ships. A 16.2.x build under TypeScript 7 does not
+  # merely fail: it shells out an unsolicited `pnpm add -D typescript` inside the
+  # repo (firing the husky prepare + postinstall hooks) before dying with an
+  # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
+  # floor moves in lockstep with the compiler, never after it. From here the line
+  # is security-only again -- a bare `^16` caret would float to the next minor.
   #
   # `vite` is deliberately absent. 8.0.16 pulls rolldown 1.0.0-rc.15 -> 1.0.3,
   # which re-partitions chunks and moves ~253 kB gzipped into the app's main
@@ -86,7 +92,7 @@ overrides:
   'nanoid@3': ~3.3.18
   'nanoid@4': ~5.1.16
   'nanoid@5': ~5.1.16
-  'next@16': ~16.2.11
+  'next@16': ~16.3.3
   'postcss@8': ~8.5.23
   'sharp@0.34': ~0.35.0
   'tar@7': ~7.5.21

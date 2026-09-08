@@ -1,5 +1,4 @@
 /// <reference types="vite/client" />
-/// <reference types="bun-types" />
 
 interface ImportMetaEnv {
   /**
@@ -35,18 +34,14 @@ declare module 'lucide-react/dist/esm/icons/pin' {
 }
 
 declare namespace globalThis {
-  import type { HocuspocusProvider } from '@hocuspocus/provider';
-  import type { Editor } from '@tiptap/core';
-  import type { GraphNodeVisualState } from '@/components/graph-view-utils';
-  import type { ProviderPool } from '@/editor/provider-pool';
-  import type { AcpThreadHarness } from '@/lib/acp/dev-thread-harness';
-
   var __graphHarness:
     | {
         clickDoc: (docName: string) => boolean;
         clickBackground: () => boolean;
         clickExternal: (url: string) => boolean;
-        getNodeVisualState: (docName: string) => GraphNodeVisualState | null;
+        getNodeVisualState: (
+          docName: string,
+        ) => import('@/components/graph-view-utils').GraphNodeVisualState | null;
         getNodeClickPoint: (nodeKey: string) => {
           x: number;
           y: number;
@@ -69,16 +64,16 @@ declare namespace globalThis {
    * without an agent process. Tree-shaken from production bundles by the
    * `import.meta.env.DEV` guard in `AgentThreadClientBinder.tsx`.
    */
-  var __acpThreadHarness: AcpThreadHarness | undefined;
-  var __providerPool: ProviderPool | undefined;
-  var __activeProvider: HocuspocusProvider | null;
+  var __acpThreadHarness: import('@/lib/acp/dev-thread-harness').AcpThreadHarness | undefined;
+  var __providerPool: import('@/editor/provider-pool').ProviderPool | undefined;
+  var __activeProvider: import('@hocuspocus/provider').HocuspocusProvider | null;
   /**
    * DEV-only: TipTap `Editor` instance of the currently-active pooled doc.
    * Playwright reads `editor.state.selection` to close the PM-selection-sync
    * race. Tree-shaken from production
    * bundles by the `import.meta.env.DEV` guard in `DocumentContext.tsx`.
    */
-  var __activeEditor: Editor | null;
+  var __activeEditor: import('@tiptap/core').Editor | null;
   /**
    * Test-only hook: force-reject the cached syncPromise for a docName.
    * Returns true if an entry was rejected, false otherwise.

@@ -218,80 +218,83 @@ describe('createTerminalManager — create', () => {
     });
   });
 
-  test.each([
-    ...TERMINAL_SHELL_NOTICE_REASONS,
-  ])('forwards the shared invalid-override reason %s to the renderer', (reason) => {
-    const h = makeManager();
-    h.mgr.create({
-      windowId: 1,
-      webContents: makeWebContents(),
-      projectRoot: PROJECT,
-      cols: 80,
-      rows: 24,
-    });
+  test.each([...TERMINAL_SHELL_NOTICE_REASONS])(
+    'forwards the shared invalid-override reason %s to the renderer',
+    (reason) => {
+      const h = makeManager();
+      h.mgr.create({
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
 
-    h.forked[0]?.emitMessage({
-      type: 'shell-notice',
-      ptyId: 'pty-1',
-      notice: 'invalid-shell-override',
-      reason,
-    });
+      h.forked[0]?.emitMessage({
+        type: 'shell-notice',
+        ptyId: 'pty-1',
+        notice: 'invalid-shell-override',
+        reason,
+      });
 
-    expect(h.sent).toContainEqual({
-      channel: 'ok:pty:notice',
-      payload: { ptyId: 'pty-1', notice: 'invalid-shell-override', reason },
-    });
-  });
+      expect(h.sent).toContainEqual({
+        channel: 'ok:pty:notice',
+        payload: { ptyId: 'pty-1', notice: 'invalid-shell-override', reason },
+      });
+    },
+  );
 
-  test.each([
-    ...WINDOWS_SHELL_FAMILIES,
-  ])('forwards the shared resolved shell family %s to the renderer', (shellFamily) => {
-    const h = makeManager();
-    h.mgr.create({
-      windowId: 1,
-      webContents: makeWebContents(),
-      projectRoot: PROJECT,
-      cols: 80,
-      rows: 24,
-    });
+  test.each([...WINDOWS_SHELL_FAMILIES])(
+    'forwards the shared resolved shell family %s to the renderer',
+    (shellFamily) => {
+      const h = makeManager();
+      h.mgr.create({
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
 
-    h.forked[0]?.emitMessage({
-      type: 'shell-notice',
-      ptyId: 'pty-1',
-      notice: 'shell-resolved',
-      shellFamily,
-    });
+      h.forked[0]?.emitMessage({
+        type: 'shell-notice',
+        ptyId: 'pty-1',
+        notice: 'shell-resolved',
+        shellFamily,
+      });
 
-    expect(h.sent).toContainEqual({
-      channel: 'ok:pty:notice',
-      payload: { ptyId: 'pty-1', notice: 'shell-resolved', shellFamily },
-    });
-  });
+      expect(h.sent).toContainEqual({
+        channel: 'ok:pty:notice',
+        payload: { ptyId: 'pty-1', notice: 'shell-resolved', shellFamily },
+      });
+    },
+  );
 
-  test.each([
-    ...TERMINAL_SUPPORT_FILE_NOTICE_REASONS,
-  ])('forwards the support-file degradation reason %s to the renderer', (reason) => {
-    const h = makeManager();
-    h.mgr.create({
-      windowId: 1,
-      webContents: makeWebContents(),
-      projectRoot: PROJECT,
-      cols: 80,
-      rows: 24,
-    });
+  test.each([...TERMINAL_SUPPORT_FILE_NOTICE_REASONS])(
+    'forwards the support-file degradation reason %s to the renderer',
+    (reason) => {
+      const h = makeManager();
+      h.mgr.create({
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
 
-    h.forked[0]?.emitMessage({
-      type: 'shell-notice',
-      ptyId: 'pty-1',
-      notice: 'support-file-degraded',
-      reason,
-    });
+      h.forked[0]?.emitMessage({
+        type: 'shell-notice',
+        ptyId: 'pty-1',
+        notice: 'support-file-degraded',
+        reason,
+      });
 
-    expect(h.sent).toContainEqual({
-      channel: 'ok:pty:notice',
-      payload: { ptyId: 'pty-1', notice: 'support-file-degraded', reason },
-    });
-  });
+      expect(h.sent).toContainEqual({
+        channel: 'ok:pty:notice',
+        payload: { ptyId: 'pty-1', notice: 'support-file-degraded', reason },
+      });
+    },
+  );
 
   test('drops a shell notice whose reason or family is outside the shared sets', () => {
     const h = makeManager();

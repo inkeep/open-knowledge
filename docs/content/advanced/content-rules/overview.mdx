@@ -192,15 +192,18 @@ Checks run: frontmatter.
 
 With no linter enabled the report closes with `No checks ran.` instead, the same string `ok lint` prints.
 
-The structured content is close to `ok lint --json`, with three differences:
+The structured content is close to `ok lint --json`, with four differences:
 
 | | `ok lint --json` | MCP `lint` |
 | --- | --- | --- |
 | Project path | `contentDir` | `cwd` |
 | `fixedCount` counts | files rewritten | **problems** resolved |
 | Cap fields | — | `omittedFileCount`, per-file `omittedDiagnosticCount`, `omittedWarningCount` |
+| Fix-mode keys | — | `diagnosticsArePreFix`, `reLintFailure` (only when the post-write re-lint could not report) |
 
 Everything else matches: `files[].diagnostics` with 0-based `range`, `severity`, `source`, `code`, `message`, plus `errorCount`, `warningCount`, `fileCount` on an audit, configuration or degradation `warnings`, and `ran` for the selected source families. Audit output is capped project-wide at 10 warnings, plus 10 files × 10 diagnostics per file — the text channel marks the remainder with "… and N more", the structured channel with the three cap fields above. Counts always reflect the full scan, and re-running with a narrower `path` recovers the detail. With `fix: true` the summary reports what was applied and what remains: `Fixed 1 problem in docs/guide.md.` followed by the unfixable findings.
+
+When the fix landed but the post-write re-lint could not report, the response carries `diagnosticsArePreFix: true` and explains itself in `reLintFailure`: `reason` is the machine-readable discriminant (`re-lint-threw` or `source-went-blind`) and `message` is the prose. The diagnostics and counts are then the PRE-fix set and `fixedCount` is 0, so re-run `lint` to see what remains rather than reading 0 as nothing fixed.
 
 ### The `audit` tool
 

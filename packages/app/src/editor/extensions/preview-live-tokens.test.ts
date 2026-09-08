@@ -57,7 +57,9 @@ describe('buildPreviewThemeMessage', () => {
       | Record<string, unknown>
       | undefined;
     expect(message?.okPreviewTheme).toBe('dark');
-    expect((message?.okPreviewTokens as Record<string, string>)['--primary']).toBe('#bd93f9');
+    expect((message?.okPreviewTokens as Record<string, string> | undefined)?.['--primary']).toBe(
+      '#bd93f9',
+    );
   });
 
   test('carries an empty token map under the default theme', () => {

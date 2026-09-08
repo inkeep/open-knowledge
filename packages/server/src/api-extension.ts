@@ -85,6 +85,7 @@ import {
   prependFrontmatter,
   projectSkillContentDocName,
   RENAMED_PACK_SKILLS,
+  type ReLintFailure,
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
@@ -3541,9 +3542,7 @@ export function createApiExtension(
           {
             timestamp,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(agentWriteWarning
-              ? { warning: agentWriteWarning, warnings: [agentWriteWarning] }
-              : {}),
+            ...(agentWriteWarning ? { warnings: [agentWriteWarning] } : {}),
           },
           { handler: 'agent-write' },
         );
@@ -3782,11 +3781,6 @@ export function createApiExtension(
             systemSubscriberCount,
             ...(hints ? { hints } : {}),
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(writeMdDivergenceEntry
-              ? { warning: writeMdDivergenceEntry }
-              : writeMdWarning
-                ? { warning: writeMdWarning }
-                : {}),
             ...(writeMdAdvisories.length > 0 ? { warnings: writeMdAdvisories } : {}),
             brokenLinks,
           },
@@ -4376,7 +4370,7 @@ export function createApiExtension(
             systemSubscriberCount,
             appliedKeys,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(fmWarning ? { warning: fmWarning, warnings: [fmWarning] } : {}),
+            ...(fmWarning ? { warnings: [fmWarning] } : {}),
             brokenLinks,
           },
           { handler: 'frontmatter-patch' },
@@ -4700,11 +4694,6 @@ export function createApiExtension(
             subscriberCount,
             systemSubscriberCount,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(patchDivergenceEntry
-              ? { warning: patchDivergenceEntry }
-              : patchWarning
-                ? { warning: patchWarning }
-                : {}),
             ...(patchAdvisories.length > 0 ? { warnings: patchAdvisories } : {}),
             brokenLinks,
           },
@@ -5468,9 +5457,7 @@ export function createApiExtension(
             restoredFrom: commitSha,
             timestamp,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(rollbackDivergenceEntry
-              ? { warning: rollbackDivergenceEntry, warnings: [rollbackDivergenceEntry] }
-              : {}),
+            ...(rollbackDivergenceEntry ? { warnings: [rollbackDivergenceEntry] } : {}),
           },
           { handler: 'rollback' },
         );
@@ -10805,7 +10792,7 @@ export function createApiExtension(
         });
 
         let after = before;
-        let reLintWarning: string | undefined;
+        let reLintFailure: ReLintFailure | undefined;
         const reLintFailures: LintPluginFailure[] = [];
         if (fixed !== source) {
           try {
@@ -10872,22 +10859,55 @@ export function createApiExtension(
               (failure) => reLintFailures.push(failure),
             );
           } catch (relintErr) {
-            reLintWarning = `Re-lint after fix failed: ${relintErr instanceof Error ? relintErr.message : String(relintErr)}`;
+            const relintMessage =
+              relintErr instanceof Error ? relintErr.message : String(relintErr);
+            reLintFailure = {
+              reason: 're-lint-threw',
+              message:
+                relintMessage.trim().length > 0
+                  ? relintMessage
+                  : `${relintErr instanceof Error ? relintErr.name : 'non-Error value'} thrown with no message`,
+            };
             log.warn(
-              { err: relintErr, handler: 'lint-fix' },
+              { err: relintErr, handler: 'lint-fix', doc: resolvedDocName, agentId },
               'post-write re-lint failed; reporting pre-fix diagnostics',
             );
             after = before;
           }
         }
 
+        const blindBeforeFix = new Set(
+          failures.filter((f) => f.phase === 'lint').map((f) => f.source),
+        );
+        const blindOnlyAfterFix = [
+          ...new Set(
+            reLintFailures
+              .filter((f) => f.phase === 'lint' && !blindBeforeFix.has(f.source))
+              .map((f) => f.source),
+          ),
+        ];
+        if (reLintFailure === undefined && blindOnlyAfterFix.length > 0) {
+          reLintFailure = {
+            reason: 'source-went-blind',
+            message: `${blindOnlyAfterFix.join(', ')} linted the pre-fix text and failed on the post-fix text, so the re-lint is short their diagnostics and cannot be compared against the pre-fix run`,
+          };
+          log.warn(
+            { handler: 'lint-fix', doc: resolvedDocName, agentId, sources: blindOnlyAfterFix },
+            'post-write re-lint lost a source that linted before the fix; reporting pre-fix diagnostics',
+          );
+          after = before;
+        }
+
         const errorCount = after.filter((d) => d.severity === 'error').length;
         const warningCount = after.length - errorCount;
-        const fixedCount = Math.max(0, before.length - after.length);
+        const comparable = (d: (typeof before)[number]) => !blindBeforeFix.has(d.source);
+        const fixedCount = Math.max(
+          0,
+          before.filter(comparable).length - after.filter(comparable).length,
+        );
         const responseWarnings = [
           ...configWarnings,
           ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
-          ...(reLintWarning ? [reLintWarning] : []),
         ];
 
         successResponse(
@@ -10902,7 +10922,7 @@ export function createApiExtension(
             warningCount,
             ran,
             ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
-            ...(reLintWarning ? { warning: reLintWarning } : {}),
+            ...(reLintFailure ? { diagnosticsArePreFix: true, reLintFailure } : {}),
           },
           { handler: 'lint-fix' },
         );

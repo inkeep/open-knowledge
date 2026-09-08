@@ -162,35 +162,35 @@ describe('task list input rules', () => {
     });
   });
 
-  test.each([
-    '- ',
-    '[x] ',
-  ])('Backspace right after %j dissolves the wrapped item back to a paragraph', (typed) => {
-    const editor = mountEditor();
-    type(editor, typed);
-    expect(firstListItem(editor)).not.toBeNull();
+  test.each(['- ', '[x] '])(
+    'Backspace right after %j dissolves the wrapped item back to a paragraph',
+    (typed) => {
+      const editor = mountEditor();
+      type(editor, typed);
+      expect(firstListItem(editor)).not.toBeNull();
 
-    const { handled } = pressEditorKey(editor, 'Backspace');
+      const { handled } = pressEditorKey(editor, 'Backspace');
 
-    expect(handled).toBe(true);
-    expect(firstListItem(editor)).toBeNull();
-    expect(editor.state.doc.firstChild?.type.name).toBe('paragraph');
-  });
+      expect(handled).toBe(true);
+      expect(firstListItem(editor)).toBeNull();
+      expect(editor.state.doc.firstChild?.type.name).toBe('paragraph');
+    },
+  );
 
-  test.each([
-    '- [x] ',
-    '- [ ] ',
-  ])('Backspace right after %j un-ticks the item but leaves the bullet', (typed) => {
-    const editor = mountEditor();
-    type(editor, typed);
-    expect(firstListItem(editor)?.attrs.checked).not.toBeNull();
+  test.each(['- [x] ', '- [ ] '])(
+    'Backspace right after %j un-ticks the item but leaves the bullet',
+    (typed) => {
+      const editor = mountEditor();
+      type(editor, typed);
+      expect(firstListItem(editor)?.attrs.checked).not.toBeNull();
 
-    const { handled } = pressEditorKey(editor, 'Backspace');
+      const { handled } = pressEditorKey(editor, 'Backspace');
 
-    expect(handled).toBe(true);
-    expect(firstListItem(editor)?.attrs.checked).toBeNull();
-    expect(textOf(editor)).toBe(typed.slice(2));
-    expect(editor.state.doc.firstChild?.type.name).toBe('list');
-    expect(pressEditorKey(editor, 'Backspace').handled).toBe(false);
-  });
+      expect(handled).toBe(true);
+      expect(firstListItem(editor)?.attrs.checked).toBeNull();
+      expect(textOf(editor)).toBe(typed.slice(2));
+      expect(editor.state.doc.firstChild?.type.name).toBe('list');
+      expect(pressEditorKey(editor, 'Backspace').handled).toBe(false);
+    },
+  );
 });

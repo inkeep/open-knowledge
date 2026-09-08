@@ -164,7 +164,7 @@ describe('onRequest request identity + access log', () => {
       (c) => (c[0] as { event?: string })?.event === 'api.access',
     );
     expect(accessCalls).toHaveLength(1);
-    expect((accessCalls[0]?.[0] as { route: string }).route).toBe('/api/*');
+    expect((accessCalls[0]?.[0] as { route: string } | undefined)?.route).toBe('/api/*');
   });
 
   test('non-API requests get no x-request-id echo and no access line', async () => {

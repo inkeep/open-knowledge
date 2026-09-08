@@ -83,19 +83,20 @@ describe('AddPropertyRow — typing target stays focused after type change (Prop
     expect(document.activeElement?.getAttribute('data-testid')).toBe('add-property-name-input');
   });
 
-  test.each(
-    ALL_TYPE_PICKS,
-  )('after picking %s, the next keystrokes reach the name input', async (_type, label) => {
-    const user = userEvent.setup();
-    render(<PropertyPanelHarness />);
-    await user.click(screen.getByTestId('type-icon-button'));
-    await user.click(await screen.findByText(label));
+  test.each(ALL_TYPE_PICKS)(
+    'after picking %s, the next keystrokes reach the name input',
+    async (_type, label) => {
+      const user = userEvent.setup();
+      render(<PropertyPanelHarness />);
+      await user.click(screen.getByTestId('type-icon-button'));
+      await user.click(await screen.findByText(label));
 
-    await user.keyboard('prop_name');
+      await user.keyboard('prop_name');
 
-    const nameInput = screen.getByTestId('add-property-name-input') as HTMLInputElement;
-    expect(nameInput.value).toBe('prop_name');
-  });
+      const nameInput = screen.getByTestId('add-property-name-input') as HTMLInputElement;
+      expect(nameInput.value).toBe('prop_name');
+    },
+  );
 
   test('focus stays on name input — and partial typing is preserved — when type is changed after partial name entry', async () => {
     const user = userEvent.setup();
@@ -115,19 +116,20 @@ describe('AddPropertyRow — typing target stays focused after type change (Fold
     cleanup();
   });
 
-  test.each(
-    ALL_TYPE_PICKS,
-  )('after picking %s, the next keystrokes reach the name input', async (_type, label) => {
-    const user = userEvent.setup();
-    render(<FolderDefaultsHarness />);
-    await user.click(screen.getByTestId('type-icon-button'));
-    await user.click(await screen.findByText(label));
+  test.each(ALL_TYPE_PICKS)(
+    'after picking %s, the next keystrokes reach the name input',
+    async (_type, label) => {
+      const user = userEvent.setup();
+      render(<FolderDefaultsHarness />);
+      await user.click(screen.getByTestId('type-icon-button'));
+      await user.click(await screen.findByText(label));
 
-    await user.keyboard('prop_name');
+      await user.keyboard('prop_name');
 
-    const nameInput = screen.getByTestId('add-property-name-input') as HTMLInputElement;
-    expect(nameInput.value).toBe('prop_name');
-  });
+      const nameInput = screen.getByTestId('add-property-name-input') as HTMLInputElement;
+      expect(nameInput.value).toBe('prop_name');
+    },
+  );
 });
 
 describe('AddPropertyRow — value-channel ADD gates on non-empty name AND value', () => {

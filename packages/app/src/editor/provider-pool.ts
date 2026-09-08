@@ -176,21 +176,23 @@ type ClientPersistenceFactory = (args: {
 type PeekStoredLineageEpoch = (args: PeekStoredLineageEpochArgs) => Promise<string | null>;
 
 class ClientPersistenceClearTimeoutError extends Error {
-  constructor(
-    readonly docName: string,
-    readonly timeoutMs: number,
-  ) {
+  readonly docName: string;
+  readonly timeoutMs: number;
+  constructor(docName: string, timeoutMs: number) {
     super(`client persistence clearData timed out for ${docName} after ${timeoutMs}ms`);
+    this.docName = docName;
+    this.timeoutMs = timeoutMs;
     this.name = 'ClientPersistenceClearTimeoutError';
   }
 }
 
 class StoredEpochPeekTimeoutError extends Error {
-  constructor(
-    readonly docName: string,
-    readonly timeoutMs: number,
-  ) {
+  readonly docName: string;
+  readonly timeoutMs: number;
+  constructor(docName: string, timeoutMs: number) {
     super(`stored-state epoch peek timed out for ${docName} after ${timeoutMs}ms`);
+    this.docName = docName;
+    this.timeoutMs = timeoutMs;
     this.name = 'StoredEpochPeekTimeoutError';
   }
 }
@@ -517,7 +519,7 @@ export class ProviderPool {
 
   observeDiskAck(docName: string, sv: Uint8Array): void {
     const entry = this.entries.get(docName);
-    if (!entry || entry.kind !== 'active') return;
+    if (entry?.kind !== 'active') return;
     entry.lastDiskAckedSV = mergeStateVectors(entry.lastDiskAckedSV, sv);
   }
 
@@ -2067,7 +2069,7 @@ export class ProviderPool {
 
   private recycleDisconnectedEntry(docName: string): void {
     const entry = this.entries.get(docName);
-    if (!entry || entry.kind !== 'active') return;
+    if (entry?.kind !== 'active') return;
 
     const wasActive = this.activeDocName === docName;
     mark('ok/pool/recycle-disconnected', { docName, wasActive });

@@ -106,44 +106,42 @@ describe('full-page CodeMirror surfaces reserve the Ask AI composer height', () 
     ).toBe(true);
   });
 
-  test.each(
-    FULL_PAGE_CM_SURFACES,
-  )('$component reserves the composer height and wins the tie against the reset', ({
-    component,
-    hostSelector,
-    insetKind,
-  }) => {
-    const prelude = insetKind === 'content' ? `${hostSelector} .cm-content` : hostSelector;
-    const insetOffset = composerInsetOffset(css, prelude);
-    expect(
-      insetOffset,
-      `${component} mounts a full-page CodeMirror but no \`${prelude}\` rule in globals.css ` +
-        `sets \`padding-bottom: ${INSET_VALUE}…)\`. Its last lines sit under the floating Ask AI ` +
-        'composer with no way to scroll them clear, which is the bug this registry exists to stop',
-    ).not.toBeNull();
-    if (insetKind !== 'content' || insetOffset === null) return;
-    const resetOffset = Math.max(...ruleOffsets(css, RESET_PRELUDE));
-    expect(
-      insetOffset,
-      `\`${prelude}\` ties \`${RESET_PRELUDE}\` on specificity (0,2,0), so document order breaks ` +
-        'the tie. Declared before the reset it loses and the inset silently collapses to 0',
-    ).toBeGreaterThan(resetOffset);
-  });
+  test.each(FULL_PAGE_CM_SURFACES)(
+    '$component reserves the composer height and wins the tie against the reset',
+    ({ component, hostSelector, insetKind }) => {
+      const prelude = insetKind === 'content' ? `${hostSelector} .cm-content` : hostSelector;
+      const insetOffset = composerInsetOffset(css, prelude);
+      expect(
+        insetOffset,
+        `${component} mounts a full-page CodeMirror but no \`${prelude}\` rule in globals.css ` +
+          `sets \`padding-bottom: ${INSET_VALUE}…)\`. Its last lines sit under the floating Ask AI ` +
+          'composer with no way to scroll them clear, which is the bug this registry exists to stop',
+      ).not.toBeNull();
+      if (insetKind !== 'content' || insetOffset === null) return;
+      const resetOffset = Math.max(...ruleOffsets(css, RESET_PRELUDE));
+      expect(
+        insetOffset,
+        `\`${prelude}\` ties \`${RESET_PRELUDE}\` on specificity (0,2,0), so document order breaks ` +
+          'the tie. Declared before the reset it loses and the inset silently collapses to 0',
+      ).toBeGreaterThan(resetOffset);
+    },
+  );
 
-  test.each(FULL_PAGE_CM_SURFACES)('$component reserves exactly one composer height', ({
-    hostSelector,
-  }) => {
-    const insetOffsets = [
-      composerInsetOffset(css, hostSelector),
-      composerInsetOffset(css, `${hostSelector} .cm-content`),
-    ].filter((offset) => offset !== null);
-    expect(
-      insetOffsets,
-      `\`${hostSelector}\` must reserve the composer height on EITHER its host OR its ` +
-        '`.cm-content`, never both. Zero leaves the last lines under the composer; two reserves ' +
-        'double the gap and make the last line float a full card above it',
-    ).toHaveLength(1);
-  });
+  test.each(FULL_PAGE_CM_SURFACES)(
+    '$component reserves exactly one composer height',
+    ({ hostSelector }) => {
+      const insetOffsets = [
+        composerInsetOffset(css, hostSelector),
+        composerInsetOffset(css, `${hostSelector} .cm-content`),
+      ].filter((offset) => offset !== null);
+      expect(
+        insetOffsets,
+        `\`${hostSelector}\` must reserve the composer height on EITHER its host OR its ` +
+          '`.cm-content`, never both. Zero leaves the last lines under the composer; two reserves ' +
+          'double the gap and make the last line float a full card above it',
+      ).toHaveLength(1);
+    },
+  );
 
   test('no other component mounts a full-page CodeMirror without an entry here', () => {
     const registered = new Set(

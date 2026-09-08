@@ -319,44 +319,47 @@ describe('knowledge-base + okf pack compatibility', () => {
   test.each([
     ['knowledge-base', 'okf'],
     ['okf', 'knowledge-base'],
-  ] satisfies PackId[][])('both seed orders produce one clean OKF bundle: %s then %s', async (first, second) => {
-    const order: PackId[] = [first, second];
-    const { projectDir, cleanup } = await seedPackSequence(order);
-    try {
-      const files = collectMarkdown(projectDir);
-      expect(files).toContain('index.md');
-      expect(files).toContain('log.md');
-      expect(files).toContain('external-sources/.ok/templates/clip.md');
-      expect(files).toContain('research/.ok/templates/research-log.md');
-      expect(files).toContain('articles/.ok/templates/article.md');
+  ] satisfies PackId[][])(
+    'both seed orders produce one clean OKF bundle: %s then %s',
+    async (first, second) => {
+      const order: PackId[] = [first, second];
+      const { projectDir, cleanup } = await seedPackSequence(order);
+      try {
+        const files = collectMarkdown(projectDir);
+        expect(files).toContain('index.md');
+        expect(files).toContain('log.md');
+        expect(files).toContain('external-sources/.ok/templates/clip.md');
+        expect(files).toContain('research/.ok/templates/research-log.md');
+        expect(files).toContain('articles/.ok/templates/article.md');
 
-      const installedSkillNames = files
-        .filter((relPath) => relPath.endsWith('/SKILL.md'))
-        .map((relPath) => {
+        const installedSkillNames = files
+          .filter((relPath) => relPath.endsWith('/SKILL.md'))
+          .map((relPath) => {
+            const source = readFileSync(join(projectDir, relPath), 'utf-8');
+            const { frontmatter } = stripFrontmatter(source);
+            return parseFrontmatterYaml(unwrapFrontmatterFences(frontmatter)).map?.name;
+          })
+          .sort();
+        expect(installedSkillNames).toEqual([
+          'consolidate-notes',
+          'knowledge-base',
+          'okf-knowledge-base',
+          'research-with-sources',
+        ]);
+
+        for (const relPath of files) {
           const source = readFileSync(join(projectDir, relPath), 'utf-8');
-          const { frontmatter } = stripFrontmatter(source);
-          return parseFrontmatterYaml(unwrapFrontmatterFences(frontmatter)).map?.name;
-        })
-        .sort();
-      expect(installedSkillNames).toEqual([
-        'consolidate-notes',
-        'knowledge-base',
-        'okf-knowledge-base',
-        'research-with-sources',
-      ]);
-
-      for (const relPath of files) {
-        const source = readFileSync(join(projectDir, relPath), 'utf-8');
-        const findings = await lintDocument(source, OKF_LINT_CONFIG, relPath);
-        expect(
-          findings,
-          `${order.join(' → ')}: ${relPath} produced ${findings.map((f) => f.code).join(', ')}`,
-        ).toEqual([]);
+          const findings = await lintDocument(source, OKF_LINT_CONFIG, relPath);
+          expect(
+            findings,
+            `${order.join(' → ')}: ${relPath} produced ${findings.map((f) => f.code).join(', ')}`,
+          ).toEqual([]);
+        }
+      } finally {
+        await cleanup();
       }
-    } finally {
-      await cleanup();
-    }
-  });
+    },
+  );
 });
 
 describe('all starter packs — OKF §11 rule 2 (every template instantiates a typed doc)', () => {

@@ -977,34 +977,35 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
     expect(logger.warnings.length).toBeGreaterThan(0);
   });
 
-  test.each([
-    ...TERMINAL_SHELL_NOTICE_REASONS,
-  ])('accepts a create carrying the shared reason %s and relays it verbatim', (reason) => {
-    const h = makeHarness({
-      platform: 'win32',
-      env: { SystemRoot: 'C:\\Windows' },
-      shellExists: () => false,
-      pathProbe: () => null,
-      listDirectory: () => [],
-    });
+  test.each([...TERMINAL_SHELL_NOTICE_REASONS])(
+    'accepts a create carrying the shared reason %s and relays it verbatim',
+    (reason) => {
+      const h = makeHarness({
+        platform: 'win32',
+        env: { SystemRoot: 'C:\\Windows' },
+        shellExists: () => false,
+        pathProbe: () => null,
+        listDirectory: () => [],
+      });
 
-    h.fireRaw({
-      type: 'create',
-      ptyId: 'p1',
-      cwd: 'C:\\project',
-      cols: 80,
-      rows: 24,
-      shellInvalidReason: reason,
-    });
+      h.fireRaw({
+        type: 'create',
+        ptyId: 'p1',
+        cwd: 'C:\\project',
+        cols: 80,
+        rows: 24,
+        shellInvalidReason: reason,
+      });
 
-    expect(h.spawnCalls).toHaveLength(1);
-    expect(h.posted).toContainEqual({
-      type: 'shell-notice',
-      ptyId: 'p1',
-      notice: 'invalid-shell-override',
-      reason,
-    });
-  });
+      expect(h.spawnCalls).toHaveLength(1);
+      expect(h.posted).toContainEqual({
+        type: 'shell-notice',
+        ptyId: 'p1',
+        notice: 'invalid-shell-override',
+        reason,
+      });
+    },
+  );
 
   test('drops a create whose shellInvalidReason is outside the shared reason set', () => {
     const logger = makeLogger();

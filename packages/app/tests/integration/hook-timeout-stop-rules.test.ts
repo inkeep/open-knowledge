@@ -1,6 +1,6 @@
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import ts from 'typescript';
+import { ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');

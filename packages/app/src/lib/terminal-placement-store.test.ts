@@ -32,12 +32,11 @@ describe('terminal placement persistence', () => {
     expect(readTerminalPlacement(storage)).toBe(placement);
   });
 
-  test.each([
-    '',
-    'sideways',
-    '{"placement":"right"}',
-  ])('defaults malformed or unsupported value %j to bottom', (value) => {
-    const storage = memoryStorage({ [TERMINAL_PLACEMENT_KEY]: value });
-    expect(readTerminalPlacement(storage)).toBe('bottom');
-  });
+  test.each(['', 'sideways', '{"placement":"right"}'])(
+    'defaults malformed or unsupported value %j to bottom',
+    (value) => {
+      const storage = memoryStorage({ [TERMINAL_PLACEMENT_KEY]: value });
+      expect(readTerminalPlacement(storage)).toBe('bottom');
+    },
+  );
 });

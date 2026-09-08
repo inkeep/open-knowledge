@@ -430,23 +430,26 @@ describe('ReportBugDialog', () => {
         fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
       },
     ],
-  ])('%s resolves outside the dialog — no terminal phase, no reopen, no draft', async (_, result) => {
-    const log = installBridge({ send: () => Promise.resolve(result) });
-    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
-    await createReport('still my note');
+  ])(
+    '%s resolves outside the dialog — no terminal phase, no reopen, no draft',
+    async (_, result) => {
+      const log = installBridge({ send: () => Promise.resolve(result) });
+      const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
+      await createReport('still my note');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-    await vi.waitFor(() => {
-      expect(log.sendCalls).toHaveLength(1);
-    });
+      await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+      await vi.waitFor(() => {
+        expect(log.sendCalls).toHaveLength(1);
+      });
 
-    expect(openChangeCalls).toEqual([false]);
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
-    expect(log.opened).toEqual([]);
-  });
+      expect(openChangeCalls).toEqual([false]);
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
+      expect(log.opened).toEqual([]);
+    },
+  );
 
   test('Escape closes the dialog from review, and review keeps its close button', async () => {
     installBridge();

@@ -128,19 +128,18 @@ describe('renderer crash recovery', () => {
     expect(rig.logs.some((l) => l.obj.event === 'renderer-recovery.reload-abandoned')).toBe(true);
   });
 
-  test.each([
-    ['oom' as const],
-    ['launch-failed' as const],
-    ['integrity-failure' as const],
-  ])('reloads on abnormal reason %s', (reason) => {
-    const rig = makeRig();
-    const contents = makeContents();
+  test.each([['oom' as const], ['launch-failed' as const], ['integrity-failure' as const]])(
+    'reloads on abnormal reason %s',
+    (reason) => {
+      const rig = makeRig();
+      const contents = makeContents();
 
-    rig.recovery.handleRenderProcessGone(contents, { reason, exitCode: 1 });
-    rig.drainDeferred();
+      rig.recovery.handleRenderProcessGone(contents, { reason, exitCode: 1 });
+      rig.drainDeferred();
 
-    expect(contents.reload).toHaveBeenCalledTimes(1);
-  });
+      expect(contents.reload).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test.each([
     ['clean-exit' as const],

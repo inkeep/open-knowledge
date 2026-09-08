@@ -97,7 +97,7 @@ export class ControllableWebSocket {
     this.onMessageHandler = handler as MessageCallback | null;
   }
 
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+  send(data: Parameters<WebSocket['send']>[0]): void {
     if (this.droppingOutbound) return;
     this.inner.send(data);
   }

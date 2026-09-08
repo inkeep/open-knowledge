@@ -701,7 +701,7 @@ describe('checkPushPermission — telemetry', () => {
 
     const hist = dataPoints(harness, 'ok.permissions.probe.duration_ms');
     expect(hist).toHaveLength(1);
-    expect((hist[0]?.value as HistogramData).count).toBe(1);
+    expect((hist[0]?.value as HistogramData | undefined)?.count).toBe(1);
   });
 
   test('denied probe records its reason; error_class stays none', async () => {

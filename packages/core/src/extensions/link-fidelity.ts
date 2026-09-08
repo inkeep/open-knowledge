@@ -16,11 +16,18 @@ export function isAllowedLinkUri(url: string): boolean {
   }
 }
 
+const DERIVATION_ERROR = 'LinkFidelity must be derived from the Link extension';
+
 export const LinkFidelity = Link.extend({
   priority: 60,
 
   addOptions() {
+    const inherited = this.parent?.();
+    if (inherited === undefined) {
+      throw new Error(DERIVATION_ERROR);
+    }
     return {
+      ...inherited,
       openOnClick: false,
       enableClickSelection: false,
       linkOnPaste: true,
@@ -32,14 +39,17 @@ export const LinkFidelity = Link.extend({
         rel: 'noopener noreferrer',
       },
       isAllowedUri: isAllowedLinkUri,
-      validate: isAllowedLinkUri,
       shouldAutoLink: () => true,
     };
   },
 
   addAttributes() {
+    const inherited = this.parent?.();
+    if (inherited === undefined) {
+      throw new Error(DERIVATION_ERROR);
+    }
     return {
-      ...this.parent?.(),
+      ...inherited,
       linkStyle: { default: 'inline', rendered: false },
       refLabel: { default: null, rendered: false },
       sourceForm: { default: null, rendered: false },

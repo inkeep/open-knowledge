@@ -61,11 +61,11 @@ describe('PRD-6832 β L1: agent write reconciles a newer out-of-band disk edit',
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      warning?: { kind?: string };
+      warning?: unknown;
       warnings?: Array<{ kind?: string }>;
     };
-    expect(body.warning?.kind).toBe('disk-edit-reconciled');
     expect(body.warnings?.map((w) => w.kind)).toEqual(['disk-edit-reconciled']);
+    expect(body.warning).toBeUndefined();
 
     const after = readTestDoc(contentDir, docName);
     expect(after).toContain('body-v2-native');
@@ -142,10 +142,12 @@ describe('PRD-6832 β L1: agent write reconciles a newer out-of-band disk edit',
       });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
-        warning?: { kind?: string; mergeOutcome?: string };
+        warning?: unknown;
+        warnings?: Array<{ kind?: string; mergeOutcome?: string }>;
       };
-      expect(body.warning?.kind).toBe('disk-edit-reconciled');
-      expect(body.warning?.mergeOutcome).toBe('merged');
+      const reconciled = body.warnings?.find((w) => w.kind === 'disk-edit-reconciled');
+      expect(reconciled?.mergeOutcome).toBe('merged');
+      expect(body.warning).toBeUndefined();
 
       await pollUntil(() => serverYtext().includes('agent-line'));
       expect(serverYtext()).toContain('disk-oob-line');
@@ -198,7 +200,11 @@ describe('PRD-6832 β L1: agent write reconciles a newer out-of-band disk edit',
         body: JSON.stringify({ docName, markdown: 'agent-line\n', position: 'append' }),
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { warning?: { kind?: string } };
+      const body = (await res.json()) as {
+        warning?: unknown;
+        warnings?: Array<{ kind?: string }>;
+      };
+      expect(body.warnings?.some((w) => w.kind === 'disk-edit-reconciled')).not.toBe(true);
       expect(body.warning).toBeUndefined();
 
       await pollUntil(() => serverYtext().includes('agent-line'));

@@ -49,7 +49,7 @@ describe('installLongtaskObserver', () => {
   test('init script registers a PerformanceObserver for the longtask type', async () => {
     const fake = makeFakePage();
     await installLongtaskObserver(fake as unknown as Page);
-    const src = (fake.addInitScriptCalls[0]?.fn as () => void).toString();
+    const src = (fake.addInitScriptCalls[0]?.fn as (() => void) | undefined)?.toString();
     expect(src).toContain('PerformanceObserver');
     expect(src).toMatch(/longtask/);
     expect(src).toMatch(/buffered:\s*(true|!0)/);
@@ -58,7 +58,7 @@ describe('installLongtaskObserver', () => {
   test('init script wraps observer setup in try/catch (longtask API may be unsupported)', async () => {
     const fake = makeFakePage();
     await installLongtaskObserver(fake as unknown as Page);
-    const src = (fake.addInitScriptCalls[0]?.fn as () => void).toString();
+    const src = (fake.addInitScriptCalls[0]?.fn as (() => void) | undefined)?.toString();
     expect(src).toContain('try');
     expect(src).toContain('catch');
   });
@@ -92,13 +92,13 @@ describe('readLongtasks', () => {
     await readLongtasks(fake as unknown as Page);
     expect(fake.evaluateCalls.length).toBe(1);
     expect(typeof fake.evaluateCalls[0]?.fn).toBe('function');
-    expect((fake.evaluateCalls[0]?.fn as () => unknown).length).toBe(0);
+    expect((fake.evaluateCalls[0]?.fn as (() => unknown) | undefined)?.length).toBe(0);
   });
 
   test('evaluator references the same globalThis store name as the installer', async () => {
     const fake = makeFakePage([]);
     await readLongtasks(fake as unknown as Page);
-    const src = (fake.evaluateCalls[0]?.fn as () => unknown).toString();
+    const src = (fake.evaluateCalls[0]?.fn as (() => unknown) | undefined)?.toString();
     expect(src).toContain('__okScenLongTasks');
   });
 });

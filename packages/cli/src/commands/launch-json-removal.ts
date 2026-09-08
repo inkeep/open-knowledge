@@ -39,7 +39,7 @@ export function removeOwnLaunchEntry(projectRoot: string): LaunchRemoveOutcome {
   const errors: JsoncParseError[] = [];
   const tree: JsoncNode | undefined = parseTree(raw, errors, JSONC_PARSE_OPTIONS) ?? undefined;
   if (errors.some((e) => !isBenignBomError(e, raw))) return { kind: 'declined' };
-  if (!tree || tree.type !== 'object') return { kind: 'declined' };
+  if (tree?.type !== 'object') return { kind: 'declined' };
 
   const root = getNodeValue(tree) as Record<string, unknown>;
   const configs = root.configurations;

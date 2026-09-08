@@ -168,19 +168,19 @@ describe('a HEAD request to every Markdown route', () => {
     expect(files.length).toBe(new Set(files).size);
   });
 
-  test.each(HEAD_ROUTES)('$name is answered by its GET handler, which reads no method', async ({
-    module,
-    call,
-  }) => {
-    expect(module).not.toHaveProperty('HEAD');
-    const methods = autoImplementMethods(module as unknown as AppRouteHandlers);
-    expect(methods.HEAD).toBe(module.GET);
+  test.each(HEAD_ROUTES)(
+    '$name is answered by its GET handler, which reads no method',
+    async ({ module, call }) => {
+      expect(module).not.toHaveProperty('HEAD');
+      const methods = autoImplementMethods(module as unknown as AppRouteHandlers);
+      expect(methods.HEAD).toBe(module.GET);
 
-    const headers = (await call(methods.HEAD as never, 'HEAD')).headers;
-    for (const [header, value] of Object.entries(CONTRACT)) {
-      expect(headers.get(header), `${header} on HEAD`).toBe(value);
-    }
-  });
+      const headers = (await call(methods.HEAD as never, 'HEAD')).headers;
+      for (const [header, value] of Object.entries(CONTRACT)) {
+        expect(headers.get(header), `${header} on HEAD`).toBe(value);
+      }
+    },
+  );
 });
 
 describe('the header layer next.config.ts adds on top', () => {

@@ -104,21 +104,19 @@ describe('typed autolink — conversion', () => {
     }
   });
 
-  test.each([
-    'AGENTS.md ',
-    'example.com ',
-    'localhost:5173 ',
-    'v1.2.3 ',
-  ])('non-GFM token %j is left as plain text', async (typed) => {
-    const editor = makeLightEditor();
-    try {
-      insertLocal(editor, typed, 1);
-      await flushMicrotasksAndTimers();
-      expect(firstLinkAttrs(editor)).toBeNull();
-    } finally {
-      editor.destroy();
-    }
-  });
+  test.each(['AGENTS.md ', 'example.com ', 'localhost:5173 ', 'v1.2.3 '])(
+    'non-GFM token %j is left as plain text',
+    async (typed) => {
+      const editor = makeLightEditor();
+      try {
+        insertLocal(editor, typed, 1);
+        await flushMicrotasksAndTimers();
+        expect(firstLinkAttrs(editor)).toBeNull();
+      } finally {
+        editor.destroy();
+      }
+    },
+  );
 });
 
 describe('typed autolink — guards', () => {

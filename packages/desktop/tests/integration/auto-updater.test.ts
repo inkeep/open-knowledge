@@ -919,60 +919,60 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(1);
   });
 
-  test.each([
-    'resolve',
-    'reject',
-  ])('proxyFeed: periodic checks wait for the GitHub retry to %s before restoring the proxy', async (settlement) => {
-    const initialCheck = Promise.withResolvers<undefined>();
-    const retry = Promise.withResolvers<undefined>();
-    const error = Object.assign(new Error('proxy unavailable'), { code: 'HTTP_ERROR_503' });
-    const { rig } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      updaterSetup: (updater) => {
-        updater.checkForUpdates = vi
-          .fn(() => retry.promise)
-          .mockImplementationOnce(() => initialCheck.promise);
-      },
-    });
+  test.each(['resolve', 'reject'])(
+    'proxyFeed: periodic checks wait for the GitHub retry to %s before restoring the proxy',
+    async (settlement) => {
+      const initialCheck = Promise.withResolvers<undefined>();
+      const retry = Promise.withResolvers<undefined>();
+      const error = Object.assign(new Error('proxy unavailable'), { code: 'HTTP_ERROR_503' });
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        updaterSetup: (updater) => {
+          updater.checkForUpdates = vi
+            .fn(() => retry.promise)
+            .mockImplementationOnce(() => initialCheck.promise);
+        },
+      });
 
-    rig.updater.emit('error', error);
-    initialCheck.reject(error);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
-      provider: 'github',
-      owner: 'inkeep',
-      repo: 'open-knowledge',
-    });
+      rig.updater.emit('error', error);
+      initialCheck.reject(error);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+        provider: 'github',
+        owner: 'inkeep',
+        repo: 'open-knowledge',
+      });
 
-    fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
-    rig.ipc.invoke('ok:update:check-now');
-    rig.updater.emit('error', error);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-    expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(2);
-    expect(rig.updater.requestHeaders).toBeNull();
-    expect(rig.logger.warn).not.toHaveBeenCalledWith(
-      'proxy check failed, not fallback-eligible, staying on proxy',
-      expect.anything(),
-    );
+      fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
+      rig.ipc.invoke('ok:update:check-now');
+      rig.updater.emit('error', error);
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+      expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(2);
+      expect(rig.updater.requestHeaders).toBeNull();
+      expect(rig.logger.warn).not.toHaveBeenCalledWith(
+        'proxy check failed, not fallback-eligible, staying on proxy',
+        expect.anything(),
+      );
 
-    if (settlement === 'resolve') retry.resolve(undefined);
-    else retry.reject(error);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    rig.updater.checkForUpdates.mockResolvedValue(undefined);
-    fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
-    expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(3);
-    expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
-      provider: 'generic',
-      url: `${PROXY_BASE}/stable`,
-    });
-    expect(rig.updater.requestHeaders).toEqual({
-      'x-ok-from-version': '0.4.0',
-      'x-ok-channel': 'stable',
-    });
-  });
+      if (settlement === 'resolve') retry.resolve(undefined);
+      else retry.reject(error);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      rig.updater.checkForUpdates.mockResolvedValue(undefined);
+      fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
+      expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(3);
+      expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+        provider: 'generic',
+        url: `${PROXY_BASE}/stable`,
+      });
+      expect(rig.updater.requestHeaders).toEqual({
+        'x-ok-from-version': '0.4.0',
+        'x-ok-channel': 'stable',
+      });
+    },
+  );
 
   test('proxyFeed: a synchronous proxy-restore failure rejects without stopping periodic checks', async () => {
     const { rig } = makeRig({
@@ -3450,130 +3450,134 @@ describe('ok:update:check-now IPC handler', () => {
 });
 
 describe('check-now → showCheckNowResult feedback dispatch', () => {
-  test.each([
-    'update-available',
-    'update-not-available',
-  ] as const)('a verdict arriving after the deadline but before the watchdog still settles the manual check: %s', async (event) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const pending = Promise.withResolvers<undefined>();
-    const { rig } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      showCheckNowResult,
-      updaterSetup: (updater) => {
-        updater.checkForUpdates = vi.fn(() => pending.promise);
-      },
-    });
-    rig.ipc.invoke('ok:update:check-now');
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
-    fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    expect(manualCheckPhases(rig)).toEqual(['started']);
-    rig.updater.emit(event, { version: '0.5.0' });
-    expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith(
-      event === 'update-available'
-        ? { kind: 'available', currentVersion: '0.4.0', latestVersion: '0.5.0' }
-        : { kind: 'not-available', currentVersion: '0.4.0' },
-    );
-    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-    expect(() => fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS)).toThrow();
-    expect(rig.dispatches).not.toContain('check-now-watchdog-fired');
-    pending.resolve(undefined);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(event === 'update-available' ? 1 : 0);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
-  });
-
-  test.each([
-    'update-available',
-    'update-not-available',
-  ] as const)('a verdict arriving after the watchdog neither re-dispatches a dialog nor blocks the download: %s', async (event) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const pending = Promise.withResolvers<undefined>();
-    const { rig } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      showCheckNowResult,
-      updaterSetup: (updater) => {
-        updater.checkForUpdates = vi.fn(() => pending.promise);
-      },
-    });
-    rig.ipc.invoke('ok:update:check-now');
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
-    fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    expect(manualCheckPhases(rig)).toEqual(['started']);
-    rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
-    fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
-    expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith({
-      kind: 'error',
-      message: MANUAL_CHECK_TIMED_OUT_MESSAGE,
-    });
-    expect(rig.dispatches).toContain('check-now-watchdog-fired');
-    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-    rig.updater.emit(event, { version: '0.5.0' });
-    pending.resolve(undefined);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(event === 'update-available' ? 1 : 0);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
-  });
-
-  test.each([
-    'deadline',
-    'reuse',
-  ] as const)('a hung launch check starts scheduling and reaches the stuck hint from %s', (path) => {
-    const nowAt = new Date('2026-04-21T12:00:00.000Z');
-    const lastSuccessfulCheckAt = new Date(
-      nowAt.getTime() -
-        STUCK_HINT_THRESHOLD_MS +
-        (path === 'deadline' ? -1 : UPDATE_CHECK_DEADLINE_MS + 1),
-    ).toISOString();
-    const { rig } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      nowAt,
-      lastSuccessfulCheckAt,
-      stuckHintShown: false,
-      updaterSetup: (updater) => {
-        updater.checkForUpdates = vi.fn(() => new Promise(() => {}));
-      },
-    });
-    expect(
-      rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
-    ).toHaveLength(0);
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
-    fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
-    expect(
-      rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
-    ).toHaveLength(1);
-    expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
-    if (path === 'reuse') {
-      expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toHaveLength(0);
-      expect(rig.state.stuckHintShown).toBe(false);
-      rig.now = new Date(rig.now.getTime() + 2);
+  test.each(['update-available', 'update-not-available'] as const)(
+    'a verdict arriving after the deadline but before the watchdog still settles the manual check: %s',
+    async (event) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const pending = Promise.withResolvers<undefined>();
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+        updaterSetup: (updater) => {
+          updater.checkForUpdates = vi.fn(() => pending.promise);
+        },
+      });
       rig.ipc.invoke('ok:update:check-now');
-    }
-    expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toEqual([
-      { channel: 'ok:update:stuck-hint', payload: { downloadUrl: STUCK_HINT_DOWNLOAD_URL } },
-    ]);
-    expect(rig.state.stuckHintShown).toBe(true);
-    expect(rig.dispatches.filter((kind) => kind === 'stuck-hint-toast-c')).toHaveLength(1);
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_INTERVAL_MS);
-    fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
-    expect(
-      rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
-    ).toHaveLength(2);
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_INTERVAL_MS);
-    fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
-    expect(
-      rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
-    ).toHaveLength(3);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toHaveLength(1);
-  });
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
+      fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      expect(manualCheckPhases(rig)).toEqual(['started']);
+      rig.updater.emit(event, { version: '0.5.0' });
+      expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith(
+        event === 'update-available'
+          ? { kind: 'available', currentVersion: '0.4.0', latestVersion: '0.5.0' }
+          : { kind: 'not-available', currentVersion: '0.4.0' },
+      );
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      expect(() => fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS)).toThrow();
+      expect(rig.dispatches).not.toContain('check-now-watchdog-fired');
+      pending.resolve(undefined);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(
+        event === 'update-available' ? 1 : 0,
+      );
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(['update-available', 'update-not-available'] as const)(
+    'a verdict arriving after the watchdog neither re-dispatches a dialog nor blocks the download: %s',
+    async (event) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const pending = Promise.withResolvers<undefined>();
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+        updaterSetup: (updater) => {
+          updater.checkForUpdates = vi.fn(() => pending.promise);
+        },
+      });
+      rig.ipc.invoke('ok:update:check-now');
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
+      fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      expect(manualCheckPhases(rig)).toEqual(['started']);
+      rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
+      fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
+      expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith({
+        kind: 'error',
+        message: MANUAL_CHECK_TIMED_OUT_MESSAGE,
+      });
+      expect(rig.dispatches).toContain('check-now-watchdog-fired');
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      rig.updater.emit(event, { version: '0.5.0' });
+      pending.resolve(undefined);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(
+        event === 'update-available' ? 1 : 0,
+      );
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(['deadline', 'reuse'] as const)(
+    'a hung launch check starts scheduling and reaches the stuck hint from %s',
+    (path) => {
+      const nowAt = new Date('2026-04-21T12:00:00.000Z');
+      const lastSuccessfulCheckAt = new Date(
+        nowAt.getTime() -
+          STUCK_HINT_THRESHOLD_MS +
+          (path === 'deadline' ? -1 : UPDATE_CHECK_DEADLINE_MS + 1),
+      ).toISOString();
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        nowAt,
+        lastSuccessfulCheckAt,
+        stuckHintShown: false,
+        updaterSetup: (updater) => {
+          updater.checkForUpdates = vi.fn(() => new Promise(() => {}));
+        },
+      });
+      expect(
+        rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
+      ).toHaveLength(0);
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
+      fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
+      expect(
+        rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
+      ).toHaveLength(1);
+      expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
+      if (path === 'reuse') {
+        expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toHaveLength(0);
+        expect(rig.state.stuckHintShown).toBe(false);
+        rig.now = new Date(rig.now.getTime() + 2);
+        rig.ipc.invoke('ok:update:check-now');
+      }
+      expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toEqual([
+        { channel: 'ok:update:stuck-hint', payload: { downloadUrl: STUCK_HINT_DOWNLOAD_URL } },
+      ]);
+      expect(rig.state.stuckHintShown).toBe(true);
+      expect(rig.dispatches.filter((kind) => kind === 'stuck-hint-toast-c')).toHaveLength(1);
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_INTERVAL_MS);
+      fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
+      expect(
+        rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
+      ).toHaveLength(2);
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_INTERVAL_MS);
+      fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
+      expect(
+        rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_INTERVAL_MS),
+      ).toHaveLength(3);
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(rig.captured.filter((c) => c.channel === 'ok:update:stuck-hint')).toHaveLength(1);
+    },
+  );
 
   test('a timed-out background proxy check settles later manual checks without redispatching', async () => {
     const showCheckNowResult = vi.fn(() => {});
@@ -3633,104 +3637,106 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     );
   });
 
-  test.each([
-    'deadline',
-    'destroy',
-  ] as const)('a pending initial proxy check handles %s', async (outcome) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const pending = Promise.withResolvers<undefined>();
-    const { rig, handle } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      showCheckNowResult,
-      updaterSetup: (updater) => {
-        updater.checkForUpdates = vi.fn(() => {
-          const feed = updater.setFeedURL.mock.calls.at(-1)?.[0];
-          if (typeof feed === 'object' && feed.provider === 'generic') return pending.promise;
-          throw new Error('unexpected updater feed');
+  test.each(['deadline', 'destroy'] as const)(
+    'a pending initial proxy check handles %s',
+    async (outcome) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const pending = Promise.withResolvers<undefined>();
+      const { rig, handle } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+        updaterSetup: (updater) => {
+          updater.checkForUpdates = vi.fn(() => {
+            const feed = updater.setFeedURL.mock.calls.at(-1)?.[0];
+            if (typeof feed === 'object' && feed.provider === 'generic') return pending.promise;
+            throw new Error('unexpected updater feed');
+          });
+        },
+      });
+      rig.ipc.invoke('ok:update:check-now');
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
+      if (outcome === 'destroy') {
+        const deadlineIndex = rig.clock.setTimeout.mock.calls.findLastIndex(
+          ([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS,
+        );
+        const deadlineHandle = rig.clock.setTimeout.mock.results[deadlineIndex]?.value;
+        handle.destroy();
+        expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
+        for (const log of Object.values(rig.logger)) log.mockClear();
+        expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
+        expect(() => handle.destroy()).not.toThrow();
+        for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
+        pending.reject(Object.assign(new Error('proxy unavailable'), { code: 'HTTP_ERROR_503' }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS)).toThrow();
+      } else {
+        fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        expect(manualCheckPhases(rig)).toEqual(['started']);
+        expect(rig.logger.warn).toHaveBeenCalledWith('update check exceeded its deadline', {
+          ms: UPDATE_CHECK_DEADLINE_MS,
+          ageMs: UPDATE_CHECK_DEADLINE_MS,
+          menuCheckPending: true,
+          fallbackRetryPending: false,
+          usingProxyFeed: true,
+          proxyFallbackTried: false,
         });
-      },
-    });
-    rig.ipc.invoke('ok:update:check-now');
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
-    if (outcome === 'destroy') {
-      const deadlineIndex = rig.clock.setTimeout.mock.calls.findLastIndex(
-        ([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS,
+        rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
+        fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
+        expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith({
+          kind: 'error',
+          message: MANUAL_CHECK_TIMED_OUT_MESSAGE,
+        });
+        expect(rig.dispatches).toContain('check-now-watchdog-fired');
+        expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      }
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
+      expect(rig.updater.setFeedURL).not.toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'github' }),
       );
-      const deadlineHandle = rig.clock.setTimeout.mock.results[deadlineIndex]?.value;
-      handle.destroy();
-      expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
-      for (const log of Object.values(rig.logger)) log.mockClear();
-      expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
-      expect(() => handle.destroy()).not.toThrow();
-      for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
-      pending.reject(Object.assign(new Error('proxy unavailable'), { code: 'HTTP_ERROR_503' }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS)).toThrow();
-    } else {
-      fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      expect(manualCheckPhases(rig)).toEqual(['started']);
-      expect(rig.logger.warn).toHaveBeenCalledWith('update check exceeded its deadline', {
-        ms: UPDATE_CHECK_DEADLINE_MS,
-        ageMs: UPDATE_CHECK_DEADLINE_MS,
-        menuCheckPending: true,
-        fallbackRetryPending: false,
-        usingProxyFeed: true,
-        proxyFallbackTried: false,
-      });
-      rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
-      fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
-      expect(showCheckNowResult).toHaveBeenCalledExactlyOnceWith({
-        kind: 'error',
-        message: MANUAL_CHECK_TIMED_OUT_MESSAGE,
-      });
-      expect(rig.dispatches).toContain('check-now-watchdog-fired');
-      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-    }
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(rig.updater.setFeedURL).not.toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'github' }),
-    );
-    if (outcome === 'deadline') {
-      pending.resolve(undefined);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    }
-  });
+      if (outcome === 'deadline') {
+        pending.resolve(undefined);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
 
   test.each([
     { code: 'HTTP_ERROR_503', kind: 'error' },
     { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND', kind: 'not-available' },
-  ])('a beta proxy-class failure reports the manual check error without a GitHub retry ($code)', async ({
-    code,
-    kind,
-  }) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig } = makeRig({
-      appVersion: '0.4.0-beta.7',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']) },
-      showCheckNowResult,
-    });
-    await Promise.resolve();
-    const error = Object.assign(new Error('beta proxy unavailable'), { code });
-    rig.updater.checkForUpdates.mockImplementation(() => rejectAfterErrorEvent(rig.updater, error));
-    rig.ipc.invoke('ok:update:check-now');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    expect(showCheckNowResult).toHaveBeenCalledWith(
-      kind === 'error'
-        ? { kind, message: expect.any(String) }
-        : { kind, currentVersion: '0.4.0-beta.7' },
-    );
-    expect(rig.updater.setFeedURL).not.toHaveBeenCalledWith(
-      expect.objectContaining({ provider: 'github' }),
-    );
-  });
+  ])(
+    'a beta proxy-class failure reports the manual check error without a GitHub retry ($code)',
+    async ({ code, kind }) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.4.0-beta.7',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']) },
+        showCheckNowResult,
+      });
+      await Promise.resolve();
+      const error = Object.assign(new Error('beta proxy unavailable'), { code });
+      rig.updater.checkForUpdates.mockImplementation(() =>
+        rejectAfterErrorEvent(rig.updater, error),
+      );
+      rig.ipc.invoke('ok:update:check-now');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      expect(showCheckNowResult).toHaveBeenCalledWith(
+        kind === 'error'
+          ? { kind, message: expect.any(String) }
+          : { kind, currentVersion: '0.4.0-beta.7' },
+      );
+      expect(rig.updater.setFeedURL).not.toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'github' }),
+      );
+    },
+  );
 
   test.each([
     'reject',
@@ -3739,262 +3745,265 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     'destroy',
     'destroy-reject',
     'dispatch-throw',
-  ] as const)('a stable manual check handles a GitHub retry with no verdict event: %s', async (outcome) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig, handle } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      showCheckNowResult,
-    });
-    await Promise.resolve();
-    rig.updater.checkForUpdates.mockClear();
-    const retry = Promise.withResolvers<undefined>();
-    const proxyError = Object.assign(new Error('proxy channel missing'), {
-      code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
-    });
-    const retryError = Object.assign(new Error('GitHub unavailable'), { code: 'HTTP_ERROR_503' });
-    rig.updater.checkForUpdates.mockImplementation(() => {
-      const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
-      if (typeof feed === 'object' && feed.provider === 'generic') {
-        return rejectAfterErrorEvent(rig.updater, proxyError);
-      }
-      if (typeof feed === 'object' && feed.provider === 'github') {
-        if (outcome === 'dispatch-throw') throw retryError;
-        return retry.promise;
-      }
-      throw new Error('unexpected updater feed');
-    });
-    rig.ipc.invoke('ok:update:check-now');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    if (outcome === 'dispatch-throw') {
-      expect(rig.logger.error).toHaveBeenCalledWith('proxy-feed fallback checkForUpdates threw', {
-        cause: proxyError.code,
-        err: retryError,
+  ] as const)(
+    'a stable manual check handles a GitHub retry with no verdict event: %s',
+    async (outcome) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig, handle } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
       });
+      await Promise.resolve();
+      rig.updater.checkForUpdates.mockClear();
+      const retry = Promise.withResolvers<undefined>();
+      const proxyError = Object.assign(new Error('proxy channel missing'), {
+        code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
+      });
+      const retryError = Object.assign(new Error('GitHub unavailable'), { code: 'HTTP_ERROR_503' });
+      rig.updater.checkForUpdates.mockImplementation(() => {
+        const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
+        if (typeof feed === 'object' && feed.provider === 'generic') {
+          return rejectAfterErrorEvent(rig.updater, proxyError);
+        }
+        if (typeof feed === 'object' && feed.provider === 'github') {
+          if (outcome === 'dispatch-throw') throw retryError;
+          return retry.promise;
+        }
+        throw new Error('unexpected updater feed');
+      });
+      rig.ipc.invoke('ok:update:check-now');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (outcome === 'dispatch-throw') {
+        expect(rig.logger.error).toHaveBeenCalledWith('proxy-feed fallback checkForUpdates threw', {
+          cause: proxyError.code,
+          err: retryError,
+        });
+        expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+        expect(showCheckNowResult).toHaveBeenCalledWith(
+          buildCheckNowResultFromError(proxyError, '0.4.0'),
+        );
+        expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+        expect(
+          rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS),
+        ).toHaveLength(2);
+        return;
+      }
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      expect(rig.logger.warn).toHaveBeenCalledWith(
+        'menu check verdict deferred to the GitHub retry',
+        { code: proxyError.code, err: proxyError },
+      );
+      const deadlineIndex = rig.clock.setTimeout.mock.calls.findLastIndex(
+        ([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS,
+      );
+      expect(deadlineIndex).toBeGreaterThanOrEqual(0);
+      const deadlineHandle = rig.clock.setTimeout.mock.results[deadlineIndex]?.value;
+      if (outcome === 'destroy' || outcome === 'destroy-reject') {
+        handle.destroy();
+        expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+        expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
+        expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
+        for (const log of Object.values(rig.logger)) log.mockClear();
+        if (outcome === 'destroy-reject') retry.reject(retryError);
+        else retry.resolve(undefined);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+        return;
+      }
+      if (outcome === 'reject') retry.reject(retryError);
+      else if (outcome === 'resolve') retry.resolve(undefined);
+      else {
+        const reuseLogsBeforeClick = rig.logger.info.mock.calls.filter(
+          ([message]) => message === 'check already in flight, reusing the pending promise',
+        ).length;
+        rig.ipc.invoke('ok:update:check-now');
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+        expect(rig.dispatches).toContain('check-now-already-pending');
+        expect(
+          rig.logger.info.mock.calls.filter(
+            ([message]) => message === 'check already in flight, reusing the pending promise',
+          ),
+        ).toHaveLength(reuseLogsBeforeClick);
+        rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
+        fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
+        expect(showCheckNowResult).not.toHaveBeenCalled();
+        expect(manualCheckPhases(rig)).toEqual(['started', 'started']);
+        rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
+        fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
+        expect(rig.dispatches).toContain('check-now-watchdog-fired');
+        expect(manualCheckPhases(rig)).toEqual(['started', 'started', 'settled']);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
       expect(showCheckNowResult).toHaveBeenCalledTimes(1);
       expect(showCheckNowResult).toHaveBeenCalledWith(
-        buildCheckNowResultFromError(proxyError, '0.4.0'),
+        outcome === 'reject'
+          ? { kind: 'error', message: retryError.message }
+          : outcome === 'deadline'
+            ? { kind: 'error', message: MANUAL_CHECK_TIMED_OUT_MESSAGE }
+            : { kind: 'not-available', currentVersion: '0.4.0' },
       );
-      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-      expect(
-        rig.clock.setTimeout.mock.calls.filter(([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS),
-      ).toHaveLength(2);
-      return;
-    }
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    expect(rig.logger.warn).toHaveBeenCalledWith(
-      'menu check verdict deferred to the GitHub retry',
-      { code: proxyError.code, err: proxyError },
-    );
-    const deadlineIndex = rig.clock.setTimeout.mock.calls.findLastIndex(
-      ([, ms]) => ms === UPDATE_CHECK_DEADLINE_MS,
-    );
-    expect(deadlineIndex).toBeGreaterThanOrEqual(0);
-    const deadlineHandle = rig.clock.setTimeout.mock.results[deadlineIndex]?.value;
-    if (outcome === 'destroy' || outcome === 'destroy-reject') {
-      handle.destroy();
-      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-      expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
-      expect(() => fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS)).toThrow();
-      for (const log of Object.values(rig.logger)) log.mockClear();
-      if (outcome === 'destroy-reject') retry.reject(retryError);
-      else retry.resolve(undefined);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      for (const log of Object.values(rig.logger)) expect(log).not.toHaveBeenCalled();
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-      return;
-    }
-    if (outcome === 'reject') retry.reject(retryError);
-    else if (outcome === 'resolve') retry.resolve(undefined);
-    else {
-      const reuseLogsBeforeClick = rig.logger.info.mock.calls.filter(
-        ([message]) => message === 'check already in flight, reusing the pending promise',
-      ).length;
-      rig.ipc.invoke('ok:update:check-now');
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-      expect(rig.dispatches).toContain('check-now-already-pending');
-      expect(
-        rig.logger.info.mock.calls.filter(
-          ([message]) => message === 'check already in flight, reusing the pending promise',
-        ),
-      ).toHaveLength(reuseLogsBeforeClick);
-      rig.now = new Date(rig.now.getTime() + UPDATE_CHECK_DEADLINE_MS);
-      fireTimerFor(rig.clock, UPDATE_CHECK_DEADLINE_MS);
-      expect(showCheckNowResult).not.toHaveBeenCalled();
-      expect(manualCheckPhases(rig)).toEqual(['started', 'started']);
-      rig.now = new Date(rig.now.getTime() + MANUAL_CHECK_WATCHDOG_MS - UPDATE_CHECK_DEADLINE_MS);
-      fireTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
-      expect(rig.dispatches).toContain('check-now-watchdog-fired');
-      expect(manualCheckPhases(rig)).toEqual(['started', 'started', 'settled']);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    expect(showCheckNowResult).toHaveBeenCalledWith(
-      outcome === 'reject'
-        ? { kind: 'error', message: retryError.message }
-        : outcome === 'deadline'
-          ? { kind: 'error', message: MANUAL_CHECK_TIMED_OUT_MESSAGE }
-          : { kind: 'not-available', currentVersion: '0.4.0' },
-    );
-    expect(manualCheckPhases(rig)).toEqual(
-      outcome === 'deadline' ? ['started', 'started', 'settled'] : ['started', 'settled'],
-    );
-    if (outcome !== 'deadline') expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
-    if (outcome === 'resolve') {
-      expect(rig.logger.info).toHaveBeenCalledWith('post-fallback checkForUpdates resolved', {
-        menuCheckPending: true,
-      });
-    }
-    if (outcome === 'reject') {
-      expect(rig.logger.warn).toHaveBeenCalledWith('post-fallback checkForUpdates rejected', {
-        code: retryError.code,
-        err: retryError,
-        menuCheckPending: true,
-      });
-    }
-    if (outcome === 'deadline') {
-      expect(rig.logger.warn).toHaveBeenCalledWith('update check exceeded its deadline', {
-        ms: UPDATE_CHECK_DEADLINE_MS,
-        ageMs: UPDATE_CHECK_DEADLINE_MS,
-        menuCheckPending: true,
-        fallbackRetryPending: true,
-        usingProxyFeed: false,
-        proxyFallbackTried: true,
-      });
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-      expect(rig.logger.warn).not.toHaveBeenCalledWith(
-        'post-fallback checkForUpdates rejected',
-        expect.anything(),
+      expect(manualCheckPhases(rig)).toEqual(
+        outcome === 'deadline' ? ['started', 'started', 'settled'] : ['started', 'settled'],
       );
-      expect(rig.logger.debug).not.toHaveBeenCalledWith(
-        'post-fallback checkForUpdates rejected',
-        expect.anything(),
-      );
-      expect(rig.clock.clearTimeout).not.toHaveBeenCalledWith(deadlineHandle);
-      const feedCalls = rig.updater.setFeedURL.mock.calls.length;
-      rig.ipc.invoke('ok:update:check-now');
-      expect(manualCheckPhases(rig)).toEqual([
-        'started',
-        'started',
-        'settled',
-        'started',
-        'settled',
-      ]);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-      expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(feedCalls);
-      expect(showCheckNowResult).toHaveBeenCalledTimes(2);
-      expect(showCheckNowResult).toHaveBeenLastCalledWith({
-        kind: 'error',
-        message: UPDATE_CHECK_WEDGED_MESSAGE,
-      });
-      expect(manualCheckPhases(rig)).toEqual([
-        'started',
-        'started',
-        'settled',
-        'started',
-        'settled',
-      ]);
-      expect(rig.logger.warn).toHaveBeenCalledWith(
-        'check already in flight, reusing the pending promise',
-        {
-          ageMs: MANUAL_CHECK_WATCHDOG_MS,
-          timedOut: true,
+      if (outcome !== 'deadline')
+        expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
+      if (outcome === 'resolve') {
+        expect(rig.logger.info).toHaveBeenCalledWith('post-fallback checkForUpdates resolved', {
+          menuCheckPending: true,
+        });
+      }
+      if (outcome === 'reject') {
+        expect(rig.logger.warn).toHaveBeenCalledWith('post-fallback checkForUpdates rejected', {
+          code: retryError.code,
+          err: retryError,
+          menuCheckPending: true,
+        });
+      }
+      if (outcome === 'deadline') {
+        expect(rig.logger.warn).toHaveBeenCalledWith('update check exceeded its deadline', {
+          ms: UPDATE_CHECK_DEADLINE_MS,
+          ageMs: UPDATE_CHECK_DEADLINE_MS,
           menuCheckPending: true,
           fallbackRetryPending: true,
           usingProxyFeed: false,
           proxyFallbackTried: true,
-        },
-      );
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
-      expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(feedCalls);
-      retry.resolve(undefined);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(showCheckNowResult).toHaveBeenCalledTimes(2);
-      expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
-      rig.updater.checkForUpdates.mockResolvedValue(undefined);
-      fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
-      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
-      expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
-        provider: 'generic',
-        url: `${PROXY_BASE}/stable`,
-      });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(showCheckNowResult).toHaveBeenCalledTimes(2);
-    }
-  });
-
-  test.each([
-    'available',
-    'not-available',
-    'error',
-  ] as const)('a stable proxy channel-file failure lets the GitHub retry report %s exactly once', async (outcome) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig } = makeRig({
-      appVersion: '0.4.0',
-      proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
-      showCheckNowResult,
-    });
-    await Promise.resolve();
-    const finishRetry = Promise.withResolvers<undefined>();
-    const proxyError = Object.assign(new Error('proxy channel missing'), {
-      code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
-    });
-    const retryError = Object.assign(new Error('GitHub unavailable'), { code: 'HTTP_ERROR_503' });
-    rig.updater.checkForUpdates.mockImplementation(async () => {
-      const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
-      if (typeof feed === 'object' && feed.provider === 'generic') {
-        return rejectAfterErrorEvent(rig.updater, proxyError);
-      }
-      if (typeof feed === 'object' && feed.provider === 'github') {
-        await finishRetry.promise;
-        if (outcome === 'error') {
-          return rejectAfterErrorEvent(rig.updater, retryError);
-        }
-        rig.updater.emit(`update-${outcome}`, {
-          version: outcome === 'available' ? '0.4.1' : '0.4.0',
         });
-        return undefined;
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+        expect(rig.logger.warn).not.toHaveBeenCalledWith(
+          'post-fallback checkForUpdates rejected',
+          expect.anything(),
+        );
+        expect(rig.logger.debug).not.toHaveBeenCalledWith(
+          'post-fallback checkForUpdates rejected',
+          expect.anything(),
+        );
+        expect(rig.clock.clearTimeout).not.toHaveBeenCalledWith(deadlineHandle);
+        const feedCalls = rig.updater.setFeedURL.mock.calls.length;
+        rig.ipc.invoke('ok:update:check-now');
+        expect(manualCheckPhases(rig)).toEqual([
+          'started',
+          'started',
+          'settled',
+          'started',
+          'settled',
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+        expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(feedCalls);
+        expect(showCheckNowResult).toHaveBeenCalledTimes(2);
+        expect(showCheckNowResult).toHaveBeenLastCalledWith({
+          kind: 'error',
+          message: UPDATE_CHECK_WEDGED_MESSAGE,
+        });
+        expect(manualCheckPhases(rig)).toEqual([
+          'started',
+          'started',
+          'settled',
+          'started',
+          'settled',
+        ]);
+        expect(rig.logger.warn).toHaveBeenCalledWith(
+          'check already in flight, reusing the pending promise',
+          {
+            ageMs: MANUAL_CHECK_WATCHDOG_MS,
+            timedOut: true,
+            menuCheckPending: true,
+            fallbackRetryPending: true,
+            usingProxyFeed: false,
+            proxyFallbackTried: true,
+          },
+        );
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(2);
+        expect(rig.updater.setFeedURL).toHaveBeenCalledTimes(feedCalls);
+        retry.resolve(undefined);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(showCheckNowResult).toHaveBeenCalledTimes(2);
+        expect(rig.clock.clearTimeout).toHaveBeenCalledWith(deadlineHandle);
+        rig.updater.checkForUpdates.mockResolvedValue(undefined);
+        fireTimerFor(rig.clock, UPDATE_CHECK_INTERVAL_MS);
+        expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
+        expect(rig.updater.setFeedURL).toHaveBeenLastCalledWith({
+          provider: 'generic',
+          url: `${PROXY_BASE}/stable`,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(showCheckNowResult).toHaveBeenCalledTimes(2);
       }
-      throw new Error('unexpected updater feed');
-    });
+    },
+  );
 
-    rig.ipc.invoke('ok:update:check-now');
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    finishRetry.resolve(undefined);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  test.each(['available', 'not-available', 'error'] as const)(
+    'a stable proxy channel-file failure lets the GitHub retry report %s exactly once',
+    async (outcome) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.4.0',
+        proxyFeed: { base: PROXY_BASE, channels: new Set(['latest']) },
+        showCheckNowResult,
+      });
+      await Promise.resolve();
+      const finishRetry = Promise.withResolvers<undefined>();
+      const proxyError = Object.assign(new Error('proxy channel missing'), {
+        code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
+      });
+      const retryError = Object.assign(new Error('GitHub unavailable'), { code: 'HTTP_ERROR_503' });
+      rig.updater.checkForUpdates.mockImplementation(async () => {
+        const feed = rig.updater.setFeedURL.mock.calls.at(-1)?.[0];
+        if (typeof feed === 'object' && feed.provider === 'generic') {
+          return rejectAfterErrorEvent(rig.updater, proxyError);
+        }
+        if (typeof feed === 'object' && feed.provider === 'github') {
+          await finishRetry.promise;
+          if (outcome === 'error') {
+            return rejectAfterErrorEvent(rig.updater, retryError);
+          }
+          rig.updater.emit(`update-${outcome}`, {
+            version: outcome === 'available' ? '0.4.1' : '0.4.0',
+          });
+          return undefined;
+        }
+        throw new Error('unexpected updater feed');
+      });
 
-    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
-    if (outcome === 'available') {
-      expect(showCheckNowResult).toHaveBeenCalledWith({
-        kind: 'available',
-        currentVersion: '0.4.0',
-        latestVersion: '0.4.1',
-      });
-      expect(showCheckNowResult).not.toHaveBeenCalledWith(
-        expect.objectContaining({ kind: 'not-available' }),
-      );
-    } else if (outcome === 'not-available') {
-      expect(showCheckNowResult).toHaveBeenCalledWith({
-        kind: 'not-available',
-        currentVersion: '0.4.0',
-      });
-    } else {
-      expect(showCheckNowResult).toHaveBeenCalledWith({
-        kind: 'error',
-        message: retryError.message,
-      });
-    }
-    expect(
-      rig.updater.setFeedURL.mock.calls.filter(
-        ([feed]) => typeof feed === 'object' && feed.provider === 'github',
-      ),
-    ).toHaveLength(1);
-    expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
-  });
+      rig.ipc.invoke('ok:update:check-now');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      finishRetry.resolve(undefined);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+      if (outcome === 'available') {
+        expect(showCheckNowResult).toHaveBeenCalledWith({
+          kind: 'available',
+          currentVersion: '0.4.0',
+          latestVersion: '0.4.1',
+        });
+        expect(showCheckNowResult).not.toHaveBeenCalledWith(
+          expect.objectContaining({ kind: 'not-available' }),
+        );
+      } else if (outcome === 'not-available') {
+        expect(showCheckNowResult).toHaveBeenCalledWith({
+          kind: 'not-available',
+          currentVersion: '0.4.0',
+        });
+      } else {
+        expect(showCheckNowResult).toHaveBeenCalledWith({
+          kind: 'error',
+          message: retryError.message,
+        });
+      }
+      expect(
+        rig.updater.setFeedURL.mock.calls.filter(
+          ([feed]) => typeof feed === 'object' && feed.provider === 'github',
+        ),
+      ).toHaveLength(1);
+      expect(rig.updater.checkForUpdates).toHaveBeenCalledTimes(3);
+    },
+  );
 
   test('a synchronous GitHub feed switch failure reports the manual check error exactly once', async () => {
     const showCheckNowResult = vi.fn(() => {});
@@ -4026,37 +4035,34 @@ describe('check-now → showCheckNowResult feedback dispatch', () => {
     ).toHaveLength(1);
   });
 
-  test.each([
-    'update-available',
-    'update-not-available',
-    'error',
-    'resolve',
-    'reject',
-  ] as const)('%s clears the manual watchdog and prevents a later timeout dialog', async (outcome) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig } = makeRig({ showCheckNowResult, isPackaged: false });
-    rig.updater.checkForUpdates = vi.fn(() =>
-      outcome === 'reject'
-        ? Promise.reject(new Error('network unavailable'))
-        : Promise.resolve(null),
-    );
-    rig.ipc.invoke('ok:update:check-now');
-    const [watchdogHandle, watchdog] = liveTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
-    expect(watchdog.state).toBe('live');
+  test.each(['update-available', 'update-not-available', 'error', 'resolve', 'reject'] as const)(
+    '%s clears the manual watchdog and prevents a later timeout dialog',
+    async (outcome) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({ showCheckNowResult, isPackaged: false });
+      rig.updater.checkForUpdates = vi.fn(() =>
+        outcome === 'reject'
+          ? Promise.reject(new Error('network unavailable'))
+          : Promise.resolve(null),
+      );
+      rig.ipc.invoke('ok:update:check-now');
+      const [watchdogHandle, watchdog] = liveTimerFor(rig.clock, MANUAL_CHECK_WATCHDOG_MS);
+      expect(watchdog.state).toBe('live');
 
-    if (outcome === 'error') rig.updater.emit('error', new Error('network unavailable'));
-    else if (outcome !== 'resolve' && outcome !== 'reject') {
-      rig.updater.emit(outcome, { version: '0.3.2' });
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
-    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-    expect(showCheckNowResult).toHaveBeenCalledTimes(outcome === 'resolve' ? 0 : 1);
-    showCheckNowResult.mockClear();
-    watchdog.cb();
-    expect(showCheckNowResult).not.toHaveBeenCalled();
-    expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
-  });
+      if (outcome === 'error') rig.updater.emit('error', new Error('network unavailable'));
+      else if (outcome !== 'resolve' && outcome !== 'reject') {
+        rig.updater.emit(outcome, { version: '0.3.2' });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(rig.clock.clearTimeout).toHaveBeenCalledWith(watchdogHandle);
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+      expect(showCheckNowResult).toHaveBeenCalledTimes(outcome === 'resolve' ? 0 : 1);
+      showCheckNowResult.mockClear();
+      watchdog.cb();
+      expect(showCheckNowResult).not.toHaveBeenCalled();
+      expect(manualCheckPhases(rig)).toEqual(['started', 'settled']);
+    },
+  );
 
   test('destroy clears a pending manual watchdog without showing a dialog', () => {
     const showCheckNowResult = vi.fn(() => {});
@@ -5370,42 +5376,42 @@ describe('single-flight install handoff', () => {
     expect(rig.dispatches).not.toContain('download-skipped-install-armed' as DispatchKind);
   });
 
-  test.each([
-    'win32',
-    'linux',
-  ] as const)('on %s a manual check for a newer offer reports it as downloading', (platform) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig } = makeRig({
-      appVersion: '0.3.1',
-      versionPendingInstall: null,
-      platform,
-      showCheckNowResult,
-    });
-    stageInSession(rig, '0.3.2');
-    showCheckNowResult.mockClear();
+  test.each(['win32', 'linux'] as const)(
+    'on %s a manual check for a newer offer reports it as downloading',
+    (platform) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.3.1',
+        versionPendingInstall: null,
+        platform,
+        showCheckNowResult,
+      });
+      stageInSession(rig, '0.3.2');
+      showCheckNowResult.mockClear();
 
-    rig.ipc.invoke('ok:update:check-now');
-    rig.updater.emit('update-available', { version: '0.3.3' });
+      rig.ipc.invoke('ok:update:check-now');
+      rig.updater.emit('update-available', { version: '0.3.3' });
 
-    expect(showCheckNowResult).toHaveBeenCalledWith({
-      kind: 'available',
-      currentVersion: '0.3.1',
-      latestVersion: '0.3.3',
-    });
-  });
+      expect(showCheckNowResult).toHaveBeenCalledWith({
+        kind: 'available',
+        currentVersion: '0.3.1',
+        latestVersion: '0.3.3',
+      });
+    },
+  );
 
-  test.each([
-    'win32',
-    'linux',
-  ] as const)('on %s the same-version skip still applies', (platform) => {
-    const { rig } = makeRig({ versionPendingInstall: null, platform });
-    stageInSession(rig, '0.3.2');
+  test.each(['win32', 'linux'] as const)(
+    'on %s the same-version skip still applies',
+    (platform) => {
+      const { rig } = makeRig({ versionPendingInstall: null, platform });
+      stageInSession(rig, '0.3.2');
 
-    rig.updater.emit('update-available', { version: '0.3.2' });
+      rig.updater.emit('update-available', { version: '0.3.2' });
 
-    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
-    expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
-  });
+      expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+      expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
+    },
+  );
 
   test('a manual check names the build that will install, not the declined offer', () => {
     const showCheckNowResult = vi.fn(() => {});
@@ -5449,53 +5455,53 @@ describe('single-flight install handoff', () => {
     });
   });
 
-  test.each([
-    'win32',
-    'linux',
-  ] as const)('on %s a manual check for the armed build still reads as ready', (platform) => {
-    const showCheckNowResult = vi.fn(() => {});
-    const { rig } = makeRig({
-      appVersion: '0.3.1',
-      versionPendingInstall: null,
-      platform,
-      showCheckNowResult,
-    });
-    stageInSession(rig, '0.3.2');
-    showCheckNowResult.mockClear();
+  test.each(['win32', 'linux'] as const)(
+    'on %s a manual check for the armed build still reads as ready',
+    (platform) => {
+      const showCheckNowResult = vi.fn(() => {});
+      const { rig } = makeRig({
+        appVersion: '0.3.1',
+        versionPendingInstall: null,
+        platform,
+        showCheckNowResult,
+      });
+      stageInSession(rig, '0.3.2');
+      showCheckNowResult.mockClear();
 
-    rig.ipc.invoke('ok:update:check-now');
-    rig.updater.emit('update-available', { version: '0.3.2' });
+      rig.ipc.invoke('ok:update:check-now');
+      rig.updater.emit('update-available', { version: '0.3.2' });
 
-    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
-    expect(showCheckNowResult).toHaveBeenCalledWith({
-      kind: 'ready-to-install',
-      currentVersion: '0.3.1',
-      stagedVersion: '0.3.2',
-    });
-  });
+      expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+      expect(showCheckNowResult).toHaveBeenCalledWith({
+        kind: 'ready-to-install',
+        currentVersion: '0.3.1',
+        stagedVersion: '0.3.2',
+      });
+    },
+  );
 
-  test.each([
-    'win32',
-    'linux',
-  ] as const)('on %s a relaunch that cannot restore its state releases the arm', async (platform) => {
-    const { rig } = makeRig({ versionPendingInstall: null, platform });
-    stageInSession(rig, '0.3.2');
-    rig.updater.quitAndInstall = vi.fn(() => {
-      rig.failNextPersist = true;
-      throw new Error('installer refused the handoff');
-    });
+  test.each(['win32', 'linux'] as const)(
+    'on %s a relaunch that cannot restore its state releases the arm',
+    async (platform) => {
+      const { rig } = makeRig({ versionPendingInstall: null, platform });
+      stageInSession(rig, '0.3.2');
+      rig.updater.quitAndInstall = vi.fn(() => {
+        rig.failNextPersist = true;
+        throw new Error('installer refused the handoff');
+      });
 
-    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
-      'installer refused the handoff',
-    );
-    expect(rig.state.versionPendingInstall).toBeNull();
-    rig.failNextPersist = false;
-    rig.updater.downloadUpdate.mockClear();
+      await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
+        'installer refused the handoff',
+      );
+      expect(rig.state.versionPendingInstall).toBeNull();
+      rig.failNextPersist = false;
+      rig.updater.downloadUpdate.mockClear();
 
-    rig.updater.emit('update-available', { version: '0.3.2' });
+      rig.updater.emit('update-available', { version: '0.3.2' });
 
-    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
-  });
+      expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test('on macOS a watchdog fire that cannot restore KEEPS the arm', async () => {
     const { rig } = makeRig({ versionPendingInstall: null });
@@ -5728,7 +5734,9 @@ describe('the commit flag releases on every path that re-offers the click', () =
 
     const failed = rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
     expect(failed).toHaveLength(1);
-    expect((failed[0]?.payload as { dismissPending?: boolean }).dismissPending).toBeUndefined();
+    expect(
+      (failed[0]?.payload as { dismissPending?: boolean } | undefined)?.dismissPending,
+    ).toBeUndefined();
     expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
   });
 

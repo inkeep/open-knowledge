@@ -538,25 +538,25 @@ describe('writeConfigPatch — scope-violation gate', () => {
     expect(existsSync(userConfigPath(testDir))).toBe(false);
   });
 
-  test.each([
-    'project',
-    'user',
-  ] as const)('%s writer rejects terminal.shell with SCOPE_VIOLATION', async (scope) => {
-    const result = await writeConfigPatch({
-      cwd: testDir,
-      scope,
-      homedirOverride: testDir,
-      patch: { terminal: { shell: 'C:\\Tools\\pwsh.exe' } },
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) throw new Error('expected SCOPE_VIOLATION');
-    if (!isKnownConfigError(result.error)) throw new Error('expected known error');
-    expect(result.error.code).toBe('SCOPE_VIOLATION');
-    if (result.error.code !== 'SCOPE_VIOLATION') throw new Error('wrong code');
-    expect(result.error.path).toEqual(['terminal', 'shell']);
-    expect(result.error.expectedScope).toBe('project-local');
-    expect(result.error.actualScope).toBe(scope);
-  });
+  test.each(['project', 'user'] as const)(
+    '%s writer rejects terminal.shell with SCOPE_VIOLATION',
+    async (scope) => {
+      const result = await writeConfigPatch({
+        cwd: testDir,
+        scope,
+        homedirOverride: testDir,
+        patch: { terminal: { shell: 'C:\\Tools\\pwsh.exe' } },
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected SCOPE_VIOLATION');
+      if (!isKnownConfigError(result.error)) throw new Error('expected known error');
+      expect(result.error.code).toBe('SCOPE_VIOLATION');
+      if (result.error.code !== 'SCOPE_VIOLATION') throw new Error('wrong code');
+      expect(result.error.path).toEqual(['terminal', 'shell']);
+      expect(result.error.expectedScope).toBe('project-local');
+      expect(result.error.actualScope).toBe(scope);
+    },
+  );
 });
 
 describe('writeConfigPatch — concurrent writes (file lock)', () => {

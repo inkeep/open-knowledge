@@ -53,25 +53,23 @@ describe('removeAllDuringTeardown removal policy', () => {
     expect(options?.maxRetries).toBeGreaterThan(0);
   });
 
-  test.each([
-    'EBUSY',
-    'ENOTEMPTY',
-    'EPERM',
-  ])('tolerates %s rather than failing a run whose tests have all passed', (code) => {
-    rmFailingOn('/tmp/busy', errnoError(code));
-    expect(() => removeAllDuringTeardown('/tmp/busy')).not.toThrow();
-  });
+  test.each(['EBUSY', 'ENOTEMPTY', 'EPERM'])(
+    'tolerates %s rather than failing a run whose tests have all passed',
+    (code) => {
+      rmFailingOn('/tmp/busy', errnoError(code));
+      expect(() => removeAllDuringTeardown('/tmp/busy')).not.toThrow();
+    },
+  );
 
-  test.each([
-    'EBUSY',
-    'ENOTEMPTY',
-    'EPERM',
-  ])('still reclaims the remaining targets after a tolerated %s', (code) => {
-    rmFailingOn('/tmp/busy', errnoError(code));
-    removeAllDuringTeardown('/tmp/busy', '/tmp/second', '/tmp/third');
-    expect(mockedRm).toHaveBeenCalledWith('/tmp/second', expect.anything());
-    expect(mockedRm).toHaveBeenCalledWith('/tmp/third', expect.anything());
-  });
+  test.each(['EBUSY', 'ENOTEMPTY', 'EPERM'])(
+    'still reclaims the remaining targets after a tolerated %s',
+    (code) => {
+      rmFailingOn('/tmp/busy', errnoError(code));
+      removeAllDuringTeardown('/tmp/busy', '/tmp/second', '/tmp/third');
+      expect(mockedRm).toHaveBeenCalledWith('/tmp/second', expect.anything());
+      expect(mockedRm).toHaveBeenCalledWith('/tmp/third', expect.anything());
+    },
+  );
 
   test('warns on a tolerated failure so a genuinely leaked directory leaves a trace', () => {
     rmFailingOn('/tmp/busy', errnoError('EBUSY'));
@@ -81,20 +79,16 @@ describe('removeAllDuringTeardown removal policy', () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain('/tmp/busy');
   });
 
-  test.each([
-    'EMFILE',
-    'ENFILE',
-    'EACCES',
-    'ENOTDIR',
-    'EINVAL',
-    undefined,
-  ])('rethrows %s rather than hiding it', (code) => {
-    const err = code === undefined ? new Error('not an errno at all') : errnoError(code);
-    mockedRm.mockImplementation(() => {
-      throw err;
-    });
-    expect(() => removeAllDuringTeardown('/tmp/a')).toThrow(err);
-  });
+  test.each(['EMFILE', 'ENFILE', 'EACCES', 'ENOTDIR', 'EINVAL', undefined])(
+    'rethrows %s rather than hiding it',
+    (code) => {
+      const err = code === undefined ? new Error('not an errno at all') : errnoError(code);
+      mockedRm.mockImplementation(() => {
+        throw err;
+      });
+      expect(() => removeAllDuringTeardown('/tmp/a')).toThrow(err);
+    },
+  );
 
   test('reclaims every remaining target before rethrowing an untolerated errno', () => {
     const err = errnoError('EMFILE');

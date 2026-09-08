@@ -232,16 +232,12 @@ describe('mediaKindForSidebarAssetExtension', () => {
     expect(mediaKindForSidebarAssetExtension('LOCK')).toBe('text');
   });
 
-  test.each([
-    'csv',
-    'docx',
-    'zip',
-    'mkv',
-    'svg',
-    'tiff',
-  ])('returns null for non-sidebar-renderable extension %s', (ext) => {
-    expect(mediaKindForSidebarAssetExtension(ext)).toBeNull();
-  });
+  test.each(['csv', 'docx', 'zip', 'mkv', 'svg', 'tiff'])(
+    'returns null for non-sidebar-renderable extension %s',
+    (ext) => {
+      expect(mediaKindForSidebarAssetExtension(ext)).toBeNull();
+    },
+  );
 
   test('normalizes leading dot + case', () => {
     expect(mediaKindForSidebarAssetExtension('.MP3')).toBe('audio');

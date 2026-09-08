@@ -89,7 +89,7 @@ export function createDebugIpc(deps: DebugIpcDeps): DebugIpcHandle {
 
   function handleUtilityMessage(msg: unknown): void {
     const typed = msg as Partial<UtilityDebugKeyringSmokeResultMessage> | null | undefined;
-    if (!typed || typed.type !== 'debug-keyring-smoke-result') return;
+    if (typed?.type !== 'debug-keyring-smoke-result') return;
     if (typeof typed.correlationId !== 'string' || !typed.result) return;
     settle(typed.correlationId, { kind: 'ok', result: typed.result });
   }

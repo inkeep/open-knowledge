@@ -71,7 +71,7 @@ export function ImageAlignButtons({ editor }: ImageAlignButtonsProps) {
                       node?: { type: { name: string }; attrs: Record<string, unknown> };
                     }
                   ).node;
-                  if (!liveNode || liveNode.type.name !== 'jsxComponent') return;
+                  if (liveNode?.type.name !== 'jsxComponent') return;
                   const componentName = String(liveNode.attrs.componentName ?? '');
                   if (!ALIGNABLE_DESCRIPTOR_NAMES.has(componentName)) {
                     return;

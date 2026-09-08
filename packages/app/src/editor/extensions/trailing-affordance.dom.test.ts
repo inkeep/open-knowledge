@@ -65,15 +65,12 @@ function decorationsOf(state: EditorState) {
 }
 
 describe('docNeedsTrailingAffordance', () => {
-  test.each([
-    'table',
-    'heading',
-    'codeBlock',
-    'list',
-    'thematicBreak',
-  ])('engages when the last block is a %s — nothing can host a caret below it', (type) => {
-    expect(docNeedsTrailingAffordance(stateEndingIn(type).doc)).toBe(true);
-  });
+  test.each(['table', 'heading', 'codeBlock', 'list', 'thematicBreak'])(
+    'engages when the last block is a %s — nothing can host a caret below it',
+    (type) => {
+      expect(docNeedsTrailingAffordance(stateEndingIn(type).doc)).toBe(true);
+    },
+  );
 
   test('stands down when the last block is a paragraph', () => {
     expect(docNeedsTrailingAffordance(stateEndingIn('paragraph').doc)).toBe(false);

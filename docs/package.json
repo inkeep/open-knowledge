@@ -66,6 +66,6 @@
     "sharp": "^0.35.3",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4",
-    "typescript": "^5.7"
+    "typescript": "~7.0.2"
   }
 }

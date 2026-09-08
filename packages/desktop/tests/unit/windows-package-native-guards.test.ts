@@ -200,18 +200,19 @@ describe.skipIf(packageDir === null)('packaged Windows node-pty payload', () => 
     ).toBeGreaterThan(0);
   });
 
-  test.each(
-    WIN32_ARCHES,
-  )('%s prebuild ships arch-correct PE addons with the ConPTY pair beside them', (arch) => {
-    const archDir = join(nodePtyUnpackedRoot, 'prebuilds', arch);
-    for (const name of CONPTY_FILES) {
-      const file = join(archDir, name);
-      expect(existsSync(file), `missing ${arch}/${name}`).toBe(true);
-      expect(peMachineType(readFileSync(file)), `${arch}/${name}: PE machine word`).toBe(
-        PE_MACHINE[arch],
-      );
-    }
-  });
+  test.each(WIN32_ARCHES)(
+    '%s prebuild ships arch-correct PE addons with the ConPTY pair beside them',
+    (arch) => {
+      const archDir = join(nodePtyUnpackedRoot, 'prebuilds', arch);
+      for (const name of CONPTY_FILES) {
+        const file = join(archDir, name);
+        expect(existsSync(file), `missing ${arch}/${name}`).toBe(true);
+        expect(peMachineType(readFileSync(file)), `${arch}/${name}: PE machine word`).toBe(
+          PE_MACHINE[arch],
+        );
+      }
+    },
+  );
 
   test('unpacked tree carries no debug symbols, foreign prebuilds, or native-build output', () => {
     const offenders = walkFiles(nodePtyUnpackedRoot).filter(

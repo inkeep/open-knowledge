@@ -352,7 +352,11 @@ export class WindowManager {
 
   private readonly keepalives = new Map<string, KeepaliveHandle>();
 
-  constructor(private readonly deps: WindowManagerDeps) {}
+  private readonly deps: WindowManagerDeps;
+
+  constructor(deps: WindowManagerDeps) {
+    this.deps = deps;
+  }
 
   private canonicalizeKey(projectPath: string): string {
     const absolute = resolve(projectPath);

@@ -35,14 +35,12 @@ describe('the Excalidraw language mapping', () => {
     expect(excalidrawLangCode('')).toBe(EXCALIDRAW_FALLBACK_LANG_CODE);
   });
 
-  test.each([
-    'toString',
-    'constructor',
-    '__proto__',
-    'valueOf',
-  ])('returns a language code for the inherited key %s rather than something off the prototype', (key) => {
-    expect(excalidrawLangCode(key)).toBe(EXCALIDRAW_FALLBACK_LANG_CODE);
-  });
+  test.each(['toString', 'constructor', '__proto__', 'valueOf'])(
+    'returns a language code for the inherited key %s rather than something off the prototype',
+    (key) => {
+      expect(excalidrawLangCode(key)).toBe(EXCALIDRAW_FALLBACK_LANG_CODE);
+    },
+  );
 
   test('keeps the two Chinese scripts on separate catalogs', () => {
     expect(excalidrawLangCode('zh-Hans')).toBe('zh-CN');

@@ -14,7 +14,7 @@ function commitDraft(
   if (!next || !INLINE_TAG_VALUE_RE.test(next)) return false;
   const { state, view } = editor;
   const curNode = state.doc.nodeAt(pos);
-  if (!curNode || curNode.type.name !== 'tag') return false;
+  if (curNode?.type.name !== 'tag') return false;
   const tr = state.tr.setNodeMarkup(pos, null, { ...curNode.attrs, value: next });
   const after = pos + curNode.nodeSize;
   tr.insertText(' ', after);
@@ -28,7 +28,7 @@ function cancelDraft(editor: NodeViewProps['editor'], pos: number | undefined): 
   if (typeof pos !== 'number') return;
   const { state, view } = editor;
   const curNode = state.doc.nodeAt(pos);
-  if (!curNode || curNode.type.name !== 'tag') return;
+  if (curNode?.type.name !== 'tag') return;
   const tr = state.tr.delete(pos, pos + curNode.nodeSize);
   view.dispatch(tr);
   view.focus();

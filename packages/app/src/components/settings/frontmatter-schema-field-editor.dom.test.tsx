@@ -297,28 +297,25 @@ describe('FrontmatterSchemaFieldEditor', () => {
     expect(writes).toEqual([[FILE, 'status', { type: 'string' }, []]]);
   });
 
-  test.each([
-    'number',
-    'boolean',
-    'array',
-    'object',
-  ])('switching to %s clears values that type could never satisfy', async (target) => {
-    render(<FrontmatterSchemaFieldEditor file={FILE} />);
-    await userEvent.click(screen.getByTestId('frontmatter-field-type-status'));
-    await userEvent.click(await screen.findByRole('option', { name: target }));
-    expect(writes).toEqual([[FILE, 'status', { type: target, enum: null }, []]]);
-  });
+  test.each(['number', 'boolean', 'array', 'object'])(
+    'switching to %s clears values that type could never satisfy',
+    async (target) => {
+      render(<FrontmatterSchemaFieldEditor file={FILE} />);
+      await userEvent.click(screen.getByTestId('frontmatter-field-type-status'));
+      await userEvent.click(await screen.findByRole('option', { name: target }));
+      expect(writes).toEqual([[FILE, 'status', { type: target, enum: null }, []]]);
+    },
+  );
 
-  test.each([
-    'number',
-    'boolean',
-    'object',
-  ])('switching the element type to %s clears the element values', async (target) => {
-    render(<FrontmatterSchemaFieldEditor file={FILE} />);
-    await userEvent.click(screen.getByTestId('frontmatter-field-items-type-tags'));
-    await userEvent.click(await screen.findByRole('option', { name: target }));
-    expect(writes).toEqual([[FILE, 'tags', { itemsType: target, itemsEnum: null }, []]]);
-  });
+  test.each(['number', 'boolean', 'object'])(
+    'switching the element type to %s clears the element values',
+    async (target) => {
+      render(<FrontmatterSchemaFieldEditor file={FILE} />);
+      await userEvent.click(screen.getByTestId('frontmatter-field-items-type-tags'));
+      await userEvent.click(await screen.findByRole('option', { name: target }));
+      expect(writes).toEqual([[FILE, 'tags', { itemsType: target, itemsEnum: null }, []]]);
+    },
+  );
 
   test('entering an allowed element value on a typed array writes only that constraint', () => {
     mockLintData = lintDataWithSchema({
