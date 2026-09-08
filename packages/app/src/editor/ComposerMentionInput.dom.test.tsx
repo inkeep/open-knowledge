@@ -137,7 +137,12 @@ describe('serializeComposerContent / isComposerEmpty', () => {
 describe('ComposerMentionInput (component)', () => {
   test('renders an accessible textbox with the given name', () => {
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={() => {}} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
     );
     expect(screen.getByRole('textbox', { name: 'Ask AI' })).toBeTruthy();
   });
@@ -145,7 +150,12 @@ describe('ComposerMentionInput (component)', () => {
   test('Enter calls onSubmit; Shift+Enter does not', () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
 
@@ -160,6 +170,7 @@ describe('ComposerMentionInput (component)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Ask AI"
         onEmptyChange={() => {}}
@@ -178,6 +189,7 @@ describe('ComposerMentionInput (component)', () => {
     const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Describe"
         onEmptyChange={onEmptyChange}
@@ -198,6 +210,7 @@ describe('ComposerMentionInput (component)', () => {
     const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Describe"
         onEmptyChange={onEmptyChange}
@@ -214,6 +227,7 @@ describe('ComposerMentionInput (component)', () => {
     const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Claude"
         onEmptyChange={onEmptyChange}
@@ -229,6 +243,7 @@ describe('ComposerMentionInput (component)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Claude"
         onEmptyChange={() => {}}
@@ -254,6 +269,7 @@ describe('ComposerMentionInput (component)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     const { rerender } = render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Claude"
         placeholder="Resuming the chat"
@@ -271,6 +287,7 @@ describe('ComposerMentionInput (component)', () => {
 
     rerender(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Claude"
         placeholder="Resuming the chat"
@@ -287,6 +304,7 @@ describe('ComposerMentionInput (component)', () => {
     const onContentChange = vi.fn(() => {});
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ariaLabel="Ask AI"
         onEmptyChange={() => {}}
         onContentChange={onContentChange}
@@ -299,6 +317,7 @@ describe('ComposerMentionInput (component)', () => {
   test('a placeholder adds the data-placeholder hint while the field is empty', () => {
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ariaLabel="Describe"
         placeholder="A wiki"
         onEmptyChange={() => {}}
@@ -313,6 +332,7 @@ describe('ComposerMentionInput (component)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Ask AI"
         onEmptyChange={() => {}}
@@ -350,6 +370,7 @@ describe('ComposerMentionInput (component)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Ask AI"
         onEmptyChange={() => {}}
@@ -399,7 +420,12 @@ describe('ComposerMentionInput (component)', () => {
     registerEditor('some-doc', docEditor);
     try {
       render(
-        <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={() => {}} />,
+        <ComposerMentionInput
+          attachmentDrop={{ kind: 'host' }}
+          ariaLabel="Ask AI"
+          onEmptyChange={() => {}}
+          onSubmit={() => {}}
+        />,
       );
       expect(getEditorForDoc('some-doc')).toBe(docEditor);
     } finally {
@@ -454,7 +480,12 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   test('Enter submits while the popup is closed', () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
@@ -467,7 +498,12 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   test('Enter does NOT submit while the @-popup holds a selectable item', async () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
@@ -483,7 +519,12 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   test('Enter over an open @-popup with NO selectable item submits — never splits', async () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
@@ -500,7 +541,12 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   test('Enter resumes submitting once the popup closes', async () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
@@ -521,6 +567,7 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     const onEscape = vi.fn(() => {});
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ariaLabel="Ask AI"
         onEmptyChange={() => {}}
         onSubmit={() => {}}
@@ -546,7 +593,12 @@ describe('ComposerMentionInput — Enter during IME composition', () => {
   test('neither guard half lets a composition Enter submit; a plain Enter does', () => {
     const onSubmit = vi.fn(() => {});
     render(
-      <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={onSubmit}
+      />,
     );
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
@@ -570,7 +622,14 @@ describe('ComposerMentionInput — Enter during IME composition', () => {
 describe('ComposerMentionInput — setText round-trips the text it was given', () => {
   test('newlines survive, and angle brackets are not parsed as markup', () => {
     const ref = createRef<ComposerMentionInputHandle>();
-    render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={() => {}} />);
+    render(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ref={ref}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+      />,
+    );
 
     const seeded = 'first line\nsecond <b>line</b>\n\nfourth line';
     act(() => ref.current?.setText(seeded));
@@ -581,7 +640,14 @@ describe('ComposerMentionInput — setText round-trips the text it was given', (
   test('seeding announces emptiness, the way appending does', () => {
     const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     const ref = createRef<ComposerMentionInputHandle>();
-    render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={onEmptyChange} />);
+    render(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ref={ref}
+        ariaLabel="Ask AI"
+        onEmptyChange={onEmptyChange}
+      />,
+    );
 
     onEmptyChange.mockClear();
     act(() => ref.current?.setText('some words'));

@@ -970,6 +970,7 @@
     ],
     "9fhQRL": ["Canal bêta"],
     "9fvog2": ["Aperçu indisponible : ", ["errorDetail"]],
+    "9gu0n7": ["Type de fichier non pris en charge : ", ["fileType"], "."],
     "9hEdtC": [
       "Celle-ci apprend à vos outils IA à travailler avec OpenKnowledge. Elle vit dans le dossier du projet, elle s'installe donc pour toute personne qui ouvre le projet."
     ],
@@ -1534,6 +1535,11 @@
     "FjkaiT": ["Zoom arrière"],
     "Fjz6aJ": ["Envoyer dans un nouveau chat"],
     "FqGWeR": ["Impossible de joindre le registre des agents."],
+    "FqMKq2": [
+      "Seules les images PNG, JPEG, GIF et WebP sont prises en charge (",
+      ["mimeType"],
+      " reçu)."
+    ],
     "FqTpiN": ["Wiki des oiseaux"],
     "Fqr8BP": ["Visionneuse PDF multipage avec barre d'outils (miniatures, navigation, zoom)."],
     "Fqx38P": ["Qu'est-ce qui vous a gêné ?"],
@@ -1573,6 +1579,10 @@
     "G7-rf8": ["Erreur de syntaxe du motif : ", ["message"]],
     "G7bn_N": ["Démarrer un agent"],
     "G7cMuO": ["Aperçu HTML"],
+    "G7gMiG": [
+      ["0"],
+      " s'exécute dans un terminal et n'accepte pas les pièces jointes — choisissez un agent intégré à l'app."
+    ],
     "G8t9NN": ["Ajouter une propriété"],
     "GA-UkN": ["Type de ", ["keyName"], " : ", ["typeLabel"], ". Cliquez pour changer."],
     "GAohqx": ["Supprimer la colonne"],
@@ -1640,6 +1650,9 @@
     ],
     "Gfr4fu": ["Le serveur ne peut pas ouvrir de documents"],
     "GhjUB_": ["Reconnecté"],
+    "Gi8Akx": [
+      "Aucun agent n'est encore configuré — pour joindre des fichiers, ajoutez un agent intégré à l'app dans Connexions des agents."
+    ],
     "GidGkh": ["Mettre à jour depuis la source"],
     "GifIjR": [
       "La compétence « ",
@@ -1916,6 +1929,10 @@
       "OpenKnowledge n’a pas pu lire terminal.shell dans .ok/local/config.yml. Un shell Windows disponible sera utilisé à la place."
     ],
     "K9J00P": ["Échec du clonage — erreur de connexion"],
+    "K9ViCA": [
+      ["name"],
+      " se trouve hors de l'espace de travail. Déplacez-le d'abord dans votre projet."
+    ],
     "KDrbNG": ["OpenKnowledge a consulté les liens de ", ["subject"]],
     "KDuPiY": ["Envoi de ", ["fileName"]],
     "KDw4GX": ["Réessayer"],
@@ -1945,6 +1962,13 @@
     "KZLdgR": ["Voir <0>#design-docs</0> pour les dernières spécifications."],
     "K_vT1F": ["Synchronisation amont"],
     "KaFCD3": ["Ouvre ce lien dans un nouvel onglet et réduit le graphe."],
+    "Kb08WL": [
+      "Le fichier est trop volumineux (",
+      ["sizeKb"],
+      " KB) — chaque pièce jointe est limitée à ",
+      ["limitKb"],
+      " KB. Recadrez-le ou réduisez sa taille, puis réessayez."
+    ],
     "Kbz9RK": ["Numéro de port fixe"],
     "Kdvukk": ["Les vérifications Markdown ne s’appliquent pas à ce fichier."],
     "KeXgA-": [
@@ -2128,6 +2152,17 @@
     "M9597s": ["Préparation de l'URL de partage…"],
     "MBKkUy": [
       "skills.sh est indisponible ; affichage des résultats GitHub (sans classement par installations)."
+    ],
+    "MBfjUk": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Envoi de ", "#", " pièce jointe"],
+          "many": ["Envoi de ", "#", " pièces jointes"],
+          "other": ["Envoi de ", "#", " pièces jointes"]
+        }
+      ]
     ],
     "MCjC9A": ["Supprimer ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Difficile à utiliser"],
@@ -2709,6 +2744,7 @@
         { "one": ["#", " erreur"], "many": ["#", " erreurs"], "other": ["#", " erreurs"] }
       ]
     ],
+    "SgAFuo": ["Impossible de joindre des fichiers ici."],
     "SgKLfA": ["Non connecté à GitHub."],
     "Sh3Qkg": ["Aucune branche correspondante."],
     "Si7mIR": ["Créer un rapport"],
@@ -3661,6 +3697,10 @@
       "Tant que vous êtes déconnecté, les mises à jour sont recherchées au plus toutes les 3 minutes, quel que soit ce réglage."
     ],
     "cIptmH": ["Dans l'application Claude Desktop"],
+    "cK5W4m": [
+      ["0"],
+      " s'ouvre via un lien et n'accepte pas les pièces jointes — choisissez un agent intégré à l'app."
+    ],
     "cLP0Lf": ["Source de compétence distante"],
     "cLn264": ["Impossible de lire ce fichier de thème"],
     "cMMb6H": [["imported"], " installées, mais ", ["failed"], " ont échoué : ", ["failedNames"]],
@@ -3758,6 +3798,17 @@
       "L'écriture de ce fichier a échoué. Consultez le journal d'OpenKnowledge pour en connaître la raison."
     ],
     "dD7NPy": ["Plan"],
+    "dDBZ0j": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " pièce jointe prête à envoyer"],
+          "many": ["#", " pièces jointes prêtes à envoyer"],
+          "other": ["#", " pièces jointes prêtes à envoyer"]
+        }
+      ]
+    ],
     "dDpCOp": [
       "Renommage réussi, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"
     ],
@@ -3778,6 +3829,32 @@
     "dOHMA0": ["Échec du déplacement"],
     "dOxPd4": ["Note de bas de page"],
     "dQHSCs": ["Convertir (supprimer l'original)"],
+    "dRCAgQ": [
+      [
+        "tooLargeTotalCount",
+        "plural",
+        {
+          "one": [
+            "#",
+            " fichier ignoré — les pièces jointes ne peuvent pas dépasser ",
+            ["budgetKb"],
+            " KB au total par message."
+          ],
+          "many": [
+            "#",
+            " fichiers ignorés — les pièces jointes ne peuvent pas dépasser ",
+            ["budgetKb"],
+            " KB au total par message."
+          ],
+          "other": [
+            "#",
+            " fichiers ignorés — les pièces jointes ne peuvent pas dépasser ",
+            ["budgetKb"],
+            " KB au total par message."
+          ]
+        }
+      ]
+    ],
     "dSORvE": ["Arrête l’exécution en cours et envoie ceci à la place"],
     "dT-HIQ": ["Trop de références en direct sur cette page. Ce tableau n'a pas été chargé."],
     "dTaauv": ["Raison : ", ["reason"]],
@@ -5095,6 +5172,10 @@
     "q63KUv": ["Ajouter MCP et la compétence"],
     "q7F5am": ["titre"],
     "q8aCbb": ["Deux versions de « ", ["0"], " » — source contre ", ["editor"]],
+    "q8tKSU": [
+      ["name"],
+      " n'a pas de chemin résoluble — l'agent ne peut lire que les fichiers situés dans l'espace de travail."
+    ],
     "qAQVSD": ["La réponse des titres de page n'était pas du JSON"],
     "qAhFeg": [
       ["userName"],
@@ -5129,6 +5210,9 @@
     "qSxaOz": ["Accepter leur suppression"],
     "qTT48-": [
       "Liens wiki comme [[Page]] — un moyen pris en charge de créer un lien ici, mais un lecteur externe ne résout rien et affiche les parenthèses."
+    ],
+    "qTULIf": [
+      "Cet agent n'accepte pas les pièces jointes — retirez-les ou choisissez un agent intégré à l'app."
     ],
     "qTcVwj": ["Parcourez ou envoyez une compétence pour ce projet."],
     "qTcZZu": [
@@ -5218,6 +5302,9 @@
     "rJVoVX": ["Résultats de recherche dans la source"],
     "rJm8-2": [
       "Impossible d’accéder au presse-papiers — le thème se trouve dans la zone ci-dessous."
+    ],
+    "rNi1kZ": [
+      "Les dossiers et les fichiers vides ne peuvent pas être joints — déposez les fichiers eux-mêmes."
     ],
     "rNifQd": ["Retirer la propriété"],
     "rQAQus": ["Impossible d'enregistrer le modèle : ", ["error"]],
@@ -5634,6 +5721,9 @@
     "vPLUCm": ["Image ", ["identity"], " manquante. Accéder à la référence."],
     "vPXOUw": ["Basculer l'affichage de la source"],
     "vQIVHc": ["Propriétés du dossier"],
+    "vQOuVY": [
+      "Les pièces jointes ne sont pas encore disponibles dans les fenêtres de notes — utilisez la fenêtre principale pour joindre des fichiers."
+    ],
     "vUP_HF": [
       "Sans outil d'IA connecté, ",
       [

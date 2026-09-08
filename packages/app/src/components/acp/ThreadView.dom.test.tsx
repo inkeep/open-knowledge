@@ -2,6 +2,7 @@ import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol
 import {
   act,
   cleanup,
+  createEvent,
   fireEvent,
   render as rtlRender,
   screen,
@@ -11,6 +12,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
 import type {
   RenderedItem,
   RenderedTerminal,
@@ -2903,5 +2905,157 @@ describe('ThreadView plan approval wiring (PRD-8022)', () => {
     model = makeModel({ plan, turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready', archived: true })} />);
     expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
+  });
+});
+
+describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
+  const makeDropTransfer = (files: readonly File[]) => ({
+    types: ['Files'],
+    files,
+    items: files.map((file) => ({ kind: 'file', getAsFile: () => file })),
+    dropEffect: 'copy',
+  });
+
+  const fireDrop = (files: readonly File[]) => {
+    const root = document.querySelector('[data-agent-thread-root]');
+    if (root === null) throw new Error('agent-thread-root not mounted');
+    act(() => {
+      fireEvent.drop(root, { dataTransfer: makeDropTransfer(files) });
+    });
+  };
+
+  const overBudgetPng = (name: string) =>
+    new File([new Uint8Array(Math.ceil(MAX_TOTAL_ATTACHMENT_BYTES * 0.6))], name, {
+      type: 'image/png',
+    });
+
+  const smallPng = (name: string) =>
+    new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, { type: 'image/png' });
+
+  test('interleaved drops cannot stack attachments past the aggregate byte budget', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+
+    fireDrop([overBudgetPng('one.png')]);
+    fireDrop([overBudgetPng('two.png')]);
+
+    const notice = await screen.findByTestId('agent-thread-drop-notice');
+    await waitFor(() => expect(notice.textContent).toContain("can't total more than"));
+    expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1);
+  });
+
+  test('a mixed-cause drop reports both the skip and the budget refusal in one notice', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+
+    fireDrop([
+      overBudgetPng('one.png'),
+      overBudgetPng('two.png'),
+      new File(['content'], 'notes.txt', { type: 'text/plain' }),
+    ]);
+
+    const notice = await screen.findByTestId('agent-thread-drop-notice');
+    await waitFor(() => expect(notice.textContent).toContain("can't total more than"));
+    expect(notice.textContent).toContain("can't attach files by path");
+  });
+
+  test('Enter during an in-flight read is held — the attachment survives to ride the send once it settles', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const composer = screen.getByTestId('agent-thread-composer');
+
+    fireEvent.change(composer, { target: { value: 'first prompt' } });
+    fireDrop([smallPng('late.png')]);
+    expect(screen.queryAllByTestId('agent-thread-pending-upload')).toHaveLength(1);
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Uploading');
+    fireEvent.keyDown(composer, { key: 'Enter' });
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId('agent-thread-pending-upload')).toHaveLength(1);
+
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
+    );
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).not.toContain('Uploading');
+
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith(
+      'thread-1',
+      'first prompt',
+      expect.arrayContaining([expect.objectContaining({ kind: 'image', name: 'late.png' })]),
+    );
+    expect(screen.queryByTestId('agent-thread-pending-images')).toBeNull();
+  });
+
+  test('Steer is held while an attachment read is in flight — nothing ships without the image', async () => {
+    model = makeModel({ items: [], turnActive: true });
+    render(
+      <ThreadView info={makeInfo({ status: 'running', promptCapabilities: { image: true } })} />,
+    );
+    const composer = screen.getByTestId('agent-thread-composer');
+
+    fireEvent.change(composer, { target: { value: 'actually, do this instead' } });
+    fireDrop([smallPng('late.png')]);
+    expect(screen.queryAllByTestId('agent-thread-pending-upload')).toHaveLength(1);
+
+    const steerButton = screen.getByTestId('agent-thread-steer');
+    expect(steerButton).toHaveProperty('disabled', true);
+    fireEvent.click(steerButton);
+
+    expect(steer).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId('agent-thread-pending-upload')).toHaveLength(1);
+  });
+
+  test('the send button waits for an in-flight read to settle', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const composer = screen.getByTestId('agent-thread-composer');
+    fireEvent.change(composer, { target: { value: 'describe the screenshot' } });
+
+    fireDrop([smallPng('shot.png')]);
+
+    expect(screen.getByTestId('agent-thread-send')).toHaveProperty('disabled', true);
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
+    );
+    expect(screen.getByTestId('agent-thread-send')).toHaveProperty('disabled', false);
+  });
+
+  test('the drop highlight survives a dragleave that bubbles from a child', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const root = document.querySelector('[data-agent-thread-root]');
+    if (root === null) throw new Error('agent-thread-root not mounted');
+    const child = screen.getByTestId('agent-thread-composer');
+    const dataTransfer = makeDropTransfer([smallPng('shot.png')]);
+
+    act(() => {
+      fireEvent.dragEnter(root, { dataTransfer });
+    });
+    expect(screen.queryByTestId('agent-thread-drop-overlay')).not.toBeNull();
+
+    const leaveToChild = createEvent.dragLeave(root, { dataTransfer });
+    Object.defineProperty(leaveToChild, 'relatedTarget', { value: child });
+    act(() => {
+      fireEvent.dragEnter(child, { dataTransfer });
+      fireEvent(root, leaveToChild);
+    });
+    expect(screen.queryByTestId('agent-thread-drop-overlay')).not.toBeNull();
+
+    act(() => {
+      fireEvent.dragLeave(root, { dataTransfer });
+    });
+    expect(screen.queryByTestId('agent-thread-drop-overlay')).toBeNull();
   });
 });

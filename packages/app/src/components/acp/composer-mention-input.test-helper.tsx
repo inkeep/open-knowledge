@@ -40,6 +40,7 @@ export function MockComposerMentionInput({
   };
   useImperativeHandle(ref, () => ({
     focus: () => localRef.current?.focus(),
+    refuseDrop: () => {},
     focusEnd: () => {
       const el = localRef.current;
       if (!el) return;

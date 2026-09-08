@@ -927,6 +927,7 @@
     ],
     "9fhQRL": ["Canal beta"],
     "9fvog2": ["Pré-visualização indisponível: ", ["errorDetail"]],
+    "9gu0n7": ["Tipo de arquivo não compatível: ", ["fileType"], "."],
     "9hEdtC": [
       "Esta ensina suas ferramentas de IA a trabalhar com o OpenKnowledge. Ela fica na pasta do projeto, então é instalada para todos que abrirem o projeto."
     ],
@@ -1476,6 +1477,11 @@
     "FjkaiT": ["Afastar"],
     "Fjz6aJ": ["Enviar para um novo chat"],
     "FqGWeR": ["Não deu para contatar o registro de agentes."],
+    "FqMKq2": [
+      "Apenas imagens PNG, JPEG, GIF e WebP são compatíveis (recebido ",
+      ["mimeType"],
+      ")."
+    ],
     "FqTpiN": ["Wiki de aves"],
     "Fqr8BP": [
       "Visualizador de PDF de várias páginas com controles na barra de ferramentas (miniaturas, navegação de páginas, zoom)."
@@ -1517,6 +1523,10 @@
     "G7-rf8": ["Erro de sintaxe no padrão: ", ["message"]],
     "G7bn_N": ["Iniciar um agente"],
     "G7cMuO": ["Pré-visualização do HTML"],
+    "G7gMiG": [
+      ["0"],
+      " roda em um terminal e não aceita anexos — escolha um agente integrado ao app."
+    ],
     "G8t9NN": ["Adicionar uma propriedade"],
     "GA-UkN": ["Tipo de ", ["keyName"], ": ", ["typeLabel"], ". Clique para alterar."],
     "GAohqx": ["Excluir coluna"],
@@ -1584,6 +1594,9 @@
     ],
     "Gfr4fu": ["O servidor não consegue abrir documentos"],
     "GhjUB_": ["Reconectado"],
+    "Gi8Akx": [
+      "Nenhum agente foi configurado ainda — para anexar arquivos, adicione um agente integrado ao app em Conexões de agentes."
+    ],
     "GidGkh": ["Atualizar pela fonte"],
     "GifIjR": [
       "A skill “",
@@ -1854,6 +1867,7 @@
       "O OpenKnowledge não conseguiu ler terminal.shell em .ok/local/config.yml. Um shell do Windows disponível será usado."
     ],
     "K9J00P": ["Falha ao clonar — erro de conexão"],
+    "K9ViCA": [["name"], " está fora do espaço de trabalho. Mova-o para o seu projeto primeiro."],
     "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
     "KDw4GX": ["Tente de novo"],
@@ -1883,6 +1897,13 @@
     "KZLdgR": ["Veja <0>#design-docs</0> para as especificações mais recentes."],
     "K_vT1F": ["Sincronização com o remoto"],
     "KaFCD3": ["Abre este link em uma nova aba e recolhe o grafo."],
+    "Kb08WL": [
+      "O arquivo é grande demais (",
+      ["sizeKb"],
+      " KB) — cada anexo tem limite de ",
+      ["limitKb"],
+      " KB. Recorte ou redimensione e tente novamente."
+    ],
     "Kbz9RK": ["Número de porta fixa"],
     "Kdvukk": ["As verificações de Markdown não se aplicam a este arquivo."],
     "KeXgA-": [
@@ -2060,6 +2081,17 @@
     "M9597s": ["Preparando a URL de compartilhamento..."],
     "MBKkUy": [
       "O skills.sh está indisponível; mostrando resultados do GitHub (sem classificação por instalações)."
+    ],
+    "MBfjUk": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Enviando ", "#", " anexo"],
+          "many": ["Enviando ", "#", " anexos"],
+          "other": ["Enviando ", "#", " anexos"]
+        }
+      ]
     ],
     "MCjC9A": ["Excluir ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Difícil de usar"],
@@ -2634,6 +2666,7 @@
         { "one": ["#", " erro"], "many": ["#", " erros"], "other": ["#", " erros"] }
       ]
     ],
+    "SgAFuo": ["Não é possível anexar arquivos aqui."],
     "SgKLfA": ["Não conectado ao GitHub."],
     "Sh3Qkg": ["Nenhum ramo corresponde."],
     "Si7mIR": ["Criar relatório"],
@@ -3540,6 +3573,10 @@
       "Enquanto você estiver desconectado, as atualizações são verificadas no máximo a cada 3 minutos, independentemente desta configuração."
     ],
     "cIptmH": ["No app Claude Desktop"],
+    "cK5W4m": [
+      ["0"],
+      " abre por um link e não aceita anexos — escolha um agente integrado ao app."
+    ],
     "cLP0Lf": ["Fonte remota de habilidades"],
     "cLn264": ["Não foi possível ler este arquivo de tema"],
     "cMMb6H": [["imported"], " instaladas, mas ", ["failed"], " falharam: ", ["failedNames"]],
@@ -3635,6 +3672,17 @@
       "Falha ao gravar este arquivo. Consulte o log do OpenKnowledge para saber o motivo."
     ],
     "dD7NPy": ["Estrutura"],
+    "dDBZ0j": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " anexo pronto para enviar"],
+          "many": ["#", " anexos prontos para enviar"],
+          "other": ["#", " anexos prontos para enviar"]
+        }
+      ]
+    ],
     "dDpCOp": [
       "A renomeação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
     ],
@@ -3655,6 +3703,32 @@
     "dOHMA0": ["Falha ao mover"],
     "dOxPd4": ["Nota de rodapé"],
     "dQHSCs": ["Converter (excluir o original)"],
+    "dRCAgQ": [
+      [
+        "tooLargeTotalCount",
+        "plural",
+        {
+          "one": [
+            "#",
+            " arquivo ignorado — os anexos não podem passar de ",
+            ["budgetKb"],
+            " KB no total por mensagem."
+          ],
+          "many": [
+            "#",
+            " arquivos ignorados — os anexos não podem passar de ",
+            ["budgetKb"],
+            " KB no total por mensagem."
+          ],
+          "other": [
+            "#",
+            " arquivos ignorados — os anexos não podem passar de ",
+            ["budgetKb"],
+            " KB no total por mensagem."
+          ]
+        }
+      ]
+    ],
     "dSORvE": ["Interrompe a execução atual e envia isto no lugar"],
     "dT-HIQ": ["Referências ao vivo demais nesta página. Este quadro não foi carregado."],
     "dTaauv": ["Motivo: ", ["reason"]],
@@ -4933,6 +5007,10 @@
     "q63KUv": ["Adicionar MCP e habilidade"],
     "q7F5am": ["título"],
     "q8aCbb": ["Duas versões de \"", ["0"], "\" — a fonte contra ", ["editor"]],
+    "q8tKSU": [
+      ["name"],
+      " não tem um caminho resolvível — o agente só consegue ler arquivos dentro do espaço de trabalho."
+    ],
     "qAQVSD": ["A resposta dos títulos da página não era JSON"],
     "qAhFeg": [
       ["userName"],
@@ -4966,6 +5044,7 @@
     "qTT48-": [
       "Links Wiki como [[Page]] — uma forma suportada de vincular aqui, mas um leitor externo não resolve nada e mostra os colchetes."
     ],
+    "qTULIf": ["Este agente não aceita anexos — remova-os ou escolha um agente integrado ao app."],
     "qTcVwj": ["Procure ou envie uma habilidade para este projeto."],
     "qTcZZu": [
       "Falha ao carregar as tags. Pressione <0>Esc</0> e abra de novo para tentar outra vez."
@@ -5051,6 +5130,7 @@
     ],
     "rJVoVX": ["Resultados de busca no código"],
     "rJm8-2": ["Não foi possível acessar a área de transferência — o tema está na caixa abaixo."],
+    "rNi1kZ": ["Pastas e arquivos vazios não podem ser anexados — solte os próprios arquivos."],
     "rNifQd": ["Remover a propriedade"],
     "rQAQus": ["Não deu para salvar o modelo: ", ["error"]],
     "rQRrkB": ["ontem"],
@@ -5469,6 +5549,9 @@
     "vPLUCm": ["A imagem ", ["identity"], " está ausente. Ir para a referência."],
     "vPXOUw": ["Mostrar ou ocultar a visualização de código"],
     "vQIVHc": ["Propriedades da pasta"],
+    "vQOuVY": [
+      "Anexos ainda não estão disponíveis em janelas de nota — use a janela principal para anexar arquivos."
+    ],
     "vUP_HF": [
       "Sem uma ferramenta de IA conectada, ",
       [

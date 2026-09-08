@@ -180,6 +180,7 @@ export function CommentSelectionAffordance({
         ref={inputRef}
         ariaLabel={t`Add a comment`}
         placeholder={t`Add a comment`}
+        attachmentDrop={{ kind: 'refuse' }}
         onEmptyChange={setEmpty}
         onSubmit={post}
         onEscape={reset}

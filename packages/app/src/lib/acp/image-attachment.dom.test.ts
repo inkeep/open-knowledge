@@ -79,15 +79,17 @@ describe('describeImageError', () => {
     );
   });
 
-  test('too-large names the observed size + limit in MB', () => {
+  test('too-large states the observed size and the per-attachment cap in the same unit, plus a remedy', () => {
     const message = describeImageError({
       kind: 'too-large',
       sizeBytes: 8_000_000,
       limitBytes: 5 * 1024 * 1024,
     });
     expect(message).toContain('too large');
-    expect(message).toContain('7.6 MB');
-    expect(message).toContain('5.0 MB');
+    expect(message).toContain('7813 KB');
+    expect(message).not.toContain('MB');
+    expect(message).toContain('each attachment is capped at 5120 KB');
+    expect(message).toContain('Crop or resize');
   });
 });
 

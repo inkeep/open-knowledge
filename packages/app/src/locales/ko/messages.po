@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · 참조만(내용을 포함하지 않음)"
 
@@ -146,6 +146,12 @@ msgstr "(다른 규칙으로 이미 숨겨진 항목이 있을 수 있습니다)
 msgid "(symlink)"
 msgstr "(심볼릭 링크)"
 
+#. placeholder {0}: pendingAttachments.length
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {# attachment is ready to send} other {# attachments are ready to send}}"
+msgstr "{0, plural, other {첨부 #개를 보낼 준비가 되었습니다}}"
+
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0, plural, one {# backlink} other {# backlinks}}"
@@ -260,6 +266,13 @@ msgstr "{0, plural, other {플러그인}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, other {스킬}}"
 
+#. placeholder {0}: pendingUploads.length
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {Uploading # attachment} other {Uploading # attachments}}"
+msgstr "{0, plural, other {첨부 #개 업로드 중}}"
+
 #. placeholder {0}: sibling.name
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
@@ -353,6 +366,12 @@ msgstr "{0}개 선택됨 (전체 {1}개 프로젝트 중)"
 msgid "{0} of {1} selected"
 msgstr "{0}/{1} 선택됨"
 
+#. placeholder {0}: resolvedTarget.displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} opens via a link and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0}은(는) 링크로 열리므로 첨부를 받을 수 없습니다. 대신 앱 내 에이전트를 선택하세요."
+
 #. placeholder {0}: siblings.length
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "{0} other skills by this publisher"
@@ -380,6 +399,12 @@ msgstr "{0} 속성"
 #: src/components/SkillInstallMenu.tsx
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0}: {poolRootRel}을 통해 이 스킬을 읽는 중입니다. {1}이 \"{2}\"을 읽지 않게 하려면 클릭하세요. {subRoot}의 다른 스킬은 유지되고 {poolRootRel} 추적만 중단됩니다."
+
+#. placeholder {0}: TERMINAL_CLIS[selection.cli].displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} runs in a terminal and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0}은(는) 터미널에서 실행되므로 첨부를 받을 수 없습니다. 대신 앱 내 에이전트를 선택하세요."
 
 #. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -510,6 +535,7 @@ msgid "{agentName} couldn't start."
 msgstr "{agentName} 시작 실패."
 
 #: src/components/acp/ThreadView.tsx
+#: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName}: 이미지 첨부 미지원"
 
@@ -860,6 +886,14 @@ msgstr "{minutes}분 전"
 msgid "{name} CLI"
 msgstr "{name} CLI"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
+msgstr "{name}의 경로를 확인할 수 없습니다. 에이전트는 워크스페이스 안의 파일만 읽을 수 있습니다."
+
+#: src/lib/acp/image-attachment.ts
+msgid "{name} is outside the workspace. Move it into your project first."
+msgstr "{name}이(가) 워크스페이스 밖에 있습니다. 먼저 프로젝트 안으로 옮기세요."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, other {노드 #개}}"
@@ -873,6 +907,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, other {워크트리}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
 msgstr "{outsideWorkspaceCount, plural, other {워크스페이스 외부의 파일 #개를 건너뛰었습니다.}}"
 
@@ -975,6 +1010,7 @@ msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {스킬}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
 msgstr "{skipTotal, plural, other {첨부할 수 없는 파일 #개를 건너뛰었습니다.}}"
 
@@ -1019,6 +1055,11 @@ msgstr "{templateCount, plural, other {템플릿}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, other {토큰}}"
 
+#: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
+msgid "{tooLargeTotalCount, plural, one {Skipped # file — attachments can't total more than {budgetKb} KB per message.} other {Skipped # files — attachments can't total more than {budgetKb} KB per message.}}"
+msgstr "{tooLargeTotalCount, plural, other {파일 #개를 건너뛰었습니다. 메시지당 첨부 총합은 {budgetKb} KB를 넘을 수 없습니다.}}"
+
 #: src/components/file-tree-problem-indicators.ts
 msgid "{total, plural, one {# problem} other {# problems}}"
 msgstr "{total, plural, other {#개 문제}}"
@@ -1028,6 +1069,7 @@ msgid "{truncatedShownCount, plural, one {Showing the first item in one folder �
 msgstr "{truncatedShownCount, plural, other {한 폴더의 첫 {formattedCount}개 항목만 표시됩니다. 해당 폴더의 나머지 항목은 숨겨져 있습니다.}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
 msgstr "{unknownPathCount, plural, other {파일 #개를 건너뛰었습니다 — 이 브라우저는 경로로 파일을 첨부할 수 없습니다.}}"
 
@@ -2072,7 +2114,7 @@ msgstr "에셋 제안"
 msgid "Asset: {title}"
 msgstr "에셋: {title}"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "파일 첨부"
 
@@ -2084,6 +2126,10 @@ msgstr "이미지 첨부"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "첨부 파일"
+
+#: src/components/BottomComposer.tsx
+msgid "Attachments aren't available in note windows yet — use the main window to attach files."
+msgstr "노트 창에서는 아직 첨부를 사용할 수 없습니다. 메인 창에서 파일을 첨부하세요."
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -4052,6 +4098,7 @@ msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} 파일을 업로드하려고 Open Knowledge 서버에 연결할 수 없습니다."
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "Couldn't read {fileName}."
 msgstr "{fileName} 읽기 실패."
 
@@ -6042,6 +6089,10 @@ msgstr "파일 놓기 영역"
 msgid "File duplicated"
 msgstr "파일을 복제했습니다"
 
+#: src/lib/acp/image-attachment.ts
+msgid "File is too large ({sizeKb} KB) — each attachment is capped at {limitKb} KB. Crop or resize it and try again."
+msgstr "파일이 너무 큽니다({sizeKb} KB). 첨부 파일은 각각 {limitKb} KB로 제한됩니다. 잘라내거나 크기를 줄인 뒤 다시 시도하세요."
+
 #: src/components/NewItemDialog.tsx
 msgid "File name"
 msgstr "파일 이름"
@@ -6242,6 +6293,13 @@ msgstr "폴더 공유 링크가 복사되었습니다."
 #: src/components/LinksPanel.tsx
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "폴더 대상: {linkTitle}. 클릭하여 개요를 엽니다."
+
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "Folders and empty files can't be attached — drop the files themselves."
+msgstr "폴더와 빈 파일은 첨부할 수 없습니다. 파일 자체를 드롭하세요."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
@@ -8632,6 +8690,11 @@ msgstr "아직 설정된 에이전트 없음. 전송 메뉴에서 선택하세�
 msgid "no agents — saved, not installed anywhere"
 msgstr "에이전트 없음 — 저장만 되고 어디에도 설치되지 않음"
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
+msgstr "아직 설정된 에이전트가 없습니다. 파일을 첨부하려면 에이전트 연결에서 앱 내 에이전트를 추가하세요."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "사용 가능한 에이전트 없음."
@@ -9200,6 +9263,10 @@ msgstr "나만 보기"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr "수정된 항목만"
+
+#: src/lib/acp/image-attachment.ts
+msgid "Only PNG, JPEG, GIF, and WebP images are supported (got {mimeType})."
+msgstr "PNG, JPEG, GIF, WebP 이미지만 지원됩니다({mimeType}을(를) 받았습니다)."
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -10869,7 +10936,7 @@ msgstr "제거"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "{0} 제거"
@@ -13773,6 +13840,11 @@ msgstr "<0>{shareBranch}</0> 브랜치에서 공유된 {targetNoun}입니다. �
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "<0>{shareBranch}</0> 브랜치에서 공유된 {targetNoun}입니다. 현재 브랜치는 <1>{currentLabel}</1>입니다."
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "This agent doesn't accept attachments — remove them or choose an in-app agent."
+msgstr "이 에이전트는 첨부를 받을 수 없습니다. 첨부를 제거하거나 앱 내 에이전트를 선택하세요."
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent doesn't offer slash commands"
 msgstr "이 에이전트는 슬래시 명령을 제공하지 않습니다"
@@ -13827,6 +13899,12 @@ msgstr "Settings > AI tools & CLI에서 설정 가능"
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "이 댓글, 속성 전체에 적용됨"
+
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "This composer doesn't accept attachments."
+msgstr "여기에는 파일을 첨부할 수 없습니다."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "This conflict is resolved."
@@ -14654,6 +14732,10 @@ msgstr "해결할 수 없는 파일 {identity}. 참조로 이동합니다."
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "해결할 수 없는 이미지 {identity}. 참조로 이동합니다."
 
+#: src/lib/acp/image-attachment.ts
+msgid "Unsupported file type: {fileType}."
+msgstr "지원되지 않는 파일 형식: {fileType}."
+
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "제목 없는 보고서"
@@ -14794,6 +14876,7 @@ msgstr "\"{0}\"으로 업로드했습니다. 이름 \"{1}\"은 이미 사용 중
 msgid "Uploading"
 msgstr "업로드 중"
 
+#: src/components/acp/PendingImageStrip.tsx
 #: src/editor/image-upload/index.ts
 msgid "Uploading {fileName}"
 msgstr "{fileName} 업로드 중"

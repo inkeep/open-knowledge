@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · apenas referências (sem conteúdo incorporado)"
 
@@ -146,6 +146,12 @@ msgstr "(outras regras podem já ocultar alguns)"
 msgid "(symlink)"
 msgstr "(link simbólico)"
 
+#. placeholder {0}: pendingAttachments.length
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {# attachment is ready to send} other {# attachments are ready to send}}"
+msgstr "{0, plural, one {# anexo pronto para enviar} many {# anexos prontos para enviar} other {# anexos prontos para enviar}}"
+
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0, plural, one {# backlink} other {# backlinks}}"
@@ -260,6 +266,13 @@ msgstr "{0, plural, one {Plugin} many {Plugins} other {Plugins}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, one {Habilidade} many {Habilidades} other {Habilidades}}"
 
+#. placeholder {0}: pendingUploads.length
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {Uploading # attachment} other {Uploading # attachments}}"
+msgstr "{0, plural, one {Enviando # anexo} many {Enviando # anexos} other {Enviando # anexos}}"
+
 #. placeholder {0}: sibling.name
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
@@ -353,6 +366,12 @@ msgstr "{0} de {1} projetos selecionados"
 msgid "{0} of {1} selected"
 msgstr "{0} de {1} selecionados"
 
+#. placeholder {0}: resolvedTarget.displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} opens via a link and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0} abre por um link e não aceita anexos — escolha um agente integrado ao app."
+
 #. placeholder {0}: siblings.length
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "{0} other skills by this publisher"
@@ -380,6 +399,12 @@ msgstr "Propriedades de {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} lê esta habilidade por {poolRootRel}. Clique para que {1} deixe de receber \"{2}\" — {subRoot} mantém as outras habilidades, mas deixa de seguir {poolRootRel}."
+
+#. placeholder {0}: TERMINAL_CLIS[selection.cli].displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} runs in a terminal and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0} roda em um terminal e não aceita anexos — escolha um agente integrado ao app."
 
 #. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -510,6 +535,7 @@ msgid "{agentName} couldn't start."
 msgstr "{agentName} não conseguiu iniciar."
 
 #: src/components/acp/ThreadView.tsx
+#: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} não aceita anexos de imagem."
 
@@ -860,6 +886,14 @@ msgstr "há {minutes} min"
 msgid "{name} CLI"
 msgstr "CLI do {name}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
+msgstr "{name} não tem um caminho resolvível — o agente só consegue ler arquivos dentro do espaço de trabalho."
+
+#: src/lib/acp/image-attachment.ts
+msgid "{name} is outside the workspace. Move it into your project first."
+msgstr "{name} está fora do espaço de trabalho. Mova-o para o seu projeto primeiro."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# nó} many {# nós} other {# nós}}"
@@ -873,6 +907,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} many {worktrees} other {worktrees}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
 msgstr "{outsideWorkspaceCount, plural, one {# arquivo fora do espaço de trabalho ignorado.} many {# arquivos fora do espaço de trabalho ignorados.} other {# arquivos fora do espaço de trabalho ignorados.}}"
 
@@ -975,6 +1010,7 @@ msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {habilidade} many {habilidades} other {habilidades}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
 msgstr "{skipTotal, plural, one {# arquivo ignorado, não foi possível anexar.} many {# arquivos ignorados, não foi possível anexar.} other {# arquivos ignorados, não foi possível anexar.}}"
 
@@ -1019,6 +1055,11 @@ msgstr "{templateCount, plural, one {modelo} many {modelos} other {modelos}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, one {token} many {tokens} other {tokens}}"
 
+#: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
+msgid "{tooLargeTotalCount, plural, one {Skipped # file — attachments can't total more than {budgetKb} KB per message.} other {Skipped # files — attachments can't total more than {budgetKb} KB per message.}}"
+msgstr "{tooLargeTotalCount, plural, one {# arquivo ignorado — os anexos não podem passar de {budgetKb} KB no total por mensagem.} many {# arquivos ignorados — os anexos não podem passar de {budgetKb} KB no total por mensagem.} other {# arquivos ignorados — os anexos não podem passar de {budgetKb} KB no total por mensagem.}}"
+
 #: src/components/file-tree-problem-indicators.ts
 msgid "{total, plural, one {# problem} other {# problems}}"
 msgstr "{total, plural, one {# problema} many {# problemas} other {# problemas}}"
@@ -1028,6 +1069,7 @@ msgid "{truncatedShownCount, plural, one {Showing the first item in one folder �
 msgstr "{truncatedShownCount, plural, one {Mostrando o primeiro item de uma pasta — o resto dessa pasta está oculto.} many {Mostrando os primeiros {formattedCount} itens de uma pasta — o resto dessa pasta está oculto.} other {Mostrando os primeiros {formattedCount} itens de uma pasta — o resto dessa pasta está oculto.}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
 msgstr "{unknownPathCount, plural, one {# arquivo ignorado — este navegador não pode anexar arquivos por caminho.} many {# arquivos ignorados — este navegador não pode anexar arquivos por caminho.} other {# arquivos ignorados — este navegador não pode anexar arquivos por caminho.}}"
 
@@ -2068,7 +2110,7 @@ msgstr "Sugestões de recursos"
 msgid "Asset: {title}"
 msgstr "Recurso: {title}"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "Anexar um arquivo"
 
@@ -2080,6 +2122,10 @@ msgstr "Anexar imagens"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "Anexos"
+
+#: src/components/BottomComposer.tsx
+msgid "Attachments aren't available in note windows yet — use the main window to attach files."
+msgstr "Anexos ainda não estão disponíveis em janelas de nota — use a janela principal para anexar arquivos."
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -4048,6 +4094,7 @@ msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "Não deu para contatar o servidor do Open Knowledge para enviar {fileName}."
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "Couldn't read {fileName}."
 msgstr "Não foi possível ler {fileName}."
 
@@ -6038,6 +6085,10 @@ msgstr "Área para soltar arquivos"
 msgid "File duplicated"
 msgstr "Arquivo duplicado"
 
+#: src/lib/acp/image-attachment.ts
+msgid "File is too large ({sizeKb} KB) — each attachment is capped at {limitKb} KB. Crop or resize it and try again."
+msgstr "O arquivo é grande demais ({sizeKb} KB) — cada anexo tem limite de {limitKb} KB. Recorte ou redimensione e tente novamente."
+
 #: src/components/NewItemDialog.tsx
 msgid "File name"
 msgstr "Nome do arquivo"
@@ -6238,6 +6289,13 @@ msgstr "Link de compartilhamento da pasta copiado."
 #: src/components/LinksPanel.tsx
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Pasta de destino: {linkTitle}. Clique para abrir a visão geral."
+
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "Folders and empty files can't be attached — drop the files themselves."
+msgstr "Pastas e arquivos vazios não podem ser anexados — solte os próprios arquivos."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
@@ -8628,6 +8686,11 @@ msgstr "Nenhum agente foi configurado ainda — escolha um no menu de envio."
 msgid "no agents — saved, not installed anywhere"
 msgstr "nenhum agente — salvas, não instaladas em lugar algum"
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
+msgstr "Nenhum agente foi configurado ainda — para anexar arquivos, adicione um agente integrado ao app em Conexões de agentes."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "Nenhum agente disponível."
@@ -9196,6 +9259,10 @@ msgstr "Somente eu"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr "Somente os modificados"
+
+#: src/lib/acp/image-attachment.ts
+msgid "Only PNG, JPEG, GIF, and WebP images are supported (got {mimeType})."
+msgstr "Apenas imagens PNG, JPEG, GIF e WebP são compatíveis (recebido {mimeType})."
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -10865,7 +10932,7 @@ msgstr "Remover"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "Remover {0}"
@@ -13769,6 +13836,11 @@ msgstr "Este {targetNoun} foi compartilhado a partir do ramo <0>{shareBranch}</0
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "Este {targetNoun} foi compartilhado a partir do ramo <0>{shareBranch}</0>. Você está agora em <1>{currentLabel}</1>."
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "This agent doesn't accept attachments — remove them or choose an in-app agent."
+msgstr "Este agente não aceita anexos — remova-os ou escolha um agente integrado ao app."
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent doesn't offer slash commands"
 msgstr "Este agente não oferece comandos de barra"
@@ -13823,6 +13895,12 @@ msgstr "Isto pode ser configurado em Configurações > Ferramentas de IA e CLI"
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "Este comentário é sobre a propriedade inteira"
+
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "This composer doesn't accept attachments."
+msgstr "Não é possível anexar arquivos aqui."
 
 #: src/components/DiffViewBoundary.tsx
 msgid "This conflict is resolved."
@@ -14650,6 +14728,10 @@ msgstr "Não foi possível resolver o arquivo {identity}. Ir para a referência.
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "Não foi possível resolver a imagem {identity}. Ir para a referência."
 
+#: src/lib/acp/image-attachment.ts
+msgid "Unsupported file type: {fileType}."
+msgstr "Tipo de arquivo não compatível: {fileType}."
+
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "Relatório sem título"
@@ -14790,6 +14872,7 @@ msgstr "Enviado como \"{0}\" — o nome \"{1}\" já estava em uso."
 msgid "Uploading"
 msgstr "Enviando"
 
+#: src/components/acp/PendingImageStrip.tsx
 #: src/editor/image-upload/index.ts
 msgid "Uploading {fileName}"
 msgstr "Enviando {fileName}"

@@ -943,6 +943,7 @@
     ],
     "9fhQRL": ["Canal beta"],
     "9fvog2": ["Vista previa no disponible: ", ["errorDetail"]],
+    "9gu0n7": ["Tipo de archivo no admitido: ", ["fileType"], "."],
     "9hEdtC": [
       "Esta enseña a tus herramientas de IA a trabajar con OpenKnowledge. Vive en la carpeta del proyecto, así que se instala para todos los que abran el proyecto."
     ],
@@ -1502,6 +1503,7 @@
     "FjkaiT": ["Alejar"],
     "Fjz6aJ": ["Enviar a un chat nuevo"],
     "FqGWeR": ["No se pudo contactar con el registro de agentes."],
+    "FqMKq2": ["Solo se admiten imágenes PNG, JPEG, GIF y WebP (se recibió ", ["mimeType"], ")."],
     "FqTpiN": ["Wiki de aves"],
     "Fqr8BP": [
       "Visor de PDF de varias páginas con controles en la barra de herramientas (miniaturas, navegación de páginas, zoom)."
@@ -1543,6 +1545,10 @@
     "G7-rf8": ["Error de sintaxis en el patrón: ", ["message"]],
     "G7bn_N": ["Iniciar un agente"],
     "G7cMuO": ["Vista previa del HTML"],
+    "G7gMiG": [
+      ["0"],
+      " se ejecuta en una terminal y no acepta adjuntos — elige un agente integrado en la app."
+    ],
     "G8t9NN": ["Añadir una propiedad"],
     "GA-UkN": ["Tipo de ", ["keyName"], ": ", ["typeLabel"], ". Haz clic para cambiarlo."],
     "GAohqx": ["Eliminar columna"],
@@ -1608,6 +1614,9 @@
     ],
     "Gfr4fu": ["El servidor no puede abrir documentos"],
     "GhjUB_": ["Reconectado"],
+    "Gi8Akx": [
+      "Todavía no hay ningún agente configurado: para adjuntar archivos, añade un agente integrado en la app desde Conexiones de agentes."
+    ],
     "GidGkh": ["Actualizar desde el origen"],
     "GifIjR": [
       "No se instaló la skill «",
@@ -1886,6 +1895,7 @@
       "OpenKnowledge no pudo leer terminal.shell en .ok/local/config.yml. Se usará un shell de Windows disponible."
     ],
     "K9J00P": ["No se pudo clonar: error de conexión"],
+    "K9ViCA": [["name"], " está fuera del espacio de trabajo. Muévelo primero a tu proyecto."],
     "KDrbNG": ["OpenKnowledge consultó los enlaces de ", ["subject"]],
     "KDuPiY": ["Subiendo ", ["fileName"]],
     "KDw4GX": ["Inténtalo de nuevo"],
@@ -1915,6 +1925,13 @@
     "KZLdgR": ["Consulta <0>#design-docs</0> para ver las últimas especificaciones."],
     "K_vT1F": ["Sincronización con el remoto"],
     "KaFCD3": ["Abre este enlace en una pestaña nueva y contrae el grafo."],
+    "Kb08WL": [
+      "El archivo es demasiado grande (",
+      ["sizeKb"],
+      " KB) — cada adjunto tiene un límite de ",
+      ["limitKb"],
+      " KB. Recórtalo o redimensiónalo y vuelve a intentarlo."
+    ],
     "Kbz9RK": ["Número de puerto fijo"],
     "Kdvukk": ["Las comprobaciones de Markdown no se aplican a este archivo."],
     "KeXgA-": [
@@ -2098,6 +2115,17 @@
     "M9597s": ["Preparando la URL para compartir..."],
     "MBKkUy": [
       "skills.sh no está disponible; se muestran resultados de GitHub (sin clasificación por instalaciones)."
+    ],
+    "MBfjUk": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Subiendo ", "#", " adjunto"],
+          "many": ["Subiendo ", "#", " adjuntos"],
+          "other": ["Subiendo ", "#", " adjuntos"]
+        }
+      ]
     ],
     "MCjC9A": ["Eliminar ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Difícil de usar"],
@@ -2682,6 +2710,7 @@
         { "one": ["#", " error"], "many": ["#", " errores"], "other": ["#", " errores"] }
       ]
     ],
+    "SgAFuo": ["Aquí no se pueden adjuntar archivos."],
     "SgKLfA": ["No hay conexión con GitHub."],
     "Sh3Qkg": ["Ninguna rama coincide."],
     "Si7mIR": ["Crear informe"],
@@ -3623,6 +3652,10 @@
       "Mientras tengas la sesión cerrada, las actualizaciones se buscan como mucho cada 3 minutos, independientemente de este ajuste."
     ],
     "cIptmH": ["En la aplicación Claude Desktop"],
+    "cK5W4m": [
+      ["0"],
+      " se abre mediante un enlace y no acepta adjuntos — elige un agente integrado en la app."
+    ],
     "cLP0Lf": ["Origen remoto de habilidades"],
     "cLn264": ["No se pudo leer este archivo de tema"],
     "cMMb6H": [
@@ -3721,6 +3754,17 @@
       "No se pudo escribir este archivo. Consulta el registro de OpenKnowledge para conocer el motivo."
     ],
     "dD7NPy": ["Esquema"],
+    "dDBZ0j": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " adjunto listo para enviar"],
+          "many": ["#", " adjuntos listos para enviar"],
+          "other": ["#", " adjuntos listos para enviar"]
+        }
+      ]
+    ],
     "dDpCOp": [
       "Se renombró correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
     ],
@@ -3741,6 +3785,35 @@
     "dOHMA0": ["No se pudo mover"],
     "dOxPd4": ["Nota al pie"],
     "dQHSCs": ["Convertir (eliminar el original)"],
+    "dRCAgQ": [
+      [
+        "tooLargeTotalCount",
+        "plural",
+        {
+          "one": [
+            "Se omitió ",
+            "#",
+            " archivo — los adjuntos no pueden superar ",
+            ["budgetKb"],
+            " KB en total por mensaje."
+          ],
+          "many": [
+            "Se omitieron ",
+            "#",
+            " archivos — los adjuntos no pueden superar ",
+            ["budgetKb"],
+            " KB en total por mensaje."
+          ],
+          "other": [
+            "Se omitieron ",
+            "#",
+            " archivos — los adjuntos no pueden superar ",
+            ["budgetKb"],
+            " KB en total por mensaje."
+          ]
+        }
+      ]
+    ],
     "dSORvE": ["Detiene la ejecución actual y envía esto en su lugar"],
     "dT-HIQ": ["Demasiadas referencias en vivo en esta página. Esta pizarra no se cargó."],
     "dTaauv": ["Motivo: ", ["reason"]],
@@ -5036,6 +5109,10 @@
     "q63KUv": ["Añadir MCP y habilidad"],
     "q7F5am": ["título"],
     "q8aCbb": ["Dos versiones de \"", ["0"], "\": el origen frente a ", ["editor"]],
+    "q8tKSU": [
+      ["name"],
+      " no tiene una ruta resoluble — el agente solo puede leer archivos dentro del espacio de trabajo."
+    ],
     "qAQVSD": ["La respuesta de los encabezados de página no era JSON"],
     "qAhFeg": [
       ["userName"],
@@ -5071,6 +5148,7 @@
     "qTT48-": [
       "Enlaces wiki como [[Page]]: una forma compatible de vincular aquí, pero un lector externo no resuelve nada y muestra los corchetes."
     ],
+    "qTULIf": ["Este agente no acepta adjuntos — quítalos o elige un agente integrado en la app."],
     "qTcVwj": ["Busca o sube una habilidad para este proyecto."],
     "qTcZZu": [
       "No se pudieron cargar las etiquetas. Pulsa <0>Esc</0> y vuelve a abrirlo para reintentarlo."
@@ -5156,6 +5234,7 @@
     ],
     "rJVoVX": ["Resultados de búsqueda en el código"],
     "rJm8-2": ["No se pudo acceder al portapapeles — el tema está en el cuadro de abajo."],
+    "rNi1kZ": ["No se pueden adjuntar carpetas ni archivos vacíos — suelta los archivos en sí."],
     "rNifQd": ["Quitar la propiedad"],
     "rQAQus": ["No se pudo guardar la plantilla: ", ["error"]],
     "rQRrkB": ["ayer"],
@@ -5572,6 +5651,9 @@
     "vPLUCm": ["Falta la imagen ", ["identity"], ". Ir a la referencia."],
     "vPXOUw": ["Mostrar u ocultar la vista de código"],
     "vQIVHc": ["Propiedades de la carpeta"],
+    "vQOuVY": [
+      "Los adjuntos aún no están disponibles en las ventanas de notas — usa la ventana principal para adjuntar archivos."
+    ],
     "vUP_HF": [
       "Sin una herramienta de IA conectada, no se instalarán ",
       [

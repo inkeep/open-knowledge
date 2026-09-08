@@ -966,6 +966,8 @@ export function SessionsHost({
       threadLaunch.prompt,
       threadLaunch.docName,
       threadLaunch.titleHint,
+      null,
+      threadLaunch.attachments ?? undefined,
     ).then((outcome) => {
       if (outcome === 'deduped') {
         toast.error(t`Already starting a chat with this agent — try again in a moment.`);

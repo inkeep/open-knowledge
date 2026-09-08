@@ -44,6 +44,7 @@ describe('note-window main action routing', () => {
       prompt: 'Review this note',
       docName: 'notes/alpha',
       titleHint: 'Review',
+      attachments: null,
     });
     requestTerminalLaunch('Review this note', 'codex', { stage: false });
 

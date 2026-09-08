@@ -13,7 +13,7 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · শুধু রেফারেন্স (কোনো এম্বেড করা বিষয়বস্তু নেই)"
 
@@ -146,6 +146,12 @@ msgstr "(কিছু হয়তো অন্য নিয়মে আগে�
 msgid "(symlink)"
 msgstr "(সিমলিংক)"
 
+#. placeholder {0}: pendingAttachments.length
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {# attachment is ready to send} other {# attachments are ready to send}}"
+msgstr "{0, plural, one {# সংযুক্তি পাঠানোর জন্য প্রস্তুত} other {# সংযুক্তি পাঠানোর জন্য প্রস্তুত}}"
+
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "{0, plural, one {# backlink} other {# backlinks}}"
@@ -260,6 +266,13 @@ msgstr "{0, plural, one {প্লাগইন} other {প্লাগইন}}"
 msgid "{0, plural, one {Skill} other {Skills}}"
 msgstr "{0, plural, one {স্কিল} other {স্কিল}}"
 
+#. placeholder {0}: pendingUploads.length
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0, plural, one {Uploading # attachment} other {Uploading # attachments}}"
+msgstr "{0, plural, one {# সংযুক্তি আপলোড হচ্ছে} other {# সংযুক্তি আপলোড হচ্ছে}}"
+
 #. placeholder {0}: sibling.name
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
@@ -353,6 +366,12 @@ msgstr "{1}টির মধ্যে {0}টি প্রকল্প নির�
 msgid "{0} of {1} selected"
 msgstr "{1}টির মধ্যে {0}টি নির্বাচিত"
 
+#. placeholder {0}: resolvedTarget.displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} opens via a link and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0} একটি লিংকের মাধ্যমে খোলে এবং সংযুক্তি গ্রহণ করে না — এর বদলে অ্যাপের ভেতরের এজেন্ট বেছে নিন।"
+
 #. placeholder {0}: siblings.length
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "{0} other skills by this publisher"
@@ -380,6 +399,12 @@ msgstr "{0} প্রপার্টি"
 #: src/components/SkillInstallMenu.tsx
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} এই স্কিলটি {poolRootRel}-এর মাধ্যমে পড়ে। {1}-কে \"{2}\" পাওয়া বন্ধ করতে ক্লিক করুন — {subRoot} তার অন্য স্কিলগুলো রাখবে কিন্তু {poolRootRel} অনুসরণ করা বন্ধ করবে।"
+
+#. placeholder {0}: TERMINAL_CLIS[selection.cli].displayName
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "{0} runs in a terminal and doesn't accept attachments — choose an in-app agent instead."
+msgstr "{0} টার্মিনালে চলে এবং সংযুক্তি গ্রহণ করে না — এর বদলে অ্যাপের ভেতরের এজেন্ট বেছে নিন।"
 
 #. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -510,6 +535,7 @@ msgid "{agentName} couldn't start."
 msgstr "{agentName} শুরু হতে পারেনি।"
 
 #: src/components/acp/ThreadView.tsx
+#: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} ছবি সংযুক্তি গ্রহণ করে না।"
 
@@ -860,6 +886,14 @@ msgstr "{minutes} মিনিট আগে"
 msgid "{name} CLI"
 msgstr "{name} CLI"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
+msgstr "{name}-এর কোনো সমাধানযোগ্য পাথ নেই — এজেন্ট শুধু ওয়ার্কস্পেসের ভেতরের ফাইল পড়তে পারে।"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{name} is outside the workspace. Move it into your project first."
+msgstr "{name} ওয়ার্কস্পেসের বাইরে আছে। আগে এটি আপনার প্রকল্পে সরান।"
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# নোড} other {# নোড}}"
@@ -873,6 +907,7 @@ msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {ওয়ার্কট্রি} other {ওয়ার্কট্রি}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
 msgstr "{outsideWorkspaceCount, plural, one {ওয়ার্কস্পেসের বাইরের # ফাইল বাদ দেওয়া হয়েছে।} other {ওয়ার্কস্পেসের বাইরের # ফাইল বাদ দেওয়া হয়েছে।}}"
 
@@ -975,6 +1010,7 @@ msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {স্কিল} other {স্কিল}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
 msgstr "{skipTotal, plural, one {# ফাইল বাদ দেওয়া হয়েছে যা সংযুক্ত করা যায়নি।} other {# ফাইল বাদ দেওয়া হয়েছে যা সংযুক্ত করা যায়নি।}}"
 
@@ -1019,6 +1055,11 @@ msgstr "{templateCount, plural, one {টেমপ্লেট} other {টেম�
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, one {টোকেন} other {টোকেন}}"
 
+#: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
+msgid "{tooLargeTotalCount, plural, one {Skipped # file — attachments can't total more than {budgetKb} KB per message.} other {Skipped # files — attachments can't total more than {budgetKb} KB per message.}}"
+msgstr "{tooLargeTotalCount, plural, one {# ফাইল বাদ দেওয়া হয়েছে — প্রতি বার্তায় সংযুক্তির মোট আকার {budgetKb} KB-এর বেশি হতে পারে না।} other {# ফাইল বাদ দেওয়া হয়েছে — প্রতি বার্তায় সংযুক্তির মোট আকার {budgetKb} KB-এর বেশি হতে পারে না।}}"
+
 #: src/components/file-tree-problem-indicators.ts
 msgid "{total, plural, one {# problem} other {# problems}}"
 msgstr "{total, plural, one {# সমস্যা} other {# সমস্যা}}"
@@ -1028,6 +1069,7 @@ msgid "{truncatedShownCount, plural, one {Showing the first item in one folder �
 msgstr "{truncatedShownCount, plural, one {একটি ফোল্ডারের প্রথম আইটেম দেখানো হচ্ছে — সেই ফোল্ডারের বাকিটা লুকানো।} other {একটি ফোল্ডারের প্রথম {formattedCount}টি আইটেম দেখানো হচ্ছে — সেই ফোল্ডারের বাকিটা লুকানো।}}"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
 msgstr "{unknownPathCount, plural, one {# ফাইল বাদ দেওয়া হয়েছে — এই ব্রাউজার পাথ দ্বারা ফাইল সংযুক্ত করতে পারে না।} other {# ফাইল বাদ দেওয়া হয়েছে — এই ব্রাউজার পাথ দ্বারা ফাইল সংযুক্ত করতে পারে না।}}"
 
@@ -2068,7 +2110,7 @@ msgstr "অ্যাসেট পরামর্শ"
 msgid "Asset: {title}"
 msgstr "সম্পদ: {title}"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "একটি ফাইল সংযুক্ত করুন"
 
@@ -2080,6 +2122,10 @@ msgstr "ছবি সংযুক্ত করুন"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Attachments"
 msgstr "সংযুক্তি"
+
+#: src/components/BottomComposer.tsx
+msgid "Attachments aren't available in note windows yet — use the main window to attach files."
+msgstr "নোট উইন্ডোতে সংযুক্তি এখনো পাওয়া যায় না — ফাইল যুক্ত করতে মূল উইন্ডো ব্যবহার করুন।"
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -4048,6 +4094,7 @@ msgid "Couldn't reach the Open Knowledge server to upload {fileName}."
 msgstr "{fileName} আপলোড করতে Open Knowledge সার্ভারের নাগাল পাওয়া যায়নি।"
 
 #: src/components/acp/ThreadView.tsx
+#: src/editor/use-composer-attachments.ts
 msgid "Couldn't read {fileName}."
 msgstr "{fileName} পড়া যায়নি।"
 
@@ -6038,6 +6085,10 @@ msgstr "ফাইল ফেলার জায়গা"
 msgid "File duplicated"
 msgstr "ফাইলের প্রতিলিপি হয়েছে"
 
+#: src/lib/acp/image-attachment.ts
+msgid "File is too large ({sizeKb} KB) — each attachment is capped at {limitKb} KB. Crop or resize it and try again."
+msgstr "ফাইলটি খুব বড় ({sizeKb} KB) — প্রতিটি সংযুক্তির সীমা {limitKb} KB। ফাইলটি ক্রপ করুন বা আকার ছোট করে আবার চেষ্টা করুন।"
+
 #: src/components/NewItemDialog.tsx
 msgid "File name"
 msgstr "ফাইলের নাম"
@@ -6238,6 +6289,13 @@ msgstr "ফোল্ডার শেয়ার লিংক কপি কর�
 #: src/components/LinksPanel.tsx
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "ফোল্ডার লক্ষ্য: {linkTitle}। সংক্ষিপ্তসার খুলতে ক্লিক করুন।"
+
+#: src/components/acp/ThreadView.tsx
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "Folders and empty files can't be attached — drop the files themselves."
+msgstr "ফোল্ডার ও খালি ফাইল সংযুক্ত করা যায় না — ফাইলগুলো নিজেই ফেলুন।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
@@ -8628,6 +8686,11 @@ msgstr "এখনও কোনো এজেন্ট সেট আপ করা 
 msgid "no agents — saved, not installed anywhere"
 msgstr "কোনো এজেন্ট নেই — সংরক্ষিত, কোথাও ইনস্টল হয়নি"
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "No agents are set up yet — add an in-app agent in Agent connections to attach files."
+msgstr "এখনও কোনো এজেন্ট সেট আপ করা নেই — ফাইল সংযুক্ত করতে «এজেন্ট সংযোগ» থেকে অ্যাপের ভেতরের একটি এজেন্ট যোগ করুন।"
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents available."
 msgstr "কোনো এজেন্ট নেই।"
@@ -9196,6 +9259,10 @@ msgstr "শুধু আমার"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Only modified"
 msgstr "কেবল পরিবর্তিত"
+
+#: src/lib/acp/image-attachment.ts
+msgid "Only PNG, JPEG, GIF, and WebP images are supported (got {mimeType})."
+msgstr "শুধু PNG, JPEG, GIF ও WebP ছবি সমর্থিত ({mimeType} পাওয়া গেছে)।"
 
 #: src/components/FeedbackForm.tsx
 #: src/components/ImageAttachments.tsx
@@ -10865,7 +10932,7 @@ msgstr "সরান"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "{0} সরান"
@@ -13769,6 +13836,11 @@ msgstr "এই {targetNoun} ব্রাঞ্চ <0>{shareBranch}</0> থেক
 msgid "This {targetNoun} was shared from branch <0>{shareBranch}</0>. You're currently on <1>{currentLabel}</1>."
 msgstr "এই {targetNoun} ব্রাঞ্চ <0>{shareBranch}</0> থেকে ভাগ করা হয়েছিল। আপনি এখন <1>{currentLabel}</1>-এ আছেন।"
 
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+msgid "This agent doesn't accept attachments — remove them or choose an in-app agent."
+msgstr "এই এজেন্ট সংযুক্তি গ্রহণ করে না — সেগুলো সরান বা অ্যাপের ভেতরের এজেন্ট বেছে নিন।"
+
 #: src/editor/composer-mention/ComposerSlashMenu.tsx
 msgid "This agent doesn't offer slash commands"
 msgstr "এই এজেন্ট স্ল্যাশ কমান্ড দেয় না"
@@ -13823,6 +13895,12 @@ msgstr "এটি Settings > AI tools & CLI-তে কনফিগার কর�
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "এই মন্তব্যটি পুরো প্রপার্টির উপর"
+
+#: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/editor/ComposerMentionInput.tsx
+msgid "This composer doesn't accept attachments."
+msgstr "এখানে ফাইল যুক্ত করা যায় না।"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "This conflict is resolved."
@@ -14650,6 +14728,10 @@ msgstr "সমাধান করা যায় না এমন ফাইল 
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "সমাধান করা যায় না এমন ছবি {identity}। রেফারেন্সে যান।"
 
+#: src/lib/acp/image-attachment.ts
+msgid "Unsupported file type: {fileType}."
+msgstr "অসমর্থিত ফাইলের ধরন: {fileType}।"
+
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "শিরোনামহীন রিপোর্ট"
@@ -14790,6 +14872,7 @@ msgstr "\"{0}\" হিসেবে আপলোড হয়েছে — \"{1}\
 msgid "Uploading"
 msgstr "আপলোড করা হচ্ছে"
 
+#: src/components/acp/PendingImageStrip.tsx
 #: src/editor/image-upload/index.ts
 msgid "Uploading {fileName}"
 msgstr "{fileName} আপলোড করা হচ্ছে"

@@ -822,6 +822,7 @@
     "9euN0m": [["count", "plural", { "other": ["#", " peserta lagi dari dokumen lain"] }]],
     "9fhQRL": ["Kanal beta"],
     "9fvog2": ["Pratinjau tidak tersedia: ", ["errorDetail"]],
+    "9gu0n7": ["Tipe berkas tidak didukung: ", ["fileType"], "."],
     "9hEdtC": [
       "Yang ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek."
     ],
@@ -1310,6 +1311,11 @@
     "FjkaiT": ["Perkecil"],
     "Fjz6aJ": ["Kirim ke obrolan baru"],
     "FqGWeR": ["Registri agen tidak bisa dihubungi."],
+    "FqMKq2": [
+      "Hanya gambar PNG, JPEG, GIF, dan WebP yang didukung (diterima ",
+      ["mimeType"],
+      ")."
+    ],
     "FqTpiN": ["Wiki burung"],
     "Fqr8BP": [
       "Penampil PDF multi-halaman dengan kendali bilah alat (gambar mini, navigasi halaman, zoom)."
@@ -1341,6 +1347,10 @@
     "G7-rf8": ["Galat sintaks pola: ", ["message"]],
     "G7bn_N": ["Mulai sebuah agen"],
     "G7cMuO": ["Pratinjau HTML"],
+    "G7gMiG": [
+      ["0"],
+      " berjalan di terminal dan tidak menerima lampiran — pilih agen dalam aplikasi."
+    ],
     "G8t9NN": ["Tambahkan properti"],
     "GA-UkN": ["Tipe ", ["keyName"], ": ", ["typeLabel"], ". Klik untuk mengubah."],
     "GAohqx": ["Hapus kolom"],
@@ -1402,6 +1412,9 @@
     "GemPfn": ["Gagal mengurai respons galat tautan keluar (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server tidak bisa membuka dokumen"],
     "GhjUB_": ["Tersambung kembali"],
+    "Gi8Akx": [
+      "Belum ada agen yang disiapkan — untuk melampirkan berkas, tambahkan agen dalam aplikasi lewat Koneksi agen."
+    ],
     "GidGkh": ["Perbarui dari sumber"],
     "GifIjR": [
       "Skill “",
@@ -1645,6 +1658,7 @@
       "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
     ],
     "K9J00P": ["Kloning gagal — galat koneksi"],
+    "K9ViCA": [["name"], " berada di luar ruang kerja. Pindahkan dulu ke proyek Anda."],
     "KDrbNG": ["OpenKnowledge mencari tautan untuk ", ["subject"]],
     "KDuPiY": ["Mengunggah ", ["fileName"]],
     "KDw4GX": ["Coba lagi"],
@@ -1674,6 +1688,13 @@
     "KZLdgR": ["Lihat <0>#design-docs</0> untuk spesifikasi terbaru."],
     "K_vT1F": ["Sinkronisasi hulu"],
     "KaFCD3": ["Membuka tautan ini di tab baru dan menciutkan graf."],
+    "Kb08WL": [
+      "Berkas terlalu besar (",
+      ["sizeKb"],
+      " KB) — setiap lampiran dibatasi ",
+      ["limitKb"],
+      " KB. Pangkas atau ubah ukurannya, lalu coba lagi."
+    ],
     "Kbz9RK": ["Nomor port tetap"],
     "Kdvukk": ["Pemeriksaan Markdown tidak berlaku untuk file ini."],
     "KeXgA-": [
@@ -1818,6 +1839,7 @@
     "M92_0q": ["Tutup komentar"],
     "M9597s": ["Menyiapkan URL berbagi..."],
     "MBKkUy": ["skills.sh tidak tersedia; menampilkan hasil GitHub (tanpa peringkat pemasangan)."],
+    "MBfjUk": [["0", "plural", { "other": ["Mengunggah ", "#", " lampiran"] }]],
     "MCjC9A": ["Hapus ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Sulit dipakai"],
     "MDZSJe": ["Kapan agennya menjalankan pekerjaan terjadwalnya."],
@@ -2344,6 +2366,7 @@
     ],
     "ScwcF2": ["Sudah ada proyek di lokasi ini. Pilih folder induk lain."],
     "Sg-6Bo": [["errorCount", "plural", { "other": ["#", " galat"] }]],
+    "SgAFuo": ["Berkas tidak bisa dilampirkan di sini."],
     "SgKLfA": ["Tidak terhubung ke GitHub."],
     "Sh3Qkg": ["Tidak ada cabang yang cocok."],
     "Si7mIR": ["Buat laporan"],
@@ -3167,6 +3190,10 @@
       "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
     ],
     "cIptmH": ["Di aplikasi Claude Desktop"],
+    "cK5W4m": [
+      ["0"],
+      " terbuka lewat tautan dan tidak menerima lampiran — pilih agen dalam aplikasi."
+    ],
     "cLP0Lf": ["Sumber keterampilan remote"],
     "cLn264": ["Berkas tema ini tidak dapat dibaca"],
     "cMMb6H": [["imported"], " dipasang, tetapi ", ["failed"], " gagal: ", ["failedNames"]],
@@ -3244,6 +3271,7 @@
     "d6qW27": [["agentName"], " melaporkan: ", ["headline"]],
     "dCforW": ["Gagal menulis file ini. Periksa log OpenKnowledge untuk mengetahui alasannya."],
     "dD7NPy": ["Kerangka"],
+    "dDBZ0j": [["0", "plural", { "other": ["#", " lampiran siap dikirim"] }]],
     "dDpCOp": [
       "Penggantian nama berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
@@ -3264,6 +3292,20 @@
     "dOHMA0": ["Gagal memindahkan"],
     "dOxPd4": ["Catatan kaki"],
     "dQHSCs": ["Ubah (hapus aslinya)"],
+    "dRCAgQ": [
+      [
+        "tooLargeTotalCount",
+        "plural",
+        {
+          "other": [
+            "#",
+            " berkas dilewati — total lampiran tidak boleh lebih dari ",
+            ["budgetKb"],
+            " KB per pesan."
+          ]
+        }
+      ]
+    ],
     "dSORvE": ["Menghentikan proses saat ini dan mengirim ini sebagai gantinya"],
     "dT-HIQ": ["Terlalu banyak referensi langsung di halaman ini. Papan ini tidak dimuat."],
     "dTaauv": ["Alasan: ", ["reason"]],
@@ -4431,6 +4473,10 @@
     "q63KUv": ["Tambahkan MCP & keterampilan"],
     "q7F5am": ["judul"],
     "q8aCbb": ["Dua versi \"", ["0"], "\" — sumber melawan ", ["editor"]],
+    "q8tKSU": [
+      ["name"],
+      " tidak memiliki jalur yang dapat diuraikan — agen hanya bisa membaca berkas di dalam ruang kerja."
+    ],
     "qAQVSD": ["Respons judul halaman bukan JSON"],
     "qAhFeg": [["userName"], " · ", ["tabCount", "plural", { "other": ["#", " tab"] }]],
     "qAx7xG": ["Folder tetap di akar konten"],
@@ -4456,6 +4502,7 @@
     "qTT48-": [
       "Tautan wiki seperti [[Page]] — cara yang didukung untuk membuat tautan di sini, tetapi pembaca eksternal tidak menyelesaikan apa pun dan memperlihatkan tanda kurung."
     ],
+    "qTULIf": ["Agen ini tidak menerima lampiran — hapus lampiran atau pilih agen dalam aplikasi."],
     "qTcVwj": ["Telusuri atau unggah sebuah keterampilan untuk proyek ini."],
     "qTcZZu": ["Gagal memuat tag. Tekan <0>Esc</0> lalu buka lagi untuk mencoba ulang."],
     "qX-ABr": ["Atau, untuk memakai proses masuk lewat peramban:"],
@@ -4519,6 +4566,7 @@
     ],
     "rJVoVX": ["Hasil pencarian sumber"],
     "rJm8-2": ["Papan klip tidak dapat diakses — tema ada di kotak di bawah."],
+    "rNi1kZ": ["Folder dan berkas kosong tidak bisa dilampirkan — lepaskan berkasnya langsung."],
     "rNifQd": ["Hapus properti"],
     "rQAQus": ["Templat tidak bisa disimpan: ", ["error"]],
     "rQRrkB": ["kemarin"],
@@ -4887,6 +4935,9 @@
     "vPLUCm": ["Gambar ", ["identity"], " tidak ditemukan. Buka referensi."],
     "vPXOUw": ["Tampilkan atau sembunyikan tampilan sumber"],
     "vQIVHc": ["Properti folder"],
+    "vQOuVY": [
+      "Lampiran belum tersedia di jendela catatan — gunakan jendela utama untuk melampirkan berkas."
+    ],
     "vUP_HF": [
       "Tanpa alat AI yang terhubung, ",
       ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skill"] }],

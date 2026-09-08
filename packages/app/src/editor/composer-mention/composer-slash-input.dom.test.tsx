@@ -51,6 +51,7 @@ function renderComposer(props?: {
   const ref = createRef<ComposerMentionInputHandle>();
   const utils = render(
     <ComposerMentionInput
+      attachmentDrop={{ kind: 'host' }}
       ref={ref}
       ariaLabel="Message Agent"
       onEmptyChange={() => {}}
@@ -158,6 +159,7 @@ describe('token decoration + hint line', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Agent"
         onEmptyChange={() => {}}
@@ -188,6 +190,7 @@ describe('token decoration + hint line', () => {
     expect(box.querySelector('.composer-slash-token')).toBeNull();
     rerender(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Agent"
         onEmptyChange={() => {}}
@@ -287,6 +290,7 @@ describe('picker lifecycle', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
         ref={ref}
         ariaLabel="Message Agent"
         onEmptyChange={() => {}}

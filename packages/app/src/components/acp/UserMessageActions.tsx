@@ -147,6 +147,7 @@ export function UserMessageEditor({
         ref={fieldRef}
         ariaLabel={t`Edit and send again`}
         placeholder={t`Edit and send again`}
+        attachmentDrop={{ kind: 'host' }}
         onEmptyChange={setDraftEmpty}
         onSubmit={sendHere}
         onEscape={onCancel}

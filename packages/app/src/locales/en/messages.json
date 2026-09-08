@@ -808,6 +808,7 @@
     ],
     "9fhQRL": ["Beta channel"],
     "9fvog2": ["Preview unavailable: ", ["errorDetail"]],
+    "9gu0n7": ["Unsupported file type: ", ["fileType"], "."],
     "9hEdtC": [
       "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
     ],
@@ -1301,6 +1302,7 @@
     "FjkaiT": ["Zoom out"],
     "Fjz6aJ": ["Send to a new chat"],
     "FqGWeR": ["Couldn't reach the agent registry."],
+    "FqMKq2": ["Only PNG, JPEG, GIF, and WebP images are supported (got ", ["mimeType"], ")."],
     "FqTpiN": ["Bird wiki"],
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
     "Fqx38P": ["What got in the way?"],
@@ -1328,6 +1330,10 @@
     "G7-rf8": ["Pattern syntax error: ", ["message"]],
     "G7bn_N": ["Start an agent"],
     "G7cMuO": ["HTML preview"],
+    "G7gMiG": [
+      ["0"],
+      " runs in a terminal and doesn't accept attachments — choose an in-app agent instead."
+    ],
     "G8t9NN": ["Add a property"],
     "GA-UkN": [["keyName"], " type: ", ["typeLabel"], ". Click to change."],
     "GAohqx": ["Delete column"],
@@ -1389,6 +1395,9 @@
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
+    "Gi8Akx": [
+      "No agents are set up yet — add an in-app agent in Agent connections to attach files."
+    ],
     "GidGkh": ["Update from source"],
     "GifIjR": [
       "Skill \"",
@@ -1619,6 +1628,7 @@
       "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
     ],
     "K9J00P": ["Clone failed — connection error"],
+    "K9ViCA": [["name"], " is outside the workspace. Move it into your project first."],
     "KDrbNG": ["OpenKnowledge looked up links for ", ["subject"]],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
@@ -1648,6 +1658,13 @@
     "KZLdgR": ["See <0>#design-docs</0> for the latest specs."],
     "K_vT1F": ["Upstream sync"],
     "KaFCD3": ["Open this link in a new tab and collapse the graph."],
+    "Kb08WL": [
+      "File is too large (",
+      ["sizeKb"],
+      " KB) — each attachment is capped at ",
+      ["limitKb"],
+      " KB. Crop or resize it and try again."
+    ],
     "Kbz9RK": ["Fixed port number"],
     "Kdvukk": ["Markdown checks do not apply to this file."],
     "KeXgA-": ["Couldn't find that passage — the text it was on may have changed."],
@@ -1801,6 +1818,13 @@
     "M92_0q": ["Close comment"],
     "M9597s": ["Preparing share URL..."],
     "MBKkUy": ["skills.sh is unavailable; showing GitHub results (no install ranking)."],
+    "MBfjUk": [
+      [
+        "0",
+        "plural",
+        { "one": ["Uploading ", "#", " attachment"], "other": ["Uploading ", "#", " attachments"] }
+      ]
+    ],
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Hard to use"],
     "MDZSJe": ["When the agent runs its scheduled work."],
@@ -2332,6 +2356,7 @@
     ],
     "ScwcF2": ["A project already exists at this location. Pick a different parent folder."],
     "Sg-6Bo": [["errorCount", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
+    "SgAFuo": ["This composer doesn't accept attachments."],
     "SgKLfA": ["Not connected to GitHub."],
     "Sh3Qkg": ["No matching branches."],
     "Si7mIR": ["Create report"],
@@ -3126,6 +3151,10 @@
       "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
     ],
     "cIptmH": ["In the Claude Desktop App"],
+    "cK5W4m": [
+      ["0"],
+      " opens via a link and doesn't accept attachments — choose an in-app agent instead."
+    ],
     "cLP0Lf": ["Remote skill source"],
     "cLn264": ["This theme file couldn’t be read"],
     "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
@@ -3208,6 +3237,16 @@
     "d6qW27": [["agentName"], " reported: ", ["headline"]],
     "dCforW": ["Writing this file failed. Check the OpenKnowledge log for the reason."],
     "dD7NPy": ["Outline"],
+    "dDBZ0j": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["#", " attachment is ready to send"],
+          "other": ["#", " attachments are ready to send"]
+        }
+      ]
+    ],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
     "dFrqBg": [["0"], " plugin"],
@@ -3226,6 +3265,28 @@
     "dOHMA0": ["Failed to move"],
     "dOxPd4": ["Footnote"],
     "dQHSCs": ["Convert (delete original)"],
+    "dRCAgQ": [
+      [
+        "tooLargeTotalCount",
+        "plural",
+        {
+          "one": [
+            "Skipped ",
+            "#",
+            " file — attachments can't total more than ",
+            ["budgetKb"],
+            " KB per message."
+          ],
+          "other": [
+            "Skipped ",
+            "#",
+            " files — attachments can't total more than ",
+            ["budgetKb"],
+            " KB per message."
+          ]
+        }
+      ]
+    ],
     "dSORvE": ["Stops the current run and sends this instead"],
     "dT-HIQ": ["Too many live references on this page. This board was not loaded."],
     "dTaauv": ["Reason: ", ["reason"]],
@@ -4387,6 +4448,10 @@
     "q63KUv": ["Add MCP & skill"],
     "q7F5am": ["title"],
     "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
+    "q8tKSU": [
+      ["name"],
+      " has no resolvable path — the agent can only read files inside the workspace."
+    ],
     "qAQVSD": ["Page headings response was not JSON"],
     "qAhFeg": [
       ["userName"],
@@ -4416,6 +4481,7 @@
     "qTT48-": [
       "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
     ],
+    "qTULIf": ["This agent doesn't accept attachments — remove them or choose an in-app agent."],
     "qTcVwj": ["Browse or upload a skill for this project."],
     "qTcZZu": ["Failed to load tags. Press <0>Esc</0> and re-open to retry."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
@@ -4490,6 +4556,7 @@
     ],
     "rJVoVX": ["Source find results"],
     "rJm8-2": ["Couldn’t reach the clipboard — the theme is in the box below."],
+    "rNi1kZ": ["Folders and empty files can't be attached — drop the files themselves."],
     "rNifQd": ["Remove property"],
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
@@ -4868,6 +4935,9 @@
     "vPLUCm": ["Missing image ", ["identity"], ". Go to reference."],
     "vPXOUw": ["Toggle source view"],
     "vQIVHc": ["Folder properties"],
+    "vQOuVY": [
+      "Attachments aren't available in note windows yet — use the main window to attach files."
+    ],
     "vUP_HF": [
       "Without a connected AI tool, the pack's ",
       ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skills"] }],

@@ -1,7 +1,7 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,8 +13,11 @@ import {
   useSelectedCommentDocs,
 } from '@/comments/comment-chips';
 import { type BatchPreparedItem, dispatchComments, subscribeCommentPosted } from '@/comments/store';
+import { AttachFilesButton } from '@/components/acp/AttachFilesButton';
+import { PendingImageStrip } from '@/components/acp/PendingImageStrip';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { AskAgentNameLabel, OpenDesktopAppLabel } from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
@@ -31,6 +34,7 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { getEditorForDoc } from '@/editor/active-editor';
 import {
+  type ComposerAttachmentDropPolicy,
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
@@ -42,11 +46,13 @@ import {
   selectionSnapshotToCompose,
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { collectAllFiles, collectImageFiles } from '@/lib/acp/image-attachment';
 import {
   enabledDesktopTargets,
   enabledTerminalClis,
@@ -62,6 +68,7 @@ import {
 } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { recordOnboardingAskedAi } from '@/lib/onboarding-signals';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
@@ -150,6 +157,7 @@ export function BottomComposer({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
   const [pending, setPending] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<ComposerMentionInputHandle>(null);
   const { isSeedIntact, onContentChanged: onPrefillContentChanged } = useConflictComposerPrefill(
     activeDocOrNull,
@@ -158,6 +166,22 @@ export function BottomComposer({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const [initialDraftDoc] = useState(() => getComposerDraft().doc ?? undefined);
+
+  const {
+    pendingAttachments,
+    pendingUploads,
+    ingestFiles,
+    removeAt: removePendingAttachment,
+    clear: clearPendingAttachments,
+  } = useComposerAttachments({
+    absPathOf:
+      typeof window !== 'undefined' && window.okDesktop
+        ? window.okDesktop.getPathForFile
+        : undefined,
+    workspaceContentDir: workspace?.contentDir,
+    pathSeparator: workspace?.pathSeparator,
+    onError: (message) => toast.error(message),
+  });
 
   useEffect(() => {
     if (folderMode || docName == null) return;
@@ -334,8 +358,46 @@ export function BottomComposer({
 
   const canSend =
     !pending &&
-    (!isEmpty || pinnedSelection !== null || hasQueuedComments) &&
+    pendingUploads.length === 0 &&
+    (!isEmpty || pinnedSelection !== null || hasQueuedComments || pendingAttachments.length > 0) &&
     (isTerminalSelected || resolvedTarget !== null || isThreadSelected);
+
+  const inNoteWindow = isNoteWindow();
+  const dropRefusalReason = ((): string | null => {
+    if (inNoteWindow) {
+      return t`Attachments aren't available in note windows yet — use the main window to attach files.`;
+    }
+    switch (selection.kind) {
+      case 'thread':
+        return null;
+      case 'cli':
+        return t`${TERMINAL_CLIS[selection.cli].displayName} runs in a terminal and doesn't accept attachments — choose an in-app agent instead.`;
+      case 'desktop':
+        return resolvedTarget !== null
+          ? t`${resolvedTarget.displayName} opens via a link and doesn't accept attachments — choose an in-app agent instead.`
+          : t`This composer doesn't accept attachments.`;
+      case 'terminal':
+        return t`This composer doesn't accept attachments.`;
+      case 'none':
+        return t`No agents are set up yet — add an in-app agent in Agent connections to attach files.`;
+      default: {
+        const _exhaustive: never = selection;
+        throw new Error(`Unhandled launcher selection: ${String(_exhaustive)}`);
+      }
+    }
+  })();
+  const attachmentsAccepted = isThreadSelected && !inNoteWindow;
+  const attachmentDrop: ComposerAttachmentDropPolicy = attachmentsAccepted
+    ? {
+        kind: 'accept',
+        onFiles: (files) => {
+          void ingestFiles(files);
+        },
+      }
+    : {
+        kind: 'refuse',
+        ...(dropRefusalReason !== null ? { reason: dropRefusalReason } : {}),
+      };
 
   const desktopAgents = VISIBLE_TARGETS.filter((target) =>
     isDesktopTargetEnabled(overrides, target.id, states[target.id]?.installed),
@@ -397,6 +459,7 @@ export function BottomComposer({
     setTouchedFiles([]);
     setDismissedFiles(new Set());
     setCommentsAttached(true);
+    clearPendingAttachments();
     clearComposerDraft();
   };
 
@@ -409,6 +472,12 @@ export function BottomComposer({
     };
     if (input === null) {
       toast.error(t`Couldn't send your prompt — please try again.`);
+      return false;
+    }
+    if (pendingAttachments.length > 0 && !isThreadSelected) {
+      toast.error(
+        t`This agent doesn't accept attachments — remove them or choose an in-app agent.`,
+      );
       return false;
     }
     if (isThreadSelected) {
@@ -468,6 +537,7 @@ export function BottomComposer({
         workspace,
         instruction,
         mentions: dispatchMentions,
+        attachments: pendingAttachments,
       });
     }
 
@@ -492,6 +562,7 @@ export function BottomComposer({
       instruction,
       mentions: dispatchMentions,
       selection,
+      attachments: pendingAttachments,
     });
   };
 
@@ -530,6 +601,7 @@ export function BottomComposer({
               ...mentions,
             ]),
           ],
+          attachments: pendingAttachments,
         });
         if (input === null) {
           toast.error(t`Couldn't send your comments — please try again.`);
@@ -562,7 +634,66 @@ export function BottomComposer({
     <div
       ref={cardRef}
       onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
-      className="pointer-events-auto group relative flex cursor-text flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+      onPaste={(event) => {
+        const files = collectImageFiles(event.clipboardData);
+        if (files.length === 0) return;
+        event.preventDefault();
+        if (!attachmentsAccepted) {
+          inputRef.current?.refuseDrop(
+            dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+          );
+          return;
+        }
+        void ingestFiles(files);
+      }}
+      onDragEnter={(event) => {
+        if (isExternalFileDrag(event)) {
+          event.preventDefault();
+          setDragActive(true);
+        }
+      }}
+      onDragOver={(event) => {
+        if (isExternalFileDrag(event)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          setDragActive(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        setDragActive(false);
+      }}
+      onDropCapture={() => setDragActive(false)}
+      onDrop={(event) => {
+        if (!isExternalFileDrag(event)) return;
+        event.preventDefault();
+        const files = collectAllFiles(event.dataTransfer);
+        if (files.length === 0) {
+          inputRef.current?.refuseDrop(
+            t`Folders and empty files can't be attached — drop the files themselves.`,
+          );
+          return;
+        }
+        if (!attachmentsAccepted) {
+          inputRef.current?.refuseDrop(
+            dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+          );
+          return;
+        }
+        void ingestFiles(files);
+      }}
+      data-testid="ask-ai-composer-card"
+      data-drag-active={dragActive ? (attachmentsAccepted ? 'accept' : 'refuse') : undefined}
+      className={cn(
+        'pointer-events-auto group relative flex cursor-text flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+        dragActive &&
+          attachmentsAccepted &&
+          'bg-primary/5 outline-2 outline-dashed outline-offset-2 outline-primary',
+        dragActive &&
+          !attachmentsAccepted &&
+          'bg-destructive/5 outline-2 outline-dashed outline-offset-2 outline-destructive/60',
+      )}
     >
       {}
       {!folderMode ? (
@@ -653,11 +784,50 @@ export function BottomComposer({
           />
         )}
       </ComposerContextChips>
+      {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
+        <PendingImageStrip
+          testIdPrefix="ask-ai"
+          images={pendingAttachments}
+          uploads={pendingUploads}
+          onRemove={removePendingAttachment}
+        />
+      ) : null}
+      {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+        <p aria-hidden="true" className="px-1 pb-1 text-muted-foreground text-xs">
+          {dropRefusalReason}
+        </p>
+      ) : null}
+      <div
+        role="status"
+        aria-live="polite"
+        className="sr-only"
+        data-testid="composer-attachment-status"
+      >
+        {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+          dropRefusalReason
+        ) : pendingUploads.length > 0 ? (
+          <Plural
+            value={pendingUploads.length}
+            one="Uploading # attachment"
+            other="Uploading # attachments"
+          />
+        ) : pendingAttachments.length > 0 ? (
+          <Plural
+            value={pendingAttachments.length}
+            one="# attachment is ready to send"
+            other="# attachments are ready to send"
+          />
+        ) : null}
+      </div>
       <div className="flex items-end gap-2">
+        {attachmentsAccepted ? (
+          <AttachFilesButton testId="ask-ai-attach-files" onFiles={ingestFiles} />
+        ) : null}
         <div className="relative flex-1">
           <ComposerMentionInput
             ref={inputRef}
             ariaLabel={t`Ask AI`}
+            attachmentDrop={attachmentDrop}
             onEmptyChange={setIsEmpty}
             onContentChange={(doc) => {
               setComposerDraftDoc(doc);

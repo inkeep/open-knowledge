@@ -322,6 +322,7 @@ export function ThreadCard({
             ref={editFieldRef}
             ariaLabel={t`Edit this comment`}
             placeholder={t`Edit this comment`}
+            attachmentDrop={{ kind: 'refuse' }}
             onEmptyChange={setDraftEmpty}
             onContentChange={() => {
               liveDraftRef.current = editFieldRef.current?.getContent().instruction ?? null;

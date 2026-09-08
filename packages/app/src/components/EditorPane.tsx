@@ -4,6 +4,7 @@ import {
   type TerminalCli,
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
+import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import {
   lazy,
   Suspense,
@@ -81,6 +82,7 @@ export interface ThreadLaunchIntent {
   readonly prompt: string | null;
   readonly docName: string | null;
   readonly titleHint: string | null;
+  readonly attachments: readonly AttachmentPart[] | null;
   readonly nonce: number;
 }
 
@@ -297,6 +299,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         prompt: detail.prompt,
         docName: detail.docName,
         titleHint: detail.titleHint,
+        attachments: detail.attachments ?? null,
         nonce: threadLaunchNonceRef.current,
       });
     });

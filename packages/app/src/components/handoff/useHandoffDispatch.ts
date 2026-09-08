@@ -26,6 +26,7 @@ import {
   type TerminalCli,
   withSkillPointer,
 } from '@inkeep/open-knowledge-core';
+import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
 import { toast as sonnerToast } from 'sonner';
 import { useConfigContext } from '@/lib/config-context';
@@ -88,6 +89,7 @@ export interface HandoffDispatchInput {
   readonly createScenario?: CreateScenario;
   readonly createMentions?: readonly string[];
   readonly instruction?: string;
+  readonly attachments?: readonly AttachmentPart[];
   readonly projectDir: string;
   readonly docPath: string;
 }
@@ -122,6 +124,7 @@ export function buildCreateHandoffInput(args: {
   readonly description: string;
   readonly scenario: CreateScenario;
   readonly mentions: readonly string[];
+  readonly attachments?: readonly AttachmentPart[];
 }): HandoffDispatchInput | null {
   if (!args.workspace?.contentDir) return null;
   return {
@@ -129,6 +132,9 @@ export function buildCreateHandoffInput(args: {
     createDescription: args.description,
     createScenario: args.scenario,
     createMentions: args.mentions,
+    ...(args.attachments !== undefined && args.attachments.length > 0
+      ? { attachments: args.attachments }
+      : {}),
     projectDir: args.workspace.contentDir,
     docPath: '',
   };
@@ -215,9 +221,14 @@ export function buildComposerHandoffInput(args: {
   readonly instruction: string;
   readonly mentions: readonly string[];
   readonly selection?: ComposeSelection;
+  readonly attachments?: readonly AttachmentPart[];
 }): HandoffDispatchInput | null {
   if (!args.workspace?.contentDir) return null;
   const { contentDir, pathSeparator } = args.workspace;
+  const attachmentsField =
+    args.attachments !== undefined && args.attachments.length > 0
+      ? { attachments: args.attachments }
+      : {};
   if (args.docName) {
     const relativePath = args.docRelativePath ?? docNameToRelativePath(args.docName);
     const base = {
@@ -231,6 +242,7 @@ export function buildComposerHandoffInput(args: {
     return {
       docContext: null,
       compose,
+      ...attachmentsField,
       projectDir: contentDir,
       docPath: joinWorkspacePath(contentDir, relativePath, pathSeparator),
     };
@@ -244,6 +256,7 @@ export function buildComposerHandoffInput(args: {
         instruction: args.instruction,
         mentions: args.mentions,
       },
+      ...attachmentsField,
       projectDir: contentDir,
       docPath: '',
     };
@@ -255,6 +268,7 @@ export function buildComposerHandoffInput(args: {
       instruction: args.instruction,
       mentions: args.mentions,
     },
+    ...attachmentsField,
     projectDir: contentDir,
     docPath: '',
   };
@@ -465,6 +479,7 @@ export function startAgentThreadForInput(
     prompt: composeThreadLaunchPrompt(input),
     docName: docNameFromInput(input),
     titleHint: threadTitleHintFromInput(input),
+    attachments: input.attachments ?? null,
   });
 }
 

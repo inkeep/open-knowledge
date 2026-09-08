@@ -74,7 +74,10 @@ test('A11Y02: NodeSelection announces component via aria-live region', async ({ 
     if (foundPos !== -1) editor.chain().focus().setNodeSelection(foundPos).run();
   });
 
-  const liveRegion = page.locator('[role="status"][aria-live="polite"]').first();
+  const liveRegion = page
+    .getByTestId('editor-scroll-container')
+    .locator('[role="status"][aria-live="polite"]')
+    .first();
   await expect(liveRegion).toBeAttached({ timeout: 2_000 });
   await expect(liveRegion).toContainText('Selected: Callout', { timeout: 2_000 });
 });

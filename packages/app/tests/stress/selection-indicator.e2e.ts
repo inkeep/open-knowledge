@@ -461,7 +461,9 @@ test('S8: aria-live textContent announces the selected block', async ({ page, ap
 
   await selectFirstJsxComponent(page, 'Accordion');
 
-  const liveRegion = page.locator('[role="status"][aria-live="polite"]');
+  const liveRegion = page
+    .getByTestId('editor-scroll-container')
+    .locator('[role="status"][aria-live="polite"]');
   await expect(liveRegion).toContainText('Selected: Accordion', { timeout: 2_000 });
 });
 
@@ -687,7 +689,7 @@ test('S16: axe-core — zero critical violations on selection-layer surfaces', a
 
   const results = await new AxeBuilder({ page })
     .include('.ProseMirror:not(.composer-prosemirror)')
-    .include('[role="status"][aria-live="polite"]')
+    .include('[data-testid="editor-scroll-container"] [role="status"][aria-live="polite"]')
     .withTags(['wcag2a', 'wcag2aa'])
     .analyze();
 
@@ -717,11 +719,15 @@ test('S18: rapid selection changes coalesce into a single aria-live announcement
   );
   await page.waitForSelector('.jsx-component-wrapper[data-component-type="img"]');
 
-  const liveRegion = page.locator('[role="status"][aria-live="polite"]');
+  const liveRegion = page
+    .getByTestId('editor-scroll-container')
+    .locator('[role="status"][aria-live="polite"]');
   await expect(liveRegion).toBeAttached();
 
   await page.evaluate(() => {
-    const region = document.querySelector('[role="status"][aria-live="polite"]');
+    const region = document.querySelector(
+      '[data-testid="editor-scroll-container"] [role="status"][aria-live="polite"]',
+    );
     if (!region) throw new Error('live region not found');
     // biome-ignore lint/suspicious/noExplicitAny: test-only global
     (window as any).__ariaLiveMutations = [];

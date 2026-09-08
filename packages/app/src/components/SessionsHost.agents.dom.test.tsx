@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { collectImageParts } from '@/editor/composer-drop.test-helper';
 import {
   inAppEnabledKey,
   reloadEnabledAgentsFromStorage,
@@ -250,6 +251,37 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   afterEach(() => {
     cleanup();
     _resetReusableSession();
+  });
+
+  test('a thread-launch intent carrying an image attachment forwards it to launchAgentThread', async () => {
+    render(
+      <Harness
+        threadLaunch={
+          {
+            agentSource: 'registry',
+            agentId: 'acme-agent',
+            prompt: 'describe the screenshot',
+            docName: null,
+            titleHint: null,
+            nonce: 7,
+            attachments: [
+              {
+                kind: 'image',
+                mimeType: 'image/png',
+                data: 'iVBORw==',
+                name: 'drop-me.png',
+                sizeBytes: 4,
+              },
+            ],
+          } as ThreadLaunchIntent
+        }
+      />,
+    );
+
+    await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+    expect(collectImageParts(launchAgentThread.mock.calls[0])).toContainEqual(
+      expect.objectContaining({ kind: 'image', mimeType: 'image/png', data: 'iVBORw==' }),
+    );
   });
 
   test('a server thread becomes a tab rendering its ThreadView', async () => {
@@ -658,6 +690,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       prompt: null,
       docName: null,
       titleHint: null,
+      attachments: null,
       nonce,
     });
 
@@ -672,6 +705,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         null,
+        null,
+        undefined,
       ]);
       expect(window.location.hash).toBe('');
       expect(registerAgent).not.toHaveBeenCalled();
@@ -763,6 +798,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'do the thing',
             docName: 'notes',
             titleHint: 'Notes',
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -774,6 +810,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         'do the thing',
         'notes',
         'Notes',
+        null,
+        undefined,
       ]);
     });
   });
@@ -791,6 +829,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'the words I just typed',
             docName: null,
             titleHint: null,
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -811,6 +850,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'the words I just typed',
             docName: null,
             titleHint: null,
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -918,6 +958,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: 'do it',
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);
@@ -940,6 +981,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: 'do it',
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);
@@ -966,6 +1008,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: null,
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);

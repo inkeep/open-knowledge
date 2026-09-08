@@ -9,7 +9,7 @@ import type {
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { plural } from '@lingui/core/macro';
-import { useLingui } from '@lingui/react/macro';
+import { Plural, useLingui } from '@lingui/react/macro';
 import {
   ArrowUp,
   Check,
@@ -42,7 +42,6 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  createContext,
   Fragment,
   type ReactNode,
   type RefObject,
@@ -65,6 +64,7 @@ import {
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
@@ -103,6 +103,7 @@ import {
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { agentDisplayName } from '@/lib/acp/agent-display';
 import {
   agentSettingsKey,
   rememberAgentConfigOption,
@@ -110,10 +111,14 @@ import {
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
 import {
+  attachmentBudgetKb,
   collectAllFiles,
   collectImageFiles,
   describeImageError,
+  embeddedAttachmentBytes,
   fileToAttachment,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
@@ -142,6 +147,7 @@ import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentNoticeAnnouncer } from './AgentNoticeAnnouncer';
+import { AttachFilesButton } from './AttachFilesButton';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
@@ -152,6 +158,7 @@ import {
   loadFollowFilePref,
   saveFollowFilePref,
 } from './follow-file';
+import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './PendingImageStrip';
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
@@ -186,14 +193,6 @@ const TOOL_ICONS: Record<ToolCallGlyph, typeof Wrench> = {
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
-function agentDisplayName(name: string): string {
-  return name.replace(/\s+Agent$/i, '');
-}
-
-type ImagePreview = { readonly src: string; readonly name: string };
-
-const ImagePreviewContext = createContext<((preview: ImagePreview) => void) | null>(null);
 
 const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
   'connect',
@@ -257,12 +256,26 @@ export function ThreadView({
   const [dragActive, setDragActive] = useState(false);
   const [dropNotice, setDropNotice] = useState<{ text: string; id: number } | null>(null);
   const dropNoticeIdRef = useRef(0);
+  const attachmentsRef = useRef<readonly AttachmentPart[]>([]);
+  const attachmentsGenerationRef = useRef(0);
+  const commitPendingAttachments = (next: readonly AttachmentPart[], generation: number): void => {
+    if (generation !== attachmentsGenerationRef.current) return;
+    attachmentsRef.current = next;
+    setPendingAttachments(next);
+  };
+  const clearPendingAttachments = (): void => {
+    attachmentsGenerationRef.current += 1;
+    attachmentsRef.current = [];
+    setPendingAttachments([]);
+    setPendingUploads([]);
+  };
   useEffect(() => {
     if (dropNotice === null) return;
     const timer = setTimeout(() => setDropNotice(null), 4000);
     return () => clearTimeout(timer);
   }, [dropNotice]);
   const imagesAccepted = info.promptCapabilities?.image === true;
+  const uploadsPending = pendingUploads.length > 0;
   const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
   const composerAttachments = (): readonly AttachmentPart[] => {
     const chips = composerRef.current?.getContent().attachments ?? [];
@@ -295,9 +308,14 @@ export function ThreadView({
       name: file.name || 'attachment',
       mimeType: file.type || '',
     }));
+    const generation = attachmentsGenerationRef.current;
+    const report = (message: string): void => {
+      if (generation === attachmentsGenerationRef.current) toast.error(message);
+    };
     setPendingUploads((previous) => [...previous, ...placeholders]);
     let outsideWorkspaceCount = 0;
     let unknownPathCount = 0;
+    let tooLargeTotalCount = 0;
     for (let i = 0; i < accepted.length; i += 1) {
       const file = accepted[i];
       const placeholderId = placeholders[i]?.id;
@@ -310,21 +328,30 @@ export function ThreadView({
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (outcome.ok) {
-          setPendingAttachments((previous) => [...previous, outcome.part]);
+          const current = attachmentsRef.current;
+          if (
+            totalEmbeddedAttachmentBytes(current) + embeddedAttachmentBytes(outcome.part) >
+            MAX_TOTAL_ATTACHMENT_BYTES
+          ) {
+            tooLargeTotalCount += 1;
+          } else {
+            commitPendingAttachments([...current, outcome.part], generation);
+          }
         } else if (outcome.error.kind === 'outside-workspace') {
           outsideWorkspaceCount += 1;
         } else if (outcome.error.kind === 'unknown-path') {
           unknownPathCount += 1;
         } else {
-          toast.error(describeImageError(outcome.error));
+          report(describeImageError(outcome.error));
         }
       } catch (err) {
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         const fileName = file.name || 'attachment';
         console.error('[ingestFiles] failed to read attachment', fileName, err);
-        toast.error(t`Couldn't read ${fileName}.`);
+        report(t`Couldn't read ${fileName}.`);
       }
     }
+    const notices: string[] = [];
     const skipTotal = outsideWorkspaceCount + unknownPathCount;
     if (skipTotal > 0) {
       let noticeText: string;
@@ -344,12 +371,27 @@ export function ThreadView({
           other: "Skipped # files that couldn't be attached.",
         })}`;
       }
+      notices.push(noticeText);
+    }
+    if (tooLargeTotalCount > 0) {
+      const budgetKb = attachmentBudgetKb();
+      notices.push(
+        t`${plural(tooLargeTotalCount, {
+          one: `Skipped # file — attachments can't total more than ${budgetKb} KB per message.`,
+          other: `Skipped # files — attachments can't total more than ${budgetKb} KB per message.`,
+        })}`,
+      );
+    }
+    if (notices.length > 0 && generation === attachmentsGenerationRef.current) {
       dropNoticeIdRef.current += 1;
-      setDropNotice({ text: noticeText, id: dropNoticeIdRef.current });
+      setDropNotice({ text: notices.join(' '), id: dropNoticeIdRef.current });
     }
   };
   const removePendingAttachment = (index: number): void => {
-    setPendingAttachments((previous) => previous.filter((_, i) => i !== index));
+    commitPendingAttachments(
+      attachmentsRef.current.filter((_, i) => i !== index),
+      attachmentsGenerationRef.current,
+    );
   };
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
   const scrollApiRef = useRef<ReturnType<typeof useMessageScroller> | null>(null);
@@ -459,13 +501,13 @@ export function ThreadView({
   };
 
   const requestSteer = (): void => {
+    if (uploadsPending) return;
     const text = composerText();
     const attachments = composerAttachments();
     if (text === '' && attachments.length === 0) return;
     client.steer(info.threadId, text, attachments.length > 0 ? attachments : undefined);
     composerRef.current?.clear();
-    setPendingAttachments([]);
-    setPendingUploads([]);
+    clearPendingAttachments();
     scrollApiRef.current?.scrollToEnd();
   };
 
@@ -567,6 +609,7 @@ export function ThreadView({
   };
 
   const submit = (): void => {
+    if (uploadsPending) return;
     const text = composerText();
     const attachments = composerAttachments();
     if (!(canPrompt || canQueue)) return;
@@ -579,8 +622,7 @@ export function ThreadView({
     if (text === '' && attachments.length === 0) return;
     void sendText(text, text, attachments);
     composerRef.current?.clear();
-    setPendingAttachments([]);
-    setPendingUploads([]);
+    clearPendingAttachments();
   };
 
   const submitQueuedComments = async (
@@ -755,25 +797,36 @@ export function ThreadView({
         className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
         data-agent-thread-root=""
         onDragEnter={(event) => {
-          if (event.dataTransfer?.types.includes('Files')) {
+          if (isExternalFileDrag(event)) {
             event.preventDefault();
             setDragActive(true);
           }
         }}
         onDragOver={(event) => {
-          if (event.dataTransfer?.types.includes('Files')) {
+          if (isExternalFileDrag(event)) {
             event.preventDefault();
             event.dataTransfer.dropEffect = 'copy';
+            setDragActive(true);
           }
         }}
         onDragLeave={(event) => {
-          if (event.currentTarget === event.target) setDragActive(false);
+          const next = event.relatedTarget;
+          if (next instanceof Node && event.currentTarget.contains(next)) return;
+          setDragActive(false);
         }}
         onDrop={(event) => {
-          const files = collectAllFiles(event.dataTransfer);
-          if (files.length === 0) return;
+          if (!isExternalFileDrag(event)) return;
           event.preventDefault();
           setDragActive(false);
+          const files = collectAllFiles(event.dataTransfer);
+          if (files.length === 0) {
+            dropNoticeIdRef.current += 1;
+            setDropNotice({
+              text: t`Folders and empty files can't be attached — drop the files themselves.`,
+              id: dropNoticeIdRef.current,
+            });
+            return;
+          }
           void ingestFiles(files);
         }}
       >
@@ -911,9 +964,20 @@ export function ThreadView({
           )}
           <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
             {dropNotice !== null ? (
-              <div className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs">
+              <div
+                key={dropNotice.id}
+                className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+              >
                 {dropNotice.text}
               </div>
+            ) : uploadsPending ? (
+              <p className="sr-only">
+                <Plural
+                  value={pendingUploads.length}
+                  one="Uploading # attachment"
+                  other="Uploading # attachments"
+                />
+              </p>
             ) : null}
           </div>
           {info.steer !== undefined && !archived ? (
@@ -3191,7 +3255,7 @@ function ThreadComposer({
       type="button"
       size="icon-sm"
       className="rounded-lg"
-      disabled={!(canPrompt || canQueue) || !hasSendableContent}
+      disabled={!(canPrompt || canQueue) || !hasSendableContent || pendingUploads.length > 0}
       onClick={onSubmit}
       aria-label={canQueue ? t`Queue message` : t`Send`}
       data-testid="agent-thread-send"
@@ -3240,6 +3304,7 @@ function ThreadComposer({
         ) : null}
         {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
           <PendingImageStrip
+            testIdPrefix="agent-thread"
             images={pendingAttachments}
             uploads={pendingUploads}
             onRemove={onRemovePendingAttachment}
@@ -3250,6 +3315,7 @@ function ThreadComposer({
           ariaLabel={t`Message ${agentName}`}
           onEmptyChange={setIsEmpty}
           onSubmit={onSubmit}
+          attachmentDrop={{ kind: 'host' }}
           onEscape={() => {
             if (turnActive && !cancelPending) onCancel();
           }}
@@ -3276,6 +3342,7 @@ function ThreadComposer({
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
           <AgentSettingsPopover info={info} />
           <AttachFilesButton
+            testId="agent-thread-attach-files"
             onFiles={onIngestAllFiles}
             referencesOnly={
               info.promptCapabilities !== null &&
@@ -3321,6 +3388,7 @@ function ThreadComposer({
                         size="icon-sm"
                         variant="outline"
                         className="rounded-lg"
+                        disabled={pendingUploads.length > 0}
                         onClick={onSteer}
                         aria-label={t`Steer now`}
                         data-testid="agent-thread-steer"
@@ -3523,92 +3591,6 @@ function QueuedMessageRow({
   );
 }
 
-function extensionLabel(name: string, mimeType: string): string {
-  const dot = name.lastIndexOf('.');
-  if (dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toLowerCase();
-  const slash = mimeType.lastIndexOf('/');
-  if (slash > 0 && slash < mimeType.length - 1) return mimeType.slice(slash + 1).toLowerCase();
-  return 'file';
-}
-
-function PendingImageStrip({
-  images,
-  uploads,
-  onRemove,
-}: {
-  images: readonly AttachmentPart[];
-  uploads: readonly { readonly id: string; readonly name: string; readonly mimeType: string }[];
-  onRemove: (index: number) => void;
-}): ReactNode {
-  const { t } = useLingui();
-  const openPreview = use(ImagePreviewContext);
-  return (
-    <div className="flex flex-wrap gap-2 px-3 pt-2 pb-1" data-testid="agent-thread-pending-images">
-      {images.map((image, index) => {
-        const key =
-          image.kind === 'image' || image.kind === 'blob'
-            ? `${index}:${image.name}:${image.data.slice(0, 24)}`
-            : `${index}:${image.name}:${image.path}`;
-        const src = image.kind === 'image' ? `data:${image.mimeType};base64,${image.data}` : null;
-        const label =
-          image.kind === 'file' || image.kind === 'folder'
-            ? extensionLabel(image.name, '')
-            : extensionLabel(image.name, image.mimeType);
-        return (
-          <div key={key} className="group relative inline-flex size-14" title={image.name}>
-            {src !== null ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => openPreview?.({ src, name: image.name })}
-                disabled={openPreview === null}
-                className="size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted p-0 hover:bg-muted"
-                aria-label={image.name}
-                data-testid="agent-thread-pending-image-preview"
-              >
-                <img
-                  src={src}
-                  alt={image.name}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                />
-              </Button>
-            ) : (
-              <div className="inline-flex size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted">
-                <span className="text-muted-foreground text-xs uppercase">{label}</span>
-              </div>
-            )}
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRemove(index);
-              }}
-              aria-label={t`Remove ${image.name}`}
-              className="absolute top-0.5 right-0.5 size-5 rounded-full border border-border bg-background/80 p-0 shadow-sm opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              data-testid="agent-thread-pending-image-remove"
-            >
-              <X className="size-3" aria-hidden="true" />
-            </Button>
-          </div>
-        );
-      })}
-      {uploads.map((upload) => (
-        <div
-          key={upload.id}
-          className="relative inline-flex size-14 items-center justify-center overflow-hidden rounded-md border border-input bg-muted"
-          title={upload.name}
-          data-testid="agent-thread-pending-upload"
-        >
-          <Spinner className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNode {
   const { t } = useLingui();
   return (
@@ -3629,46 +3611,5 @@ function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNo
         </div>
       </div>
     </div>
-  );
-}
-
-function AttachFilesButton({
-  onFiles,
-  referencesOnly,
-}: {
-  onFiles: (files: readonly File[]) => Promise<void>;
-  referencesOnly: boolean;
-}): ReactNode {
-  const { t } = useLingui();
-  const openFilePicker = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.addEventListener('change', () => {
-      const files = Array.from(input.files ?? []);
-      if (files.length > 0) void onFiles(files);
-    });
-    input.click();
-  };
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          className="rounded-lg"
-          onClick={openFilePicker}
-          aria-label={t`Attach a file`}
-          data-testid="agent-thread-attach-files"
-        >
-          <Plus className="size-4" aria-hidden="true" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        {t`Attach a file`}
-        {referencesOnly ? t` · references only (no embedded contents)` : null}
-      </TooltipContent>
-    </Tooltip>
   );
 }
