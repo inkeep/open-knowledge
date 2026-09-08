@@ -145,9 +145,9 @@
   "scripts": {
     "build": "tsdown && pnpm run verify:exports",
     "verify:exports": "node scripts/verify-exports-targets.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.perf.json --noEmit",
     "test": "vitest run src/ tests/contract/ scripts/",
-    "test:perf:bench": "RUN_BENCH=1 vitest run tests/perf/markdown-bench.test.ts",
+    "test:perf:bench": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --expose-gc\" RUN_BENCH=1 vitest run tests/perf/markdown-bench.test.ts",
     "test:perf:regression:unit": "vitest run tests/perf/regression-gate.test.ts",
     "test:perf:regression": "tsx tests/perf/run-regression-gate.ts",
     "test:health:unit": "vitest run tests/health/parse-health-gate.test.ts",

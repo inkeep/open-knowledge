@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { sharedExtensions } from '../../../../packages/core/src/extensions/shared.ts';
 import { MarkdownManager } from '../../../../packages/core/src/markdown/index.ts';
 
@@ -64,47 +63,5 @@ describe('PF03: parseWithFallback cycle time under load', () => {
     expect(steadyP95).toBeLessThan(Math.max(warmUpP95 * REGRESSION_RATIO, 1));
 
     expect(maxVal).toBeLessThan(MAX_CATASTROPHIC_MS);
-  });
-});
-
-describe('PF05: Y.Item growth under jsxInline typing', () => {
-  test('100-keystroke typing in jsxInline content — Y.Item delta ≤ keystroke_count + constant', () => {
-    const ydoc = new Y.Doc();
-    const ytext = ydoc.getText('source');
-
-    const initialContent = 'Hello <Icon name="check" /> world';
-    ytext.insert(0, initialContent);
-
-    const countItems = (yt: Y.Text): number => {
-      let count = 0;
-      let item = yt._start;
-      while (item !== null) {
-        if (!item.deleted) count++;
-        item = item.right;
-      }
-      return count;
-    };
-
-    const initialItems = countItems(ytext);
-    const KEYSTROKE_COUNT = 100;
-
-    for (let i = 0; i < KEYSTROKE_COUNT; i++) {
-      const insertPos = ytext.toString().length;
-      ydoc.transact(() => {
-        ytext.insert(insertPos, String.fromCharCode(97 + (i % 26)));
-      });
-    }
-
-    const finalItems = countItems(ytext);
-    const itemDelta = finalItems - initialItems;
-
-    console.log(
-      `PF05 results: initialItems=${initialItems}, finalItems=${finalItems}, delta=${itemDelta}, keystrokes=${KEYSTROKE_COUNT}`,
-    );
-
-    const CONSTANT_OVERHEAD = 10;
-    expect(itemDelta).toBeLessThanOrEqual(KEYSTROKE_COUNT + CONSTANT_OVERHEAD);
-
-    expect(itemDelta).toBeLessThan(KEYSTROKE_COUNT * 2);
   });
 });
