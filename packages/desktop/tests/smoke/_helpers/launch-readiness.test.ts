@@ -36,6 +36,7 @@ import {
   rememberLaunchHome,
   tryBootLogFor,
   tryFirstWaitFor,
+  UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
   type WindowMode,
   waitForReadySignal,
   waitForWindowByMode,
@@ -591,8 +592,10 @@ describe('the cap is a livelock backstop, deliberately tighter than the app can 
     expect(BOOT_LOG_STALL_MS).toBeLessThan(BOOT_LOG_CAP_MS);
   });
 
-  it("clears the unpackaged app's own utility-fork deadline", () => {
-    expect(BOOT_LOG_CAP_MS).toBeGreaterThan(UTILITY_INIT_TIMEOUT_MS);
+  it("clears the unpackaged app's own utility-fork deadline by the observation margin", () => {
+    expect(BOOT_LOG_CAP_MS - UTILITY_INIT_TIMEOUT_MS).toBeGreaterThanOrEqual(
+      UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+    );
   });
 
   it('lets the cap stay the operative verdict on a boot that never shows a window', () => {

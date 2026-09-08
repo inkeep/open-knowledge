@@ -1,3 +1,4 @@
+
 import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, getSchema, type JSONContent } from '@tiptap/core';

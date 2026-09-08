@@ -4,7 +4,7 @@ export const SPAWN_WAIT_HEARTBEAT_MS = 5_000;
 
 export const SPAWN_STARTUP_DEADLINE_MS = 15_000;
 
-export const UTILITY_INIT_TIMEOUT_MS = 15_000;
+export const UTILITY_INIT_TIMEOUT_MS = 20_000;
 
 export const SPAWN_WAIT_EXTENSION_FACTOR = 8;
 

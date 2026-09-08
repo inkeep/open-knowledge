@@ -3879,6 +3879,7 @@ describe('boot heartbeats (the unpackaged path CI runs)', () => {
   });
 
   test('narrates while the forked utility has not reported ready, and stops on ready', async () => {
+    env.deps.utilityInitTimeoutMs = 500;
     const wm = new WindowManager(env.deps);
     const promise = wm.createProjectWindow({ projectPath: '/tmp/test-project' });
 
@@ -3888,7 +3889,7 @@ describe('boot heartbeats (the unpackaged path CI runs)', () => {
     beat?.cb();
     beat?.cb();
     expect(beats).toHaveLength(2);
-    expect(beats[0]).toMatchObject({ event: 'desktop-utility-wait-progress' });
+    expect(beats[0]).toMatchObject({ event: 'desktop-utility-wait-progress', initTimeoutMs: 500 });
     expect(flushes).toBe(2);
 
     env.utilities[0]?.fire({ type: 'ready', port: 51234, apiOrigin: 'http://localhost:51234' });

@@ -15,6 +15,8 @@ export const BOOT_LOG_POLL_MS = 250;
 
 export const BOOT_LOG_CAP_MS = 25_000;
 
+export const UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS = 5_000;
+
 const BOOT_LOG_TAIL_LINES = 12;
 
 export interface BootLogSnapshot {
