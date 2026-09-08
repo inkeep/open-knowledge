@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import {
   createProjectionBinding,
   mapOffsetThroughDelta,
+  narrowDelta,
   narrowSplice,
   type ProjectionBinding,
 } from './projection-binding';
@@ -549,6 +550,140 @@ describe('projection binding — two peers typing in the same block', () => {
     } finally {
       a.destroy();
       b.destroy();
+    }
+  });
+});
+
+describe('narrowDelta — a replacement is not a deletion', () => {
+  const BEFORE = 'Filler.\n\nTarget block for co-editing.\n\nTail.\n';
+  const FROM = 9;
+  const OLD = 'Target block for co-editing.\n';
+  const NEW = 'Target block rewritten by the agent.\n';
+
+  it('moves the shared prefix and suffix of a rewrite out of the removed run', () => {
+    expect(
+      narrowDelta([{ retain: FROM }, { delete: OLD.length }, { insert: NEW }], BEFORE),
+    ).toEqual([
+      { retain: FROM },
+      { retain: 13 },
+      { delete: OLD.length - 15 },
+      { insert: NEW.slice(13, NEW.length - 2) },
+      { retain: 2 },
+    ]);
+  });
+
+  it('pairs an insert that precedes its delete', () => {
+    expect(
+      narrowDelta([{ retain: FROM }, { insert: NEW }, { delete: OLD.length }], BEFORE),
+    ).toEqual([
+      { retain: FROM },
+      { retain: 13 },
+      { delete: OLD.length - 15 },
+      { insert: NEW.slice(13, NEW.length - 2) },
+      { retain: 2 },
+    ]);
+  });
+
+  it('leaves a genuine deletion untouched', () => {
+    expect(narrowDelta([{ retain: FROM }, { delete: OLD.length }], BEFORE)).toEqual([
+      { retain: FROM },
+      { delete: OLD.length },
+    ]);
+  });
+
+  it('leaves a pure insertion untouched', () => {
+    expect(narrowDelta([{ retain: FROM }, { insert: 'hello' }], BEFORE)).toEqual([
+      { retain: FROM },
+      { insert: 'hello' },
+    ]);
+  });
+
+  it('declines to narrow when the removed run runs past the before-text', () => {
+    expect(narrowDelta([{ retain: 2 }, { delete: 999 }, { insert: 'x' }], 'short')).toEqual([
+      { retain: 2 },
+      { delete: 999 },
+      { insert: 'x' },
+    ]);
+  });
+
+  it('carries a caret at the end of a rewritten paragraph to the end of its replacement', () => {
+    const delta = [{ retain: FROM }, { delete: OLD.length }, { insert: NEW }];
+    const caret = FROM + OLD.length - 1;
+    expect(mapOffsetThroughDelta(delta, caret)).toBe(FROM);
+    expect(mapOffsetThroughDelta(narrowDelta(delta, BEFORE), caret)).toBe(FROM + NEW.length - 1);
+  });
+});
+
+describe('projection binding — an agent rewrites the paragraph the caret sits in', () => {
+  const SEED = ['Filler block 0 untouched.', 'Target block for co-editing.', 'Tail block.'].join(
+    '\n\n',
+  );
+  const OLD_BLOCK = 'Target block for co-editing.';
+  const NEW_BLOCK = 'Target block rewritten by the agent.';
+
+  function rewriteAsAgent(rig: Rig): void {
+    const at = rig.ytext.toString().indexOf(OLD_BLOCK);
+    rig.ydoc.transact(() => {
+      rig.ytext.delete(at, `${OLD_BLOCK}\n`.length);
+      rig.ytext.insert(at, `${NEW_BLOCK}\n`);
+    }, 'agent');
+  }
+
+  function caretAtEndOfBlock(rig: Rig, blockIndex: number): void {
+    const doc = rig.editor.state.doc;
+    let pos = 0;
+    for (let i = 0; i <= blockIndex; i++) pos += doc.child(i).nodeSize;
+    rig.editor.view.dispatch(rig.editor.state.tr.setSelection(TextSelection.create(doc, pos - 1)));
+  }
+
+  it('leaves the caret at the end of the rewritten paragraph, not at its start', () => {
+    const rig = createRig(`${SEED}\n`);
+    try {
+      caretAtEndOfBlock(rig, 1);
+      rewriteAsAgent(rig);
+
+      const { selection, doc } = rig.editor.state;
+      expect(doc.child(1).textContent).toBe(NEW_BLOCK);
+      expect(doc.resolve(selection.from).index(0)).toBe(1);
+      expect(selection.from).toBe(doc.resolve(selection.from).start() + NEW_BLOCK.length);
+
+      rig.editor.view.dispatch(rig.editor.state.tr.insertText('XYZ'));
+      expect(rig.ytext.toString()).toContain(`${NEW_BLOCK}XYZ`);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps a caret inside the rewritten paragraph within it', () => {
+    const rig = createRig(`${SEED}\n`);
+    try {
+      const doc = rig.editor.state.doc;
+      const start = doc.child(0).nodeSize + 1;
+      rig.editor.view.dispatch(
+        rig.editor.state.tr.setSelection(TextSelection.create(doc, start + 10)),
+      );
+      rewriteAsAgent(rig);
+
+      const { selection } = rig.editor.state;
+      expect(rig.editor.state.doc.resolve(selection.from).index(0)).toBe(1);
+      expect(selection.from).toBe(start + 10);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('leaves a caret in an untouched paragraph where it was', () => {
+    const rig = createRig(`${SEED}\n`);
+    try {
+      caretAtEndOfBlock(rig, 2);
+      const before = rig.editor.state.selection.from;
+      rewriteAsAgent(rig);
+
+      const { selection, doc } = rig.editor.state;
+      expect(doc.resolve(selection.from).index(0)).toBe(2);
+      expect(selection.from).toBe(before + (NEW_BLOCK.length - OLD_BLOCK.length));
+    } finally {
+      rig.destroy();
     }
   });
 });

@@ -62,8 +62,20 @@ interface ProjectionBindingOptions {
    peers editing one block each delete the shared text and insert a whole copy of it, and Yjs
    merges the deletes while keeping both inserts, so the block is duplicated. */
 export function narrowSplice(before: string, splice: SourceSplice): SourceSplice {
-  const previous = before.slice(splice.from, splice.to);
-  const next = splice.text;
+  const { prefix, suffix } = sharedAffixes(before.slice(splice.from, splice.to), splice.text);
+  return {
+    from: splice.from + prefix,
+    to: splice.to - suffix,
+    text: splice.text.slice(prefix, splice.text.length - suffix),
+  };
+}
+
+interface SharedAffixes {
+  prefix: number;
+  suffix: number;
+}
+
+function sharedAffixes(previous: string, next: string): SharedAffixes {
   const bound = Math.min(previous.length, next.length);
   let prefix = 0;
   while (prefix < bound && previous.charCodeAt(prefix) === next.charCodeAt(prefix)) prefix++;
@@ -75,11 +87,7 @@ export function narrowSplice(before: string, splice: SourceSplice): SourceSplice
   )
     suffix++;
   if (suffix > 0 && isLowSurrogate(next.charCodeAt(next.length - suffix))) suffix--;
-  return {
-    from: splice.from + prefix,
-    to: splice.to - suffix,
-    text: next.slice(prefix, next.length - suffix),
-  };
+  return { prefix, suffix };
 }
 
 function isHighSurrogate(code: number): boolean {
@@ -93,6 +101,53 @@ function isLowSurrogate(code: number): boolean {
 function applyToYText(ytext: Y.Text, splice: SourceSplice): void {
   if (splice.to > splice.from) ytext.delete(splice.from, splice.to - splice.from);
   if (splice.text !== '') ytext.insert(splice.from, splice.text);
+}
+
+type DeltaOp = { retain?: number; insert?: string | object; delete?: number };
+
+/* STOP: a whole-paragraph rewrite reaches this client as one delete plus one insert that share
+   most of their bytes, and mapOffsetThroughDelta collapses a caret inside a removed run onto
+   that run's start -- correct for a real deletion, wrong for a replacement, which is what an
+   agent edit always is. Trimming the shared affixes off the pair first leaves the caret outside
+   the removed run, so ordinary retain arithmetic carries it. This is the read-side mirror of
+   narrowSplice; `before` must be the source the delta's offsets index, never the post-change
+   one. */
+export function narrowDelta(delta: ReadonlyArray<DeltaOp>, before: string): DeltaOp[] {
+  const out: DeltaOp[] = [];
+  let read = 0;
+  for (let index = 0; index < delta.length; index++) {
+    const op = delta[index];
+    const next = delta[index + 1];
+    const removal = op.delete !== undefined ? op : next?.delete !== undefined ? next : undefined;
+    const addition =
+      typeof op.insert === 'string' ? op : typeof next?.insert === 'string' ? next : undefined;
+    const pairs =
+      removal !== undefined &&
+      addition !== undefined &&
+      removal !== addition &&
+      (op.delete !== undefined || typeof op.insert === 'string');
+
+    if (pairs && removal?.delete !== undefined && typeof addition?.insert === 'string') {
+      const length = removal.delete;
+      if (read + length <= before.length) {
+        const inserted = addition.insert;
+        const { prefix, suffix } = sharedAffixes(before.slice(read, read + length), inserted);
+        if (prefix > 0) out.push({ retain: prefix });
+        if (length - prefix - suffix > 0) out.push({ delete: length - prefix - suffix });
+        const added = inserted.slice(prefix, inserted.length - suffix);
+        if (added !== '') out.push({ insert: added });
+        if (suffix > 0) out.push({ retain: suffix });
+        read += length;
+        index++;
+        continue;
+      }
+    }
+
+    out.push(op);
+    if (op.retain !== undefined) read += op.retain;
+    else if (op.delete !== undefined) read += op.delete;
+  }
+  return out;
 }
 
 export function mapOffsetThroughDelta(
@@ -281,7 +336,10 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
         if (transaction.origin === origin) return;
-        const carried = mapOffsetThroughDelta(event.changes.delta as never, caretOffset());
+        const carried = mapOffsetThroughDelta(
+          narrowDelta(event.changes.delta as never, projection.source),
+          caretOffset(),
+        );
         project(ytext.toString(), carried, true);
       };
 
