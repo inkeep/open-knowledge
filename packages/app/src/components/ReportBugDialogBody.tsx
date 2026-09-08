@@ -7,6 +7,7 @@ import type {
 } from '@inkeep/open-knowledge-core';
 import {
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+  formatRelativeAge,
   isBugReportAttachmentEntry,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
@@ -107,6 +108,9 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
   const lines = [`Crash source: ${source}`, `Crash event: ${invite.eventId}`];
   if (invite.kind === 'boot' && invite.crashedAppVersion !== undefined) {
     lines.push(`Crashed app version: ${invite.crashedAppVersion}`);
+  }
+  if (invite.kind === 'boot' && invite.crashedAt !== undefined) {
+    lines.push(`Crashed at: ${invite.crashedAt} (${formatRelativeAge(invite.crashedAt)})`);
   }
   return lines;
 }

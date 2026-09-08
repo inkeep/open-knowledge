@@ -1,3 +1,4 @@
+import { formatRelativeAge, RELATIVE_TIME_UNKNOWN } from '@inkeep/open-knowledge-core';
 import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -41,18 +42,9 @@ export function isDesktopCommand(command: string | null): boolean {
   );
 }
 
-export function timeAgo(isoString: string, now = Date.now()): string {
-  const then = new Date(isoString).getTime();
-  if (Number.isNaN(then)) return '—';
-  const diffMs = now - then;
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return `${diffSec}s`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+export function startedCell(isoString: string, now = Date.now()): string {
+  const age = formatRelativeAge(isoString, now);
+  return age === RELATIVE_TIME_UNKNOWN ? '—' : age;
 }
 
 function buildEntry(
@@ -158,7 +150,7 @@ export function renderTable(entries: PsEntry[]): string {
       formatCombinedUsage(e),
       displayStatus(e),
       String(e.server.pid),
-      timeAgo(e.server.startedAt),
+      startedCell(e.server.startedAt),
       e.binary ?? '—',
     ];
   });

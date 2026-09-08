@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { extractOkBinaryPath } from '../utils/process-scan.ts';
 import type { LockState } from './lock-state.ts';
-import { isDesktopCommand, renderTable, runPs, timeAgo } from './ps.ts';
+import { isDesktopCommand, renderTable, runPs, startedCell } from './ps.ts';
 
 const ELECTRON_UTILITY_COMMAND =
   '/path/to/Electron Helper.app/Contents/MacOS/Electron Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US';
@@ -76,29 +76,14 @@ const corruptLock: LockState = {
   lockPath: '/tmp/notes/.ok/server.lock',
 };
 
-describe('timeAgo', () => {
-  test('returns seconds when diff < 60s', () => {
-    const now = new Date('2026-05-05T10:00:30.000Z').getTime();
-    expect(timeAgo('2026-05-05T10:00:00.000Z', now)).toBe('30s');
-  });
-
-  test('returns minutes ago when diff < 1h', () => {
+describe('startedCell', () => {
+  test('renders the shared relative-time form', () => {
     const now = new Date('2026-05-05T10:05:00.000Z').getTime();
-    expect(timeAgo('2026-05-05T10:00:00.000Z', now)).toBe('5m ago');
+    expect(startedCell('2026-05-05T10:00:00.000Z', now)).toBe('5m ago');
   });
 
-  test('returns hours ago when diff < 24h', () => {
-    const now = new Date('2026-05-05T12:00:00.000Z').getTime();
-    expect(timeAgo('2026-05-05T10:00:00.000Z', now)).toBe('2h ago');
-  });
-
-  test('returns days ago when diff >= 24h', () => {
-    const now = new Date('2026-05-08T10:00:00.000Z').getTime();
-    expect(timeAgo('2026-05-05T10:00:00.000Z', now)).toBe('3d ago');
-  });
-
-  test('returns — for invalid ISO string', () => {
-    expect(timeAgo('not-a-date')).toBe('—');
+  test('renders the table empty-cell marker when the stamp cannot be read', () => {
+    expect(startedCell('not-a-date')).toBe('—');
   });
 });
 
