@@ -130,14 +130,17 @@ vi.doMock('@/editor/DocumentContext', () => ({
 vi.doMock('@/components/EmptyEditorState', () => ({
   EmptyEditorState: ({
     terminalOpen,
+    bottomDockOpen,
     agentsOpen,
   }: {
     terminalOpen?: boolean;
+    bottomDockOpen?: boolean;
     agentsOpen?: boolean;
   }) => (
     <div
       data-testid="empty-editor-state"
       data-terminal-open={String(terminalOpen === true)}
+      data-bottom-dock-open={String(bottomDockOpen === true)}
       data-agents-open={String(agentsOpen === true)}
     />
   ),
@@ -407,6 +410,62 @@ describe('EditorArea empty-state terminal host', () => {
     const emptyState = screen.getByTestId('empty-editor-state');
     expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
     expect(emptyState.getAttribute('data-agents-open')).toBe('false');
+  });
+
+  test('reports the bottom dock as open when a visible terminal is docked at the bottom', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalVisible
+        terminalPlacement="bottom"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('true');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('true');
+  });
+
+  test('reports the bottom dock as closed when the visible terminal is docked to the right', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('true');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('false');
+  });
+
+  test('reports the bottom dock as closed when a bottom-placed terminal is not visible', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalPlacement="bottom"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('false');
   });
 });
 

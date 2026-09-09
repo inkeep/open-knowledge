@@ -7,26 +7,27 @@ import { EmptyStateHeader } from '@/components/empty-state/EmptyStateHeader';
 import { getEmptyStateCopy } from '@/components/empty-state/empty-state-copy';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { useAllTemplates } from '@/hooks/use-folder-config';
+import type { AsyncState } from '@/hooks/use-folder-config';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { emitCreateTopLevelFile } from '@/lib/create-file-events';
+import { cn } from '@/lib/utils';
 
 interface CreateViewProps {
+  readonly templatesState: AsyncState<readonly TemplatesListEntry[]>;
   readonly celebrateSignal: number;
   readonly onAddStarterPack: () => void;
   readonly onRageStreak?: () => void;
 }
 
-export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: CreateViewProps) {
+export function CreateView({
+  templatesState,
+  celebrateSignal,
+  onAddStarterPack,
+  onRageStreak,
+}: CreateViewProps) {
   const { t } = useLingui();
   const isEmbedded = useIsEmbedded();
   const { title, subtitle } = getEmptyStateCopy({ isOnboarding: false, isEmbedded });
-  const templatesState = useAllTemplates();
-  const initialDir = '';
-
-  const templates = templatesState.status === 'ready' ? templatesState.data : [];
-  const templatesLoading = templatesState.status === 'loading' || templatesState.status === 'idle';
-  const templatesError = templatesState.status === 'error';
 
   return (
     <div className="flex w-full flex-col gap-8 py-12 max-w-5xl my-auto" data-testid="create-view">
@@ -44,52 +45,84 @@ export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: 
         <CreatePromptComposer scenario="existing-repo" />
       )}
 
-      <div className="flex w-full flex-col gap-8">
-        {templatesLoading || templatesError || templates.length > 0 ? (
-          <TemplatesSection
-            templates={templates}
-            loading={templatesLoading}
-            error={templatesError}
-            onSelect={(folder, name) => emitCreateTopLevelFile({ template: { folder, name } })}
-          />
-        ) : null}
+      <FileCreationActions templatesState={templatesState} onAddStarterPack={onAddStarterPack} />
+    </div>
+  );
+}
 
-        {}
-        <div className="-mt-6 flex w-full items-center justify-between gap-4">
+interface FileCreationActionsProps {
+  readonly templatesState: AsyncState<readonly TemplatesListEntry[]>;
+  readonly compact?: boolean;
+  readonly onAddStarterPack?: () => void;
+}
+
+export function FileCreationActions({
+  templatesState,
+  compact = false,
+  onAddStarterPack,
+}: FileCreationActionsProps) {
+  const initialDir = '';
+
+  const templates = templatesState.status === 'ready' ? templatesState.data : [];
+  const templatesLoading = templatesState.status === 'loading' || templatesState.status === 'idle';
+  const templatesError = templatesState.status === 'error';
+  const templatesSectionVisible = templatesLoading || templatesError || templates.length > 0;
+
+  return (
+    <div className="flex w-full flex-col gap-8">
+      {templatesSectionVisible ? (
+        <TemplatesSection
+          compact={compact}
+          templates={templates}
+          loading={templatesLoading}
+          error={templatesError}
+          onSelect={(folder, name) => emitCreateTopLevelFile({ template: { folder, name } })}
+        />
+      ) : null}
+
+      {}
+      <div
+        data-testid="file-creation-action-row"
+        className={cn(
+          'flex w-full flex-wrap items-center justify-end gap-4',
+          templatesSectionVisible && '-mt-6',
+        )}
+      >
+        {onAddStarterPack ? (
           <Button
             onClick={onAddStarterPack}
             variant="link-muted"
             size="xs"
-            className="font-mono text-xs uppercase tracking-wider"
+            className="me-auto font-mono text-xs uppercase tracking-wider"
           >
             <Plus aria-hidden="true" className="size-3" />
             <Trans>Add a starter pack</Trans>
           </Button>
-          {}
-          <Button
-            variant="link-muted"
-            className="justify-end"
-            size="sm"
-            onClick={() => emitCreateTopLevelFile({ initialDir })}
-          >
-            <Trans>
-              or create a new file <ArrowRightIcon aria-hidden="true" className="size-3" />
-            </Trans>
-          </Button>
-        </div>
+        ) : null}
+        {}
+        <Button
+          variant="link-muted"
+          size="sm"
+          onClick={() => emitCreateTopLevelFile({ initialDir })}
+        >
+          <Trans>
+            or create a new file <ArrowRightIcon aria-hidden="true" className="size-3" />
+          </Trans>
+        </Button>
       </div>
     </div>
   );
 }
 
 interface TemplatesSectionProps {
+  readonly compact: boolean;
   readonly templates: readonly TemplatesListEntry[];
   readonly loading: boolean;
   readonly error: boolean;
   readonly onSelect: (folder: string, name: string) => void;
 }
 
-function TemplatesSection({ templates, loading, error, onSelect }: TemplatesSectionProps) {
+function TemplatesSection({ compact, templates, loading, error, onSelect }: TemplatesSectionProps) {
   const { t } = useLingui();
   return (
     <section aria-label={t`From template`} className="flex w-full flex-col gap-3">
@@ -114,7 +147,10 @@ function TemplatesSection({ templates, loading, error, onSelect }: TemplatesSect
           aria-label={t`Template list`}
           // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable scroll region per WCAG 2.1.1 (keyboard-operable)
           tabIndex={0}
-          className="subtle-scrollbar scroll-fade-mask flex max-h-[260px] w-full flex-col overflow-y-auto overscroll-contain focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className={cn(
+            'subtle-scrollbar scroll-fade-mask flex max-h-[260px] w-full flex-col overflow-y-auto focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
+            !compact && 'overscroll-contain',
+          )}
         >
           {loading ? (
             <p className="p-4 text-1sm text-muted-foreground">
