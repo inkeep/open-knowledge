@@ -138,6 +138,7 @@ import {
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -489,6 +490,7 @@ export function ThreadView({
     if (initialSeqRef.current === null || lastSeq === null || lastSeq <= initialSeqRef.current) {
       return;
     }
+    if (isOverlayLayerOpen()) return;
     const currentDoc = docNameFromHash(window.location.hash);
     const decision = decideFollowNavigation(followTarget, currentDoc, followNavRef.current);
     followNavRef.current = decision.state;
