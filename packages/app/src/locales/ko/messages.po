@@ -5026,10 +5026,6 @@ msgstr "완료"
 msgid "Done"
 msgstr "완료"
 
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "Done."
-msgstr "완료"
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
 msgstr "편집하려면 두 번 클릭"
@@ -9496,6 +9492,10 @@ msgstr "문서가 변경되면 Open Knowledge가 index.md 파일을 다시 작�
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are available in this thread."
 msgstr "이 스레드에서 Open Knowledge 도구를 사용할 수 있습니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry."
+msgstr "프로젝트 폴더가 없거나, 접근할 수 없거나, 변경되어 Open Knowledge 도구를 사용할 수 없습니다. 위치와 권한을 확인한 후 다시 시도하세요."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
@@ -14332,10 +14332,6 @@ msgstr "제목"
 
 #: src/editor/slash-command/items.tsx
 msgid "To do"
-msgstr "할 일"
-
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "To do."
 msgstr "할 일"
 
 #: src/lib/keyboard-shortcuts.ts

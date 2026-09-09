@@ -1,6 +1,20 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { EDITOR_TARGETS } from '../../../cli/src/commands/editors.ts';
+import { removeOwnMcpEntry } from '../../../cli/src/commands/mcp-config-removal.ts';
+import { ensurePiBridge } from '../../../cli/src/commands/pi-acp-bridge.ts';
 import type {
   McpWiringEditorId,
   ProjectIntegrationsSetRequest,
@@ -115,6 +129,7 @@ function register(
   opts: {
     available?: boolean;
     projectDir?: string | null;
+    logger?: Parameters<typeof registerProjectIntegrationsSettings>[0]['logger'];
     probeEditorPresence?: Parameters<
       typeof registerProjectIntegrationsSettings
     >[0]['probeEditorPresence'];
@@ -129,6 +144,7 @@ function register(
       opts.probeEditorPresence ?? (async () => ({ cliOnPath: {}, schemeHandler: {} })),
     resolveProjectDir: () => (opts.projectDir === undefined ? PROJECT : opts.projectDir),
     tildify: (p) => p,
+    logger: opts.logger,
   });
   const dispatch = ipcMain.handlers.get('ok:project-integrations:dispatch');
   if (!dispatch) throw new Error('handler not registered');
@@ -236,6 +252,58 @@ describe('registerProjectIntegrationsSettings — set', () => {
     expect(r.ok).toBe(true);
     expect(cli.removals).toEqual(['codex']);
   });
+
+  test.each(['kept-shared', 'kept-unowned'] as const)(
+    'logs why successful project Pi removal retains %s trust',
+    async (trust) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-project-settings-pi-')));
+      const projectDir = join(root, 'project');
+      const home = join(root, 'home');
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      const bridgePath = join(projectDir, '.pi', 'extensions', 'open-knowledge.ts');
+      const prompts = join(projectDir, '.pi', 'prompts');
+      try {
+        mkdirSync(projectDir);
+        mkdirSync(home);
+        if (trust === 'kept-unowned') {
+          mkdirSync(dirname(trustPath), { recursive: true });
+          writeFileSync(trustPath, JSON.stringify({ [projectDir]: true }));
+        }
+        expect((await ensurePiBridge(projectDir, { mode: 'published' }, home, {})).ok).toBe(true);
+        if (trust === 'kept-shared') mkdirSync(prompts);
+        const before = readFileSync(trustPath, 'utf8');
+        const event = vi.fn();
+        const { set } = register(
+          {
+            ...makeCli(),
+            allEditorIds: ['pi'],
+            projectConfigPath: (id, cwd) => EDITOR_TARGETS[id].projectConfigPath?.(cwd) ?? null,
+            removeProjectMcpEntry: (id, cwd, path) =>
+              removeOwnMcpEntry(EDITOR_TARGETS[id], cwd, home, path, {}),
+          },
+          { projectDir, logger: { warn: vi.fn(), event } },
+        );
+
+        const result = await set({ component: { kind: 'editor', id: 'pi' }, enabled: false });
+
+        expect(result.ok).toBe(true);
+        expect(event).toHaveBeenCalledWith({
+          event: 'project-integrations-editor-removed',
+          editor: 'pi',
+          outcome: 'removed',
+          path: bridgePath,
+          trust,
+          trustDetail: expect.stringContaining(
+            trust === 'kept-shared' ? prompts : 'no OpenKnowledge ownership record',
+          ),
+        });
+        expect(existsSync(bridgePath)).toBe(false);
+        expect(readFileSync(trustPath, 'utf8')).toBe(before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('uninstall of a foreign entry refuses with an explanatory error', async () => {
     const cli = makeCli({ removeKind: 'left-foreign' });

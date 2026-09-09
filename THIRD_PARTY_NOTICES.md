@@ -4989,6 +4989,11 @@ Homepage: https://facebook.github.io/react/
 
 Copyright (c) 2013-present, Facebook, Inc.
 
+### `proper-lockfile@4.1.2`
+Homepage: https://github.com/moxystudio/node-proper-lockfile
+
+Copyright (c) 2018 Made With MOXY Lda <hello@moxy.studio>
+
 ### `property-information@7.2.0`
 Homepage: https://github.com/wooorm/property-information
 
@@ -5314,6 +5319,11 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 Homepage: https://github.com/sindresorhus/restore-cursor
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+### `retry@0.12.0`
+Homepage: https://github.com/tim-kos/node-retry
+
+Copyright (c) 2011: Tim Koschützki (tim@debuggable.com) Felix Geisendörfer (felix@debuggable.com)
 
 ### `reusify@1.1.0`
 Homepage: https://github.com/mcollina/reusify#readme
@@ -6280,15 +6290,15 @@ Homepage: https://github.com/wesleytodd/setprototypeof
 
 Copyright (c) 2015, Wes Todd
 
-### `signal-exit@4.1.0`
-Homepage: https://github.com/tapjs/signal-exit
-
-Copyright (c) 2015-2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors
-
 ### `signal-exit@3.0.7`
 Homepage: https://github.com/tapjs/signal-exit
 
 Copyright (c) 2015, Contributors
+
+### `signal-exit@4.1.0`
+Homepage: https://github.com/tapjs/signal-exit
+
+Copyright (c) 2015-2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors
 
 ### `split2@4.2.0`
 Homepage: https://github.com/mcollina/split2

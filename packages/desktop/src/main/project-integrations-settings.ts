@@ -249,6 +249,9 @@ export function registerProjectIntegrationsSettings(
           event: 'project-integrations-editor-removed',
           editor: id,
           outcome: outcome.kind,
+          ...(outcome.kind === 'removed' && outcome.trustDetail
+            ? { path: projectPath, trust: outcome.trust, trustDetail: outcome.trustDetail }
+            : {}),
         });
         return { ok: true };
       case 'left-foreign':

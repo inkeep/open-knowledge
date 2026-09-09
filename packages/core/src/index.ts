@@ -1909,7 +1909,6 @@ export type {
   UninstallDispatchRequest,
   UninstallDispatchResult,
   UninstallIntent,
-  UninstallNoticeChecklistItem,
   UninstallNoticeScreen,
   UninstallProjectRow,
   UninstallScreenSpec,

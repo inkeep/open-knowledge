@@ -245,21 +245,21 @@ import {
   type DesktopUninstallProjectCandidate,
   type DesktopUninstallUiPreviewMode,
   defaultDesktopUninstallLogPath,
-  desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
-  desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
   normalizeDesktopUninstallFeedbackAnswers,
-  type RunDesktopUninstallCleanupResult,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
   resolveDesktopUninstallUiPreviewMode,
-  runDesktopUninstallCleanup,
   runDesktopUninstallFeedbackStep,
-  runDesktopUninstallOutcomeStep,
   selectDesktopUninstallProjectsByIndex,
 } from './desktop-uninstall.ts';
+import {
+  launchDesktopUninstallHandoff,
+  runDesktopUninstallHandoffStep,
+  showDesktopUninstallResult,
+} from './desktop-uninstall-handoff.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
@@ -2513,7 +2513,6 @@ async function showDesktopUninstallNotice(
     width?: number;
     height?: number;
     resizable?: boolean;
-    onRevealLog?: () => void;
   } = {},
 ): Promise<boolean> {
   const closeMeansConfirm = noticeCloseIsConfirm(spec);
@@ -2533,9 +2532,7 @@ async function showDesktopUninstallNotice(
       resizable: options.resizable ?? false,
       title: spec.title,
       onIntent: (intent, win) => {
-        if (intent.kind === 'notice-reveal-log') {
-          options.onRevealLog?.();
-        } else if (intent.kind === 'notice-confirm') {
+        if (intent.kind === 'notice-confirm') {
           finish(true, win);
         } else if (intent.kind === 'notice-cancel') {
           finish(false, win);
@@ -2814,32 +2811,22 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
   if (!confirmation.proceed) return;
 
   const projectPaths = confirmation.projectPaths;
-  const includeProjects = projectPaths.length > 0;
   const logPath = defaultDesktopUninstallLogPath(osHomedir());
-  const cleanup = await withDesktopUninstallProgress(() =>
-    runDesktopUninstallCleanup({
-      cliPath: wrapperPathInBundle(process.execPath),
-      projectPaths,
-      logPath,
-    }),
-  );
-  await runDesktopUninstallOutcomeStep({
-    cleanup,
-    runFeedbackStep: collectDesktopUninstallFeedback,
-    showCompletion: async () => {
-      getLogger('lifecycle').info(
-        { includeProjects, projectCount: projectPaths.length, logPath },
-        'desktop self-uninstall cleanup finished',
-      );
-      await showDesktopUninstallNotice(
-        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
-        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
-      );
-    },
+  await runDesktopUninstallHandoffStep({
+    collectFeedback: collectDesktopUninstallFeedback,
+    launchHandoff: () =>
+      withDesktopUninstallProgress(() =>
+        launchDesktopUninstallHandoff({
+          cliPath: wrapperPathInBundle(process.execPath),
+          projectPaths,
+          logPath,
+          appBundlePath,
+        }),
+      ),
     showFailure: async ({ error }) => {
       getLogger('lifecycle').warn(
-        { includeProjects, projectCount: projectPaths.length, logPath, error },
-        'desktop self-uninstall cleanup reported failures',
+        { projectCount: projectPaths.length, logPath, error },
+        'desktop self-uninstall handoff failed',
       );
       await showDesktopUninstallNotice(
         desktopUninstallFailureNotice({
@@ -2849,13 +2836,16 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
         }),
         { width: 560, height: 520, resizable: true },
       );
-      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+    suppressAutoInstallOnQuit: () => autoUpdaterHandle?.suppressAutoInstallOnQuit(),
+    quit: () => {
+      getLogger('lifecycle').info(
+        { projectCount: projectPaths.length, logPath },
+        'desktop self-uninstall scheduled after exit',
+      );
+      app.quit();
     },
   });
-
-  shell.showItemInFolder(appBundlePath);
-  autoUpdaterHandle?.suppressAutoInstallOnQuit();
-  app.quit();
 }
 
 function maybeRunDesktopUninstallUiPreview(): void {
@@ -2910,13 +2900,16 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
     const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
       height: 280,
     });
-    let reveals = 0;
     const acknowledged = await showDesktopUninstallNotice(
-      desktopUninstallCompletionNotice({ projectCount: 2 }),
-      { height: 440, onRevealLog: () => (reveals += 1) },
+      desktopUninstallFailureNotice({
+        error: 'The cleanup helper could not start. No cleanup was started.',
+        logPath: defaultDesktopUninstallLogPath(osHomedir()),
+        logText: null,
+      }),
+      { height: 440 },
     );
     getLogger('lifecycle').info(
-      { confirmed, acknowledged, reveals },
+      { confirmed, acknowledged },
       'uninstall UI preview: notices resolved',
     );
     await openDesktopUninstallRendererWindow({
@@ -2926,8 +2919,7 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
           title: 'Notice results',
           paragraphs: [
             `confirm=${confirmed ? 'confirmed' : 'cancelled'}`,
-            `completion=${acknowledged ? 'confirmed' : 'cancelled'}`,
-            `revealLog=${reveals}`,
+            `failure=${acknowledged ? 'confirmed' : 'cancelled'}`,
           ],
           confirmLabel: 'Close',
         },
@@ -3024,7 +3016,6 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     return;
   }
 
-  const projectPaths = confirmation.projectPaths;
   const logPath = defaultDesktopUninstallLogPath(home);
   try {
     writeFileSync(
@@ -3035,22 +3026,13 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     log.warn({ err, logPath }, 'uninstall UI preview: could not write placeholder log');
   }
 
-  const cleanup: RunDesktopUninstallCleanupResult = await withDesktopUninstallProgress(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1400));
-    return mode === 'failure'
-      ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
-      : { ok: true };
-  });
-
-  await runDesktopUninstallOutcomeStep({
-    cleanup,
-    runFeedbackStep: collectDesktopUninstallFeedbackPreview,
-    showCompletion: async () => {
-      await showDesktopUninstallNotice(
-        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
-        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
-      );
-    },
+  await runDesktopUninstallHandoffStep({
+    collectFeedback: collectDesktopUninstallFeedbackPreview,
+    launchHandoff: () =>
+      withDesktopUninstallProgress(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+        return { ok: true };
+      }),
     showFailure: async ({ error }) => {
       await showDesktopUninstallNotice(
         desktopUninstallFailureNotice({
@@ -3060,8 +3042,17 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
         }),
         { width: 560, height: 520, resizable: true },
       );
-      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
     },
+    suppressAutoInstallOnQuit: () => {},
+    quit: () =>
+      showDesktopUninstallResult({
+        appBundlePath: resolveAppBundleFromExecPath(process.execPath) ?? process.execPath,
+        logPath,
+        cleanup:
+          mode === 'failure'
+            ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
+            : { ok: true },
+      }),
   });
 
   log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');

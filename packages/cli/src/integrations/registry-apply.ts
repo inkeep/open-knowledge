@@ -24,6 +24,7 @@ const INSTALL_OPTIONS: McpInstallOptions = {
 export interface CliWriteContext {
   readonly cwd: string;
   readonly home?: string;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 function fail(): ExecutedOutcome {
@@ -55,6 +56,41 @@ function removalOutcome(kind: 'removed' | 'not-present' | 'left-foreign' | 'decl
   }
 }
 
+function removeMcp(
+  editor: EditorId,
+  cwd: string,
+  home: string | undefined,
+  configPath?: string,
+  env?: NodeJS.ProcessEnv,
+): ExecutedOutcome {
+  const target = EDITOR_TARGETS[editor];
+  try {
+    const outcome = removeOwnMcpEntry(target, cwd, home, configPath, env);
+    if (outcome.kind === 'removed' && outcome.trustDetail) {
+      getLogger('agent-integrations-apply').warn(
+        {
+          editor,
+          path: configPath ?? target.configPath(cwd, home),
+          trust: outcome.trust,
+          trustDetail: outcome.trustDetail,
+        },
+        'MCP config removal retained Pi folder trust',
+      );
+    }
+    return removalOutcome(outcome.kind);
+  } catch (error) {
+    getLogger('agent-integrations-apply').warn(
+      {
+        editor,
+        path: configPath ?? target.configPath(cwd, home),
+        reason: error instanceof Error ? error.message : String(error),
+      },
+      'MCP config removal failed',
+    );
+    return fail();
+  }
+}
+
 async function applyUserMcp(
   editor: EditorId,
   ctx: CliWriteContext,
@@ -63,7 +99,7 @@ async function applyUserMcp(
   if (EDITOR_TARGETS[editor].scope !== 'global') return missing();
 
   if (desired === 'absent') {
-    return removalOutcome(removeOwnMcpEntry(EDITOR_TARGETS[editor], '', ctx.home).kind);
+    return removeMcp(editor, '', ctx.home, undefined, ctx.env);
   }
 
   const results = await writeUserMcpConfigs({
@@ -98,9 +134,7 @@ function applyProjectMcp(
   const projectPath = join(ctx.cwd, relative);
 
   if (desired === 'absent') {
-    return removalOutcome(
-      removeOwnMcpEntry(EDITOR_TARGETS[editor], ctx.cwd, undefined, projectPath).kind,
-    );
+    return removeMcp(editor, ctx.cwd, ctx.home, projectPath, ctx.env);
   }
 
   const result = writeEditorMcpConfig(

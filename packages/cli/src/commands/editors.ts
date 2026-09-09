@@ -532,6 +532,7 @@ interface EditorMcpTargetBase {
 
 interface ManagedFileEditorTarget extends EditorMcpTargetBase {
   format: 'file';
+  projectConfigPath: (cwd: string) => string;
   buildEntry?: undefined;
 }
 
@@ -559,7 +560,7 @@ export function editorConfigPathDisplay(target: EditorMcpTarget, home: string): 
   return abs.startsWith(`${home}/`) ? `~${abs.slice(home.length)}` : abs;
 }
 
-export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> = {
+export const EDITOR_TARGETS: Record<EditorId, EditorMcpTarget> & { pi: ManagedFileEditorTarget } = {
   claude: {
     id: 'claude',
     label: EDITOR_LABELS.claude,

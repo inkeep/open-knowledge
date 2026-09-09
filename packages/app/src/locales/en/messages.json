@@ -3230,7 +3230,6 @@
     "ciozf1": ["Skill already in project"],
     "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
     "cklVjM": ["Timeline"],
-    "clJ3qM": ["Done."],
     "cn1sLi": ["Couldn't connect OpenKnowledge tools to Claude Code. Please try again."],
     "cnGeoo": ["Delete"],
     "cqQyPB": ["Folder name"],
@@ -3369,6 +3368,9 @@
     "e8zRrb": ["Show Files"],
     "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
     "e9sHSO": ["Pick up where you left off"],
+    "eBGWcy": [
+      "Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry."
+    ],
     "eBIT9h": ["Paste failed.", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "one": ["#", " problem"], "other": ["#", " problems"] }]],
     "eCOktA": ["Already starting a chat with this agent — try again in a moment."],
@@ -5202,7 +5204,6 @@
     "yQE2r9": ["Loading"],
     "yQyglE": ["No matching docs"],
     "yR5LHI": ["Enter a 6-digit hex like #1A2B3C"],
-    "yU_9ur": ["To do."],
     "yUxR-Q": ["Expand ", ["keyName"]],
     "yWSvcf": ["Content root"],
     "yWWThY": ["Asset reference"],

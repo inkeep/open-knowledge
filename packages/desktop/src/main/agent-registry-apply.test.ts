@@ -1,6 +1,22 @@
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { HostSnapshot, SurfaceState } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { EDITOR_TARGETS } from '../../../cli/src/commands/editors.ts';
+import { removeOwnMcpEntry } from '../../../cli/src/commands/mcp-config-removal.ts';
+import { ensurePiBridge } from '../../../cli/src/commands/pi-acp-bridge.ts';
+import { collectCliHostSnapshot } from '../../../cli/src/integrations/registry-probes.ts';
 import type {
   AgentIntegrationsApplyRequest,
   AgentIntegrationsApplyResult,
@@ -22,6 +38,7 @@ const CLAUDE_USER_SKILL = 'claude/skill/user/skill-bundle-copy';
 const CODEX_PROJECT_SKILL = 'codex/skill/project/skill-bundle-copy';
 const CODEX_PROJECT_MCP = 'codex/mcp/project/config-entry';
 const COPILOT_PROJECT_MCP = 'copilot/mcp/project/config-entry';
+const PI_PROJECT_MCP = 'pi/mcp/project/managed-file';
 
 interface Calls {
   userWrites: McpWiringEditorId[];
@@ -41,6 +58,8 @@ interface SurfaceOverrides {
   projectWriteAction?: 'written' | 'overwritten' | 'declined' | 'failed';
   projectRemoveKind?: 'removed' | 'not-present' | 'left-foreign' | 'declined';
   projectWriteThrows?: boolean;
+  userRemoveError?: unknown;
+  projectRemoveError?: unknown;
   skillWriteAction?: 'written' | 'overwritten' | 'skipped-unsupported' | 'failed';
   userSkillWriteAction?: 'written' | 'overwritten' | 'skipped-unsupported' | 'failed';
   userSkillPresentAnywhere?: boolean;
@@ -79,6 +98,7 @@ function makeSurfaces(
       },
       removeUserMcpEntry: (editorId) => {
         calls.userRemovals.push(editorId);
+        if (overrides.userRemoveError !== undefined) throw overrides.userRemoveError;
         return { kind: overrides.userRemoveKind ?? ('removed' as const) };
       },
       writeUserSkill: (editorId) => {
@@ -107,6 +127,7 @@ function makeSurfaces(
       },
       removeProjectMcpEntry: (id, _projectDir, projectPath) => {
         calls.projectRemovals.push({ id, path: projectPath });
+        if (overrides.projectRemoveError !== undefined) throw overrides.projectRemoveError;
         return { kind: overrides.projectRemoveKind ?? 'removed' } as ReturnType<
           AgentRegistryWriterSurfaces['project']['removeProjectMcpEntry']
         >;
@@ -159,6 +180,22 @@ function actionFor(
   satisfierId: string,
 ) {
   return report.actions.find((entry) => entry.satisfierId === satisfierId);
+}
+
+function piFixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-desktop-pi-removal-')));
+  const projectDir = join(root, 'project');
+  const home = join(root, 'home');
+  mkdirSync(projectDir);
+  mkdirSync(home);
+  const bridgePath = join(projectDir, '.pi', 'extensions', 'open-knowledge.ts');
+  const trustPath = join(home, '.pi', 'agent', 'trust.json');
+  const surfaces = makeSurfaces();
+  surfaces.project.projectConfigPath = (id, cwd) =>
+    EDITOR_TARGETS[id].projectConfigPath?.(cwd) ?? null;
+  surfaces.project.removeProjectMcpEntry = (id, cwd, path) =>
+    removeOwnMcpEntry(EDITOR_TARGETS[id], cwd, home, path, {});
+  return { root, projectDir, home, bridgePath, trustPath, surfaces };
 }
 
 describe('applyIntents on the desktop host', () => {
@@ -246,6 +283,137 @@ describe('applyIntents on the desktop host', () => {
     });
     expect(actionFor(report, CLAUDE_USER_MCP)?.action).toBe('written');
   });
+
+  test.each(['user', 'project'] as const)(
+    'logs a thrown %s MCP removal reason and continues the batch',
+    async (scope) => {
+      const reason = 'The config directory is read-only';
+      const surfaces = makeSurfaces(
+        scope === 'user' ? { userRemoveError: new Error(reason) } : { projectRemoveError: reason },
+      );
+      const satisfier = scope === 'user' ? CLAUDE_USER_MCP : CLAUDE_PROJECT_MCP;
+      const warn = vi.fn();
+
+      const { report } = await applyIntents(
+        { intents: [drop(satisfier), want(CODEX_PROJECT_MCP)] },
+        {
+          surfaces,
+          projectDir: PROJECT,
+          logger: { warn },
+          snapshot: async () =>
+            snapshotWith({ [satisfier]: 'satisfied', [CODEX_PROJECT_MCP]: 'absent' }),
+        },
+      );
+
+      expect(actionFor(report, satisfier)).toMatchObject({
+        action: 'failed',
+        errorId: 'write-failed',
+      });
+      expect(actionFor(report, CODEX_PROJECT_MCP)?.action).toBe('written');
+      expect(warn).toHaveBeenCalledWith('MCP config removal failed', {
+        channel: 'ok:integrations:dispatch',
+        editor: 'claude',
+        scope,
+        ...(scope === 'project' ? { path: `${PROJECT}/claude.config` } : {}),
+        reason,
+      });
+    },
+  );
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'logs an inaccessible recorded Pi trust store when the bridge disappears after probing',
+    async () => {
+      const { root, projectDir, home, bridgePath, trustPath, surfaces } = piFixture();
+      try {
+        expect((await ensurePiBridge(projectDir, { mode: 'published' }, home, {})).ok).toBe(true);
+        const before = readFileSync(trustPath, 'utf8');
+        chmodSync(trustPath, 0o000);
+        const remove = surfaces.project.removeProjectMcpEntry;
+        surfaces.project.removeProjectMcpEntry = (...args) => {
+          rmSync(bridgePath);
+          return remove(...args);
+        };
+        const warn = vi.fn();
+
+        const { report, snapshot } = await applyIntents(
+          { intents: [drop(PI_PROJECT_MCP)] },
+          {
+            surfaces,
+            projectDir,
+            logger: { warn },
+            snapshot: () => collectCliHostSnapshot({ cwd: projectDir, home }),
+          },
+        );
+
+        expect(actionFor(report, PI_PROJECT_MCP)).toMatchObject({
+          action: 'failed',
+          errorId: 'write-failed',
+        });
+        expect(warn).toHaveBeenCalledWith(
+          'MCP config removal failed',
+          expect.objectContaining({
+            editor: 'pi',
+            path: bridgePath,
+            reason: expect.stringContaining(trustPath),
+          }),
+        );
+        expect(warn.mock.calls[0]?.[1].reason).toContain('permissions');
+        chmodSync(trustPath, 0o600);
+        expect(readFileSync(trustPath, 'utf8')).toBe(before);
+        expect(existsSync(bridgePath)).toBe(false);
+        expect(existsSync(join(home, '.ok', 'pi-trust'))).toBe(true);
+        expect(snapshot.probes.satisfiers[PI_PROJECT_MCP]?.state).toBe('absent');
+      } finally {
+        if (existsSync(trustPath)) chmodSync(trustPath, 0o600);
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.each(['kept-shared', 'kept-unowned'] as const)(
+    'logs the reason for a successful Pi removal with %s trust',
+    async (trust) => {
+      const { root, projectDir, home, bridgePath, trustPath, surfaces } = piFixture();
+      try {
+        if (trust === 'kept-unowned') {
+          mkdirSync(dirname(trustPath), { recursive: true });
+          writeFileSync(trustPath, JSON.stringify({ [projectDir]: true }));
+        }
+        expect((await ensurePiBridge(projectDir, { mode: 'published' }, home, {})).ok).toBe(true);
+        if (trust === 'kept-shared') mkdirSync(join(projectDir, '.pi', 'prompts'));
+        const before = readFileSync(trustPath, 'utf8');
+        const warn = vi.fn();
+
+        const { report } = await applyIntents(
+          { intents: [drop(PI_PROJECT_MCP)] },
+          {
+            surfaces,
+            projectDir,
+            logger: { warn },
+            snapshot: () => collectCliHostSnapshot({ cwd: projectDir, home }),
+          },
+        );
+
+        expect(actionFor(report, PI_PROJECT_MCP)?.action).toBe('removed');
+        expect(warn).toHaveBeenCalledWith(
+          'MCP config removal retained Pi folder trust',
+          expect.objectContaining({
+            editor: 'pi',
+            path: bridgePath,
+            trust,
+            trustDetail: expect.any(String),
+          }),
+        );
+        if (trust === 'kept-shared') {
+          expect(warn.mock.calls[0]?.[1].trustDetail).toContain(join(projectDir, '.pi', 'prompts'));
+        }
+        expect(existsSync(bridgePath)).toBe(false);
+        expect(readFileSync(trustPath, 'utf8')).toBe(before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('a partial failure still comes back with a fresh snapshot', async () => {
     const surfaces = makeSurfaces({ projectWriteAction: 'failed' });

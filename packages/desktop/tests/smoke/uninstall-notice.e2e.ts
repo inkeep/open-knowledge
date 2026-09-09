@@ -11,7 +11,7 @@ const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
 const CONFIRM_HEADING = 'Uninstall OpenKnowledge?';
-const COMPLETION_HEADING = 'OpenKnowledge files were removed';
+const FAILURE_HEADING = 'Cleanup didn’t finish';
 const RESULTS_HEADING = 'Notice results';
 
 async function findNoticeWindow(
@@ -66,28 +66,25 @@ test.describe('uninstall notice smoke', () => {
     await app.firstWindow({ timeout: 20_000 });
 
     const confirm = await findNoticeWindow(app, CONFIRM_HEADING);
-    await expect(
-      confirm.getByText('When cleanup finishes, OpenKnowledge will help you remove the app itself'),
-    ).toBeVisible();
+    await expect(confirm.getByText('OpenKnowledge will quit before cleanup starts.')).toBeVisible();
     let closed = confirm.waitForEvent('close', { timeout: 15_000 });
     await confirm.getByRole('button', { name: 'Uninstall OpenKnowledge' }).click();
     await closed;
 
-    const completion = await findNoticeWindow(app, COMPLETION_HEADING);
-    await expect(completion.getByText('Kept your content')).toBeVisible();
-    await expect(completion.getByText('Removed OpenKnowledge files')).toBeVisible();
-    await expect(completion.getByText('Move OpenKnowledge.app to the Trash')).toBeVisible();
-    closed = completion.waitForEvent('close', { timeout: 15_000 });
-    await completion.getByRole('button', { name: 'Reveal in Finder' }).click();
+    const failure = await findNoticeWindow(app, FAILURE_HEADING);
+    await expect(
+      failure.getByText('The cleanup helper could not start. No cleanup was started.'),
+    ).toBeVisible();
+    closed = failure.waitForEvent('close', { timeout: 15_000 });
+    await failure.getByRole('button', { name: 'Continue' }).click();
     await closed;
 
     const results = await findNoticeWindow(app, RESULTS_HEADING);
     await expect(results.getByText('confirm=confirmed')).toBeVisible();
-    await expect(results.getByText('completion=confirmed')).toBeVisible();
-    await expect(results.getByText('revealLog=0')).toBeVisible();
+    await expect(results.getByText('failure=confirmed')).toBeVisible();
   });
 
-  test('closing an unanswered question cancels, closing a recap confirms', async ({
+  test('closing an unanswered question cancels, closing a failure notice acknowledges it', async ({
     captureStderrFor,
   }) => {
     const { app, home } = await launchNoticePreview('ok-uninstall-notice-close-');
@@ -100,17 +97,15 @@ test.describe('uninstall notice smoke', () => {
     await confirm.close();
     await closed;
 
-    const completion = await findNoticeWindow(app, COMPLETION_HEADING);
-    await completion.getByRole('button', { name: 'Cleanup log' }).click();
-    await expect(completion.getByRole('heading', { name: COMPLETION_HEADING })).toBeVisible();
+    const failure = await findNoticeWindow(app, FAILURE_HEADING);
+    await expect(failure.getByRole('heading', { name: FAILURE_HEADING })).toBeVisible();
 
-    closed = completion.waitForEvent('close', { timeout: 15_000 });
-    await completion.close();
+    closed = failure.waitForEvent('close', { timeout: 15_000 });
+    await failure.close();
     await closed;
 
     const results = await findNoticeWindow(app, RESULTS_HEADING);
     await expect(results.getByText('confirm=cancelled')).toBeVisible();
-    await expect(results.getByText('completion=confirmed')).toBeVisible();
-    await expect(results.getByText('revealLog=1')).toBeVisible();
+    await expect(results.getByText('failure=confirmed')).toBeVisible();
   });
 });

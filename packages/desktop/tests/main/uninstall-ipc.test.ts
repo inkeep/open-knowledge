@@ -65,12 +65,12 @@ describe('uninstall screen registry — intent delivery', () => {
 
     expect(registry.dispatch(7, { kind: 'picker-cancel' })).toEqual({ kind: 'accepted' });
     expect(registry.dispatch(7, { kind: 'survey-skip' })).toEqual({ kind: 'accepted' });
-    expect(registry.dispatch(7, { kind: 'notice-reveal-log' })).toEqual({ kind: 'accepted' });
+    expect(registry.dispatch(7, { kind: 'notice-confirm' })).toEqual({ kind: 'accepted' });
 
     expect(received).toEqual([
       { kind: 'picker-cancel' },
       { kind: 'survey-skip' },
-      { kind: 'notice-reveal-log' },
+      { kind: 'notice-confirm' },
     ]);
   });
 
@@ -88,6 +88,7 @@ describe('uninstall screen registry — intent delivery', () => {
 
     for (const payload of [
       { kind: 'delete-everything' },
+      { kind: 'notice-reveal-log' },
       { kind: 42 },
       'notice-confirm',
       null,

@@ -583,6 +583,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
       timeout: 10_000,
     });
+    await waitForStatus(page, 'running', 25_000);
     await clickViewAgentsItem(app);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expect
@@ -592,7 +593,6 @@ test.describe('Docked terminal — live Electron', () => {
           .evaluate((element) => element.getBoundingClientRect().width),
       )
       .toBeGreaterThan(739);
-    await waitForStatus(page, 'running', 25_000);
     await typeInTerminal(page, `${SHELL_COMMANDS.columns('RAIL_COLS')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/RAIL_COLS=\d+/);
     const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];

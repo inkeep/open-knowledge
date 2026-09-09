@@ -2857,7 +2857,6 @@
     "ciozf1": ["專案中已有的技能"],
     "cjtjry": ["在 OpenKnowledge 的導覽記錄中往回走。"],
     "cklVjM": ["時間軸"],
-    "clJ3qM": ["完成。"],
     "cn1sLi": ["無法把 OpenKnowledge 工具連接到 Claude Code。請再試一次。"],
     "cnGeoo": ["刪除"],
     "cqQyPB": ["資料夾名稱"],
@@ -2963,6 +2962,9 @@
     "e8zRrb": ["顯示「檔案」"],
     "e8zYa8": ["無法在 worktree 中開啟 ", ["shareBranch"], "。請再試一次。"],
     "e9sHSO": ["從上次停下的地方繼續"],
+    "eBGWcy": [
+      "Open Knowledge 工具無法使用，因為專案資料夾遺失、無法存取或已變更。請檢查其位置和權限，然後重試。"
+    ],
     "eBIT9h": ["貼上失敗。", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "other": ["#", " 個問題"] }]],
     "eCOktA": ["已經在與該代理開啟對話了，請稍後再試。"],
@@ -4543,7 +4545,6 @@
     "yQE2r9": ["正在載入"],
     "yQyglE": ["沒有相符的文件"],
     "yR5LHI": ["請輸入 6 位十六進位值，例如 #1A2B3C"],
-    "yU_9ur": ["待辦。"],
     "yUxR-Q": ["展開 ", ["keyName"]],
     "yWSvcf": ["內容根目錄"],
     "yWWThY": ["資產參照"],

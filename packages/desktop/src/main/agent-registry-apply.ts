@@ -64,6 +64,20 @@ function logWriteFailure(
   logger.warn('skill write failed', { channel: CHANNEL, editor, reason: reason ?? '' });
 }
 
+function logMcpRemovalFailure(
+  logger: AgentIntegrationsLogger,
+  editor: McpWiringEditorId,
+  error: unknown,
+  path?: string,
+): void {
+  logger.warn('MCP config removal failed', {
+    channel: CHANNEL,
+    editor,
+    ...(path === undefined ? { scope: 'user' } : { scope: 'project', path }),
+    reason: error instanceof Error ? error.message : String(error),
+  });
+}
+
 function missing(): ExecutedOutcome {
   return { action: 'skipped-missing', errorId: 'surface-missing' };
 }
@@ -79,19 +93,25 @@ function applyUserMcp(
   global: GlobalWriterSurface,
   editor: McpWiringEditorId,
   desired: PlannedStep['desired'],
+  logger: AgentIntegrationsLogger,
 ): ExecutedOutcome | Promise<ExecutedOutcome> {
   if (!global.allEditorIds.includes(editor)) return missing();
 
   if (desired === 'absent') {
-    switch (global.removeUserMcpEntry(editor).kind) {
-      case 'removed':
-        return { action: 'removed' };
-      case 'not-present':
-        return { action: 'no-op' };
-      case 'left-foreign':
-        return { action: 'skipped-foreign', errorId: 'foreign-artifact' };
-      case 'declined':
-        return { action: 'declined', errorId: 'write-declined' };
+    try {
+      switch (global.removeUserMcpEntry(editor).kind) {
+        case 'removed':
+          return { action: 'removed' };
+        case 'not-present':
+          return { action: 'no-op' };
+        case 'left-foreign':
+          return { action: 'skipped-foreign', errorId: 'foreign-artifact' };
+        case 'declined':
+          return { action: 'declined', errorId: 'write-declined' };
+      }
+    } catch (error) {
+      logMcpRemovalFailure(logger, editor, error);
+      return fail('write-failed');
     }
   }
 
@@ -119,20 +139,36 @@ function applyProjectMcp(
   editor: McpWiringEditorId,
   projectDir: string,
   desired: PlannedStep['desired'],
+  logger: AgentIntegrationsLogger,
 ): ExecutedOutcome {
   const projectPath = project.projectConfigPath(editor, projectDir);
   if (projectPath === null) return missing();
 
   if (desired === 'absent') {
-    switch (project.removeProjectMcpEntry(editor, projectDir, projectPath).kind) {
-      case 'removed':
-        return { action: 'removed' };
-      case 'not-present':
-        return { action: 'no-op' };
-      case 'left-foreign':
-        return { action: 'skipped-foreign', errorId: 'foreign-artifact' };
-      case 'declined':
-        return { action: 'declined', errorId: 'write-declined' };
+    try {
+      const result = project.removeProjectMcpEntry(editor, projectDir, projectPath);
+      if (result.kind === 'removed' && result.trustDetail) {
+        logger.warn('MCP config removal retained Pi folder trust', {
+          channel: CHANNEL,
+          editor,
+          path: projectPath,
+          trust: result.trust,
+          trustDetail: result.trustDetail,
+        });
+      }
+      switch (result.kind) {
+        case 'removed':
+          return { action: 'removed' };
+        case 'not-present':
+          return { action: 'no-op' };
+        case 'left-foreign':
+          return { action: 'skipped-foreign', errorId: 'foreign-artifact' };
+        case 'declined':
+          return { action: 'declined', errorId: 'write-declined' };
+      }
+    } catch (error) {
+      logMcpRemovalFailure(logger, editor, error, projectPath);
+      return fail('write-failed');
     }
   }
 
@@ -233,14 +269,14 @@ function createDesktopStepExecutor(options: DesktopStepExecutorOptions): StepExe
 
     if (step.scope === 'user') {
       return step.piece === 'mcp'
-        ? applyUserMcp(surfaces.global, editor, step.desired)
+        ? applyUserMcp(surfaces.global, editor, step.desired, options.logger)
         : applyUserSkill(surfaces.global, editor, step.desired, options.logger);
     }
     if (step.scope !== 'project') return { action: 'skipped-unsupported', errorId: 'no-writer' };
     if (projectDir === null) return missing();
 
     return step.piece === 'mcp'
-      ? applyProjectMcp(surfaces.project, editor, projectDir, step.desired)
+      ? applyProjectMcp(surfaces.project, editor, projectDir, step.desired, options.logger)
       : applyProjectSkill(surfaces.project, editor, projectDir, step.desired, options.logger);
   };
 }

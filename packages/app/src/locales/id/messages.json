@@ -3262,7 +3262,6 @@
     "ciozf1": ["Keterampilan sudah ada dalam proyek"],
     "cjtjry": ["Menyusuri riwayat navigasi OpenKnowledge ke belakang."],
     "cklVjM": ["Lini masa"],
-    "clJ3qM": ["Selesai."],
     "cn1sLi": ["Alat OpenKnowledge tidak bisa dihubungkan ke Claude Code. Silakan coba lagi."],
     "cnGeoo": ["Hapus"],
     "cqQyPB": ["Nama folder"],
@@ -3381,6 +3380,9 @@
     "e8zRrb": ["Tampilkan Berkas"],
     "e8zYa8": [["shareBranch"], " tidak dapat dibuka di worktree. Coba lagi."],
     "e9sHSO": ["Lanjutkan dari tempat Anda berhenti"],
+    "eBGWcy": [
+      "Alat Open Knowledge tidak tersedia karena folder proyek tidak ada, tidak dapat diakses, atau telah berubah. Periksa lokasi dan izinnya, lalu coba lagi."
+    ],
     "eBIT9h": ["Penempelan gagal.", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "other": ["#", " masalah"] }]],
     "eCOktA": ["Obrolan dengan agen ini sudah mulai dibuka — coba lagi sebentar lagi."],
@@ -5198,7 +5200,6 @@
     "yQE2r9": ["Memuat"],
     "yQyglE": ["Tidak ada dokumen yang cocok"],
     "yR5LHI": ["Masukkan nilai heksa 6 digit seperti #1A2B3C"],
-    "yU_9ur": ["Akan dikerjakan."],
     "yUxR-Q": ["Bentangkan ", ["keyName"]],
     "yWSvcf": ["Akar konten"],
     "yWWThY": ["Referensi aset"],

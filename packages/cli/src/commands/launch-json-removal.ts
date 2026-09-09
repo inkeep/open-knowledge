@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import {
@@ -7,14 +7,19 @@ import {
   type ParseError as JsoncParseError,
   parseTree,
 } from 'jsonc-parser';
+import {
+  type ConfigFileDeclineReason,
+  configFileDeclineReason,
+} from '../utils/config-file-error.ts';
 import { isObject } from '../utils/is-object.ts';
 import { LAUNCH_CONFIG_NAME } from './init.ts';
 import { existingFileMode, surgicalJsonDelete } from './jsonc-surgical.ts';
+import { resolveRemovalFilePath } from './removal-file-path.ts';
 
 export type LaunchRemoveOutcome =
   | { kind: 'removed' }
   | { kind: 'not-present' }
-  | { kind: 'declined' };
+  | { kind: 'declined'; reason: ConfigFileDeclineReason | 'unparseable' };
 
 const JSONC_PARSE_OPTIONS = { allowTrailingComma: true, disallowComments: false };
 
@@ -26,20 +31,22 @@ function isBenignBomError(error: JsoncParseError, raw: string): boolean {
 }
 
 export function removeOwnLaunchEntry(projectRoot: string): LaunchRemoveOutcome {
-  const configPath = join(projectRoot, '.claude', 'launch.json');
-  if (!existsSync(configPath)) return { kind: 'not-present' };
+  const resolved = resolveRemovalFilePath(join(projectRoot, '.claude', 'launch.json'));
+  if (resolved.kind !== 'ready') return resolved;
+  const configPath = resolved.path;
 
   let raw: string;
   try {
     raw = readFileSync(configPath, 'utf-8');
-  } catch {
-    return { kind: 'declined' };
+  } catch (error) {
+    return { kind: 'declined', reason: configFileDeclineReason(error) };
   }
 
   const errors: JsoncParseError[] = [];
   const tree: JsoncNode | undefined = parseTree(raw, errors, JSONC_PARSE_OPTIONS) ?? undefined;
-  if (errors.some((e) => !isBenignBomError(e, raw))) return { kind: 'declined' };
-  if (tree?.type !== 'object') return { kind: 'declined' };
+  if (errors.some((e) => !isBenignBomError(e, raw)))
+    return { kind: 'declined', reason: 'unparseable' };
+  if (tree?.type !== 'object') return { kind: 'declined', reason: 'unparseable' };
 
   const root = getNodeValue(tree) as Record<string, unknown>;
   const configs = root.configurations;

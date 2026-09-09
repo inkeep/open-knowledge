@@ -2833,7 +2833,6 @@
     "ciozf1": ["项目中已有的技能"],
     "cjtjry": ["在 OpenKnowledge 的导航历史中后退。"],
     "cklVjM": ["时间线"],
-    "clJ3qM": ["完成。"],
     "cn1sLi": ["无法把 OpenKnowledge 工具连接到 Claude Code。请重试。"],
     "cnGeoo": ["删除"],
     "cqQyPB": ["文件夹名"],
@@ -2939,6 +2938,9 @@
     "e8zRrb": ["显示「文件」"],
     "e8zYa8": ["无法在 worktree 中打开 ", ["shareBranch"], "。请重试。"],
     "e9sHSO": ["从上次的位置继续"],
+    "eBGWcy": [
+      "Open Knowledge 工具不可用，因为项目文件夹缺失、无法访问或已更改。请检查其位置和权限，然后重试。"
+    ],
     "eBIT9h": ["粘贴失败。", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "other": ["#", " 个问题"] }]],
     "eCOktA": ["已经在与该智能体开启对话了，请稍后再试。"],
@@ -4511,7 +4513,6 @@
     "yQE2r9": ["正在加载"],
     "yQyglE": ["没有匹配的文档"],
     "yR5LHI": ["请输入 6 位十六进制值，例如 #1A2B3C"],
-    "yU_9ur": ["待办。"],
     "yUxR-Q": ["展开 ", ["keyName"]],
     "yWSvcf": ["内容根目录"],
     "yWWThY": ["资源引用"],

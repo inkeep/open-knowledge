@@ -232,10 +232,15 @@ describe('buildMcpServers hosted-marker outcomes', () => {
 
 describe('buildMcpServers × pi-acp', () => {
   const PI_LOADABLE = {
+    project: 'ready' as const,
+    cwd: '/tmp/acp-injection-skip-project',
+    canonicalCwd: '/tmp/acp-injection-skip-project',
     bridgePath: '/tmp/acp-injection-skip-project/.pi/extensions/open-knowledge.ts',
+    trustPath: '/tmp/acp-injection-skip-home/.pi/agent/trust.json',
     bridge: 'own-current' as const,
     trust: 'trusted' as const,
     bridgeLoadable: true,
+    otherExtensions: [],
   };
 
   test('never injects for pi, even with an http-capable init and a working stdio command', async () => {
@@ -275,7 +280,7 @@ describe('buildMcpServers × pi-acp', () => {
   test('an unprovisioned bridge with no ensure seam reports `none` without prompting', async () => {
     const m = makeManager(() => null, undefined, {
       probePiAcpBridge: () => ({
-        bridgePath: PI_LOADABLE.bridgePath,
+        ...PI_LOADABLE,
         bridge: 'absent',
         trust: 'untrusted',
         bridgeLoadable: false,

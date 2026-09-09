@@ -3761,7 +3761,6 @@
     "ciozf1": ["La habilidad ya está en el proyecto"],
     "cjtjry": ["Retrocede por el historial de navegación de OpenKnowledge."],
     "cklVjM": ["Cronología"],
-    "clJ3qM": ["Listo."],
     "cn1sLi": [
       "No se pudieron conectar las herramientas de OpenKnowledge con Claude Code. Inténtalo de nuevo."
     ],
@@ -3929,6 +3928,9 @@
     "e8zRrb": ["Mostrar Archivos"],
     "e8zYa8": ["No se pudo abrir ", ["shareBranch"], " en un worktree. Inténtalo de nuevo."],
     "e9sHSO": ["Continúa donde lo dejaste"],
+    "eBGWcy": [
+      "Las herramientas de Open Knowledge no están disponibles porque la carpeta del proyecto no existe, no es accesible o ha cambiado. Comprueba su ubicación y permisos y vuelve a intentarlo."
+    ],
     "eBIT9h": ["Falló el pegado.", ["restoreSuffix"]],
     "eCDwNN": [
       [
@@ -5980,7 +5982,6 @@
     "yQE2r9": ["Cargando"],
     "yQyglE": ["Ningún documento coincide"],
     "yR5LHI": ["Escribe un valor hexadecimal de 6 dígitos, como #1A2B3C"],
-    "yU_9ur": ["Por hacer."],
     "yUxR-Q": ["Expandir ", ["keyName"]],
     "yWSvcf": ["Raíz del contenido"],
     "yWWThY": ["Referencia al recurso"],

@@ -1,4 +1,3 @@
-import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -34,18 +33,6 @@ export interface DesktopUninstallCleanupInput {
   cliPath: string;
   projectPaths: readonly string[];
   logPath: string;
-}
-
-interface SpawnedCleanupChildLike {
-  once(event: 'error', listener: (err: Error) => void): void;
-  once(
-    event: 'close',
-    listener: (code: number | null, signal: NodeJS.Signals | null) => void,
-  ): void;
-}
-
-interface RunDesktopUninstallCleanupDeps {
-  spawn?: (command: string, args: readonly string[], options: object) => SpawnedCleanupChildLike;
 }
 
 export type RunDesktopUninstallCleanupResult =
@@ -221,24 +208,6 @@ export async function runDesktopUninstallFeedbackStep(
   }
 }
 
-export interface DesktopUninstallOutcomeStepDeps {
-  cleanup: RunDesktopUninstallCleanupResult;
-  runFeedbackStep: () => Promise<void>;
-  showCompletion: () => Promise<void>;
-  showFailure: (cleanup: { error: string }) => Promise<void>;
-}
-
-export async function runDesktopUninstallOutcomeStep(
-  deps: DesktopUninstallOutcomeStepDeps,
-): Promise<void> {
-  if (!deps.cleanup.ok) {
-    await deps.showFailure(deps.cleanup);
-    return;
-  }
-  await deps.runFeedbackStep();
-  await deps.showCompletion();
-}
-
 export function defaultDesktopUninstallLogPath(
   home: string = homedir(),
   now: Date = new Date(),
@@ -264,19 +233,10 @@ export function readDesktopUninstallLogForDisplay(
   }
 }
 
-interface DesktopUninstallChecklistItem {
-  label: string;
-  detail?: string;
-  done: boolean;
-}
-
 export interface DesktopUninstallNoticeSpec {
   title: string;
-  subtitle?: string;
   paragraphs: string[];
-  checklist?: DesktopUninstallChecklistItem[];
   footnote?: string;
-  logRevealLabel?: string;
   log?: string;
   confirmLabel: string;
   cancelLabel?: string;
@@ -288,41 +248,11 @@ export function desktopUninstallConfirmNotice(): DesktopUninstallNoticeSpec {
     title: 'Uninstall OpenKnowledge?',
     paragraphs: [
       'This removes OpenKnowledge’s settings and integrations from your Mac, but keeps your markdown content and authored skills.',
-      'When cleanup finishes, OpenKnowledge will help you remove the app itself, then quit.',
+      'OpenKnowledge will quit before cleanup starts. A dialog will show the result and help you remove the app itself.',
     ],
     confirmLabel: 'Uninstall OpenKnowledge',
     cancelLabel: 'Cancel',
     danger: true,
-  };
-}
-
-export function desktopUninstallCompletionNotice(opts: {
-  projectCount: number;
-}): DesktopUninstallNoticeSpec {
-  const removedDetail =
-    opts.projectCount > 0
-      ? `Cleaned up, including from ${opts.projectCount} project${opts.projectCount === 1 ? '' : 's'}.`
-      : 'Settings and integrations were cleaned up.';
-  return {
-    title: 'OpenKnowledge files were removed',
-    subtitle: "Almost done. Here's what happened and what's left.",
-    paragraphs: [],
-    checklist: [
-      {
-        label: 'Kept your content',
-        detail: 'Markdown files and authored skills were left untouched.',
-        done: true,
-      },
-      { label: 'Removed OpenKnowledge files', detail: removedDetail, done: true },
-      {
-        label: 'Move OpenKnowledge.app to the Trash',
-        detail:
-          'Reveal in Finder shows the app and quits OpenKnowledge, so you can drag it to the Trash.',
-        done: false,
-      },
-    ],
-    logRevealLabel: 'Cleanup log',
-    confirmLabel: 'Reveal in Finder',
   };
 }
 
@@ -348,17 +278,7 @@ export function desktopUninstallFailureNotice(opts: {
   };
 }
 
-export function desktopUninstallFinalStepNotice(): DesktopUninstallNoticeSpec {
-  return {
-    title: 'One more step',
-    paragraphs: [
-      'Reveal in Finder shows the app and quits OpenKnowledge, so you can drag it to the Trash.',
-    ],
-    confirmLabel: 'Reveal in Finder',
-  };
-}
-
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.split("'").join("'\\''")}'`;
 }
 
@@ -391,9 +311,9 @@ LOG=${shellQuote(input.logPath)}
 LOG_DIR=${shellQuote(dirname(input.logPath))}
 EXIT_CODE=0
 
-mkdir -p "$LOG_DIR"
+/bin/mkdir -p "$LOG_DIR"
 {
-  echo "OpenKnowledge uninstall cleanup started at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "OpenKnowledge uninstall cleanup started at $(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "Log: $LOG"
 
   GLOBAL_EXIT=0
@@ -403,11 +323,15 @@ ${projectBlock
   .split('\n')
   .map((line) => `    ${line}`)
   .join('\n')}
-    echo "Removing global OpenKnowledge footprint."
-    "$OK_CLI" uninstall --yes
-    GLOBAL_EXIT=$?
-    if [ "$GLOBAL_EXIT" -ne 0 ]; then
-      echo "Global uninstall failed with exit code $GLOBAL_EXIT."
+    if [ "$DEINIT_EXIT" -eq 0 ]; then
+      echo "Removing global OpenKnowledge footprint."
+      "$OK_CLI" uninstall --yes
+      GLOBAL_EXIT=$?
+      if [ "$GLOBAL_EXIT" -ne 0 ]; then
+        echo "Global uninstall failed with exit code $GLOBAL_EXIT."
+      fi
+    else
+      echo "Global settings retained because project cleanup was incomplete."
     fi
   else
     echo "Bundled CLI missing or not executable: $OK_CLI"
@@ -418,47 +342,9 @@ ${projectBlock
     EXIT_CODE=1
   fi
 
-  echo "OpenKnowledge uninstall cleanup finished at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "OpenKnowledge uninstall cleanup finished at $(/bin/date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "deinit=$DEINIT_EXIT global=$GLOBAL_EXIT"
 } >> "$LOG" 2>&1
 exit "$EXIT_CODE"
 `;
-}
-
-export function runDesktopUninstallCleanup(
-  input: DesktopUninstallCleanupInput,
-  deps: RunDesktopUninstallCleanupDeps = {},
-): Promise<RunDesktopUninstallCleanupResult> {
-  const spawn = deps.spawn ?? spawnChild;
-  return new Promise((resolveResult) => {
-    let settled = false;
-    const finish = (result: RunDesktopUninstallCleanupResult): void => {
-      if (settled) return;
-      settled = true;
-      resolveResult(result);
-    };
-
-    try {
-      const child = spawn('/bin/sh', ['-c', buildDesktopUninstallCleanupScript(input)], {
-        cwd: '/',
-        detached: false,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-      child.once('error', (err) => finish({ ok: false, error: err.message }));
-      child.once('close', (code, signal) => {
-        if (code === 0) {
-          finish({ ok: true });
-          return;
-        }
-        const error =
-          signal != null
-            ? `cleanup process exited after signal ${signal}`
-            : `cleanup process exited with code ${code ?? 'unknown'}`;
-        finish({ ok: false, error, exitCode: code });
-      });
-    } catch (err) {
-      finish({ ok: false, error: err instanceof Error ? err.message : String(err) });
-    }
-  });
 }

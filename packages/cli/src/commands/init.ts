@@ -71,6 +71,10 @@ import {
   type TrackedRefusal,
 } from '../sharing/git-exclude.ts';
 import { accent, dim, error, info, success, warning } from '../ui/colors.ts';
+import {
+  type ConfigFileDeclineReason,
+  configFileDeclineReason,
+} from '../utils/config-file-error.ts';
 import { isObject } from '../utils/is-object.ts';
 import {
   ALL_EDITOR_IDS,
@@ -164,7 +168,7 @@ function detectJsonIndent(body: string): { insertSpaces: boolean; tabSize: numbe
 
 type JsonUpsertOutcome =
   | { kind: 'written' | 'overwritten' | 'unchanged' }
-  | { kind: 'declined'; reason: McpDeclineReason };
+  | { kind: 'declined'; reason: McpWriteDeclineReason };
 
 export function serverMapPath(
   topLevelKey: string,
@@ -213,7 +217,7 @@ function upsertJsonMcpConfig(
     raw = readFileSync(configPath, 'utf-8');
   } catch (err) {
     debugNativeLoadFailure('json config read failed', err);
-    return { kind: 'declined', reason: 'unparseable' };
+    return { kind: 'declined', reason: configFileDeclineReason(err) };
   }
   if (raw.trim() === '') {
     if (pruneOnly) return { kind: 'unchanged' };
@@ -274,7 +278,7 @@ function upsertJsonMcpConfig(
 
 type TomlUpsertOutcome =
   | { kind: 'written' | 'overwritten' | 'unchanged' }
-  | { kind: 'declined'; reason: McpDeclineReason };
+  | { kind: 'declined'; reason: McpWriteDeclineReason };
 
 function upsertTomlMcpConfig(
   engine: TomlConfigEngine,
@@ -291,7 +295,7 @@ function upsertTomlMcpConfig(
       raw = readFileSync(configPath, 'utf-8');
     } catch (err) {
       debugNativeLoadFailure('toml config read failed', err);
-      return { kind: 'declined', reason: 'unparseable' };
+      return { kind: 'declined', reason: configFileDeclineReason(err) };
     }
   }
   const blank = raw.trim() === '';
@@ -376,7 +380,7 @@ function tomlWritePlan(
 
 type YamlUpsertOutcome =
   | { kind: 'written' | 'overwritten' | 'unchanged' }
-  | { kind: 'declined'; reason: McpDeclineReason };
+  | { kind: 'declined'; reason: McpWriteDeclineReason };
 
 function upsertYamlMcpConfig(
   configPath: string,
@@ -392,7 +396,7 @@ function upsertYamlMcpConfig(
       raw = readFileSync(configPath, 'utf-8');
     } catch (err) {
       debugNativeLoadFailure('yaml config read failed', err);
-      return { kind: 'declined', reason: 'unparseable' };
+      return { kind: 'declined', reason: configFileDeclineReason(err) };
     }
   }
   if (raw.trim() === '') {
@@ -551,7 +555,7 @@ export interface EditorMcpResult {
   configPath: string;
   serverName: string;
   error?: string;
-  declineReason?: McpDeclineReason;
+  declineReason?: McpWriteDeclineReason;
   configScope?: 'project';
 }
 
@@ -808,7 +812,7 @@ export function writeEditorMcpConfig(
 
   const captured: {
     action: 'written' | 'overwritten' | 'unchanged' | 'declined';
-    declineReason?: McpDeclineReason;
+    declineReason?: McpWriteDeclineReason;
   } = { action: 'written' };
   let lockErr: Error | undefined;
   try {
@@ -1025,18 +1029,22 @@ export function readExistingMcpEntry(
   return classified.kind === 'present' ? classified.entry : null;
 }
 
-export type McpDeclineReason =
+export type McpConfigDeclineReason =
+  | ConfigFileDeclineReason
   | 'unparseable'
   | 'duplicate-container'
   | 'oversize'
-  | 'no-native-writer'
-  | McpLauncherDeclineReason;
+  | 'no-native-writer';
+
+export type McpDeclineReason = McpConfigDeclineReason | McpLauncherDeclineReason;
+
+type McpWriteDeclineReason = Exclude<McpConfigDeclineReason, 'missing-symlink-target'>;
 
 export type McpEntryClassification =
   | { kind: 'absent' }
   | { kind: 'no-entry' }
   | { kind: 'present'; entry: Record<string, unknown> }
-  | { kind: 'decline'; reason: McpDeclineReason };
+  | { kind: 'decline'; reason: McpConfigDeclineReason };
 
 function classifyContainer(
   config: Record<string, unknown>,
@@ -1069,15 +1077,15 @@ export function classifyExistingMcpEntry(
     if (statSync(configPath).size > JSON_CONFIG_MAX_BYTES) {
       return { kind: 'decline', reason: 'oversize' };
     }
-  } catch {
-    return { kind: 'decline', reason: 'unparseable' };
+  } catch (error) {
+    return { kind: 'decline', reason: configFileDeclineReason(error) };
   }
 
   let raw: string;
   try {
     raw = readFileSync(configPath, 'utf-8');
-  } catch {
-    return { kind: 'decline', reason: 'unparseable' };
+  } catch (error) {
+    return { kind: 'decline', reason: configFileDeclineReason(error) };
   }
   if (raw.trim() === '') {
     return { kind: 'absent' };
@@ -1461,16 +1469,32 @@ function summarizeApplied(
   };
 }
 
-function declineReasonLabel(reason: McpDeclineReason | undefined): string {
+function declineReasonLabel(reason: McpWriteDeclineReason | undefined): string {
   switch (reason) {
+    case 'permission-denied':
+      return 'permission denied; check file and parent-directory permissions';
+    case 'unresolved-symlink':
+      return 'could not resolve the path or symlink; check permissions and symlink cycles';
+    case 'not-a-file':
+      return 'config path is not a regular file';
+    case 'disappeared':
+      return 'config disappeared while being read; retry to check its current state';
+    case 'unreadable':
+      return 'could not read the config file; check that the path is accessible';
+    case 'unparseable':
+      return 'config could not be parsed';
     case 'oversize':
       return 'config too large to edit safely';
     case 'duplicate-container':
       return 'duplicate server block';
     case 'no-native-writer':
       return 'no format-preserving writer available';
-    default:
+    case undefined:
       return 'config not readable';
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(`unhandled MCP decline reason: ${exhaustive}`);
+    }
   }
 }
 

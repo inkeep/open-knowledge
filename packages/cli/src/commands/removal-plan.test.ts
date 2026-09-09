@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,13 +16,20 @@ import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
+import {
+  createTomlConfigEngine,
+  setTomlConfigEngineForTesting,
+} from '../native/toml-config-engine.ts';
 import { buildManagedServerEntry } from './editors.ts';
 import { ensurePiBridge, probePiBridgeState } from './pi-acp-bridge.ts';
+import { listPiTrustGrants, preparePiTrustGrant } from './pi-trust-grants.ts';
+import { withPiTrustLockSync } from './pi-trust-lock.ts';
 import {
   applicationDataOps,
   buildUninstallPlan,
   deinitOps,
   describeAttachedClients,
+  type RemovalOp,
   type RunRemovalDeps,
   runRemoval,
   type UninstallPlanInput,
@@ -445,7 +453,7 @@ describe('runRemoval — uninstall end to end', () => {
     }
   });
 
-  test('a locked keychain is marked failed with a manual hint, never aborting the run', async () => {
+  test('a locked keychain reports failure and retains state for retry', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
     try {
       seedHome(home);
@@ -459,13 +467,13 @@ describe('runRemoval — uninstall end to end', () => {
       const keychain = outcome.results.find((r) => r.op.kind === 'keychain-token');
       expect(keychain?.status).toBe('failed');
       expect(keychain?.detail).toContain('Keychain Access');
-      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
   });
 
-  test('a stop-server failure surfaces as failed (a live process may still hold the files)', async () => {
+  test('a stop-server failure preserves files still needed by the live process', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
     try {
       seedHome(home);
@@ -480,7 +488,7 @@ describe('runRemoval — uninstall end to end', () => {
       expect(stop?.status).toBe('failed');
       expect(stop?.detail).toContain('4242');
       expect(outcome.failed.some((r) => r.op.kind === 'stop-server')).toBe(true);
-      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+      expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -573,6 +581,8 @@ describe('pi trust revocation surfaces through the removal plan', () => {
       const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
       expect(outcome.results[0]?.status).toBe('removed');
       expect(outcome.results[0]?.detail).toContain('folder trust');
+      expect(outcome.results[0]?.detail).toContain(join(cwd, '.pi', 'extensions', 'theirs.ts'));
+      expect(outcome.results[0]?.detail).toContain('will not revoke it on later cleanup runs');
       expect(probePiBridgeState(cwd, home).trust).toBe('trusted');
       expect(formatRemovalOutcome(outcome)).toContain('folder trust');
       const json = removalOutcomeToJson('deinit', outcome);
@@ -582,6 +592,189 @@ describe('pi trust revocation surfaces through the removal plan', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test('reports every failed store alongside a completed trust handoff', async () => {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-')));
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-')));
+    try {
+      const stores = ['first', 'second', 'shared'].map((name) => join(home, name));
+      for (const store of stores) {
+        expect(
+          await ensurePiBridge(cwd, { mode: 'published' }, home, { PI_CODING_AGENT_DIR: store }),
+        ).toMatchObject({ ok: true });
+      }
+      const sharedTrust = join(home, 'shared', 'trust.json');
+      const before = readFileSync(sharedTrust, 'utf8');
+      const prompts = join(cwd, '.pi', 'prompts');
+      mkdirSync(prompts);
+      for (const name of ['first', 'second']) write(join(home, name, 'trust.json'), '{broken');
+
+      const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+      expect(outcome.failed).toHaveLength(1);
+      const detail = outcome.failed[0]?.detail;
+      expect(detail).toContain(join(home, 'first', 'trust.json'));
+      expect(detail).toContain(join(home, 'second', 'trust.json'));
+      expect(detail).toContain(sharedTrust);
+      expect(detail).toContain(prompts);
+      expect(detail).toContain(JSON.stringify(cwd));
+      expect(detail).toContain('has relinquished this grant');
+      expect(detail).toContain('will not revoke it on later cleanup runs');
+      expect(formatRemovalOutcome(outcome)).toContain(detail?.replaceAll('\n', '\n      '));
+      const json = removalOutcomeToJson('deinit', outcome);
+      expect(json.mode === 'applied' && json.failed[0]?.detail).toBe(detail);
+      expect(readFileSync(sharedTrust, 'utf8')).toBe(before);
+      expect(existsSync(piOp(cwd, home).configPath)).toBe(true);
+      expect(
+        listPiTrustGrants(home, cwd)
+          .map((receipt) => receipt.record.configuredTrustPath)
+          .sort(),
+      ).toEqual(['first', 'second'].map((name) => join(home, name, 'trust.json')));
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each([true, false])(
+    'reports bridge deletion failure after trust cleanup with shared resources: %s',
+    async (shared) => {
+      const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-')));
+      const home = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-')));
+      const extensions = join(cwd, '.pi', 'extensions');
+      try {
+        await ensurePiBridge(cwd, { mode: 'published' }, home);
+        const trustPath = join(home, '.pi', 'agent', 'trust.json');
+        const before = readFileSync(trustPath, 'utf8');
+        if (shared) mkdirSync(join(cwd, '.pi', 'prompts'));
+        chmodSync(extensions, 0o555);
+        const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+        expect(outcome.failed).toHaveLength(1);
+        expect(outcome.results[0]?.status).toBe('failed');
+        const detail = outcome.failed[0]?.detail;
+        expect(detail).toMatch(/EACCES|EPERM/);
+        if (shared) {
+          expect(detail).toContain('has relinquished this grant');
+          expect(detail).toContain('will not revoke it on later cleanup runs');
+          expect(detail).toContain(trustPath);
+          expect(readFileSync(trustPath, 'utf8')).toBe(before);
+        } else {
+          expect(detail).not.toContain('has relinquished this grant');
+          expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({});
+        }
+        expect(formatRemovalOutcome(outcome)).toContain(detail?.replaceAll('\n', '\n      '));
+        const json = removalOutcomeToJson('deinit', outcome);
+        expect(json.mode === 'applied' && json.failed[0]?.detail).toBe(detail);
+        expect(listPiTrustGrants(home, cwd)).toHaveLength(0);
+        expect(existsSync(piOp(cwd, home).configPath)).toBe(true);
+      } finally {
+        chmodSync(extensions, 0o755);
+        rmSync(cwd, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('explains shared trust without claiming ownership of a pre-existing grant', async () => {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-')));
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-')));
+    try {
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      const before = JSON.stringify({ [cwd]: true, other: false });
+      write(trustPath, before);
+      await ensurePiBridge(cwd, { mode: 'published' }, home);
+      mkdirSync(join(cwd, '.pi', 'prompts'));
+      const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+      expect(outcome.results[0]?.status).toBe('removed');
+      const detail = outcome.results[0]?.detail;
+      expect(detail).toContain('has no ownership record for this grant');
+      expect(detail).not.toContain('has relinquished');
+      expect(detail).toContain('Removing this grant may stop Pi from loading');
+      expect(detail).toContain('parent-folder and global trust settings still apply');
+      expect(readFileSync(trustPath, 'utf8')).toBe(before);
+      expect(listPiTrustGrants(home, cwd)).toHaveLength(0);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'quotes resource names, escapes terminal controls, and bounds the retained-resource list',
+    async () => {
+      const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-')));
+      const home = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-')));
+      try {
+        await ensurePiBridge(cwd, { mode: 'published' }, home);
+        const name = '\u001b[2K\rforged\nnotice\u0085\u2028\u2029\u202e.ts';
+        const commaName = 'a.ts, tailwind.ts';
+        const adviceName = 'b.ts. This "grant" is safe to remove.ts';
+        const names = [name, commaName, adviceName, 'c.ts', 'd.ts'];
+        const trustPath = join(home, '.pi', 'agent', 'trust.json');
+        const trustBefore = readFileSync(trustPath, 'utf8');
+        for (const filename of names) {
+          write(join(cwd, '.pi', 'extensions', filename), '');
+        }
+        const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+        const detail = outcome.results[0]?.detail;
+        expect(outcome.results[0]?.status).toBe('removed');
+        expect(detail).toContain('\\u001b[2K\\rforged\\nnotice\\u0085\\u2028\\u2029\\u202e.ts');
+        expect(detail).toContain(JSON.stringify(join(cwd, '.pi', 'extensions', commaName)));
+        expect(detail).toContain(JSON.stringify(join(cwd, '.pi', 'extensions', adviceName)));
+        expect(detail).not.toMatch(/[\p{Cc}\p{Zl}\p{Zp}]/u);
+        expect(detail).not.toContain('\u202e');
+        expect(detail).toContain('(+2 more)');
+        expect(detail).not.toContain(join(cwd, '.pi', 'extensions', 'c.ts'));
+        const rendered = formatRemovalOutcome(outcome);
+        expect(rendered).toContain(detail);
+        expect(rendered).not.toContain('\u001b[2K');
+        expect(rendered).not.toContain(name);
+        expect(readFileSync(trustPath, 'utf8')).toBe(trustBefore);
+        for (const filename of names)
+          expect(readFileSync(join(cwd, '.pi', 'extensions', filename), 'utf8')).toBe('');
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.each(['unrecorded', 'pending'] as const)(
+    'explains %s trust retention in human and JSON output without changing the grant',
+    async (ownership) => {
+      const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-')));
+      const home = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-')));
+      try {
+        const trustPath = join(home, '.pi', 'agent', 'trust.json');
+        const before = `${JSON.stringify({ [cwd]: true, other: false })}\n`;
+        write(trustPath, before);
+        await ensurePiBridge(cwd, { mode: 'published' }, home);
+        if (ownership === 'pending') {
+          withPiTrustLockSync(trustPath, trustPath, () => {
+            preparePiTrustGrant(home, cwd, trustPath, trustPath, { present: false });
+          });
+        }
+        const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+        const detail = outcome.results[0]?.detail;
+        expect(outcome.results[0]?.status).toBe('removed');
+        expect(detail).toContain(
+          ownership === 'pending' ? 'record is pending' : 'no OpenKnowledge ownership record',
+        );
+        if (ownership === 'pending') expect(detail).toContain('does not reconcile this record');
+        expect(detail).toContain(trustPath);
+        expect(detail).toContain(JSON.stringify(cwd));
+        expect(detail).toContain('remove only');
+        expect(formatRemovalOutcome(outcome)).toContain(detail);
+        const json = removalOutcomeToJson('deinit', outcome);
+        expect(json.mode === 'applied' && json.removed[0]?.detail).toBe(detail);
+        expect(readFileSync(trustPath, 'utf8')).toBe(before);
+        expect(existsSync(piOp(cwd, home).configPath)).toBe(false);
+        expect(listPiTrustGrants(home, cwd)).toHaveLength(ownership === 'pending' ? 1 : 0);
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('a trust store OK cannot parse fails the op rather than reporting success', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-pi-removal-'));
@@ -596,6 +789,273 @@ describe('pi trust revocation surfaces through the removal plan', () => {
     } finally {
       rmSync(cwd, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'retains Pi trust and project state when the bridge symlink has no target',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-pi-missing-'));
+      const cwd = join(home, 'project');
+      try {
+        write(join(cwd, '.ok', 'config.yml'), '{}');
+        await ensurePiBridge(cwd, { mode: 'published' }, home);
+        const op = piOp(cwd, home);
+        const bridge = readFileSync(op.configPath, 'utf8');
+        const trustPath = join(home, '.pi', 'agent', 'trust.json');
+        const trust = readFileSync(trustPath, 'utf8');
+        rmSync(op.configPath);
+        symlinkSync(join(home, 'missing-bridge.ts'), op.configPath);
+        const outcome = await runRemoval({ ops: deinitOps(cwd, home) }, stubDeps());
+        expect(outcome.failed[0]?.op).toMatchObject({ kind: 'mcp-entry', editorId: 'pi' });
+        expect(outcome.failed[0]?.detail).toContain('missing symlink target');
+        expect(outcome.failed[0]?.detail).toContain(
+          "Pi's separate folder trust grant has not been checked or removed",
+        );
+        expect(outcome.failed[0]?.detail).toContain(
+          `Restore the missing target of the OpenKnowledge bridge symlink at ${op.configPath}`,
+        );
+        expect(lstatSync(op.configPath).isSymbolicLink()).toBe(true);
+        expect(readFileSync(trustPath, 'utf8')).toBe(trust);
+        expect(readFileSync(join(cwd, '.ok', 'config.yml'), 'utf8')).toBe('{}');
+        writeFileSync(join(home, 'missing-bridge.ts'), bridge);
+        const retry = await runRemoval({ ops: deinitOps(cwd, home) }, stubDeps());
+        expect(retry.failed).toHaveLength(0);
+        expect(probePiBridgeState(cwd, home).trust).toBe('untrusted');
+        expect(existsSync(op.configPath)).toBe(false);
+        expect(existsSync(join(cwd, '.ok'))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'retains the bridge and reports why trust cannot be checked until permissions are repaired',
+    async () => {
+      const cwd = mkdtempSync(join(tmpdir(), 'ok-pi-removal-'));
+      const home = mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-'));
+      const extensions = join(cwd, '.pi', 'extensions');
+      try {
+        await ensurePiBridge(cwd, { mode: 'published' }, home);
+        const op = piOp(cwd, home);
+        const bridge = readFileSync(op.configPath, 'utf8');
+        const trustPath = join(home, '.pi', 'agent', 'trust.json');
+        const trust = readFileSync(trustPath, 'utf8');
+        chmodSync(extensions, 0o111);
+        const outcome = await runRemoval({ ops: [op] }, stubDeps());
+        expect(outcome.failed).toHaveLength(1);
+        expect(outcome.failed[0]?.detail).toContain('kept-unverified');
+        expect(outcome.failed[0]?.detail).toContain('Could not inspect Pi project resources');
+        expect(outcome.failed[0]?.detail).toContain('check file and parent-directory permissions');
+        expect(outcome.failed[0]?.detail).toContain('bridge file was left untouched');
+        expect(readFileSync(op.configPath, 'utf8')).toBe(bridge);
+        expect(readFileSync(trustPath, 'utf8')).toBe(trust);
+        chmodSync(extensions, 0o755);
+        const retry = await runRemoval({ ops: [op] }, stubDeps());
+        expect(retry.failed).toHaveLength(0);
+        expect(existsSync(op.configPath)).toBe(false);
+        expect(probePiBridgeState(cwd, home).trust).toBe('untrusted');
+      } finally {
+        chmodSync(extensions, 0o755);
+        rmSync(cwd, { recursive: true, force: true });
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe.each(['mcp', 'launch', 'shell'] as const)(
+  '%s configuration failure details',
+  (surface) => {
+    function configOp(dir: string): { op: RemovalOp; path: string } {
+      const path = join(dir, '.claude', 'launch.json');
+      mkdirSync(dirname(path), { recursive: true });
+      const base = { group: 'config', label: path };
+      const op: RemovalOp =
+        surface === 'launch'
+          ? { ...base, kind: 'launch-entry', projectRoot: dir }
+          : surface === 'shell'
+            ? { ...base, kind: 'shell-block', rcFile: path }
+            : {
+                ...base,
+                kind: 'mcp-entry',
+                editorId: 'claude',
+                scope: 'project',
+                cwd: dir,
+                home: dir,
+                configPath: path,
+              };
+      return { op, path };
+    }
+
+    test('names a non-file path without claiming its contents are malformed', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ok-config-decline-'));
+      try {
+        const { op, path } = configOp(dir);
+        mkdirSync(path);
+        writeFileSync(join(path, 'keep'), 'user data');
+        const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+        expect(outcome.failed[0]?.detail).toContain('not a regular file');
+        expect(outcome.failed[0]?.detail).toContain('restore the intended configuration file');
+        expect(readFileSync(join(path, 'keep'), 'utf8')).toBe('user data');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+      'names read permission failures and leaves the existing configuration intact',
+      async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'ok-config-decline-'));
+        const { op, path } = configOp(dir);
+        const raw = '{"user":"settings"}';
+        writeFileSync(path, raw);
+        chmodSync(path, 0o000);
+        try {
+          const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+          expect(outcome.failed[0]?.detail).toContain('permission denied');
+          expect(outcome.failed[0]?.detail).toContain(
+            'check file and parent-directory permissions',
+          );
+          expect(outcome.failed[0]?.detail).toContain('then retry');
+        } finally {
+          chmodSync(path, 0o600);
+          expect(readFileSync(path, 'utf8')).toBe(raw);
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
+
+    test.skipIf(process.platform === 'win32').each(['dangling', 'cycle'])(
+      'reports a %s symlink while preserving it',
+      async (kind) => {
+        const dir = mkdtempSync(join(tmpdir(), 'ok-config-decline-'));
+        try {
+          const { op, path } = configOp(dir);
+          symlinkSync(kind === 'cycle' ? path : join(dir, 'missing'), path);
+          const outcome = await runRemoval({ scope: 'deinit', ops: [op] }, stubDeps());
+          if (kind === 'dangling') {
+            expect(outcome.failed).toHaveLength(0);
+            expect(outcome.results[0]?.status).toBe('skipped');
+            expect(formatRemovalOutcome(outcome)).toContain('left the dangling');
+            const json = removalOutcomeToJson('deinit', outcome);
+            expect(json.mode === 'applied' && json.skipped[0]?.detail).toContain('no target file');
+          } else {
+            expect(outcome.failed[0]?.detail).toContain('symlink cycle');
+            expect(outcome.failed[0]?.detail).toContain('then retry');
+          }
+          expect(lstatSync(path).isSymbolicLink()).toBe(true);
+          expect(existsSync(join(dir, 'missing'))).toBe(false);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      },
+    );
+  },
+);
+
+describe('configuration repair guidance', () => {
+  function mcpOp(dir: string, editorId: 'claude' | 'codex', configPath: string): RemovalOp {
+    return {
+      kind: 'mcp-entry',
+      group: 'config',
+      label: configPath,
+      editorId,
+      scope: 'project',
+      cwd: dir,
+      home: dir,
+      configPath,
+    };
+  }
+
+  test.each(['oversize', 'duplicate-container'] as const)(
+    'explains how to repair %s without changing the existing file',
+    async (reason) => {
+      const dir = mkdtempSync(join(tmpdir(), 'ok-config-remedy-'));
+      try {
+        const configPath = join(dir, 'config.json');
+        const raw =
+          reason === 'oversize'
+            ? `{"mcpServers":{},"history":"${'x'.repeat(11 * 1024 * 1024)}"}`
+            : '{"mcpServers":{"one":{"command":"one"}},"mcpServers":{"two":{"command":"two"}}}';
+        writeFileSync(configPath, raw);
+        const outcome = await runRemoval(
+          { scope: 'deinit', ops: [mcpOp(dir, 'claude', configPath)] },
+          stubDeps(),
+        );
+        const remedy =
+          reason === 'oversize'
+            ? 'back up the file and reduce its size to 10 MiB or less while preserving needed settings'
+            : 'combine the duplicate blocks';
+        expect(formatRemovalOutcome(outcome)).toContain(remedy);
+        const json = removalOutcomeToJson('deinit', outcome);
+        expect(json.mode === 'applied' && json.failed[0]?.detail).toContain(remedy);
+        expect(readFileSync(configPath, 'utf8')).toBe(raw);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('explains the missing TOML writer and accepts manual entry removal on retry', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-config-remedy-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      const raw = `[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ${JSON.stringify(OWN_ENTRY.args)}\n`;
+      writeFileSync(configPath, raw);
+      setTomlConfigEngineForTesting(createTomlConfigEngine(() => null));
+      const plan = { scope: 'deinit' as const, ops: [mcpOp(dir, 'codex', configPath)] };
+      const outcome = await runRemoval(plan, stubDeps());
+      expect(outcome.failed[0]?.detail).toContain('no format-preserving TOML writer');
+      expect(outcome.failed[0]?.detail).toContain(
+        'remove the OpenKnowledge entry manually or reinstall',
+      );
+      expect(readFileSync(configPath, 'utf8')).toBe(raw);
+      const repaired = '# keep my other server\n[mcp_servers.other]\ncommand = "node"\n';
+      writeFileSync(configPath, repaired);
+      const retry = await runRemoval(plan, stubDeps());
+      expect(retry.failed).toHaveLength(0);
+      expect(retry.results[0]?.status).toBe('not-present');
+      expect(readFileSync(configPath, 'utf8')).toBe(repaired);
+    } finally {
+      setTomlConfigEngineForTesting(null);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('reports a file that disappears after classification and succeeds on a subsequent retry', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-config-remedy-'));
+    try {
+      const configPath = join(dir, 'config.toml');
+      writeFileSync(
+        configPath,
+        `[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ${JSON.stringify(OWN_ENTRY.args)}\n`,
+      );
+      const parser = createTomlConfigEngine(() => null);
+      setTomlConfigEngineForTesting({
+        backend: 'native',
+        parseToObject(raw) {
+          const parsed = parser.parseToObject(raw);
+          rmSync(configPath);
+          return parsed;
+        },
+        upsertEntry: (text) => ({ text, existed: false }),
+        removeEntry: (text) => ({ text, existed: false }),
+        removeEntryKey: (text) => ({ text, existed: false }),
+      });
+      const plan = { scope: 'deinit' as const, ops: [mcpOp(dir, 'codex', configPath)] };
+      const outcome = await runRemoval(plan, stubDeps());
+      expect(outcome.failed[0]?.detail).toContain('file disappeared');
+      expect(outcome.failed[0]?.detail).toContain('retry to check its current state');
+      expect(existsSync(configPath)).toBe(false);
+      const retry = await runRemoval(plan, stubDeps());
+      expect(retry.failed).toHaveLength(0);
+      expect(retry.results[0]?.status).toBe('not-present');
+      expect(existsSync(configPath)).toBe(false);
+    } finally {
+      setTomlConfigEngineForTesting(null);
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
@@ -622,4 +1082,235 @@ describe('describeAttachedClients', () => {
     await describeAttachedClients(plan, async () => 2);
     expect(plan.ops.filter((op) => op.kind === 'stop-server')).toHaveLength(1);
   });
+});
+
+describe('safe uninstall cleanup', () => {
+  test.skipIf(process.platform === 'win32')(
+    'identifies each dangling config when two projects have matching relative paths',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-dangling-projects-'));
+      try {
+        const projects = [join(home, 'one'), join(home, 'two')];
+        const paths: string[] = [];
+        for (const project of projects) {
+          for (const relativePath of ['.mcp.json', '.claude/launch.json']) {
+            const path = join(project, relativePath);
+            mkdirSync(dirname(path), { recursive: true });
+            symlinkSync(join(home, 'missing-config.json'), path);
+            paths.push(path);
+          }
+        }
+        const outcome = await runRemoval(
+          { ops: projects.flatMap((project) => deinitOps(project, home)) },
+          stubDeps(),
+        );
+        expect(outcome.failed).toHaveLength(0);
+        const text = formatRemovalOutcome(outcome);
+        const json = removalOutcomeToJson('uninstall', outcome);
+        for (const path of paths) {
+          expect(text).toContain(path);
+          expect(
+            json.mode === 'applied' && json.skipped.some((item) => item.detail?.includes(path)),
+          ).toBe(true);
+          expect(lstatSync(path).isSymbolicLink()).toBe(true);
+        }
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'preserves dangling editor and launch links without retaining unrelated project state',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-dangling-configs-'));
+      const project = join(home, 'project');
+      try {
+        write(join(project, '.ok', 'config.yml'), '{}');
+        write(join(project, 'notes.md'), '# My notes\n');
+        const paths = [join(project, '.mcp.json'), join(project, '.claude', 'launch.json')];
+        for (const path of paths) {
+          mkdirSync(dirname(path), { recursive: true });
+          symlinkSync(join(home, 'missing-config.json'), path);
+        }
+        const outcome = await runRemoval({ ops: deinitOps(project, home) }, stubDeps());
+        expect(outcome.failed).toHaveLength(0);
+        expect(existsSync(join(project, '.ok'))).toBe(false);
+        expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# My notes\n');
+        for (const path of paths) expect(lstatSync(path).isSymbolicLink()).toBe(true);
+        expect(formatRemovalOutcome(outcome)).toContain('no target file');
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('explains recovery for a permanently missing Git directory and permits cleanup after manual repair', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-orphaned-worktree-'));
+    const project = join(home, 'project');
+    const pointer = join(project, '.git');
+    const rawPointer = 'gitdir: ../missing-main/.git/worktrees/project\n';
+    try {
+      write(join(project, '.ok', 'config.yml'), '{}');
+      write(join(project, 'notes.md'), '# My notes\n');
+      write(pointer, rawPointer);
+      const outcome = await runRemoval({ ops: deinitOps(project, home) }, stubDeps());
+      expect(outcome.failed[0]?.op.kind).toBe('git-exclude');
+      expect(formatRemovalOutcome(outcome)).toContain('restoring permissions or access');
+      expect(formatRemovalOutcome(outcome)).toContain('including any mounted volume');
+      expect(formatRemovalOutcome(outcome)).toContain('git worktree repair');
+      const json = removalOutcomeToJson('deinit', outcome);
+      expect(json.mode === 'applied' && json.failed[0]?.detail).toContain(
+        'If the repository is permanently gone, back up and remove only the stale .git pointer file',
+      );
+      expect(readFileSync(pointer, 'utf8')).toBe(rawPointer);
+      expect(existsSync(join(project, '.ok'))).toBe(true);
+      const backup = join(home, 'git-pointer.backup');
+      writeFileSync(backup, readFileSync(pointer));
+      rmSync(pointer);
+      const retry = await runRemoval({ ops: deinitOps(project, home) }, stubDeps());
+      expect(retry.failed).toHaveLength(0);
+      expect(existsSync(join(project, '.ok'))).toBe(false);
+      expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# My notes\n');
+      expect(readFileSync(backup, 'utf8')).toBe(rawPointer);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps remaining shared editor exclude rules while removing OK-only and absent artifact rules', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-removal-excludes-'));
+    const project = join(home, 'project');
+    try {
+      write(join(project, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+      mkdirSync(join(project, '.git', 'objects'), { recursive: true });
+      mkdirSync(join(project, '.git', 'refs'), { recursive: true });
+      write(join(project, '.ok', 'config.yml'), '{}');
+      write(
+        join(project, '.mcp.json'),
+        JSON.stringify({
+          mcpServers: { [MCP_SERVER_NAME]: OWN_ENTRY, other: { command: 'keep' } },
+        }),
+      );
+      write(join(project, '.cursor', 'mcp.json'), '{invalid json');
+      write(join(project, '.claude', 'launch.json'), '{"configurations":[]}');
+      const exclude = join(project, '.git', 'info', 'exclude');
+      write(
+        exclude,
+        '# personal rules\r\n/.mcp.json\r\n.cursor/mcp.json\r\n.claude/launch.json\r\n.codex/config.toml\r\n.ok/\r\n.okignore\r\nprivate.env\r\n',
+      );
+      await runRemoval({ scope: 'deinit', ops: deinitOps(project, home) }, stubDeps());
+      expect(readFileSync(exclude, 'utf-8')).toBe(
+        '# personal rules\r\n/.mcp.json\r\n.cursor/mcp.json\r\n.claude/launch.json\r\nprivate.env\r\n',
+      );
+      expect(JSON.parse(readFileSync(join(project, '.mcp.json'), 'utf-8')).mcpServers).toEqual({
+        other: { command: 'keep' },
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['reported', 'thrown'] as const)(
+    'preserves blocked project and global state after a %s stop failure, but cleans an independent project',
+    async (failure) => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-removal-stop-'));
+      const blocked = join(home, 'one', 'project');
+      const independent = join(home, 'two', 'project');
+      try {
+        seedHome(home);
+        for (const project of [blocked, independent]) {
+          write(join(project, '.ok', 'config.yml'), '{}');
+          write(
+            join(project, '.mcp.json'),
+            JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: OWN_ENTRY } }),
+          );
+        }
+        const blockedLock = join(blocked, '.ok', 'local');
+        const calls: string[] = [];
+        const outcome = await runRemoval(
+          buildUninstallPlan(
+            baseInput(home, {
+              lockDirs: [blockedLock],
+              recentDeinitProjectRoots: [blocked, independent],
+            }),
+          ),
+          stubDeps({
+            stopServer: async (lockDir) => {
+              calls.push(lockDir);
+              expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
+              if (lockDir !== blockedLock) return { stopped: 1, failed: [] };
+              if (failure === 'thrown') throw new Error('stop unavailable');
+              return { stopped: 0, failed: [{ pid: 4242, error: 'EPERM' }] };
+            },
+          }),
+        );
+        expect(calls.filter((dir) => dir === blockedLock)).toHaveLength(1);
+        expect(existsSync(join(blocked, '.ok', 'config.yml'))).toBe(true);
+        expect(readFileSync(join(blocked, '.mcp.json'), 'utf-8')).toContain(MCP_SERVER_NAME);
+        expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(true);
+        expect(
+          existsSync(join(home, 'Library', 'Application Support', 'OpenKnowledge', 'state.json')),
+        ).toBe(true);
+        expect(existsSync(join(independent, '.ok'))).toBe(false);
+        expect(outcome.failed.length).toBeGreaterThan(0);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe('shell configuration symlinks', () => {
+  test.skipIf(process.platform === 'win32')(
+    'preserves a dangling shell symlink without retaining unrelated uninstall state',
+    async () => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-shell-missing-'));
+      try {
+        seedHome(home);
+        const rcFile = join(home, '.zshrc');
+        rmSync(rcFile);
+        symlinkSync(join(home, 'missing-dotfiles', 'zshrc'), rcFile);
+        const outcome = await runRemoval(buildUninstallPlan(baseInput(home)), stubDeps());
+        expect(outcome.failed).toHaveLength(0);
+        expect(lstatSync(rcFile).isSymbolicLink()).toBe(true);
+        expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
+        expect(formatRemovalOutcome(outcome)).toContain(
+          'left the dangling shell symlink untouched',
+        );
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.each(['alias ll="ls -la"\n', ''])(
+    'keeps the symlink and destination after stripping the managed block with remaining content %j',
+    async (before) => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-shell-remove-'));
+      try {
+        const target = join(home, 'dotfiles', 'zshrc');
+        const rcFile = join(home, '.zshrc');
+        write(
+          target,
+          `${before}# >>> open-knowledge cli >>>\nmanaged\n# <<< open-knowledge cli <<<\n`,
+        );
+        chmodSync(target, 0o600);
+        symlinkSync(target, rcFile);
+        const outcome = await runRemoval(
+          {
+            scope: 'uninstall',
+            ops: [{ kind: 'shell-block', group: 'Shell PATH', label: 'Remove PATH block', rcFile }],
+          },
+          stubDeps(),
+        );
+        expect(outcome.failed).toHaveLength(0);
+        expect(lstatSync(rcFile).isSymbolicLink()).toBe(true);
+        expect(readFileSync(target, 'utf-8')).toBe(before);
+        expect(lstatSync(target).mode & 0o777).toBe(0o600);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 });

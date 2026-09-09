@@ -8,37 +8,11 @@ const CONFIRM_NOTICE: UninstallNoticeSpec = {
   title: 'Uninstall OpenKnowledge?',
   paragraphs: [
     'This removes OpenKnowledge’s settings and integrations from your Mac, but keeps your markdown content and authored skills.',
-    'When cleanup finishes, OpenKnowledge will help you remove the app itself, then quit.',
+    'OpenKnowledge will quit before cleanup starts. A dialog will show the result and help you remove the app itself.',
   ],
   confirmLabel: 'Uninstall OpenKnowledge',
   cancelLabel: 'Cancel',
   danger: true,
-};
-
-const COMPLETION_NOTICE: UninstallNoticeSpec = {
-  title: 'OpenKnowledge files were removed',
-  subtitle: "Almost done. Here's what happened and what's left.",
-  paragraphs: [],
-  checklist: [
-    {
-      label: 'Kept your content',
-      detail: 'Markdown files and authored skills were left untouched.',
-      done: true,
-    },
-    {
-      label: 'Removed OpenKnowledge files',
-      detail: 'Cleaned up, including from 2 projects.',
-      done: true,
-    },
-    {
-      label: 'Move OpenKnowledge.app to the Trash',
-      detail:
-        'Reveal in Finder shows the app and quits OpenKnowledge, so you can drag it to the Trash.',
-      done: false,
-    },
-  ],
-  logRevealLabel: 'Cleanup log',
-  confirmLabel: 'Reveal in Finder',
 };
 
 const FAILURE_NOTICE: UninstallNoticeSpec = {
@@ -52,16 +26,8 @@ const FAILURE_NOTICE: UninstallNoticeSpec = {
 function renderNotice(notice: UninstallNoticeSpec) {
   const onConfirm = vi.fn();
   const onCancel = vi.fn();
-  const onRevealLog = vi.fn();
-  render(
-    <UninstallNoticeScreen
-      notice={notice}
-      onConfirm={onConfirm}
-      onCancel={onCancel}
-      onRevealLog={onRevealLog}
-    />,
-  );
-  return { onConfirm, onCancel, onRevealLog, user: userEvent.setup() };
+  render(<UninstallNoticeScreen notice={notice} onConfirm={onConfirm} onCancel={onCancel} />);
+  return { onConfirm, onCancel, user: userEvent.setup() };
 }
 
 describe('uninstall notice screen', () => {
@@ -87,9 +53,9 @@ describe('uninstall notice screen', () => {
   });
 
   test('confirm holds focus on a single-button notice, where there is nothing else to choose', () => {
-    renderNotice(COMPLETION_NOTICE);
+    renderNotice(FAILURE_NOTICE);
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reveal in Finder' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Continue' }));
   });
 
   test('Escape cancels a two-button notice', async () => {
@@ -102,40 +68,12 @@ describe('uninstall notice screen', () => {
   });
 
   test('Escape confirms a single-button notice', async () => {
-    const { user, onConfirm, onCancel } = renderNotice(COMPLETION_NOTICE);
+    const { user, onConfirm, onCancel } = renderNotice(FAILURE_NOTICE);
 
     await user.keyboard('{Escape}');
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
-  });
-
-  test('recaps what was kept and removed, and what the user still has to do', () => {
-    renderNotice(COMPLETION_NOTICE);
-
-    expect(screen.getByText("Almost done. Here's what happened and what's left.")).toBeDefined();
-    for (const item of COMPLETION_NOTICE.checklist ?? []) {
-      expect(screen.getByText(item.label)).toBeDefined();
-      if (item.detail !== undefined) expect(screen.getByText(item.detail)).toBeDefined();
-    }
-
-    expect(screen.getAllByText('Done.')).toHaveLength(2);
-    expect(screen.getAllByText('To do.')).toHaveLength(1);
-  });
-
-  test('revealing the log leaves the notice up', async () => {
-    const { user, onConfirm, onRevealLog } = renderNotice(COMPLETION_NOTICE);
-
-    await user.click(screen.getByRole('button', { name: 'Cleanup log' }));
-
-    expect(onRevealLog).toHaveBeenCalledTimes(1);
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  test('offers no log reveal when there is no log to reveal', () => {
-    renderNotice(CONFIRM_NOTICE);
-
-    expect(screen.queryByRole('button', { name: 'Cleanup log' })).toBeNull();
   });
 
   test('shows the cleanup detail and where the full log was written', () => {

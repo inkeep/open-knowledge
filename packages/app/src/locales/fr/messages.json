@@ -3807,7 +3807,6 @@
     "ciozf1": ["Compétence déjà en projet"],
     "cjtjry": ["Recule dans l'historique de navigation d'OpenKnowledge."],
     "cklVjM": ["Chronologie"],
-    "clJ3qM": ["Terminé."],
     "cn1sLi": [
       "Impossible de connecter les outils OpenKnowledge à Claude Code. Veuillez réessayer."
     ],
@@ -3968,6 +3967,9 @@
     "e8zRrb": ["Afficher les fichiers"],
     "e8zYa8": ["Impossible d'ouvrir ", ["shareBranch"], " dans un worktree. Réessayez."],
     "e9sHSO": ["Reprenez là où vous vous étiez arrêté"],
+    "eBGWcy": [
+      "Les outils Open Knowledge ne sont pas disponibles, car le dossier du projet est introuvable, inaccessible ou a changé. Vérifiez son emplacement et ses autorisations, puis réessayez."
+    ],
     "eBIT9h": ["Échec du collage.", ["restoreSuffix"]],
     "eCDwNN": [
       [
@@ -6058,7 +6060,6 @@
     "yQE2r9": ["Chargement"],
     "yQyglE": ["Aucun document correspondant"],
     "yR5LHI": ["Saisissez une valeur hexadécimale à 6 chiffres, par ex. #1A2B3C"],
-    "yU_9ur": ["À faire."],
     "yUxR-Q": ["Développer ", ["keyName"]],
     "yWSvcf": ["Racine du contenu"],
     "yWWThY": ["Référence de ressource"],

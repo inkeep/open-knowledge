@@ -47,7 +47,6 @@ export function UninstallApp() {
             notice={screen.notice}
             onConfirm={() => sendUninstallIntent({ kind: 'notice-confirm' })}
             onCancel={() => sendUninstallIntent({ kind: 'notice-cancel' })}
-            onRevealLog={() => sendUninstallIntent({ kind: 'notice-reveal-log' })}
           />
         );
       default: {

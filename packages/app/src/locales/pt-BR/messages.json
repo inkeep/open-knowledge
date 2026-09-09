@@ -3687,7 +3687,6 @@
     "ciozf1": ["Habilidade já em projeto"],
     "cjtjry": ["Volta pelo histórico de navegação do OpenKnowledge."],
     "cklVjM": ["Linha do tempo"],
-    "clJ3qM": ["Concluído."],
     "cn1sLi": [
       "Não deu para conectar as ferramentas do OpenKnowledge ao Claude Code. Tente de novo."
     ],
@@ -3850,6 +3849,9 @@
     "e8zRrb": ["Mostrar Arquivos"],
     "e8zYa8": ["Não foi possível abrir ", ["shareBranch"], " em um worktree. Tente de novo."],
     "e9sHSO": ["Continue de onde parou"],
+    "eBGWcy": [
+      "As ferramentas do Open Knowledge estão indisponíveis porque a pasta do projeto não existe, está inacessível ou foi alterada. Verifique a localização e as permissões e tente novamente."
+    ],
     "eBIT9h": ["Falha ao colar.", ["restoreSuffix"]],
     "eCDwNN": [
       [
@@ -5872,7 +5874,6 @@
     "yQE2r9": ["Carregando"],
     "yQyglE": ["Nenhum documento corresponde"],
     "yR5LHI": ["Digite um valor hexadecimal de 6 dígitos, como #1A2B3C"],
-    "yU_9ur": ["A fazer."],
     "yUxR-Q": ["Expandir ", ["keyName"]],
     "yWSvcf": ["Raiz do conteúdo"],
     "yWWThY": ["Referência de recurso"],

@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -328,10 +329,58 @@ describe('runInit', () => {
     expect(readFileSync(claudeConfigPath(), 'utf-8')).toBe(original);
 
     const output = formatInitResult(result, testDir);
-    expect(output).toContain('left unchanged (config not readable)');
+    expect(output).toContain('left unchanged (config could not be parsed)');
 
     expect(existsSync(join(testDir, OK_DIR, 'config.yml'))).toBe(true);
   });
+
+  it.each(['claude', 'codex', 'hermes'] as const)(
+    'reports a %s config directory without changing its contents',
+    async (editorId) => {
+      const configPath = EDITOR_TARGETS[editorId].configPath(testDir, fakeHome);
+      mkdirSync(configPath, { recursive: true });
+      const childPath = join(configPath, 'keep.txt');
+      writeFileSync(childPath, 'keep this file');
+
+      const result = await runInitForTest({ editors: [editorId] });
+
+      expect(result.editors).toMatchObject([
+        { editorId, action: 'declined', declineReason: 'not-a-file' },
+      ]);
+      expect(formatInitResult(result, testDir)).toContain(
+        'left unchanged (config path is not a regular file)',
+      );
+      expect(lstatSync(configPath).isDirectory()).toBe(true);
+      expect(readFileSync(childPath, 'utf-8')).toBe('keep this file');
+    },
+  );
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each([
+    ['claude', '{"mcpServers":{}}\n'],
+    ['codex', '[mcp_servers]\n'],
+    ['hermes', 'mcp_servers: {}\n'],
+  ] as const)(
+    'reports unreadable %s config permissions without changing its bytes',
+    async (editorId, raw) => {
+      const configPath = EDITOR_TARGETS[editorId].configPath(testDir, fakeHome);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, raw);
+      chmodSync(configPath, 0o000);
+      try {
+        const result = await runInitForTest({ editors: [editorId] });
+
+        expect(result.editors).toMatchObject([
+          { editorId, action: 'declined', declineReason: 'permission-denied' },
+        ]);
+        expect(formatInitResult(result, testDir)).toContain(
+          'left unchanged (permission denied; check file and parent-directory permissions)',
+        );
+      } finally {
+        chmodSync(configPath, 0o600);
+      }
+      expect(readFileSync(configPath, 'utf-8')).toBe(raw);
+    },
+  );
 
   describe('Cursor', () => {
     it('writes ~/.cursor/mcp.json with mcpServers key', async () => {
@@ -2603,6 +2652,26 @@ describe('classifyExistingMcpEntry', () => {
       kind: 'absent',
     });
   });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports an unreadable file as permission denied rather than malformed JSON',
+    () => {
+      const path = resolveCursorConfigPath({ home: fakeHome });
+      mkdirSync(dirname(path), { recursive: true });
+      const raw = '{"mcpServers":{}}';
+      writeFileSync(path, raw);
+      chmodSync(path, 0o000);
+      try {
+        expect(classifyExistingMcpEntry(EDITOR_TARGETS.cursor, '', fakeHome)).toEqual({
+          kind: 'decline',
+          reason: 'permission-denied',
+        });
+      } finally {
+        chmodSync(path, 0o600);
+      }
+      expect(readFileSync(path, 'utf8')).toBe(raw);
+    },
+  );
 
   it('absent when configPath throws (platform-mismatched target)', () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });

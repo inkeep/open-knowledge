@@ -5022,10 +5022,6 @@ msgstr "সম্পন্ন"
 msgid "Done"
 msgstr "সম্পন্ন"
 
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "Done."
-msgstr "সম্পন্ন।"
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
 msgstr "সম্পাদনা করতে ডাবল-ক্লিক করুন"
@@ -9492,6 +9488,10 @@ msgstr "Open Knowledge এই index.md ফাইলগুলিকে দস্�
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are available in this thread."
 msgstr "এই থ্রেডে Open Knowledge টুল উপলব্ধ।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry."
+msgstr "Open Knowledge-এর টুলগুলো উপলব্ধ নেই, কারণ প্রোজেক্ট ফোল্ডারটি নেই, সেটিতে প্রবেশ করা যাচ্ছে না অথবা সেটি বদলে গেছে। ফোল্ডারের অবস্থান ও অনুমতি পরীক্ষা করে আবার চেষ্টা করুন।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
@@ -14329,10 +14329,6 @@ msgstr "শিরোনাম"
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "করণীয়"
-
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "To do."
-msgstr "করণীয়।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."

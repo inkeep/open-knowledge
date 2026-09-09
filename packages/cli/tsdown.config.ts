@@ -51,6 +51,7 @@ const alwaysBundlePureJsDeps = [
   // can't cross into the sibling app.asar/ for node_modules. Inlining
   // here removes the runtime resolution entirely.
   /^pino(\/|$)/,
+  /^proper-lockfile(\/|$)/,
   /^shell-quote(\/|$)/,
   /^simple-git(\/|$)/,
   // sirv is inlined TRANSITIVELY via @inkeep/open-knowledge-server (boot.ts's

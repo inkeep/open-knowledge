@@ -14,6 +14,7 @@ import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
 import { describe, expect, test, vi } from 'vitest';
 import { deinitCommand, runDeinit } from './deinit.ts';
 import { buildManagedServerEntry } from './editors.ts';
+import { ensurePiBridge } from './pi-acp-bridge.ts';
 
 const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 
@@ -29,7 +30,7 @@ function seedHome(): string {
 function seedProject(home: string = seedHome()): string {
   const dir = mkdtempSync(join(home, 'ok-deinit-'));
   write(join(dir, '.ok', 'config.yml'), 'content:\n  dir: .\n');
-  write(join(dir, '.ok', 'local', 'server.lock'), '{}');
+  mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
   write(join(dir, '.okignore'), 'secret.md\n');
   write(
     join(dir, '.mcp.json'),
@@ -41,6 +42,45 @@ function seedProject(home: string = seedHome()): string {
 }
 
 describe('runDeinit', () => {
+  test.each([false, true])(
+    'cleans the configured Pi trust directory and preserves other grants (injected home=%s)',
+    async (injectedHome) => {
+      const home = seedHome();
+      const cwd = seedProject(home);
+      const agentDir = join(home, 'custom-pi');
+      const trustPath = join(agentDir, 'trust.json');
+      const defaultTrustPath = join(home, '.pi', 'agent', 'trust.json');
+      const unrelated = join(home, 'other-project');
+      const env = { PI_CODING_AGENT_DIR: agentDir };
+      const defaultTrust = `${JSON.stringify({ [cwd]: true })}\n`;
+      try {
+        write(defaultTrustPath, defaultTrust);
+        write(trustPath, JSON.stringify({ [unrelated]: true }));
+        await ensurePiBridge(cwd, { mode: 'published' }, home, env);
+        if (!injectedHome) {
+          vi.stubEnv('HOME', home);
+          vi.stubEnv('USERPROFILE', home);
+          vi.stubEnv('PI_CODING_AGENT_DIR', agentDir);
+        }
+        const result = await runDeinit({
+          cwd,
+          ...(injectedHome ? { home, env } : {}),
+          yes: true,
+          probeClients: async () => null,
+          runRemovalDeps: { stopServer: async () => ({ stopped: 0, failed: [] }) },
+        });
+        expect(result.status).toBe('done');
+        expect(existsSync(join(cwd, '.pi', 'extensions', 'open-knowledge.ts'))).toBe(false);
+        expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({ [unrelated]: true });
+        expect(readFileSync(defaultTrustPath, 'utf8')).toBe(defaultTrust);
+        expect(readFileSync(join(cwd, 'notes.md'), 'utf8')).toBe('# my notes\n');
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('no-op with a clear message when the dir is not an OK project', async () => {
     const dir = mkdtempSync(join(seedHome(), 'ok-deinit-'));
     try {
@@ -310,4 +350,100 @@ describe('runDeinit attached-client disclosure', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test('keeps project state after incomplete config cleanup so a repaired config can be retried', async () => {
+  const home = seedHome();
+  const project = seedProject(home);
+  const configPath = join(project, '.cursor', 'mcp.json');
+  try {
+    write(configPath, '{broken config');
+    const opts = {
+      cwd: project,
+      home,
+      yes: true,
+      probeClients: async () => null,
+      runRemovalDeps: { stopServer: async () => ({ stopped: 0, failed: [] }) },
+    };
+    const first = await runDeinit(opts);
+    expect(first.status).toBe('failed');
+    expect(existsSync(join(project, '.ok', 'config.yml'))).toBe(true);
+    write(configPath, JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: OWN_ENTRY } }));
+    const second = await runDeinit(opts);
+    expect(second.status).toBe('done');
+    expect(existsSync(join(project, '.ok'))).toBe(false);
+    expect(readFileSync(configPath, 'utf-8')).not.toContain(MCP_SERVER_NAME);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('reports an unreadable Git pointer and completes after it is repaired', async () => {
+  const home = seedHome();
+  const project = seedProject(home);
+  const gitDir = join(home, 'actual-git-dir');
+  try {
+    write(join(project, '.git'), 'broken pointer');
+    write(join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+    write(join(gitDir, 'info', 'exclude'), '.ok/\n.mcp.json\nprivate.env\n');
+    write(join(gitDir, 'ok', 'state'), 'derived state');
+    const opts = {
+      cwd: project,
+      home,
+      yes: true,
+      probeClients: async () => null,
+      runRemovalDeps: { stopServer: async () => ({ stopped: 0, failed: [] }) },
+    };
+    const first = await runDeinit(opts);
+    expect(first.status).toBe('failed');
+    expect(first.exitCode).toBe(1);
+    expect(first.message).toContain('repair the .git pointer');
+    expect(first.message).toContain('restore a valid gitdir: <path> line');
+    expect(first.message).toContain('run git worktree repair from the main repository');
+    expect(first.message).toContain(join(project, '.git'));
+    expect(existsSync(join(project, '.ok', 'config.yml'))).toBe(true);
+    expect(readFileSync(join(gitDir, 'info', 'exclude'), 'utf8')).toBe(
+      '.ok/\n.mcp.json\nprivate.env\n',
+    );
+    const json = JSON.parse((await runDeinit({ ...opts, json: true })).message);
+    expect(json.failed).toContainEqual(
+      expect.objectContaining({
+        kind: 'git-exclude',
+        detail: expect.stringContaining('repair the .git pointer'),
+      }),
+    );
+    write(join(project, '.git'), `gitdir: ${gitDir}\n`);
+    const retry = await runDeinit(opts);
+    expect(retry.status).toBe('done');
+    expect(retry.exitCode).toBe(0);
+    expect(existsSync(join(project, '.ok'))).toBe(false);
+    expect(existsSync(join(gitDir, 'ok'))).toBe(false);
+    expect(readFileSync(join(gitDir, 'info', 'exclude'), 'utf8')).toBe('.mcp.json\nprivate.env\n');
+    expect(readFileSync(join(project, '.git'), 'utf8')).toBe(`gitdir: ${gitDir}\n`);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('keeps project state when a later skill removal fails', async () => {
+  const home = seedHome();
+  const project = seedProject(home);
+  const outside = join(home, 'outside');
+  try {
+    mkdirSync(join(outside, 'skills', 'open-knowledge'), { recursive: true });
+    rmSync(join(project, '.claude'), { recursive: true, force: true });
+    symlinkSync(outside, join(project, '.claude'));
+    const result = await runDeinit({
+      cwd: project,
+      home,
+      yes: true,
+      probeClients: async () => null,
+      runRemovalDeps: { stopServer: async () => ({ stopped: 0, failed: [] }) },
+    });
+    expect(result.status).toBe('failed');
+    expect(existsSync(join(project, '.ok', 'config.yml'))).toBe(true);
+    expect(existsSync(join(outside, 'skills', 'open-knowledge'))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

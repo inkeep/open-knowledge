@@ -24,6 +24,10 @@ export function formatRemovalPlan(plan: RemovalPlan): string {
   return lines.join('\n');
 }
 
+function indentDetail(detail: string): string {
+  return detail.replaceAll('\n', '\n      ');
+}
+
 export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   const removed = outcome.removed.length;
   const failed = outcome.failed.length;
@@ -42,19 +46,21 @@ export function formatRemovalOutcome(outcome: RemovalOutcome): string {
 
   for (const r of outcome.removed) {
     if (r.detail === undefined) continue;
-    lines.push(`  ${warning('·')} ${r.op.label} — ${dim(r.detail)}`);
+    lines.push(`  ${warning('·')} ${r.op.label} — ${dim(indentDetail(r.detail))}`);
   }
 
   for (const s of skipped) {
     lines.push(
-      `  ${warning('·')} Left in place: ${s.op.label}${s.detail ? ` — ${dim(s.detail)}` : ''}`,
+      `  ${warning('·')} Left in place: ${s.op.label}${s.detail ? ` — ${dim(indentDetail(s.detail))}` : ''}`,
     );
   }
   if (failed > 0) {
     lines.push('');
     lines.push(errorColor('Could not remove:'));
     for (const f of outcome.failed) {
-      lines.push(`  ${errorColor('✗')} ${f.op.label}${f.detail ? ` — ${f.detail}` : ''}`);
+      lines.push(
+        `  ${errorColor('✗')} ${f.op.label}${f.detail ? ` — ${indentDetail(f.detail)}` : ''}`,
+      );
     }
   }
   return lines.join('\n');

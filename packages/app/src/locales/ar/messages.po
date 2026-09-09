@@ -5026,10 +5026,6 @@ msgstr "تم"
 msgid "Done"
 msgstr "تم"
 
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "Done."
-msgstr "تم."
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
 msgstr "انقر نقرًا مزدوجًا للتحرير"
@@ -9496,6 +9492,10 @@ msgstr "يقوم Open Knowledge بإعادة كتابة ملفات index.md هذ
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are available in this thread."
 msgstr "أدوات Open Knowledge متاحة في هذه السلسلة."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry."
+msgstr "أدوات Open Knowledge غير متاحة لأن مجلد المشروع مفقود أو يتعذر الوصول إليه أو تغيّر. تحقق من موقعه وأذوناته، ثم أعد المحاولة."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
@@ -14333,10 +14333,6 @@ msgstr "العنوان"
 #: src/editor/slash-command/items.tsx
 msgid "To do"
 msgstr "للقيام به"
-
-#: src/uninstall/UninstallNoticeScreen.tsx
-msgid "To do."
-msgstr "للقيام به."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."

@@ -482,9 +482,10 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
         probeOwnManagedEditorMcpEntry(editorId, agentCwd),
       probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
-      ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
+      ensurePiAcpBridge: (agentCwd, approvedCanonicalCwd) =>
+        ensurePiBridge(agentCwd, undefined, undefined, undefined, approvedCanonicalCwd),
       agentIntegrations: (() => {
-        const registryCtx = { cwd: ephemeralProjectDir ?? cwd, home: homedir() };
+        const registryCtx = { cwd: ephemeralProjectDir ?? cwd, home: homedir(), env: process.env };
         return {
           probe: createCliProbeResolver(registryCtx),
           execute: createCliStepExecutor(registryCtx),

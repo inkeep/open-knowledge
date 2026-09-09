@@ -5,19 +5,10 @@ export interface UninstallProjectRow {
   readonly running: boolean;
 }
 
-export interface UninstallNoticeChecklistItem {
-  readonly label: string;
-  readonly detail?: string;
-  readonly done: boolean;
-}
-
 export interface UninstallNoticeScreen {
   readonly title: string;
-  readonly subtitle?: string;
   readonly paragraphs: readonly string[];
-  readonly checklist?: readonly UninstallNoticeChecklistItem[];
   readonly footnote?: string;
-  readonly logRevealLabel?: string;
   readonly log?: string;
   readonly confirmLabel: string;
   readonly cancelLabel?: string;
@@ -41,8 +32,7 @@ export type UninstallIntent =
     }
   | { readonly kind: 'survey-skip' }
   | { readonly kind: 'notice-confirm' }
-  | { readonly kind: 'notice-cancel' }
-  | { readonly kind: 'notice-reveal-log' };
+  | { readonly kind: 'notice-cancel' };
 
 export type UninstallDispatchRequest = { readonly kind: 'ready' } | UninstallIntent;
 

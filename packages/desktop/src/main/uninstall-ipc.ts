@@ -35,7 +35,6 @@ const RECOGNIZED_UNINSTALL_INTENT_KINDS = {
   'survey-skip': true,
   'notice-confirm': true,
   'notice-cancel': true,
-  'notice-reveal-log': true,
 } satisfies Record<UninstallIntent['kind'], true>;
 
 function isRecognizedUninstallIntentKind(value: unknown): value is UninstallIntent['kind'] {
@@ -61,8 +60,6 @@ export function normalizeUninstallIntent(raw: unknown): UninstallIntent | null {
       return { kind: 'notice-confirm' };
     case 'notice-cancel':
       return { kind: 'notice-cancel' };
-    case 'notice-reveal-log':
-      return { kind: 'notice-reveal-log' };
     default: {
       const _exhaustive: never = raw.kind;
       return _exhaustive;

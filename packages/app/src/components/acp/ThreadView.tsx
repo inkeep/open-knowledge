@@ -2999,9 +2999,11 @@ function PiBridgeOutcomeRow({
               ? t`Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at ${bridgePath}.`
               : outcome.state === 'unreadable-file'
                 ? t`Open Knowledge tools are unavailable: something is already at ${bridgePath} but couldn't be read, so Open Knowledge left it alone.`
-                : outcome.state === 'trust-failed'
-                  ? t`Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools.`
-                  : t`Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools.`}
+                : outcome.state === 'project-path-unavailable'
+                  ? t`Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry.`
+                  : outcome.state === 'trust-failed'
+                    ? t`Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools.`
+                    : t`Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools.`}
         </span>
       </div>
       {outcome.detail !== null ? (

@@ -227,7 +227,8 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
           probeOwnManagedEditorMcpEntry(editorId, agentCwd),
         probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
-        ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
+        ensurePiAcpBridge: (agentCwd, approvedCanonicalCwd) =>
+          ensurePiBridge(agentCwd, undefined, undefined, undefined, approvedCanonicalCwd),
         serveContentAssets: true,
         ...(msg.opts.reactShellDistDir ? { reactShellDistDir: msg.opts.reactShellDistDir } : {}),
       };

@@ -1,8 +1,10 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,8 +19,10 @@ import {
   planIntents,
   type SatisfierId,
 } from '@inkeep/open-knowledge-core';
+import { loggerFactory, logsCurrentPath } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EDITOR_TARGETS } from '../commands/editors.ts';
+import { ensurePiBridge, probePiBridgeState } from '../commands/pi-acp-bridge.ts';
 import { type CliWriteContext, createCliStepExecutor } from './registry-apply.ts';
 import { collectCliHostSnapshot } from './registry-probes.ts';
 
@@ -26,7 +30,7 @@ let root: string;
 let ctx: CliWriteContext;
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'ok-registry-apply-'));
+  root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-registry-apply-')));
   mkdirSync(join(root, 'project'), { recursive: true });
   mkdirSync(join(root, 'home'), { recursive: true });
   ctx = { cwd: join(root, 'project'), home: join(root, 'home') };
@@ -59,6 +63,112 @@ async function stateOf(satisfierId: string) {
 }
 
 const projectMcpPath = () => join(ctx.cwd, '.mcp.json');
+
+it.each(['kept-shared', 'kept-unowned'] as const)(
+  'logs why a successful Pi removal left %s trust',
+  async (trust) => {
+    loggerFactory.configure({
+      pinoConfig: { options: { level: 'warn' }, fileSink: { projectDir: root } },
+    });
+    const home = join(root, 'home');
+    const trustPath = join(home, '.pi', 'agent', 'trust.json');
+    const prompts = join(ctx.cwd, '.pi', 'prompts');
+    try {
+      if (trust === 'kept-unowned') {
+        mkdirSync(join(home, '.pi', 'agent'), { recursive: true });
+        writeFileSync(trustPath, JSON.stringify({ [ctx.cwd]: true }));
+      }
+      await ensurePiBridge(ctx.cwd, { mode: 'published' }, home);
+      if (trust === 'kept-shared') mkdirSync(prompts);
+      const before = readFileSync(trustPath, 'utf8');
+      const report = await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'absent' }]);
+      expect(actionFor(report, 'pi/mcp/project/managed-file')?.action).toBe('removed');
+      await loggerFactory.flushAllFileSinks();
+      const entries = readFileSync(logsCurrentPath(root), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      expect(entries).toContainEqual(
+        expect.objectContaining({
+          msg: 'MCP config removal retained Pi folder trust',
+          editor: 'pi',
+          trust,
+          trustDetail: expect.stringContaining(
+            trust === 'kept-shared' ? prompts : 'no OpenKnowledge ownership record',
+          ),
+        }),
+      );
+      expect(readFileSync(trustPath, 'utf8')).toBe(before);
+    } finally {
+      loggerFactory.reset();
+    }
+  },
+);
+
+it('removes Pi trust from the configured agent directory without changing other grants', async () => {
+  const home = join(root, 'home');
+  const agentDir = join(root, 'custom-pi');
+  const trustPath = join(agentDir, 'trust.json');
+  const defaultTrustPath = join(home, '.pi', 'agent', 'trust.json');
+  const unrelated = join(root, 'other-project');
+  const defaultTrust = `${JSON.stringify({ [ctx.cwd]: true })}\n`;
+  ctx = { ...ctx, env: { PI_CODING_AGENT_DIR: agentDir } };
+  mkdirSync(agentDir, { recursive: true });
+  mkdirSync(join(home, '.pi', 'agent'), { recursive: true });
+  writeFileSync(defaultTrustPath, defaultTrust);
+  writeFileSync(trustPath, JSON.stringify({ [unrelated]: true }));
+  await ensurePiBridge(ctx.cwd, { mode: 'published' }, ctx.home, ctx.env);
+
+  const report = await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'absent' }]);
+
+  expect(actionFor(report, 'pi/mcp/project/managed-file')?.action).toBe('removed');
+  expect(existsSync(join(ctx.cwd, '.pi', 'extensions', 'open-knowledge.ts'))).toBe(false);
+  expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({ [unrelated]: true });
+  expect(readFileSync(defaultTrustPath, 'utf8')).toBe(defaultTrust);
+});
+
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  'logs the reason for a failed Pi removal and preserves its bridge and trust for retry',
+  async () => {
+    loggerFactory.configure({
+      pinoConfig: {
+        options: { level: 'warn' },
+        fileSink: { projectDir: root },
+      },
+    });
+    const extensions = join(ctx.cwd, '.pi', 'extensions');
+    const bridgePath = join(extensions, 'open-knowledge.ts');
+    const trustPath = join(root, 'home', '.pi', 'agent', 'trust.json');
+    try {
+      await ensurePiBridge(ctx.cwd, { mode: 'published' }, ctx.home);
+      const bridge = readFileSync(bridgePath, 'utf8');
+      const trust = readFileSync(trustPath, 'utf8');
+      chmodSync(extensions, 0o111);
+      const report = await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'absent' }]);
+      expect(actionFor(report, 'pi/mcp/project/managed-file')).toMatchObject({
+        action: 'failed',
+        errorId: 'write-failed',
+      });
+      await loggerFactory.flushAllFileSinks();
+      const logs = readFileSync(logsCurrentPath(root), 'utf8');
+      expect(logs).toContain('MCP config removal failed');
+      expect(logs).toContain('kept-unverified');
+      expect(logs).toContain('Could not inspect Pi project resources');
+      expect(logs).toContain('bridge file was left untouched');
+      expect(logs).toContain(bridgePath);
+      expect(readFileSync(bridgePath, 'utf8')).toBe(bridge);
+      expect(readFileSync(trustPath, 'utf8')).toBe(trust);
+      chmodSync(extensions, 0o755);
+      const retry = await run([{ satisfierId: 'pi/mcp/project/managed-file', desired: 'absent' }]);
+      expect(actionFor(retry, 'pi/mcp/project/managed-file')?.action).toBe('removed');
+      expect(existsSync(bridgePath)).toBe(false);
+      expect(probePiBridgeState(ctx.cwd, ctx.home).trust).toBe('untrusted');
+    } finally {
+      chmodSync(extensions, 0o755);
+      loggerFactory.reset();
+    }
+  },
+);
 
 describe('a project MCP artifact', () => {
   it('is written by the same primitive a single toggle uses, and reads back satisfied', async () => {

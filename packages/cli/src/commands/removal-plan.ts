@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
-import { basename, join, relative, sep } from 'node:path';
+import { lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from 'node:fs';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -20,20 +20,23 @@ import {
 import { userGlobalSkillBundleTargets } from '../integrations/skill-teardown.ts';
 import { assertProjectRemovalSafe } from '../integrations/write-project-skill.ts';
 import {
-  getExcludedOkPaths,
   getInstalledSkillProjectionPaths,
   getOkArtifactPaths,
   removeOkPathsFromGitExclude,
 } from '../sharing/git-exclude.ts';
+import { configFileDeclineDetail, configFileDeclineReason } from '../utils/config-file-error.ts';
 import { ALL_EDITOR_IDS, EDITOR_TARGETS, type EditorId } from './editors.ts';
+import type { McpConfigDeclineReason } from './init.ts';
 import { existingFileMode } from './jsonc-surgical.ts';
 import { removeOwnLaunchEntry } from './launch-json-removal.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
-import { probeCollabClients, runStop } from './stop.ts';
+import { resolveRemovalFilePath } from './removal-file-path.ts';
+import { probeCollabClients } from './stop.ts';
+import { stopServerForRemoval } from './stop-for-removal.ts';
 
 export type RemovalGroup = string;
 
-export type RemovalOp =
+export type RemovalOp = (
   | { kind: 'stop-server'; group: RemovalGroup; label: string; lockDir: string }
   | { kind: 'keychain-token'; group: RemovalGroup; label: string; host: string }
   | { kind: 'embeddings-key'; group: RemovalGroup; label: string }
@@ -47,7 +50,7 @@ export type RemovalOp =
       scope: 'user' | 'project';
       cwd: string;
       home: string;
-      configPath?: string;
+      configPath: string;
     }
   | { kind: 'launch-entry'; group: RemovalGroup; label: string; projectRoot: string }
   | { kind: 'git-exclude'; group: RemovalGroup; label: string; projectRoot: string }
@@ -59,7 +62,9 @@ export type RemovalOp =
       preserve?: string[];
       requireOurState?: boolean;
       containWithin?: string;
-    };
+      requiresSuccessfulCleanup?: boolean;
+    }
+) & { requiresStoppedServers?: readonly string[] };
 
 export interface RemovalPlan {
   scope: 'uninstall' | 'deinit';
@@ -161,7 +166,21 @@ export function deinitOps(
     });
   } catch {}
 
-  return ops;
+  const projectStatePath = join(projectRoot, '.ok');
+  ops.sort(
+    (left, right) =>
+      Number(left.kind === 'remove-path' && left.path === projectStatePath) -
+      Number(right.kind === 'remove-path' && right.path === projectStatePath),
+  );
+  return ops.map((op) =>
+    op.kind === 'stop-server'
+      ? op
+      : {
+          ...op,
+          requiresStoppedServers: [resolveLockDir(projectRoot)],
+          ...(op.kind === 'remove-path' ? { requiresSuccessfulCleanup: true } : {}),
+        },
+  );
 }
 
 export function buildDeinitPlan(projectRoot: string, home: string): RemovalPlan {
@@ -235,15 +254,20 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     });
   }
 
-  ops.push(...applicationDataOps(home, platform, input.env));
-
   for (const projectRoot of recentDeinitProjectRoots) {
     ops.push(...deinitOps(projectRoot, home, `Project: ${basename(projectRoot)}`));
   }
 
+  ops.push(
+    ...applicationDataOps(home, platform, input.env).map((op) =>
+      op.kind === 'remove-path' ? { ...op, requiresSuccessfulCleanup: true } : op,
+    ),
+  );
+
   ops.push({
     kind: 'remove-path',
     group: 'Global directory',
+    requiresSuccessfulCleanup: true,
     label: purgeContent
       ? 'Remove ~/.ok (including user-authored skills)'
       : 'Remove ~/.ok (keeping ~/.ok/skills)',
@@ -266,7 +290,7 @@ function pathRevertOps(marker: PathInstallMarker | null, home: string): RemovalO
   const ops: RemovalOp[] = [];
   const rcCandidates = new Set([...standardRcFiles(home), ...(marker?.rcFiles ?? [])]);
   for (const rcFile of rcCandidates) {
-    if (!existsSync(rcFile)) continue;
+    if (resolveRemovalFilePath(rcFile).kind === 'not-present') continue;
     ops.push({
       kind: 'shell-block',
       group: 'Shell PATH',
@@ -326,6 +350,7 @@ export function applicationDataOps(
 }
 
 export interface RunRemovalDeps {
+  env?: NodeJS.ProcessEnv;
   clearToken?: (
     host: string,
   ) => Promise<{ touched: Array<'keychain' | 'file'>; keychainError?: string }>;
@@ -342,27 +367,60 @@ export async function runRemoval(
 ): Promise<RemovalOutcome> {
   const clearToken = deps.clearToken ?? clearTokenFromAllBackends;
   const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearAllEmbeddingsKeys;
-  const stopServer =
-    deps.stopServer ??
-    (async (lockDir: string) => {
-      const outcome = await runStop({ lockDir, force: true, log: () => {}, error: () => {} });
-      return {
-        stopped: outcome.stopped.length,
-        failed: outcome.failed.map((f) => ({ pid: f.target.pid, error: f.error })),
-      };
-    });
+  const stopServer = deps.stopServer ?? stopServerForRemoval;
+
+  const resolvedDeps = { clearToken, clearEmbeddingsKey, stopServer, env: deps.env ?? {} };
+  const execute = async (op: RemovalOp): Promise<RemovalOpResult> => {
+    try {
+      return await executeOp(op, resolvedDeps);
+    } catch (err) {
+      return { op, status: 'failed', detail: err instanceof Error ? err.message : String(err) };
+    }
+  };
+  const stops = new Map<string, RemovalOpResult>();
+  for (const op of plan.ops) {
+    if (op.kind !== 'stop-server') continue;
+    const key = resolve(op.lockDir);
+    if (!stops.has(key)) stops.set(key, await execute(op));
+  }
 
   const results: RemovalOpResult[] = [];
   for (const op of plan.ops) {
-    try {
-      results.push(await executeOp(op, { clearToken, clearEmbeddingsKey, stopServer }));
-    } catch (err) {
+    if (op.kind === 'stop-server') {
+      const result = stops.get(resolve(op.lockDir));
+      if (result) results.push({ ...result, op });
+      continue;
+    }
+    const required = op.requiresStoppedServers ?? [...stops.keys()];
+    const blocked = required.filter((lockDir) => {
+      const stop = stops.get(resolve(lockDir));
+      return !stop || stop.status === 'failed';
+    });
+    if (blocked.length > 0) {
       results.push({
         op,
         status: 'failed',
-        detail: err instanceof Error ? err.message : String(err),
+        detail: `left untouched because server shutdown was not verified: ${blocked.join(', ')}. Stop the server and retry cleanup.`,
       });
+      continue;
     }
+    if (op.kind === 'remove-path' && op.requiresSuccessfulCleanup) {
+      const previousFailure = results.some((result) => {
+        if (result.status !== 'failed') return false;
+        if (!op.requiresStoppedServers) return true;
+        return result.op.requiresStoppedServers?.some((lockDir) => required.includes(lockDir));
+      });
+      if (previousFailure) {
+        results.push({
+          op,
+          status: 'failed',
+          detail:
+            'left untouched so cleanup can be retried after the earlier failures are resolved',
+        });
+        continue;
+      }
+    }
+    results.push(await execute(op));
   }
 
   return {
@@ -402,7 +460,7 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
         return {
           op,
           status: 'failed',
-          detail: `could not stop the server (${detail}); a process may still be using files that were removed`,
+          detail: `could not stop the server (${detail}); dependent files were left untouched; stop the server and retry cleanup`,
         };
       }
       return { op, status: stopped > 0 ? 'removed' : 'not-present' };
@@ -423,15 +481,38 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       return { op, status: touched.length > 0 ? 'removed' : 'not-present' };
     }
     case 'shell-block': {
-      if (!existsSync(op.rcFile)) return { op, status: 'not-present' };
-      const before = readFileSync(op.rcFile, 'utf-8');
+      const resolved = resolveRemovalFilePath(op.rcFile);
+      if (resolved.kind === 'not-present') return { op, status: 'not-present' };
+      if (resolved.kind === 'declined' && resolved.reason === 'missing-symlink-target') {
+        return {
+          op,
+          status: 'skipped',
+          detail: `left the dangling shell symlink untouched; no target file contains a PATH block to remove: ${op.rcFile}`,
+        };
+      }
+      if (resolved.kind === 'declined')
+        return {
+          op,
+          status: 'failed',
+          detail: `${configurationDeclineDetail(resolved.reason)}: ${op.rcFile}`,
+        };
+      let before: string;
+      try {
+        before = readFileSync(resolved.path, 'utf-8');
+      } catch (error) {
+        return {
+          op,
+          status: 'failed',
+          detail: `${configurationDeclineDetail(configFileDeclineReason(error))}: ${op.rcFile}`,
+        };
+      }
       const { text, changed, emptyAfter } = stripManagedPathBlock(before);
       if (!changed) return { op, status: 'not-present' };
-      if (emptyAfter) {
+      if (emptyAfter && !resolved.symlink) {
         rmSync(op.rcFile, { force: true });
         return { op, status: 'removed', detail: 'file removed (was OK-owned)' };
       }
-      atomicWriteFileSync(op.rcFile, text, { mode: existingFileMode(op.rcFile) });
+      atomicWriteFileSync(resolved.path, text, { mode: existingFileMode(resolved.path) });
       return { op, status: 'removed' };
     }
     case 'extra-symlink': {
@@ -445,42 +526,43 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
         op.cwd,
         op.home,
         op.configPath,
+        deps.env,
       );
       switch (outcome.kind) {
         case 'removed':
-          switch (outcome.trust) {
-            case undefined:
-            case 'removed':
-            case 'not-present':
-              return { op, status: 'removed' };
-            case 'kept-shared':
-              return {
-                op,
-                status: 'removed',
-                detail: "kept Pi's folder trust — another extension there still needs it",
-              };
-            case 'kept-unverified':
-              return {
-                op,
-                status: 'removed',
-                detail:
-                  "kept Pi's folder trust — couldn't read the extensions folder to see what else needs it",
-              };
-            default:
-              return {
-                op,
-                status: 'failed',
-                detail: `removed the bridge file, but couldn't revoke Pi's folder trust (${outcome.trust})${
-                  outcome.trustError !== undefined ? `: ${outcome.trustError}` : ''
-                }`,
-              };
+          if (outcome.trustDetail) {
+            return {
+              op,
+              status: 'removed',
+              detail: outcome.trustDetail,
+            };
           }
+          return { op, status: 'removed' };
         case 'not-present':
           return { op, status: 'not-present' };
         case 'left-foreign':
           return { op, status: 'skipped', detail: 'left a non-OK server in place' };
         case 'declined':
-          return { op, status: 'skipped', detail: `declined (${outcome.reason})` };
+          if (outcome.reason === 'missing-symlink-target') {
+            const configPath = op.configPath;
+            if (op.editorId === 'pi') {
+              return {
+                op,
+                status: 'failed',
+                detail: `Pi bridge configuration left untouched (missing symlink target); Pi's separate folder trust grant has not been checked or removed. Restore the missing target of the OpenKnowledge bridge symlink at ${configPath}, or repoint that symlink to the intended bridge file, then retry cleanup`,
+              };
+            }
+            return {
+              op,
+              status: 'skipped',
+              detail: `left the dangling configuration symlink untouched; no target file contains an OpenKnowledge entry to remove: ${configPath}`,
+            };
+          }
+          return {
+            op,
+            status: 'failed',
+            detail: configurationDeclineDetail(outcome.reason),
+          };
         default: {
           const _exhaustive: never = outcome;
           throw new Error(
@@ -497,7 +579,18 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
         case 'not-present':
           return { op, status: 'not-present' };
         case 'declined':
-          return { op, status: 'skipped', detail: 'declined (unparseable)' };
+          if (outcome.reason === 'missing-symlink-target') {
+            return {
+              op,
+              status: 'skipped',
+              detail: `left the dangling configuration symlink untouched; no target file contains an OpenKnowledge entry to remove: ${join(op.projectRoot, '.claude', 'launch.json')}`,
+            };
+          }
+          return {
+            op,
+            status: 'failed',
+            detail: configurationDeclineDetail(outcome.reason),
+          };
         default: {
           const _exhaustive: never = outcome;
           throw new Error(
@@ -507,21 +600,57 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       }
     }
     case 'git-exclude': {
-      const excluded = getExcludedOkPaths(op.projectRoot);
-      if (excluded.length === 0) return { op, status: 'not-present' };
       const result = removeOkPathsFromGitExclude(
         op.projectRoot,
-        getOkArtifactPaths(op.projectRoot),
+        removableGitExcludePaths(op.projectRoot),
       );
       if (result.kind === 'no-exclude') {
-        return result.reason === 'inaccessible'
-          ? { op, status: 'failed', detail: 'could not write .git/info/exclude (inaccessible)' }
-          : { op, status: 'not-present', detail: result.reason };
+        switch (result.reason) {
+          case 'inaccessible':
+            return {
+              op,
+              status: 'failed',
+              detail: 'could not write .git/info/exclude (inaccessible)',
+            };
+          case 'malformed-pointer':
+            return {
+              op,
+              status: 'failed',
+              detail: `could not locate .git/info/exclude; repair the .git pointer at ${join(op.projectRoot, '.git')} by restoring permissions or access to its repository, including any mounted volume. If its contents are malformed, restore a valid gitdir: <path> line pointing to the existing Git directory. For a linked worktree, run git worktree repair from the main repository with this worktree's path. If the repository is permanently gone, back up and remove only the stale .git pointer file, then retry cleanup`,
+            };
+          case 'no-git':
+          case 'no-info-dir':
+            return { op, status: 'not-present' };
+        }
       }
       return { op, status: result.removed.length > 0 ? 'removed' : 'not-present' };
     }
     case 'remove-path':
       return executeRemovePath(op);
+  }
+}
+
+function configurationDeclineDetail(reason: McpConfigDeclineReason): string {
+  switch (reason) {
+    case 'permission-denied':
+    case 'missing-symlink-target':
+    case 'unresolved-symlink':
+    case 'not-a-file':
+    case 'unreadable':
+    case 'disappeared':
+      return `configuration left untouched: ${configFileDeclineDetail(reason)}`;
+    case 'oversize':
+      return 'configuration left untouched (file is too large to edit safely); back up the file and reduce its size to 10 MiB or less while preserving needed settings, then retry cleanup';
+    case 'duplicate-container':
+      return 'configuration left untouched (duplicate server configuration blocks); combine the duplicate blocks while preserving their settings, then retry cleanup';
+    case 'no-native-writer':
+      return 'configuration left untouched (this install has no format-preserving TOML writer); remove the OpenKnowledge entry manually or reinstall OpenKnowledge, then retry cleanup';
+    case 'unparseable':
+      return 'configuration left untouched (unparseable); repair it and retry cleanup';
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(`unhandled configuration decline reason: ${exhaustive}`);
+    }
   }
 }
 
@@ -558,4 +687,23 @@ function executeRemovePath(op: Extract<RemovalOp, { kind: 'remove-path' }>): Rem
 
   rmSync(op.path, { recursive: true, force: true });
   return { op, status: 'removed' };
+}
+
+function removableGitExcludePaths(projectRoot: string): readonly string[] {
+  const sharedPaths = new Set<string>([join(projectRoot, '.claude', 'launch.json')]);
+  for (const id of ALL_EDITOR_IDS) {
+    const path = EDITOR_TARGETS[id].projectConfigPath?.(projectRoot);
+    if (path) sharedPaths.add(path);
+  }
+  return getOkArtifactPaths(projectRoot).filter((path) => {
+    const absolute = join(projectRoot, path);
+    if (!sharedPaths.has(absolute)) return true;
+    try {
+      lstatSync(absolute);
+      return false;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return true;
+      throw err;
+    }
+  });
 }

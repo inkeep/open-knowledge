@@ -7,7 +7,6 @@ import {
   confirmDesktopUninstall,
   type DesktopUninstallProjectCandidate,
   runDesktopUninstallFeedbackStep,
-  runDesktopUninstallOutcomeStep,
 } from '../../src/main/desktop-uninstall.ts';
 
 const settleQueue = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -144,62 +143,5 @@ describe('desktop uninstall confirm step', () => {
         showConfirmNotice: async () => false,
       }),
     ).toEqual({ proceed: false });
-  });
-});
-
-describe('runDesktopUninstallOutcomeStep', () => {
-  test('asks why then shows completion when cleanup succeeded', async () => {
-    const order: string[] = [];
-    await runDesktopUninstallOutcomeStep({
-      cleanup: { ok: true },
-      runFeedbackStep: async () => {
-        order.push('feedback');
-      },
-      showCompletion: async () => {
-        order.push('completion');
-      },
-      showFailure: async () => {
-        order.push('failure');
-      },
-    });
-    expect(order).toEqual(['feedback', 'completion']);
-  });
-
-  test('shows failure and never asks why when cleanup failed', async () => {
-    const runFeedbackStep = vi.fn(async () => {});
-    const showCompletion = vi.fn(async () => {});
-    const showFailure = vi.fn(async () => {});
-    await runDesktopUninstallOutcomeStep({
-      cleanup: { ok: false, error: 'deinit refused /Users/me/notes' },
-      runFeedbackStep,
-      showCompletion,
-      showFailure,
-    });
-    expect(showFailure).toHaveBeenCalledTimes(1);
-    expect(runFeedbackStep).not.toHaveBeenCalled();
-    expect(showCompletion).not.toHaveBeenCalled();
-  });
-
-  test('holds the completion screen until the awaited feedback send settles', async () => {
-    let releaseFeedback: () => void = () => {};
-    let completionShown = false;
-    const done = runDesktopUninstallOutcomeStep({
-      cleanup: { ok: true },
-      runFeedbackStep: () =>
-        new Promise<void>((resolve) => {
-          releaseFeedback = resolve;
-        }),
-      showCompletion: async () => {
-        completionShown = true;
-      },
-      showFailure: async () => {},
-    });
-
-    await settleQueue();
-    expect(completionShown).toBe(false);
-
-    releaseFeedback();
-    await done;
-    expect(completionShown).toBe(true);
   });
 });

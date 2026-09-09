@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopApp } from './_helpers/launch-readiness';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -67,7 +68,8 @@ function seed(prefix: string): Seed {
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch(
+  return launchDesktopApp(
+    electron,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${s.userDataDir}`, deepLink],
@@ -79,10 +81,18 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
         OK_RECLAIM_DISABLE: '1',
       },
     }),
-  );
+    { home: s.tmpHome },
+  ).catch((error) => {
+    for (const target of [s.tmpHome, s.projectDir]) {
+      try {
+        rmSync(target, { recursive: true, force: true });
+      } catch {}
+    }
+    throw error;
+  });
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 15_000): Promise<Page> {
+async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
   let page: Page | undefined;
   await expect(async () => {
     for (const p of app.windows()) {
@@ -182,28 +192,14 @@ async function readActiveText(page: Page): Promise<string> {
   });
 }
 
-const cleanup: string[] = [];
-function track(...paths: string[]): void {
-  cleanup.push(...paths);
-}
-
 test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
-  test.afterEach(() => {
-    for (const target of cleanup.splice(0)) {
-      try {
-        rmSync(target, { recursive: true, force: true });
-      } catch {}
-    }
-  });
-
   test('a second tab spawns its own live shell (independent sessions)', async ({
     captureStderrFor,
   }) => {
     const s = seed('two-shells');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
@@ -249,7 +245,6 @@ test.describe('Terminal tabs — live Electron', () => {
     captureStderrFor,
   }) => {
     const s = seed('close-one');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
@@ -270,7 +265,6 @@ test.describe('Terminal tabs — live Electron', () => {
 
   test('a manual rename pins over the program’s OSC title', async ({ captureStderrFor }) => {
     const s = seed('rename-pin');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
@@ -292,7 +286,6 @@ test.describe('Terminal tabs — live Electron', () => {
     captureStderrFor,
   }) => {
     const s = seed('reorder-survive');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
@@ -336,7 +329,6 @@ test.describe('Terminal tabs — live Electron', () => {
     captureStderrFor,
   }) => {
     const s = seed('drag-survive');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
@@ -375,7 +367,6 @@ test.describe('Terminal tabs — live Electron', () => {
 
   test('a renderer reload preserves tab labels and order', async ({ captureStderrFor }) => {
     const s = seed('reload-preserve');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);

@@ -242,13 +242,21 @@ export interface HarnessManagedMcpEntryHit {
   configPath: string;
 }
 
-export interface PiAcpBridgeProbe {
+export type PiAcpBridgeProbe = {
+  cwd: string;
   bridgePath: string;
-  bridge: 'absent' | 'own-current' | 'own-stale' | 'foreign' | 'unreadable';
-  trust: 'trusted' | 'untrusted' | 'unreadable';
-  bridgeLoadable: boolean;
-  otherExtensions: readonly string[];
-}
+  trustPath: string;
+} & (
+  | { project: 'unavailable'; error: string }
+  | {
+      project: 'ready';
+      canonicalCwd: string;
+      bridge: 'absent' | 'own-current' | 'own-stale' | 'foreign' | 'unreadable';
+      trust: 'trusted' | 'untrusted' | 'unreadable';
+      bridgeLoadable: boolean;
+      otherExtensions: readonly string[];
+    }
+);
 
 export interface PiAcpBridgeEnsureResult {
   ok: boolean;
@@ -284,7 +292,10 @@ export interface AcpThreadManagerOptions {
   ) => HarnessManagedMcpEntryHit | null | Promise<HarnessManagedMcpEntryHit | null>;
   probePiAcpBridge?: (cwd: string) => PiAcpBridgeProbe | Promise<PiAcpBridgeProbe>;
   hostSnapshot?: () => Promise<HostSnapshot>;
-  ensurePiAcpBridge?: (cwd: string) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
+  ensurePiAcpBridge?: (
+    cwd: string,
+    approvedCanonicalCwd: string,
+  ) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
   runtimeInstall?: {
     root?: string;
     fetchImpl?: typeof fetch;
@@ -1214,6 +1225,20 @@ export class AcpThreadManager {
       return 'unknown';
     }
     if (record.closed) return 'unknown';
+    if (state.project === 'unavailable') {
+      this.opts.log.warn(
+        { threadId, cwd: state.cwd, err: new Error(state.error) },
+        '[acp-threads] Pi project folder is unavailable; this thread has no OK tools',
+      );
+      this.emitPiBridgeStatus(record, {
+        kind: 'pi_bridge_status',
+        state: 'project-path-unavailable',
+        bridgePath: state.bridgePath,
+        detail: state.error,
+        ts: Date.now(),
+      });
+      return 'unavailable';
+    }
     if (state.bridgeLoadable) {
       this.opts.log.info(
         { threadId, bridge: state.bridge, bridgePath: state.bridgePath },
@@ -1264,7 +1289,7 @@ export class AcpThreadManager {
 
     let result: PiAcpBridgeEnsureResult;
     try {
-      result = await ensure(record.cwd);
+      result = await ensure(record.cwd, state.canonicalCwd);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.opts.log.warn({ err, threadId }, '[acp-threads] Pi bridge provisioning threw');
@@ -1291,13 +1316,15 @@ export class AcpThreadManager {
     const bridgeLanded =
       result.bridge === 'written' || result.bridge === 'refreshed' || result.bridge === 'unchanged';
     const state2: PiBridgeThreadState =
-      result.bridge === 'refused-foreign'
-        ? 'foreign-file'
-        : result.bridge === 'refused-unreadable'
-          ? 'unreadable-file'
-          : bridgeLanded
-            ? 'trust-failed'
-            : 'bridge-failed';
+      result.bridge === 'refused-project-path'
+        ? 'project-path-unavailable'
+        : result.bridge === 'refused-foreign'
+          ? 'foreign-file'
+          : result.bridge === 'refused-unreadable'
+            ? 'unreadable-file'
+            : bridgeLanded
+              ? 'trust-failed'
+              : 'bridge-failed';
     this.opts.log.warn(
       {
         threadId,
@@ -1346,7 +1373,7 @@ export class AcpThreadManager {
   private requestPiBridgeConsent(
     record: ThreadRecord,
     requestId: string,
-    state: PiAcpBridgeProbe,
+    state: Extract<PiAcpBridgeProbe, { project: 'ready' }>,
     budgetMs: number,
   ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
     this.appendEvent(record, {
@@ -1354,7 +1381,7 @@ export class AcpThreadManager {
       requestId,
       agentName: record.info.agent.name,
       bridgePath: state.bridgePath,
-      cwd: record.cwd,
+      cwd: state.canonicalCwd,
       otherExtensions: state.otherExtensions,
       ts: Date.now(),
     });

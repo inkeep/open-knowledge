@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -377,6 +377,33 @@ describe('launchDesktopApp', () => {
         { home: '/unused', readLog: () => snapshot({ exists: false }) },
       ),
     ).rejects.toThrow(/Timeout 30000ms exceeded/);
+  });
+
+  it('retains the on-disk boot log and original cause before failed-launch cleanup', async () => {
+    const line = markLine('serverSpawned', 8_500, '2026-09-04T00:00:08.500Z');
+    const home = seedHome([line]);
+    const failure = new Error('electron.launch: Timeout 30000ms exceeded.');
+    try {
+      const launch = launchDesktopApp(
+        {
+          launch: async () => {
+            throw failure;
+          },
+        },
+        {},
+        { home },
+      ).catch((error) => {
+        rmSync(home, { recursive: true, force: true });
+        throw error;
+      });
+      await expect(launch).rejects.toMatchObject({
+        message: expect.stringContaining(line),
+        cause: failure,
+      });
+      expect(existsSync(home)).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

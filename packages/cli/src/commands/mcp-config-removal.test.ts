@@ -1,4 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
@@ -14,9 +26,10 @@ import {
   PI_EXTENSION_OWNERSHIP_MARKER,
 } from './editors.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
+import { ensurePiBridge } from './pi-acp-bridge.ts';
 
 function tmp(): string {
-  return mkdtempSync(join(tmpdir(), 'ok-mcp-remove-'));
+  return realpathSync(mkdtempSync(join(tmpdir(), 'ok-mcp-remove-')));
 }
 
 const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
@@ -253,7 +266,7 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
     }
   });
 
-  test('declines when the format-preserving native engine is unavailable', () => {
+  test('declines without the native writer, then accepts manual entry removal on retry', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.toml');
@@ -266,6 +279,12 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
         expect(outcome.kind).toBe('declined');
         if (outcome.kind === 'declined') expect(outcome.reason).toBe('no-native-writer');
         expect(readFileSync(configPath, 'utf-8')).toBe(raw);
+        const repaired = '# user config\n[mcp_servers.other]\ncommand = "node"\n';
+        writeFileSync(configPath, repaired);
+        expect(removeOwnMcpEntry(EDITOR_TARGETS.codex, dir, undefined, configPath)).toEqual({
+          kind: 'not-present',
+        });
+        expect(readFileSync(configPath, 'utf8')).toBe(repaired);
       } finally {
         setTomlConfigEngineForTesting(null);
       }
@@ -281,6 +300,108 @@ describe('removeOwnMcpEntry — Pi managed extension file', () => {
     if (!p) throw new Error('pi projectConfigPath missing');
     return p;
   };
+
+  test('retains the bridge after trust cleanup fails and removes both on retry', async () => {
+    const dir = tmp();
+    const home = join(dir, 'home');
+    const project = join(dir, 'project');
+    try {
+      const configPath = piConfigPath(project);
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      mkdirSync(join(project, '.pi', 'extensions'), { recursive: true });
+      mkdirSync(join(home, '.pi', 'agent'), { recursive: true });
+      const bridge = buildPiExtensionSource();
+      expect((await ensurePiBridge(project, { mode: 'published' }, home)).trust).toBe('added');
+      writeFileSync(trustPath, '{malformed trust');
+
+      expect(() => removeOwnMcpEntry(EDITOR_TARGETS.pi, project, home, configPath)).toThrow(
+        'bridge file was left untouched',
+      );
+      expect(readFileSync(configPath, 'utf8')).toBe(bridge);
+      expect(readFileSync(trustPath, 'utf8')).toBe('{malformed trust');
+
+      const otherProject = join(dir, 'other-project');
+      writeFileSync(trustPath, JSON.stringify({ [project]: true, [otherProject]: true }));
+      expect(removeOwnMcpEntry(EDITOR_TARGETS.pi, project, home, configPath)).toEqual({
+        kind: 'removed',
+        trust: 'removed',
+      });
+      expect(existsSync(configPath)).toBe(false);
+      expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({ [otherProject]: true });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('cleans a recorded grant even when its bridge was already removed', async () => {
+    const dir = tmp();
+    const home = join(dir, 'home');
+    const project = join(dir, 'project');
+    try {
+      mkdirSync(project, { recursive: true });
+      const configPath = piConfigPath(project);
+      expect((await ensurePiBridge(project, { mode: 'published' }, home)).trust).toBe('added');
+      rmSync(configPath);
+
+      expect(removeOwnMcpEntry(EDITOR_TARGETS.pi, project, home, configPath)).toEqual({
+        kind: 'removed',
+        trust: 'removed',
+      });
+      expect(JSON.parse(readFileSync(join(home, '.pi', 'agent', 'trust.json'), 'utf8'))).toEqual(
+        {},
+      );
+      expect(existsSync(configPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('leaves unrecorded Pi trust alone when there is no bridge to remove', () => {
+    const dir = tmp();
+    const home = join(dir, 'home');
+    const project = join(dir, 'project');
+    try {
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      mkdirSync(join(home, '.pi', 'agent'), { recursive: true });
+      const before = '{unrelated unreadable trust config';
+      writeFileSync(trustPath, before);
+
+      expect(removeOwnMcpEntry(EDITOR_TARGETS.pi, project, home, piConfigPath(project))).toEqual({
+        kind: 'not-present',
+      });
+      expect(readFileSync(trustPath, 'utf8')).toBe(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps shared Pi trust while removing the bridge before other extensions', () => {
+    const dir = tmp();
+    const home = join(dir, 'home');
+    const project = join(dir, 'project');
+    try {
+      const configPath = piConfigPath(project);
+      const otherPath = join(project, '.pi', 'extensions', 'other.ts');
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      mkdirSync(join(project, '.pi', 'extensions'), { recursive: true });
+      mkdirSync(join(home, '.pi', 'agent'), { recursive: true });
+      writeFileSync(configPath, buildPiExtensionSource());
+      writeFileSync(otherPath, 'export default function extension() {}');
+      const trust = JSON.stringify({ [project]: true });
+      writeFileSync(trustPath, trust);
+
+      expect(removeOwnMcpEntry(EDITOR_TARGETS.pi, project, home, configPath)).toEqual({
+        kind: 'removed',
+        trust: 'kept-shared',
+        trustDetail: expect.any(String),
+      });
+      expect(existsSync(configPath)).toBe(false);
+      expect(existsSync(otherPath)).toBe(true);
+      expect(readFileSync(trustPath, 'utf8')).toBe(trust);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   test('removes OK’s own bridge file (current version)', () => {
     const dir = tmp();
@@ -342,4 +463,107 @@ describe('removeOwnMcpEntry — Pi managed extension file', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe('removeOwnMcpEntry — symlinks', () => {
+  test.skipIf(process.platform === 'win32')(
+    'preserves an unreadable configuration target and its symlink',
+    () => {
+      const dir = tmp();
+      try {
+        const configPath = join(dir, 'config.json');
+        const targetPath = join(dir, 'target.json');
+        const raw = '{ malformed user settings ]';
+        writeFileSync(targetPath, raw);
+        symlinkSync('target.json', configPath);
+        expect(removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath)).toEqual({
+          kind: 'declined',
+          reason: 'unparseable',
+        });
+        expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+        expect(readFileSync(targetPath, 'utf8')).toBe(raw);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'unlinks a managed extension file without deleting its symlink destination',
+    () => {
+      const dir = tmp();
+      try {
+        const configPath = join(dir, 'extension.ts');
+        const targetPath = join(dir, 'target.ts');
+        const raw = buildPiExtensionSource();
+        writeFileSync(targetPath, raw);
+        symlinkSync('target.ts', configPath);
+        expect(removeOwnMcpEntry(EDITOR_TARGETS.pi, dir, undefined, configPath).kind).toBe(
+          'removed',
+        );
+        expect(existsSync(configPath)).toBe(false);
+        expect(readFileSync(targetPath, 'utf8')).toBe(raw);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32').each(['claude', 'hermes', 'codex'] as const)(
+    'preserves the %s config symlink chain and edits only its destination',
+    (editorId) => {
+      const dir = tmp();
+      try {
+        const configPath = join(dir, 'config');
+        const targetPath = join(dir, 'dotfiles-config');
+        const chain = (OWN_ENTRY.args as string[])[2];
+        const raw =
+          editorId === 'codex'
+            ? `# user configuration\n[mcp_servers.other]\ncommand = "node"\n\n[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`
+            : editorId === 'hermes'
+              ? `# user configuration\nmcp_servers:\n  other:\n    command: node\n  ${MCP_SERVER_NAME}: ${JSON.stringify(OWN_ENTRY)}\n`
+              : `{\n  // user configuration\n  "mcpServers": {"other": {"command": "node"}, "${MCP_SERVER_NAME}": ${JSON.stringify(OWN_ENTRY)}}\n}\n`;
+        writeFileSync(targetPath, raw, { mode: 0o640 });
+        symlinkSync('dotfiles-config', join(dir, 'intermediate'));
+        symlinkSync('intermediate', configPath);
+
+        expect(removeOwnMcpEntry(EDITOR_TARGETS[editorId], dir, undefined, configPath).kind).toBe(
+          'removed',
+        );
+        expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(configPath)).toBe('intermediate');
+        expect(lstatSync(join(dir, 'intermediate')).isSymbolicLink()).toBe(true);
+        const after = readFileSync(targetPath, 'utf8');
+        expect(after).toContain('user configuration');
+        expect(after).toContain('other');
+        expect(after).not.toContain(MCP_SERVER_NAME);
+        expect(statSync(targetPath).mode & 0o777).toBe(0o640);
+        expect(removeOwnMcpEntry(EDITOR_TARGETS[editorId], dir, undefined, configPath).kind).toBe(
+          'not-present',
+        );
+        expect(readFileSync(targetPath, 'utf8')).toBe(after);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32').each(['dangling', 'cycle'])(
+    'declines a %s config symlink without removing it',
+    (kind) => {
+      const dir = tmp();
+      try {
+        const configPath = join(dir, 'config.json');
+        symlinkSync(kind === 'cycle' ? 'config.json' : 'missing.json', configPath);
+        expect(removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath)).toEqual({
+          kind: 'declined',
+          reason: kind === 'cycle' ? 'unresolved-symlink' : 'missing-symlink-target',
+        });
+        expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+        expect(existsSync(join(dir, 'missing.json'))).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
