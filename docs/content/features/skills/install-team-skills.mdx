@@ -1,0 +1,59 @@
+---
+title: Install your team's skills
+description: Add your team's skill repository and install the skills you want, in about a minute.
+---
+
+Someone on your team set up a repository of skills. This page gets them into your AI tools. You need the repository name, such as `your-org/team-skills`, and nothing else.
+
+<Steps>
+
+<Step>
+
+### Open Skills Studio
+
+In OpenKnowledge, expand **Skills Studio** at the bottom of the file sidebar, then click **Explore skills** in its header.
+
+<Image src="/images/skills-studio/skills-dock.png" alt="The Skills Studio dock at the bottom of the file sidebar, with its New skill and Explore skills actions in the header." width={1600} height={1446} />
+
+</Step>
+
+<Step>
+
+### Add the repository
+
+Switch to the **Upload** tab and paste the repository name or URL. OpenKnowledge reads it and, when the source holds more than one skill, asks which one you want.
+
+Choose the **Scope** first: **Project** for a skill tied to this repository, **Global** for one you want on every project on this machine.
+
+<Image src="/images/skills-studio/add-skill-upload.png" alt="The Add skill dialog on the Upload tab, with a repository entered, a Which skill picker, and a summary of what import will do." width={1600} height={1157} />
+
+Private repositories work here too, using the git access you already have.
+
+</Step>
+
+<Step>
+
+### Repeat for each skill you want
+
+Adding the repository does not install everything in it. Import the skills that apply to your work and leave the rest. You can come back for more later.
+
+</Step>
+
+<Step>
+
+### Choose which AI tools get each skill
+
+Open a skill's **Install** menu and check the tools that should read it. Each checked location points at the same source, so the skill cannot drift between your tools.
+
+<Image src="/images/skills-studio/install-destinations.png" alt="The Install menu listing Claude Code, Cursor, Codex, and the shared source folder, with an All control." width={1600} height={860} />
+
+</Step>
+
+</Steps>
+
+A skill is live the moment it lands. There is no separate step to switch it on: give one of those tools a task matching the skill's description and it will use it.
+
+## Next
+
+- [Keep team skills current](./team-updates.mdx): choose how your teammate's later changes reach you.
+- [Symlink skills](./symlink-skills.mdx): share a whole folder between two tools instead of picking per skill.

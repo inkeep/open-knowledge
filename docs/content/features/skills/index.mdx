@@ -79,29 +79,73 @@ buttons.forEach(function(button){button.addEventListener("click",function(){
 </script>
 ```
 
-## Start here
+## Two ways people use Skills Studio
+
+Both start in the same place and use the same skills. They differ in who the skill is for.
+
+### You are teaching your own AI tools
+
+You explain the same thing to your AI every week: how you like meeting notes written, which folder research goes in. A skill is that explanation, written once and read by every AI tool you use.
+
+You edit it in the same editor as your docs. There is no publish step.
 
 <Cards>
   <Card title="Write a skill" href="/docs/features/skills/write-a-skill">
-    Turn a task you repeat into instructions your AI can follow.
+    Turn a task you repeat into instructions your AI can follow, by hand or with an agent.
   </Card>
   <Card title="Find and install skills" href="/docs/features/skills/find-and-install">
     Browse the catalog, preview a skill, and choose the tools that get it.
   </Card>
-  <Card title="Manage and share skills" href="/docs/features/skills/manage-and-share">
-    Organize your skills, review updates, and share them between tools.
+  <Card title="Symlink skills" href="/docs/features/skills/symlink-skills">
+    Point one tool's skills folder at another so both read the same skills.
   </Card>
-  <Card title="Developer reference" href="/docs/features/skills/reference">
-    File layout, CLI commands, MCP tools, and configuration.
+  <Card title="Skills OpenKnowledge ships" href="/docs/features/skills/built-in-skills">
+    What each built-in skill does, and how to install or remove it.
   </Card>
 </Cards>
 
+### You are setting your team's skills up
+
+Someone has been asked how the team should manage skills: where they live, how a person gets them, how a fix reaches everyone. The answer is a Git repository your team already knows how to review, plus a per-person install that takes a minute.
+
+Nothing is pushed onto anyone. Each person picks the skills they want and how updates arrive. A skill someone adapts stays adapted.
+
+<Cards>
+  <Card title="Share skills with your team" href="/docs/features/skills/for-teams">
+    Set up the repository your team installs from, and decide what goes in it.
+  </Card>
+  <Card title="Install your team's skills" href="/docs/features/skills/install-team-skills">
+    The page to send a teammate. Add the repository, pick skills, done.
+  </Card>
+  <Card title="Keep team skills current" href="/docs/features/skills/team-updates">
+    How a fix reaches everyone, and what happens to a skill someone changed.
+  </Card>
+  <Card title="Distribute as a plugin" href="/docs/features/skills/team-plugins">
+    When a plugin is the better shape, and what you give up by choosing it.
+  </Card>
+</Cards>
+
+## Project or global?
+
+Every skill lives in one of two scopes. You pick when you create or import it, and its menu can move it later.
+
+| Choose | When you want |
+| --- | --- |
+| **Project** | Instructions tied to this knowledge base, such as how to write its meeting notes. Commit the skill's folder to share it through git. |
+| **Global** | Personal instructions available across projects on this machine, such as your writing style. These are not shared through git. |
+
+Moving between scopes starts a new history.
+
 ## Where to find Skills Studio
 
-Open **Skills Studio** at the bottom of the file sidebar to write and browse skills. Open **Settings → Skills Studio** for built-in skills and shared folders.
+**Skills Studio** sits at the bottom of the file sidebar. **Settings → Skills Studio** holds the built-in skills and shared folders.
+
+<Image src="/images/skills-studio/skills-dock.png" alt="The Skills Studio dock in the file sidebar, listing project skills above global ones." width={1600} height={1446} />
+
+Skills already in your AI tools appear there on their own, read and versioned where they live.
 
 ## See also
 
+- [Developer reference](/docs/features/skills/reference): file layout, CLI, MCP tools, configuration.
 - [Agentic search](/docs/reference/agentic-search): how the agent reads your base.
 - [LLM wiki](/docs/workflows/karpathy-llm-wiki): build a source-grounded knowledge base an agent curates, end to end.
-

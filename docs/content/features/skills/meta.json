@@ -1,5 +1,19 @@
 {
   "title": "Skills Studio",
   "icon": "LuGraduationCap",
-  "pages": ["index", "write-a-skill", "find-and-install", "manage-and-share", "reference"]
+  "pages": [
+    "index",
+    "---FOR YOUR OWN WORK---",
+    "write-a-skill",
+    "find-and-install",
+    "symlink-skills",
+    "built-in-skills",
+    "---FOR YOUR TEAM---",
+    "for-teams",
+    "install-team-skills",
+    "team-updates",
+    "team-plugins",
+    "---REFERENCE---",
+    "reference"
+  ]
 }

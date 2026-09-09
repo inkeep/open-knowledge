@@ -5,9 +5,7 @@ description: Find a skill, read what it does, and choose the AI tools that can u
 
 Start with a skill someone has already written, or bring in one you keep elsewhere.
 
-OpenKnowledge also ships its starter packs as [plugins](./reference.mdx#plugin-marketplace).
-
-## Find a skill
+## Find one
 
 <Steps>
 
@@ -23,42 +21,46 @@ Hover the **Skills Studio** dock header and click **Explore skills**. Search [sk
 
 <Step>
 
-### Preview before adding
+### Read it before you add it
 
-Open a result to read its description, instructions, and bundled files. Check that it fits the task you have in mind.
+Open a result to see its full instructions, its bundled files, and how much context it costs. **Install** takes it from here, at Project or Global scope; if the source holds several skills, choose the one you want.
+
+<Image src="/images/skills-studio/explore-preview.png" alt="A skill's preview open as an editor tab, showing its instructions, token cost, and the control to add it." width={1600} height={1333} />
 
 </Step>
 
 <Step>
 
-### Add it to your collection
+### Choose your AI tools
 
-Add the skill to your Project or Global collection. If a source contains several skills, choose the one you want. It opens in the editor, ready to read and customize.
+Open the skill's **Install** menu and check the tools that should use it, or **All**.
+
+<Image src="/images/skills-studio/install-destinations.png" alt="The Install menu lists Claude Code, Cursor, Codex, and the shared source folder, with an All control at the top." width={1600} height={860} />
+
+Each checked location points at the same source, so your tools cannot drift. [Symlink skills](./symlink-skills.mdx) covers sharing a whole folder instead.
 
 </Step>
 
 </Steps>
 
-## Choose your AI tools
+A skill is live for its agent the moment it lands. There is no separate install step to flip: the menu controls *where* it is available.
 
-Open the skill's **Install** menu (shown as **Installed** once it is in use). Check the locations for the tools that should use it, or choose **All** for all eligible tools.
+## Bring one you already have
 
-A skill is live for its agent the moment it lands. There is no separate install step to flip: this menu controls *where* the skill is available.
+Use the **Upload** tab. It takes a GitHub repository, a git URL, a local path, a folder, or a `.zip` / `.skill` file.
 
-<Image src="/images/skills-studio/install-destinations.png" alt="The Install menu lists Claude Code, Cursor, Codex, and the shared source folder, with an All control at the top." width={1600} height={860} />
+<Image src="/images/skills-studio/add-skill-upload.png" alt="The Add skill dialog on the Upload tab, with a repository entered and a picker for which skill to import." width={1600} height={1157} />
 
-Each checked location gets access to the skill. OpenKnowledge keeps those locations in step when you edit the source. [Manage and share skills](./manage-and-share.mdx) explains scopes and shared folders.
-
-## Bring a skill you already have
-
-Use the **Upload** tab in the add-skill dialog. It accepts:
-
-- A GitHub repository, git URL, or local path.
-- A folder on your computer.
-- A `.zip` or `.skill` file.
-
-Skills already in your AI tools' folders also appear in the dock. Open one to edit it in place; read-only plugin skills offer **Edit a copy**.
+Skills already in your AI tools' folders show up in the dock on their own. Open one to edit it in place; a read-only plugin skill offers **Edit a copy**.
 
 <Callout type="warn">
 A skill can include scripts that run on your machine. Read what it does and use sources you trust. OpenKnowledge does not run a skill's scripts during import.
 </Callout>
+
+## Keep it up to date
+
+An imported skill remembers where it came from.
+
+<Snippet file="skill-update-states.mdx" />
+
+Skills imported from a folder on your own machine stay in sync by default.

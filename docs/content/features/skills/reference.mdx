@@ -16,10 +16,12 @@ meeting-notes/
 └── scripts/
 ```
 
+A new skill goes into a skills folder the project already has. OpenKnowledge never creates one for you: if no agent folder exists yet, the import is refused and names the folders it would accept. When `.agents/` already exists it wins; otherwise the first editor folder present, by precedence.
+
 | Scope | Source folder | Other locations |
 | --- | --- | --- |
-| Project | `.agents/skills/<name>/` when the hub exists, otherwise an editor's project skills directory | Other project-local editor skills directories |
-| Global | `~/.agents/skills/<name>/` or a home editor skills directory | Other home editor skills directories |
+| Project | The project's existing skills folder (`.agents/skills/<name>/` when `.agents/` is there, else `.claude/skills/<name>/` and so on) | Other project-local editor skills directories |
+| Global | The same, under your home directory | Other home editor skills directories |
 
 OpenKnowledge keeps one source folder per skill. Other locations use symlinks by default, so they read the same bytes. The install menu can convert a location to a copy, which OpenKnowledge refreshes until it is edited independently outside the app.
 
@@ -29,7 +31,7 @@ OpenKnowledge keeps one source folder per skill. Other locations use symlinks by
 
 OpenKnowledge discovers skills in `.claude/skills`, `.cursor/skills`, `.codex/skills`, `.opencode/skills`, `.github/skills`, `.pi/skills`, `.agents/skills`, and supported plugin locations.
 
-Detected skills are read and versioned in place. Plugin skills are read-only; **Edit a copy** creates an editable version.
+Detected skills are read and versioned in place. Plugin skills are read-only: **Edit a copy** creates an editable version in your base. Choosing an install destination for a plugin skill does the same thing, because install locations always link to a skill in the base. The copy no longer follows the plugin's updates.
 
 ## CLI
 
@@ -92,11 +94,3 @@ The repo is grouped by role: `skills/core/` holds the built-ins, and `skills/sta
 ```
 
 `ok seed --pack <id>` installs a pack's skills directly, without the plugin workflow.
-
-<Callout type="info">
-Pack skills were renamed: the generated `open-knowledge-pack-…` names became product names, so `open-knowledge-pack-plain-notes` is now `note-taking` and `open-knowledge-pack-knowledge-base-research` is now `research-with-sources`.
-
-**Skills you already have are not renamed.** Nothing on your disk changes and your `.ok/skills-lock.json` is not rewritten. An existing skill keeps its name, keeps working, and still updates from source. Re-seeding a pack recognizes it and will not install a second copy under the new name. Only newly installed skills use the new names.
-
-Four plugin handles were renamed alongside their packs (`entity-vault` → `personal-crm`, `okf` → `okf-knowledge-base`, `plain-notes` → `note-taking`, `writing-pipeline` → `writing-workflow`). The old handles still resolve for one release and are marked outdated in the marketplace; switch to the new ones. `ok seed --pack <id>` flags are unchanged.
-</Callout>

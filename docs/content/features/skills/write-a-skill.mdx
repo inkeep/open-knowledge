@@ -5,6 +5,14 @@ description: Turn a task you repeat into instructions your AI tools can follow.
 
 A useful first skill captures something you already explain often: how to summarize a meeting, review a draft, or organize research.
 
+<Image src="/images/skills-studio/skill-editor.png" alt="A meeting-notes skill in the editor, with its name and description in Properties and numbered instructions below." width={1600} height={1370} />
+
+<Callout type="info">
+**Pro tip.** If you would rather have an agent do the writing, install **open-knowledge-write-skill** first, from **Settings → User → Skills Studio**. Then skip to [Have an agent write it](#have-an-agent-write-it).
+</Callout>
+
+## Write it yourself
+
 <Steps>
 
 <Step>
@@ -12,6 +20,8 @@ A useful first skill captures something you already explain often: how to summar
 ### Create the skill
 
 Expand **Skills Studio** at the bottom of the file sidebar. Hover its header and click **New skill**. A new project skill opens in the editor.
+
+<Image src="/images/skills-studio/skills-dock.png" alt="The Skills Studio dock with New skill and Explore skills in its header, listing project skills above global ones." width={1600} height={1446} />
 
 </Step>
 
@@ -25,22 +35,31 @@ The **description** tells your AI when to reach for the skill. Be specific about
 
 > Use when I paste a meeting transcript. Capture decisions, action items, and the person responsible for each one.
 
-<Image src="/images/skills-studio/skill-editor.png" alt="A meeting-notes skill in the editor, with its name and description in Properties and numbered instructions below." width={1600} height={1370} />
-
 </Step>
 
 <Step>
 
 ### Write the instructions
 
-Explain the task as you would to a teammate. Start with a few concrete steps:
+Explain the task as you would to a teammate. Copy this in and change it to match your own folders and conventions:
 
-1. Pull out decisions and action items.
-2. Create a note in `meetings/` with the meeting's date and topic.
+```markdown
+---
+name: meeting-notes
+description: Use when I paste a meeting transcript. Capture decisions, action items, and the person responsible for each one.
+---
+
+# Meeting notes
+
+1. Pull out the decisions and the action items.
+2. Create a note in `meetings/` named for the meeting's date and topic.
 3. Link each person to their page in `people/`.
-4. Add open action items to `todo.md`.
+4. Add every open action item to `todo.md`.
 
-Use your own folder names and conventions. Edit the skill like any other page; changes save as you work.
+Keep the summary under ten lines. Quote a decision only when the wording matters.
+```
+
+The name and description are the skill's properties; everything below them is what your AI reads. Changes save as you work.
 
 </Step>
 
@@ -50,12 +69,65 @@ Use your own folder names and conventions. Edit the skill like any other page; c
 
 Open the skill's **Install** control and select the AI tools that should use it. Then give one of those tools a task matching the description, such as a meeting transcript.
 
+<Image src="/images/skills-studio/install-destinations.png" alt="The Install menu listing Claude Code, Cursor, Codex, and the shared source folder, with an All control at the top." width={1600} height={860} />
+
 Refine the instructions after seeing the result. There is no separate publish step.
 
 </Step>
 
 </Steps>
 
-<Callout type="info">
-Want help drafting it? In **Settings → User → Skills Studio**, install **open-knowledge-write-skill**. Ask your AI: "Write a skill that turns my meeting transcripts into decisions and action items."
-</Callout>
+## Have an agent write it
+
+An agent can draft the skill for you, either from a description or from work you just finished together.
+
+<Steps>
+
+<Step>
+
+### Install the skill that teaches this
+
+Open **Settings → User → Skills Studio**, find **open-knowledge-write-skill**, and choose **Install**. The confirmation lists every folder it will write to. It installs for your user account, so you only do this once per machine.
+
+<Image src="/images/skills-studio/settings-user-skills.png" alt="Settings, User, Skills Studio: the three skills OpenKnowledge ships, each with the AI tools it reaches and a Manage control." width={1600} height={1244} />
+
+</Step>
+
+<Step>
+
+### Ask for the skill you want
+
+Give your AI the task in plain language:
+
+> Write a skill that turns my meeting transcripts into decisions and action items, with each person linked to their page in `people/`.
+
+</Step>
+
+<Step>
+
+### Or turn a session you already had into a skill
+
+The most useful skills come out of work you just did. At the end of a session, ask:
+
+> We just worked out how to review a draft for this project. Turn what we did into a skill so you do it the same way next time.
+
+</Step>
+
+<Step>
+
+### Review it and choose your tools
+
+It appears in the dock and opens in the editor like any other skill. Tighten the description, then use **Install** to choose which AI tools get it.
+
+</Step>
+
+</Steps>
+
+## Edit an existing skill
+
+Skills you already have show up in Skills Studio on their own. There is nothing to import: OpenKnowledge reads the skills folders of your AI tools and lists what it finds, alongside the skills you wrote here.
+
+- Click a skill to open it. Changes save to the skill's own folder, and every tool reading it picks them up.
+- Ask an agent instead: "The `meeting-notes` skill keeps missing action items. Fix its instructions."
+- A plugin skill is read-only; **Edit a copy** gives you an editable version.
+- Editing an imported skill pauses its automatic updates, so your changes stay. See [Keep it up to date](./find-and-install.mdx#keep-it-up-to-date).
