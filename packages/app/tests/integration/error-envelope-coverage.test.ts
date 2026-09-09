@@ -171,17 +171,20 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
 
   test('the shared success spine flows 2xx through successResponse (delegation is not a bypass)', () => {
     const spineDecl = new RegExp(`\\n {2}(?:async )?function ${SHARED_SUCCESS_SPINE_NAME}\\(`);
-    const declMatch = spineDecl.exec(source);
+    const owners = HANDLER_SOURCES.filter(({ text }) => spineDecl.test(text));
+    expect(owners).toHaveLength(1);
+    const owner = owners[0]?.text ?? '';
+    const declMatch = spineDecl.exec(owner);
     expect(declMatch).not.toBeNull();
     const start = declMatch?.index ?? -1;
     expect(start).toBeGreaterThan(-1);
     const afterStart = start + 1;
-    const nextFn = source.indexOf('\n  async function ', afterStart);
-    const nextSyncFn = source.indexOf('\n  function ', afterStart);
-    const nextConst = source.indexOf('\n  const handle', afterStart);
+    const nextFn = owner.indexOf('\n  async function ', afterStart);
+    const nextSyncFn = owner.indexOf('\n  function ', afterStart);
+    const nextConst = owner.indexOf('\n  const handle', afterStart);
     const bounds = [nextFn, nextSyncFn, nextConst].filter((i) => i !== -1);
-    const end = bounds.length === 0 ? source.length : Math.min(...bounds);
-    const spineBody = source.slice(start, end);
+    const end = bounds.length === 0 ? owner.length : Math.min(...bounds);
+    const spineBody = owner.slice(start, end);
     expect(spineBody.includes('successResponse(')).toBe(true);
     expect(INLINE_ERROR_RE.test(spineBody)).toBe(false);
     expect(INLINE_SUCCESS_WRAPPER_RE.test(spineBody)).toBe(false);

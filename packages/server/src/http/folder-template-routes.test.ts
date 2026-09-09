@@ -33,6 +33,7 @@ function buildGroup() {
     flushDiskAndDetectOutcome: () => Promise.resolve(null),
     respondPersistenceFailure: () => {},
     respondDiskDivergence: () => {},
+    respondStaleExternalWrite: () => {},
     registerWrittenDocInFileIndex: () => {},
     captureAndCloseDocuments: () => Promise.resolve(new Map()),
     renameTrackedPathInGit: () => Promise.resolve(false),

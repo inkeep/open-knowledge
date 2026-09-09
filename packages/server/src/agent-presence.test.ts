@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { type AgentPresenceEntry, SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
@@ -316,23 +316,34 @@ describe('AgentPresenceBroadcaster', () => {
 
   test('structural: every agent write handler pairs setPresence("writing") + touchMode("idle")', () => {
     const dir = import.meta.dirname ?? new URL('.', import.meta.url).pathname;
-    const src = readFileSync(resolve(dir, 'api-extension.ts'), 'utf-8');
+    const files = [
+      'api-extension.ts',
+      ...readdirSync(resolve(dir, 'http'))
+        .filter((file) => file.endsWith('-routes.ts'))
+        .sort()
+        .map((file) => `http/${file}`),
+    ];
+    let totalCallSites = 0;
 
-    const NOT_AN_AGENT_WRITE = 'presence-exempt: no CRDT write, no agent identity';
-    const handlerCallSites = [
-      ...src.matchAll(/apply(?:AgentMarkdownWrite|AgentUndo|PatchToFm)\(/g),
-    ].filter((m) => !src.slice(Math.max(0, m.index - 200), m.index).includes(NOT_AN_AGENT_WRITE));
-    const expectedCount = handlerCallSites.length;
-    expect(expectedCount).toBeGreaterThanOrEqual(5);
+    for (const file of files) {
+      const src = readFileSync(resolve(dir, file), 'utf-8');
+      const NOT_AN_AGENT_WRITE = 'presence-exempt: no CRDT write, no agent identity';
+      const handlerCallSites = [
+        ...src.matchAll(/apply(?:AgentMarkdownWrite|AgentUndo|PatchToFm)\(/g),
+      ].filter((m) => !src.slice(Math.max(0, m.index - 200), m.index).includes(NOT_AN_AGENT_WRITE));
+      const expectedCount = handlerCallSites.length;
+      totalCallSites += expectedCount;
 
-    const tryShapePattern =
-      /try\s*\{\s*const\s+icon\s*=\s*iconFromClientName\([^)]*\);\s*const\s+color\s*=\s*[\s\S]*?;\s*agentPresenceBroadcaster\?\.setPresence\(\s*agentId,\s*\{[\s\S]*?mode:\s*'writing'/g;
-    const tryMatches = src.match(tryShapePattern) ?? [];
-    expect(tryMatches.length).toBe(expectedCount);
+      const tryShapePattern =
+        /try\s*\{\s*const\s+icon\s*=\s*iconFromClientName\([^)]*\);\s*const\s+color\s*=\s*[\s\S]*?;\s*agentPresenceBroadcaster\?\.setPresence\(\s*agentId,\s*\{[\s\S]*?mode:\s*'writing'/g;
+      const tryMatches = src.match(tryShapePattern) ?? [];
+      expect(tryMatches.length, file).toBe(expectedCount);
 
-    const finallyPattern =
-      /finally\s*\{[^{}]*agentPresenceBroadcaster\?\.touchMode\(agentId,\s*'idle'\);\s*\}/g;
-    const finallyMatches = src.match(finallyPattern) ?? [];
-    expect(finallyMatches.length).toBe(expectedCount);
+      const finallyPattern =
+        /finally\s*\{[^{}]*agentPresenceBroadcaster\?\.touchMode\(agentId,\s*'idle'\);\s*\}/g;
+      const finallyMatches = src.match(finallyPattern) ?? [];
+      expect(finallyMatches.length, file).toBe(expectedCount);
+    }
+    expect(totalCallSites).toBeGreaterThanOrEqual(5);
   });
 });
