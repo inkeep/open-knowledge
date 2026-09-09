@@ -3,6 +3,7 @@ import {
   EmptyRequestSchema,
   HistorySuccessSchema,
   HistoryVersionSuccessSchema,
+  isValidBranchName,
 } from '@inkeep/open-knowledge-core';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import {
@@ -98,7 +99,7 @@ export function createHistoryRoutes(deps: HistoryRouteDeps): HistoryRoutes {
         return;
       }
 
-      if (branch.includes('..') || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(branch)) {
+      if (!isValidBranchName(branch)) {
         errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid branch name.', {
           handler: 'history',
         });

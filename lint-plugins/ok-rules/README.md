@@ -4,7 +4,7 @@ Custom lint rules for this workspace. Each rule is a module under `rules/`, comp
 
 Rules surface as lint errors during `pnpm run lint:oxlint` (i.e. `pnpm lint` and `pnpm check`) and as inline editor squiggles via the oxc LSP.
 
-One plugin holding every rule is deliberate: oxlint walks the AST once and dispatches every registered visitor, so rules amortize. Measured on this tree, 12 synthetic probe rules added 0.17s and all 23 real rules cost nothing detectable against a no-rule baseline. The GritQL plugins these replaced cost about 3.3s each because every plugin re-traversed.
+One plugin holding every rule is deliberate: oxlint walks the AST once and dispatches every registered visitor, so rules amortize. Measured on this tree, 12 synthetic probe rules added 0.17s and all 24 real rules cost nothing detectable against a no-rule baseline. The GritQL plugins these replaced cost about 3.3s each because every plugin re-traversed.
 
 ## Convention
 
@@ -251,6 +251,120 @@ The rule does NOT catch:
 Included: `packages/**/*.test.ts`, `packages/**/*.test.tsx`, `packages/**/*.e2e.ts`, `lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`. Excluded: `packages/md-conformance/**`, `packages/app/tests/fidelity/**`, `packages/core/src/markdown/**/*.test.ts`, `packages/core/src/bridge/**/*.test.ts`, `**/*.private.*`.
 
 Rule: [`lint-plugins/ok-rules/rules/no-roundtrip-identity-oracle.mjs`](rules/no-roundtrip-identity-oracle.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`](__fixtures__/no-roundtrip-identity-oracle.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-roundtrip-identity-oracle.test.ts`](../../packages/app/tests/lint-plugins/no-roundtrip-identity-oracle.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention and [PRECEDENTS.md #38](../../PRECEDENTS.md) for the Bridge-invariant contract.
+
+### `no-hand-rolled-branch-validation`
+
+Branch-name admissibility has one owner in `packages/server`: `isValidBranchName`
+(`packages/core/src/schemas/api/share.ts`), declared the single source of truth for the seven-rule
+contract by the commit "reject colon + `..` in branch names; unify validation across 3 surfaces".
+Testing a regex against a branch value re-implements that contract locally, where it drifts
+silently.
+
+That drift is not hypothetical. That commit migrated three surfaces and left `/api/history` on its
+own allow-list regex; the two definitions disagreed for three and a half months until the Timeline
+was reported rendering "History unavailable" for any worktree branch containing a `+`. The regex
+rejected twenty-one printable-ASCII characters real `git check-ref-format` accepts
+(``!"#$%&'()+,;<=>@]`{|}`` — the route test samples twelve of them), every non-ASCII character, and
+any leading underscore.
+
+The rule fires on a regex literal `.test(<branch>)` or `.exec(<branch>)`, or on
+`<branch>.match(<regex>)`, where `<branch>` is an identifier or member whose name reads as a branch
+(`branch`, `branchName`, `refName`, `targetBranch`, ...). It is deliberately **regex-only**: string
+methods such as
+`branch.startsWith('detached-')` select by naming convention rather than validate, and the footprint
+audit found that shape to be the only false positive under a broader predicate.
+
+**The contract is a safety allow-list, not `git check-ref-format`.** It is deliberately stricter
+where injection is the risk — a leading `-` is git-legal but rejected, and so is any of the 19
+non-ASCII codepoints JS `/\s/` treats as whitespace (`U+00A0`, `U+1680`, `U+2000`–`U+200A`,
+`U+2028`, `U+2029`, `U+202F`, `U+205F`, `U+3000`, `U+FEFF`), every one of which
+`git check-ref-format` accepts and `git branch` will create — and deliberately looser where it is
+not: `feat/a..b`, `x.lock`, `.hidden`, `feat//x`, a trailing `/`, and the characters `~`, `^`, `?`,
+`*`, `[`, `\` and the sequence `@{` all pass the contract and fail `git check-ref-format`.
+That is safe at `/api/history`, where a branch only ever interpolates into a `for-each-ref`
+*pattern* — with one caveat, on what gets iterated rather than what matches. `for-each-ref` truncates
+a pattern at the first glob-special byte (`*`, `?`, `[`, `\`) and walks that prefix, so a branch
+*starting* with one turns `refs/checkpoints/<branch>/` into a walk of `refs/checkpoints/` before the
+filter reduces it to the empty result the match argument predicts. Measured on 30,000 loose refs
+that is 0.42s against 0.00s for a literal, and ~0.01s once `pack-refs` has run, which is the steady
+state `git gc --auto` keeps; a glob later in the segment does not widen at all. A call site that
+feeds a branch to a git *rev* needs its own additional check. Delegating to the contract does not by
+itself make a call site git-correct.
+
+**Where the contract is applied, and where it deliberately is not.** It runs on every branch value
+that arrives over the wire, in two shapes. Directly, at the two GET query parameters:
+`/api/history`'s (`http/history-routes.ts:102`) and `/api/git/branch-info`'s
+(`http/git-routes.ts:121`). Inside the request schema, at every POST body's `branch` field —
+`CheckoutRequestSchema` and `ShareTargetStatusRequestSchema` through the shared `refineBranchName`
+helper (`packages/core/src/schemas/api/share.ts:166`), and `LocalOpCloneRequestSchema` through a bare
+`.refine(isValidBranchName, ...)` (`packages/core/src/schemas/api/_envelope.ts:171`). The refinement
+on the schema, not a hand-written call in the handler, is the idiom for a new route. Outside
+`packages/server` the contract also gates `packages/core`'s share-URL serialize and decode
+(`sharing/share-url.ts:178`, `:296`) and the desktop worktree checkout
+(`packages/desktop/src/main/worktree-service.ts:139`).
+
+Being on that list is not the same as being git-correct, and `/api/git/branch-info` is the standing
+example. `computeBranchInfo` interpolates its contract-validated branch into four git *revisions* —
+`rev-parse --verify refs/heads/${targetBranch}`, `rev-parse --verify origin/${targetBranch}`,
+`cat-file -e origin/${targetBranch}:${path}` (`git-branch-info.ts:83-99`) and
+`diff --name-only HEAD..${targetRef}` (`git-dirty.ts:17`) — while the contract admits `~`, `^` and
+`@{`. By the paragraph above, that route still needs the additional check the contract does not
+supply; it has not got one yet.
+
+`/api/history` also guards the value it falls back to when no parameter is sent — the local
+checkout's `HEAD` — so a checkout named with one of the 19 whitespace codepoints listed above gets a
+400 there and a dead Timeline. That residual is known, not an oversight. `/api/history/:sha` takes no
+branch parameter, so its branch is only ever the checkout's own and it is left unguarded; the two
+handlers deliberately differ.
+
+Nowhere else is a branch value contract-checked. `HEAD` reaches the checkpoint and WIP machinery
+through `getCurrentBranch?.() ?? 'main'` across `packages/server/src` — grep that expression for the
+live set rather than trusting a census here, which nothing pins — and guarding at the origin would
+silently re-namespace a user's checkpoints under `main`.
+
+**Two different exclusions, for two different reasons.** `packages/core` is out of scope because it
+*is* the definition. `docs/src/lib/share-splash.ts` is out of scope for a weaker reason: it holds
+`isValidShareBranch`, a live re-implementation of the same seven rules, added after single ownership
+was declared. It is behaviourally faithful today, and
+[`docs/src/lib/share-splash.test.ts`](../../docs/src/lib/share-splash.test.ts) now pins that with an
+agreement test that drives a shared corpus through the public `buildSplashViewModel` seam and
+compares each verdict against `isValidBranchName`. The corpus is a sample, not a per-rule matrix: it
+pins the sampled verdicts, and an amendment outside it still needs the clone updated by hand. One
+rule is not merely unsampled but unreachable through that seam: an empty branch yields a
+four-segment path, which `parseGitHubBlobUrl` rejects on segment count (`share-splash.ts:328`)
+before it ever reaches the predicate, so the clone's own empty-string rule stays unpinned there.
+Converging it outright would pull the `@inkeep/open-knowledge-core` barrel into
+the docs client bundle — the module is reachable from `'use client'` components and core declares no
+`sideEffects` — so it would first need the predicate extracted behind a narrow subpath export, which
+this change does not do.
+
+What it does **not** catch: the regex must be a literal at the call site. A hoisted
+`const BRANCH_RE = /.../; BRANCH_RE.test(branch)`, or `new RegExp(...).test(branch)`, evades it —
+matching those needs dataflow analysis this rule does not attempt. No such shape validates a branch
+anywhere in `packages/server/src` today — every `new RegExp` site there was read during the footprint
+audit and none takes a branch value — so the rule's in-scope footprint is complete as written; the
+boundary is recorded so a future reader does not over-trust it.
+
+Nor does it catch `branch.search(<regex>)`, which answers with an index rather than a verdict and
+has no call site in `packages/server/src` today.
+
+Nor does it catch a branch value held in a differently-named local. `BRANCH_IDENTIFIER_RE` matches
+`branch` and `refName` and any `<x>Branch`, each with an optional `Name` / `Ref` suffix; it does not
+match `branchValue`, `headRef` or `branch_name`. Widening the name predicate further trades recall
+against false positives on non-admissibility regexes over branch-shaped locals.
+
+Validating something that is not a branch name, or enforcing a rule the contract deliberately omits?
+Suppress with a reason:
+
+```ts
+// oxlint-disable-next-line ok/no-hand-rolled-branch-validation -- <reason>
+```
+
+**Scoped** (see the rule's `RULE_SCOPES` entry in [`scope.mjs`](scope.mjs)) to `packages/server/src/**/*.ts`, with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded.
+
+Included: `packages/server/src/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test-helper.ts`.
+
+Rule: [`lint-plugins/ok-rules/rules/no-hand-rolled-branch-validation.mjs`](rules/no-hand-rolled-branch-validation.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx`](__fixtures__/no-hand-rolled-branch-validation.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-hand-rolled-branch-validation.test.ts`](../../packages/app/tests/lint-plugins/no-hand-rolled-branch-validation.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-hand-rolled-spinner`
 

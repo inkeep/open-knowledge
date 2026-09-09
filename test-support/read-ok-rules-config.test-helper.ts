@@ -75,5 +75,5 @@ export async function readRegisteredRuleNames(repoRoot: string): Promise<string[
 }
 
 export function readRuleScope(_repoRoot: string, ruleName: string): string[] {
-  return (RULE_SCOPES as Record<string, string[]>)[ruleName] ?? [];
+  return [...((RULE_SCOPES as Record<string, string[]>)[ruleName] ?? [])];
 }

@@ -5,6 +5,7 @@ import { cstPmHandlerTodoStub } from './rules/cst-pm-handler-todo-stub.mjs';
 import { microcopyEllipsis } from './rules/microcopy-ellipsis.mjs';
 import { noBlindAgentHostFanout } from './rules/no-blind-agent-host-fanout.mjs';
 import { noDemotedDialogConfirm } from './rules/no-demoted-dialog-confirm.mjs';
+import { noHandRolledBranchValidation } from './rules/no-hand-rolled-branch-validation.mjs';
 import { noHandRolledSpinner } from './rules/no-hand-rolled-spinner.mjs';
 import { noInlineToleranceClass } from './rules/no-inline-tolerance-class.mjs';
 import { noLooselyTypedWebcontentsIpc } from './rules/no-loosely-typed-webcontents-ipc.mjs';
@@ -34,6 +35,7 @@ const declared = {
   'microcopy-ellipsis': microcopyEllipsis,
   'no-blind-agent-host-fanout': noBlindAgentHostFanout,
   'no-demoted-dialog-confirm': noDemotedDialogConfirm,
+  'no-hand-rolled-branch-validation': noHandRolledBranchValidation,
   'no-hand-rolled-spinner': noHandRolledSpinner,
   'no-inline-tolerance-class': noInlineToleranceClass,
   'no-loosely-typed-webcontents-ipc': noLooselyTypedWebcontentsIpc,

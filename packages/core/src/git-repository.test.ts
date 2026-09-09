@@ -241,6 +241,26 @@ describe('inspectGitRepository', () => {
     expect(result.repository.readHead()).toEqual({ kind: 'detached', oid });
   });
 
+  test('carries a branch name out of HEAD verbatim, including bytes only git admits', async () => {
+    const root = await makeTemporaryDirectory();
+    const gitDir = join(root, '.git');
+    mkdirSync(gitDir);
+
+    for (const branch of ['worktree-design+atc-release-package', 'feature-café']) {
+      writeFileSync(join(gitDir, 'HEAD'), `ref: refs/heads/${branch}\n`);
+
+      const result = inspectGitRepository(root);
+
+      expect(result.kind).toBe('repository');
+      if (result.kind !== 'repository') return;
+      expect(result.repository.readHead()).toEqual({
+        kind: 'branch',
+        branch,
+        ref: `refs/heads/${branch}`,
+      });
+    }
+  });
+
   test('resolves packed refs from the common directory', async () => {
     const root = await makeTemporaryDirectory();
 

@@ -30,6 +30,12 @@ export const RULE_SCOPES = {
     '!**/*.test.tsx',
     'lint-plugins/ok-rules/__fixtures__/no-raw-route-hash-construction.fixture.tsx',
   ],
+  'no-hand-rolled-branch-validation': [
+    'packages/server/src/**/*.ts',
+    '!**/*.test.ts',
+    '!**/*.test-helper.ts',
+    'lint-plugins/ok-rules/__fixtures__/no-hand-rolled-branch-validation.fixture.tsx',
+  ],
   'path-conditional-map-driven-origin': [
     'packages/server/src/server-observers.ts',
     'lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx',

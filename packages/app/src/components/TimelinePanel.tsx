@@ -70,6 +70,21 @@ async function pollHistoryOnce(
     });
     if (!res.ok) {
       handlers.setError(handlers.unavailableMessage);
+      let type = '';
+      let detail = `HTTP ${res.status}`;
+      try {
+        const problem = ProblemDetailsSchema.safeParse(await res.json());
+        if (problem.success) {
+          type = problem.data.type;
+          detail = problem.data.title;
+        }
+      } catch {}
+      console.error('[timeline] history request failed', {
+        docName,
+        status: res.status,
+        type,
+        detail,
+      });
       return 'error';
     }
     const data = (await res.json()) as { entries: TimelineEntry[] };

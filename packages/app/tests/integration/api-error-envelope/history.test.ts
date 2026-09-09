@@ -96,4 +96,30 @@ describe('history envelope (RFC 9457)', () => {
       expect(parsed.data.type).toBe('urn:ok:error:method-not-allowed');
     }
   });
+
+  test('a git-legal "+" branch is served exactly like the same branch spelled in plain ASCII', async () => {
+    const seed = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName: 'branch-admission-doc',
+        markdown: '# Branch admission\n',
+        position: 'replace',
+      }),
+    });
+    expect(seed.status).toBe(200);
+
+    const request = (branch: string) =>
+      fetch(
+        `http://127.0.0.1:${server.port}/api/history?docName=branch-admission-doc&limit=10&branch=${encodeURIComponent(branch)}`,
+      );
+
+    const plus = await request('feature+plus');
+    const ascii = await request('feature-plus');
+
+    expect(plus.status).toBe(200);
+    expect(plus.status).toBe(ascii.status);
+    expect(plus.headers.get('content-type')).toBe('application/json');
+    expect(HistorySuccessSchema.safeParse(await plus.json()).success).toBe(true);
+  });
 });

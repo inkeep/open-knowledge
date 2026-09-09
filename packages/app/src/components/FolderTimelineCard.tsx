@@ -1,6 +1,6 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
-import type { TimelineEntry } from '@inkeep/open-knowledge-core';
+import { ProblemDetailsSchema, type TimelineEntry } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import {
@@ -81,6 +81,21 @@ export function FolderTimelineCard({ folderPath }: { folderPath: string }) {
         const res = await fetch(`/api/history?folder=${encodeURIComponent(folderPath)}&limit=50`);
         if (cancelled) return;
         if (!res.ok) {
+          let type = '';
+          let detail = `HTTP ${res.status}`;
+          try {
+            const problem = ProblemDetailsSchema.safeParse(await res.json());
+            if (problem.success) {
+              type = problem.data.type;
+              detail = problem.data.title;
+            }
+          } catch {}
+          console.error('[FolderTimelineCard] folder timeline request failed', {
+            folderPath,
+            status: res.status,
+            type,
+            detail,
+          });
           setError(true);
           setLoading(false);
           return;
