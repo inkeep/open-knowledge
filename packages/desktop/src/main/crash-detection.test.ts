@@ -25,6 +25,7 @@ import {
   STALE_CRASH_AFTER_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
+import type { WatchdogRead } from './main-thread-watchdog.ts';
 import { buildMinidump } from './minidump.test-helper.ts';
 import { type AppState, emptyState } from './state-store.ts';
 
@@ -61,6 +62,9 @@ interface Rig {
   setBootSessionUuid(uuid: string | null): void;
   setInstallInFlight(inFlight: InstallInFlight | null): void;
   setAppVersion(version: string): void;
+  setWatchdogRead(read: WatchdogRead): void;
+  watchdogStarts: string[];
+  watchdogStops(): number;
   tick(): Date;
   advance(ms: number): void;
   nowMs(): number;
@@ -76,6 +80,9 @@ function makeRig(): Rig {
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
   let installInFlight: InstallInFlight | null = null;
+  let watchdogRead: WatchdogRead = { kind: 'absent' };
+  const watchdogStarts: string[] = [];
+  let watchdogStops = 0;
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
   const appBundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
   const ownModules = [
@@ -123,6 +130,11 @@ function makeRig(): Rig {
     setAppVersion(version: string) {
       rig.deps.appVersion = version;
     },
+    setWatchdogRead(read: WatchdogRead) {
+      watchdogRead = read;
+    },
+    watchdogStarts,
+    watchdogStops: () => watchdogStops,
     tick() {
       clockMs += 10_000;
       return new Date(clockMs);
@@ -151,6 +163,18 @@ function makeRig(): Rig {
       },
       currentBootSessionUuid: () => bootSessionUuid,
       installInFlight: () => installInFlight,
+      mainThreadWatchdog: {
+        readPrevious: () => watchdogRead,
+        start: (bootId: string) => {
+          watchdogStarts.push(bootId);
+          watchdogRead = { kind: 'absent' };
+          return {
+            stop: () => {
+              watchdogStops += 1;
+            },
+          };
+        },
+      },
       logger: {
         info: (payload) => {
           infos.push(payload);
@@ -2966,5 +2990,177 @@ describe('staleness bounds on the crash reporter', () => {
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).crashedAt).toBe(dumpAt.toISOString());
+  });
+});
+
+describe('whether the previous session died or hung', () => {
+  function captureLines(rig: Rig): Array<Record<string, unknown>> {
+    const lines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        lines.push(payload);
+      },
+      warn: (payload: Record<string, unknown>) => {
+        lines.push(payload);
+        rig.warnings.push(payload);
+      },
+    };
+    return lines;
+  }
+
+  function witnessFor(
+    rig: Rig,
+    blockedForMs: number,
+    bootId = readSentinel(rig).bootId ?? '',
+    writtenAtMs = rig.nowMs(),
+  ) {
+    rig.setWatchdogRead({
+      kind: 'record',
+      record: {
+        schemaVersion: 1,
+        bootId,
+        writtenAt: new Date(writtenAtMs).toISOString(),
+        tickMs: 5_000,
+        blockedForMs,
+        mainTicksObserved: 4,
+      },
+    });
+  }
+
+  function bootBreadcrumb(lines: Array<Record<string, unknown>>) {
+    const line = lines.find((l) => l.event === 'crash-detection.boot');
+    expect(line).toBeDefined();
+    return line as Record<string, unknown>;
+  }
+
+  test('the previous witness is read before this session starts its own', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 4_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(bootBreadcrumb(lines).livenessEvidence).toBe('matched');
+  });
+
+  test('a witness that fell behind the last heartbeat cannot speak to the death', () => {
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    rig.advance(5 * 60_000);
+    dying.noteAlive();
+    const lastAliveMs = Date.parse(readSentinel(rig).lastAliveAt ?? '');
+    witnessFor(rig, 4_000, undefined, lastAliveMs - 60_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBeNull();
+    expect(breadcrumb.livenessEvidence).toBe('stale-witness');
+  });
+
+  test('a witness that outlived a silent main thread reports a hang and its span', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 14_320_118);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBe('blocked');
+    expect(breadcrumb.mainThreadBlockedForMs).toBe(14_320_118);
+    expect(breadcrumb.mainThreadStallThresholdMs).toBe(15_000);
+    expect(breadcrumb.livenessEvidence).toBe('matched');
+    expect(breadcrumb.livenessWitnessAt).toBeTruthy();
+  });
+
+  test('a witness below the stall threshold reports died', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 4_000);
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBe('died');
+    expect(breadcrumb.mainThreadBlockedForMs).toBe(4_000);
+    expect(breadcrumb.mainThreadStallThresholdMs).toBe(15_000);
+    expect(breadcrumb.livenessEvidence).toBe('matched');
+  });
+
+  test('no witness file spells the verdict out as unknown', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBeNull();
+    expect(breadcrumb.mainThreadBlockedForMs).toBeNull();
+    expect(breadcrumb.livenessWitnessAt).toBeNull();
+    expect(breadcrumb.livenessEvidence).toBe('absent');
+  });
+
+  test('a witness left by an older session is not evidence about this death', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    witnessFor(rig, 14_320_118, 'a-much-older-boot');
+    const lines = captureLines(rig);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = bootBreadcrumb(lines);
+    expect(breadcrumb.livenessVerdict).toBeNull();
+    expect(breadcrumb.mainThreadBlockedForMs).toBeNull();
+    expect(breadcrumb.livenessEvidence).toBe('boot-mismatch');
+  });
+
+  test('a suppressed machine-level death still carries the verdict', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.noteOsShutdown();
+    witnessFor(rig, 90_000);
+    const lines = captureLines(rig);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+
+    const breadcrumb = lines.find((l) => l.event === 'crash-detection.machine-level-death');
+    expect(breadcrumb?.livenessVerdict).toBe('blocked');
+    expect(breadcrumb?.mainThreadBlockedForMs).toBe(90_000);
+    expect(breadcrumb?.livenessEvidence).toBe('matched');
+  });
+
+  test('the witness for this session starts under the bootId this boot armed', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    expect(rig.watchdogStarts).toEqual([readSentinel(rig).bootId]);
+  });
+
+  test('a clean quit stops the witness before the sentinel goes', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    detection.detectBootCrash();
+    expect(rig.watchdogStops()).toBe(0);
+
+    detection.markCleanQuit();
+
+    expect(rig.watchdogStops()).toBe(1);
+  });
+
+  test('detecting twice retires the first witness rather than leaving two running', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    detection.detectBootCrash();
+    detection.detectBootCrash();
+
+    expect(rig.watchdogStarts).toHaveLength(2);
+    expect(rig.watchdogStops()).toBe(1);
   });
 });

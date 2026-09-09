@@ -317,6 +317,7 @@ import {
   runManualInstallFallbackDialog,
 } from './linux-install-fallback.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
+import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -5748,6 +5749,10 @@ function bootPrimaryInstance(): void {
         span,
         bootStateSnapshot.versionPendingInstallStagedAt,
       ),
+    mainThreadWatchdog: createMainThreadWatchdog({
+      path: join(app.getPath('userData'), 'bug-report-main-thread-liveness.json'),
+      logger: getLogger('main-thread-watchdog'),
+    }),
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();

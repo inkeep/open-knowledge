@@ -2282,6 +2282,10 @@ describe('handleBugReportCrashAck', () => {
         return new Date(clockMs);
       },
       currentBootSessionUuid: () => 'boot-epoch-test',
+      mainThreadWatchdog: {
+        readPrevious: () => ({ kind: 'absent' }) as const,
+        start: () => ({ stop: () => {} }),
+      },
       logger: { info: () => {}, warn: () => {} },
     };
     const seedMinidump = (relPath: string): void => {

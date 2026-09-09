@@ -32,6 +32,7 @@ export const SPEC_PLATFORM_GATES = {
   'create-new-project.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'deep-link.e2e.ts': ['!DARWIN'],
   'external-link.e2e.ts': ['!DARWIN'],
+  'liveness-watchdog.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'mcp-wiring.e2e.ts': ['!PLATFORM_SUPPORTED', 'WINDOWS', "WINDOWS || TARGET.mode === 'packaged'"],
   'navigator-close-on-open.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'navigator-return.e2e.ts': ['!PLATFORM_SUPPORTED'],
