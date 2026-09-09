@@ -1,0 +1,5 @@
+{
+  "title": "Skills Studio",
+  "icon": "LuGraduationCap",
+  "pages": ["index", "write-a-skill", "find-and-install", "manage-and-share", "reference"]
+}

@@ -1,0 +1,107 @@
+---
+title: Skills Studio
+icon: LuGraduationCap
+description: Reusable instructions for the way you work.
+sidebarTitle: Overview
+footer: false
+---
+
+A **skill** tells an AI tool when and how to do a task. Write one beside your notes, then choose the tools that use it.
+
+```html preview
+<section class="skill-flow" aria-label="How one skill works across your AI tools">
+  <div class="flow-heading"><span>ONE SKILL, SHARED INSTRUCTIONS</span><span class="example-label">Try an example</span></div>
+  <div class="examples" role="group" aria-label="Example skill">
+    <button type="button" aria-pressed="true" data-example="meeting">Meeting notes</button>
+    <button type="button" aria-pressed="false" data-example="writing">Writing feedback</button>
+  </div>
+  <div class="flow">
+    <article class="recipe" aria-live="polite">
+      <div class="recipe-label">YOUR SKILL</div>
+      <h3 id="skill-name">meeting-notes</h3>
+      <p id="skill-when">When I share a meeting transcript…</p>
+      <ol id="skill-steps"><li>Capture decisions.</li><li>Assign action items.</li><li>Link the people involved.</li></ol>
+    </article>
+    <div class="connector" aria-hidden="true"><span></span><b>→</b></div>
+    <div class="tools">
+      <div class="recipe-label">YOUR CHOSEN TOOLS</div>
+      <div class="tool"><span>Claude Code</span><span class="status">Reads <b>meeting-notes</b></span></div>
+      <div class="tool"><span>Cursor</span><span class="status">Reads <b>meeting-notes</b></span></div>
+      <div class="tool"><span>Codex</span><span class="status">Reads <b>meeting-notes</b></span></div>
+      <p class="more">And the other tools you install it in.</p>
+    </div>
+  </div>
+  <p class="caption">Change the skill once. The tools you selected read the updated instructions.</p>
+</section>
+<style>
+.skill-flow{padding:24px;background:linear-gradient(135deg,var(--accent-soft),transparent 65%)}
+.flow-heading{display:flex;justify-content:space-between;gap:12px;color:var(--muted-foreground);font-size:10px;letter-spacing:.1em;font-weight:650}
+.example-label{letter-spacing:0;font-weight:400;font-size:12px}
+.examples{display:flex;gap:6px;margin:12px 0 20px;flex-wrap:wrap}
+.examples button{font:inherit;font-size:13px;cursor:pointer;padding:6px 12px;color:var(--muted-foreground);background:var(--card);border:1px solid var(--border);border-radius:999px}
+.examples button[aria-pressed=true]{color:var(--accent-ink);border-color:var(--primary);background:var(--accent-soft)}
+.examples button:hover{border-color:var(--primary)}
+.examples button:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.flow{display:grid;grid-template-columns:1.15fr 38px 1fr;align-items:center;gap:12px}
+.recipe{background:var(--card);padding:18px 20px;border:1px solid var(--border);border-radius:14px;box-shadow:0 5px 20px rgba(0,0,0,.03)}
+.recipe-label{font-size:10px;color:var(--muted-foreground);letter-spacing:.08em;font-weight:650}
+.recipe h3{font-family:ui-monospace,monospace;font-size:17px;margin:8px 0 5px;letter-spacing:-.03em}
+.recipe p{font-size:13px;color:var(--muted-foreground);margin:0 0 12px;min-height:39px}
+.recipe ol{font-size:14px;margin:0;padding-left:18px;line-height:1.8}
+.connector{display:flex;align-items:center;color:var(--primary)}
+.connector span{height:1px;background:var(--primary);flex:1;opacity:.45}
+.connector b{font-size:24px;font-weight:400}
+.tools{min-width:0}
+.tools>.recipe-label{margin-bottom:8px}
+.tool{border:1px solid var(--border);background:var(--card);border-radius:10px;padding:10px 12px;margin:7px 0;display:flex;flex-direction:column;gap:2px;font-weight:600;font-size:14px;transition:border-color .25s,transform .25s}
+.status{font-size:11px;font-weight:400;color:var(--muted-foreground)}
+.status b{color:var(--primary);margin-left:4px;font-family:ui-monospace,monospace}
+.more,.caption{color:var(--muted-foreground);font-size:12px}
+.more{margin:8px 0 0}
+.caption{margin:18px 0 0}
+.updating .tool{border-color:var(--primary);transform:translateX(3px)}
+@media(max-width:540px){.skill-flow{padding:18px}.flow{grid-template-columns:1fr;gap:12px}.connector{display:none}.recipe p{min-height:0}.tool{flex-direction:row;justify-content:space-between;align-items:center}.example-label{display:none}}
+@media(prefers-reduced-motion:reduce){.tool{transition:none}.updating .tool{transform:none}}
+</style>
+<script>
+var examples={meeting:{name:"meeting-notes",when:"When I share a meeting transcript…",steps:["Capture decisions.","Assign action items.","Link the people involved."]},writing:{name:"review-my-writing",when:"When I ask for feedback on a draft…",steps:["Lead with the main point.","Replace vague wording.","Keep the writer’s voice."]}};
+var buttons=document.querySelectorAll("[data-example]"),root=document.querySelector(".skill-flow"),steps=document.getElementById("skill-steps"),timer;
+buttons.forEach(function(button){button.addEventListener("click",function(){
+  var item=examples[button.dataset.example];
+  buttons.forEach(function(other){other.setAttribute("aria-pressed",String(other===button));});
+  document.getElementById("skill-name").textContent=item.name;
+  document.getElementById("skill-when").textContent=item.when;
+  steps.replaceChildren(...item.steps.map(function(text){var li=document.createElement("li");li.textContent=text;return li;}));
+  document.querySelectorAll(".tool .status b").forEach(function(el){el.textContent=item.name;});
+  clearTimeout(timer);
+  if(!matchMedia("(prefers-reduced-motion:reduce)").matches){root.classList.add("updating");timer=setTimeout(function(){root.classList.remove("updating");},650);}
+});});
+</script>
+```
+
+## Start here
+
+<Cards>
+  <Card title="Write a skill" href="/docs/features/skills/write-a-skill">
+    Turn a task you repeat into instructions your AI can follow.
+  </Card>
+  <Card title="Find and install skills" href="/docs/features/skills/find-and-install">
+    Browse the catalog, preview a skill, and choose the tools that get it.
+  </Card>
+  <Card title="Manage and share skills" href="/docs/features/skills/manage-and-share">
+    Organize your skills, review updates, and share them between tools.
+  </Card>
+  <Card title="Developer reference" href="/docs/features/skills/reference">
+    File layout, CLI commands, MCP tools, and configuration.
+  </Card>
+</Cards>
+
+## Where to find Skills Studio
+
+Open **Skills Studio** at the bottom of the file sidebar to write and browse skills. Open **Settings → Skills Studio** for built-in skills and shared folders.
+
+## See also
+
+- [Agentic search](/docs/reference/agentic-search): how the agent reads your base.
+- [LLM wiki](/docs/workflows/karpathy-llm-wiki): build a source-grounded knowledge base an agent curates, end to end.
+

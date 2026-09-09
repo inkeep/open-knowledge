@@ -1,0 +1,64 @@
+---
+title: Find and install skills
+description: Find a skill, read what it does, and choose the AI tools that can use it.
+---
+
+Start with a skill someone has already written, or bring in one you keep elsewhere.
+
+OpenKnowledge also ships its starter packs as [plugins](./reference.mdx#plugin-marketplace).
+
+## Find a skill
+
+<Steps>
+
+<Step>
+
+### Open the catalog
+
+Hover the **Skills Studio** dock header and click **Explore skills**. Search [skills.sh](https://skills.sh) for a task, such as writing or research.
+
+<Image src="/images/skills-studio/explore-skills.png" alt="The Add skill dialog with Explore selected and results for a writing search." width={1600} height={1630} />
+
+</Step>
+
+<Step>
+
+### Preview before adding
+
+Open a result to read its description, instructions, and bundled files. Check that it fits the task you have in mind.
+
+</Step>
+
+<Step>
+
+### Add it to your collection
+
+Add the skill to your Project or Global collection. If a source contains several skills, choose the one you want. It opens in the editor, ready to read and customize.
+
+</Step>
+
+</Steps>
+
+## Choose your AI tools
+
+Open the skill's **Install** menu (shown as **Installed** once it is in use). Check the locations for the tools that should use it, or choose **All** for all eligible tools.
+
+A skill is live for its agent the moment it lands. There is no separate install step to flip: this menu controls *where* the skill is available.
+
+<Image src="/images/skills-studio/install-destinations.png" alt="The Install menu lists Claude Code, Cursor, Codex, and the shared source folder, with an All control at the top." width={1600} height={860} />
+
+Each checked location gets access to the skill. OpenKnowledge keeps those locations in step when you edit the source. [Manage and share skills](./manage-and-share.mdx) explains scopes and shared folders.
+
+## Bring a skill you already have
+
+Use the **Upload** tab in the add-skill dialog. It accepts:
+
+- A GitHub repository, git URL, or local path.
+- A folder on your computer.
+- A `.zip` or `.skill` file.
+
+Skills already in your AI tools' folders also appear in the dock. Open one to edit it in place; read-only plugin skills offer **Edit a copy**.
+
+<Callout type="warn">
+A skill can include scripts that run on your machine. Read what it does and use sources you trust. OpenKnowledge does not run a skill's scripts during import.
+</Callout>

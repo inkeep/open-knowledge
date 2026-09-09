@@ -1,0 +1,61 @@
+---
+title: Write a skill
+description: Turn a task you repeat into instructions your AI tools can follow.
+---
+
+A useful first skill captures something you already explain often: how to summarize a meeting, review a draft, or organize research.
+
+<Steps>
+
+<Step>
+
+### Create the skill
+
+Expand **Skills Studio** at the bottom of the file sidebar. Hover its header and click **New skill**. A new project skill opens in the editor.
+
+</Step>
+
+<Step>
+
+### Name it and say when to use it
+
+Give it a short name such as `meeting-notes`. Use lowercase letters, numbers, and hyphens.
+
+The **description** tells your AI when to reach for the skill. Be specific about the situation:
+
+> Use when I paste a meeting transcript. Capture decisions, action items, and the person responsible for each one.
+
+<Image src="/images/skills-studio/skill-editor.png" alt="A meeting-notes skill in the editor, with its name and description in Properties and numbered instructions below." width={1600} height={1370} />
+
+</Step>
+
+<Step>
+
+### Write the instructions
+
+Explain the task as you would to a teammate. Start with a few concrete steps:
+
+1. Pull out decisions and action items.
+2. Create a note in `meetings/` with the meeting's date and topic.
+3. Link each person to their page in `people/`.
+4. Add open action items to `todo.md`.
+
+Use your own folder names and conventions. Edit the skill like any other page; changes save as you work.
+
+</Step>
+
+<Step>
+
+### Choose your tools and try it
+
+Open the skill's **Install** control and select the AI tools that should use it. Then give one of those tools a task matching the description, such as a meeting transcript.
+
+Refine the instructions after seeing the result. There is no separate publish step.
+
+</Step>
+
+</Steps>
+
+<Callout type="info">
+Want help drafting it? In **Settings → User → Skills Studio**, install **open-knowledge-write-skill**. Ask your AI: "Write a skill that turns my meeting transcripts into decisions and action items."
+</Callout>

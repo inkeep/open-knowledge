@@ -81,7 +81,7 @@ Delete the block and the app **won't re-add it** — the removal is recorded and
 
 ### User-global Agent Skills
 
-OpenKnowledge ships two user-global [Agent Skills](../features/skills.mdx) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/`) plus the shared `~/.agents/skills/` hub.
+OpenKnowledge ships two user-global [Agent Skills](../features/skills/index.mdx) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/`) plus the shared `~/.agents/skills/` hub.
 
 Only `open-knowledge-discovery` is set up at first launch — it is what lets an agent recognize an OpenKnowledge project at all, so it comes with the MCP wiring. `open-knowledge-write-skill` is an authoring convenience with no bearing on whether your tools work, so setup neither installs it nor records a decision about it; it is offered the first time you open **Settings → Skills Studio**, and remains installable there afterwards.
 

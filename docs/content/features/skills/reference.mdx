@@ -1,0 +1,102 @@
+---
+title: Developer reference
+description: Skill file layout, install locations, CLI commands, MCP tools, and sidebar configuration.
+---
+
+For the UI walkthrough, start with [Skills Studio](./index.mdx).
+
+## File layout
+
+A skill is a folder containing `SKILL.md`, with `name` and `description` in its YAML frontmatter. Optional `references/` and `scripts/` folders travel with it.
+
+```text
+meeting-notes/
+├── SKILL.md
+├── references/
+└── scripts/
+```
+
+| Scope | Source folder | Other locations |
+| --- | --- | --- |
+| Project | `.agents/skills/<name>/` when the hub exists, otherwise an editor's project skills directory | Other project-local editor skills directories |
+| Global | `~/.agents/skills/<name>/` or a home editor skills directory | Other home editor skills directories |
+
+OpenKnowledge keeps one source folder per skill. Other locations use symlinks by default, so they read the same bytes. The install menu can convert a location to a copy, which OpenKnowledge refreshes until it is edited independently outside the app.
+
+**Make source** relocates the real folder. Moving between Project and Global recreates the skill and its locations; history does not transfer. Project skills are versioned with project content. Global skills outside a base carry no version history.
+
+## Existing skills
+
+OpenKnowledge discovers skills in `.claude/skills`, `.cursor/skills`, `.codex/skills`, `.opencode/skills`, `.github/skills`, `.pi/skills`, `.agents/skills`, and supported plugin locations.
+
+Detected skills are read and versioned in place. Plugin skills are read-only; **Edit a copy** creates an editable version.
+
+## CLI
+
+```bash
+ok skills installed
+ok skills import <source>
+ok seed --pack <id>
+ok init --skills discovery,write-skill
+ok init --no-skills
+```
+
+| Command | Purpose |
+| --- | --- |
+| `ok skills installed` | List installed skills across agents without changing them. |
+| `ok skills import <source>` | Import from skills.sh, a repository, a git URL, or a local path. |
+| `ok seed --pack <id>` | Install a starter pack's skills. |
+| `ok init --skills discovery,write-skill` | Select built-ins during setup; the default is discovery. |
+| `ok init --no-skills` | Skip skill installation for this setup run. |
+
+See the [CLI reference](../../reference/cli.mdx) for all flags.
+
+## MCP
+
+| Task | Tool |
+| --- | --- |
+| Search skills.sh | `skills({ query })` |
+| Import a skill | `import({ source, add })` |
+| Choose install locations, copies, or symlinks | `install` |
+| Author or change a skill | `write`, `edit`, `move`, `delete` with a `skill` target |
+| Inspect or restore versions | `history`, `restore_version` with a `skill` target |
+| Read a bundled file | `skills({ name, file })` |
+
+See the [MCP reference](../../reference/mcp.mdx) for parameter shapes.
+
+## Sidebar configuration
+
+| Key | Controls |
+| --- | --- |
+| `appearance.sidebar.showSkillsSection` | Whether the dock is visible. |
+| `appearance.sidebar.showSkillGroups` | Grouping by source. |
+| `appearance.sidebar.pinnedProjectSkills` | Pinned project skills. |
+| `appearance.sidebar.pinnedGlobalSkills` | Pinned global skills. |
+
+See [Configuration](../../reference/configuration.mdx) for where these settings live.
+
+## Plugin marketplace
+
+OpenKnowledge's skills and starter packs are published at [inkeep/open-knowledge-skills](https://github.com/inkeep/open-knowledge-skills). For Claude Code's plugin workflow:
+
+```bash
+/plugin marketplace add inkeep/open-knowledge-skills
+/plugin install open-knowledge@open-knowledge-skills
+```
+
+The repo is grouped by role: `skills/core/` holds the built-ins, and `skills/starter-packs/<pack>/` holds each pack's skills. Each pack is also its own plugin, so you can install just the one you want:
+
+```bash
+/plugin install knowledge-base@open-knowledge-skills
+/plugin install personal-crm@open-knowledge-skills
+```
+
+`ok seed --pack <id>` installs a pack's skills directly, without the plugin workflow.
+
+<Callout type="info">
+Pack skills were renamed: the generated `open-knowledge-pack-…` names became product names, so `open-knowledge-pack-plain-notes` is now `note-taking` and `open-knowledge-pack-knowledge-base-research` is now `research-with-sources`.
+
+**Skills you already have are not renamed.** Nothing on your disk changes and your `.ok/skills-lock.json` is not rewritten. An existing skill keeps its name, keeps working, and still updates from source. Re-seeding a pack recognizes it and will not install a second copy under the new name. Only newly installed skills use the new names.
+
+Four plugin handles were renamed alongside their packs (`entity-vault` → `personal-crm`, `okf` → `okf-knowledge-base`, `plain-notes` → `note-taking`, `writing-pipeline` → `writing-workflow`). The old handles still resolve for one release and are marked outdated in the marketplace; switch to the new ones. `ok seed --pack <id>` flags are unchanged.
+</Callout>

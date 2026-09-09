@@ -50,7 +50,7 @@ The difference from a folder of notes or a RAG app is who maintains it, and how 
 | Over time | it decays | it compounds |
 | Can you read it | the notes yes, the index no | all of it, it's just files |
 
-The structure you and the agent author (folders, titles, backlinks, a one-line purpose per folder) *is* the index. No second copy, nothing to keep in sync. The agent retrieves across it with [agentic search](../reference/agentic-search.mdx) — searching, grepping, and following backlinks over your live files, no vector database — and you teach it conventions with [skills](../features/skills.mdx) authored in the same editor as your docs.
+The structure you and the agent author (folders, titles, backlinks, a one-line purpose per folder) *is* the index. No second copy, nothing to keep in sync. The agent retrieves across it with [agentic search](../reference/agentic-search.mdx) — searching, grepping, and following backlinks over your live files, no vector database — and you teach it conventions with [skills](../features/skills/index.mdx) authored in the same editor as your docs.
 
 The rest of this guide builds one end to end. The pattern is Andrej Karpathy's, from [his April 2026 gist on LLM-curated wikis](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). OpenKnowledge ships the **Knowledge base** starter pack as a direct implementation, with one extension Karpathy doesn't formalize: **the wiki layer is split** into `research/` (provisional work stored as `status: draft`) and `articles/` (canonical knowledge stored as `status: stable`), with the `consolidate` procedure as the explicit promotion step, so premature canonicalization becomes a thing you opt into rather than something that drifts in.
 
@@ -162,7 +162,7 @@ You'll get `external-sources/`, `research/`, `articles/`, the three matching tem
 The starter-pack picker is idempotent (safe to re-run on the same project).
 
 <Callout type="info" title="Seeding also installs skills">
-  `ok seed --pack knowledge-base` (or the desktop starter-pack picker) installs three project skills: `knowledge-base`, `research-with-sources`, and `consolidate-notes`. They carry the layer discipline and provisional-to-canonical promotion described below; the platform skill carries the `ingest` procedure. Each lands as a real `SKILL.md` in your agent editors' skills dirs (`.claude/skills`, `.cursor/skills`, …), versioned with your repo — one canonical copy mirrored into each editor already set up for the project. See [Skills](../features/skills.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
+  `ok seed --pack knowledge-base` (or the desktop starter-pack picker) installs three project skills: `knowledge-base`, `research-with-sources`, and `consolidate-notes`. They carry the layer discipline and provisional-to-canonical promotion described below; the platform skill carries the `ingest` procedure. Each lands as a real `SKILL.md` in your agent editors' skills dirs (`.claude/skills`, `.cursor/skills`, …), versioned with your repo — one canonical copy mirrored into each editor already set up for the project. See [Skills Studio](../features/skills/index.mdx) and [what OpenKnowledge writes to disk](../reference/what-open-knowledge-writes.mdx).
 </Callout>
 
 ### 3. Confirm your agent host is wired

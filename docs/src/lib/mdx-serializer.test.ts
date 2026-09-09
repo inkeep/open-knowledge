@@ -197,6 +197,26 @@ describe('link rewriting', () => {
       'https://openknowledge.ai/docs/get-started/quickstart#section',
     ],
     ['an image', '![a](/screenshots/x.png)', 'https://openknowledge.ai/screenshots/x.png'],
+    [
+      'an extensionless route named index',
+      '[a](/api/index?q=1#item)',
+      'https://openknowledge.ai/api/index?q=1#item',
+    ],
+    [
+      'a folder index, which fumadocs serves at the folder URL',
+      '[a](../features/skills/index.mdx)',
+      'https://openknowledge.ai/docs/features/skills',
+    ],
+    [
+      'a fragment on a folder index',
+      '[a](./skills/index.mdx#where-to-find-skills-studio)',
+      'https://openknowledge.ai/docs/get-started/skills#where-to-find-skills-studio',
+    ],
+    [
+      'a folder index named from inside its own folder',
+      '[a](./index.mdx)',
+      'https://openknowledge.ai/docs/get-started',
+    ],
   ])('absolutises %s', (_label, source, expected) => {
     expect(body(source)).toContain(`(${expected})`);
   });
@@ -301,6 +321,7 @@ describe('componentNames', () => {
 
 describe('the docs content corpus', () => {
   const CONTENT_ROOT = fileURLToPath(new URL('../../content/', import.meta.url));
+  const DOCS_ORIGIN = 'https://openknowledge.ai';
   const FLATTEN_EVERY_COMPONENT = new Proxy(
     {},
     {
@@ -349,6 +370,7 @@ describe('the docs content corpus', () => {
 
   test('serializes every page with no parse failures and no source-form links', async () => {
     const failures: string[] = [];
+    const pageUrls = new Set(files.map(pageUrlFor));
 
     await Promise.all(
       files.map(async (file) => {
@@ -369,6 +391,10 @@ describe('the docs content corpus', () => {
           }
           if (/\.mdx($|[#?])/.test(href)) {
             failures.push(`${rel}: source-form .mdx href survived (${href})`);
+          }
+          const target = href.split(/[#?]/)[0] ?? href;
+          if (target.startsWith(`${DOCS_ORIGIN}/docs/`) && !pageUrls.has(target)) {
+            failures.push(`${rel}: resolved docs href is not a page (${target})`);
           }
         }
       }),

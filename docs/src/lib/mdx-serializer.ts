@@ -57,6 +57,7 @@ const FRONTMATTER_BLOCK = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|
 const ABSOLUTE_URL = /^[a-zA-Z][a-zA-Z0-9+.-]*:|^\/\//;
 
 const SOURCE_EXTENSION = /\.mdx?$/;
+const FOLDER_INDEX = /(^|\/)index$/;
 
 const NON_PROSE_TYPES = new Set(['mdxjsEsm', 'mdxFlowExpression', 'mdxTextExpression']);
 
@@ -203,7 +204,13 @@ function absolutise(url: string, base: URL): string {
   const suffixAt = url.search(/[#?]/);
   const path = suffixAt === -1 ? url : url.slice(0, suffixAt);
   const suffix = suffixAt === -1 ? '' : url.slice(suffixAt);
-  return new URL(path.replace(SOURCE_EXTENSION, '') + suffix, base).href;
+  const target = path.replace(SOURCE_EXTENSION, '');
+  if (!SOURCE_EXTENSION.test(path) || !FOLDER_INDEX.test(target)) {
+    return new URL(target + suffix, base).href;
+  }
+  const folder = new URL(target.replace(FOLDER_INDEX, '$1./'), base);
+  folder.pathname = folder.pathname.replace(/(.)\/$/, '$1');
+  return folder.href + suffix;
 }
 
 function transformChildren(
