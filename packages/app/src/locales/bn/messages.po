@@ -3279,6 +3279,7 @@ msgstr "ব্যবহারকারী, প্রকল্প ও সংয�
 msgid "conflict"
 msgstr "দ্বন্দ্ব"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "দ্বন্দ্ব"
@@ -8217,6 +8218,14 @@ msgstr "লিংকের লক্ষ্য, অ্যাংকর ও প্�
 msgid "More"
 msgstr "আরও"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "আরও ক্রিয়া"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "আরও ক্রিয়া ({syncAttentionLabel})"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "আরও তথ্য"
@@ -9186,6 +9195,7 @@ msgstr "বন্ধ — বাইরের লিংক কেবল তাদ�
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "বন্ধ — অনুসন্ধান কেবল কীওয়ার্ড দিয়ে ক্রম করে। কোনো বিষয়বস্তু এই কম্পিউটার ছেড়ে যায় না।"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "অফলাইন"
@@ -10800,6 +10810,7 @@ msgstr "প্রস্তাবিত"
 msgid "Recommended agent skill"
 msgstr "প্রস্তাবিত এজেন্ট দক্ষতা"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "পুনরায় যুক্ত হওয়া দরকার"
@@ -13145,6 +13156,7 @@ msgstr "সিঙ্ক মোড"
 msgid "Sync now"
 msgstr "এখনই সিঙ্ক করুন"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "সিঙ্ক থেমে আছে"

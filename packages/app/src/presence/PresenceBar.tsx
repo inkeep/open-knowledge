@@ -33,8 +33,6 @@ import {
   type Participant,
   usePresence,
 } from './use-presence';
-import { useSyncStatus } from './use-sync-status';
-import { useSyncToasts } from './use-sync-toasts';
 
 const M_CURRENT_PRIMARY = 4;
 const K_CROSSDOC_PRIMARY = 3;
@@ -337,8 +335,6 @@ export function PresenceBar() {
     docPanelAgentId,
   } = useDocumentContext();
   const { current, crossDoc } = usePresence(activeProvider, systemProvider, activeDocName);
-  const syncStatus = useSyncStatus(activeProvider);
-  useSyncToasts(syncStatus, activeDocName);
 
   if (current.length === 0 && crossDoc.length === 0) return null;
 

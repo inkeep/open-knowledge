@@ -3279,6 +3279,7 @@ msgstr ""
 msgid "conflict"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr ""
@@ -8217,6 +8218,14 @@ msgstr ""
 msgid "More"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr ""
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr ""
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr ""
@@ -9186,6 +9195,7 @@ msgstr ""
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr ""
@@ -10800,6 +10810,7 @@ msgstr ""
 msgid "Recommended agent skill"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr ""
@@ -13145,6 +13156,7 @@ msgstr ""
 msgid "Sync now"
 msgstr ""
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr ""

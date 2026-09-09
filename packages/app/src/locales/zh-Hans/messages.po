@@ -3283,6 +3283,7 @@ msgstr "配置用户、项目和集成相关的设置。"
 msgid "conflict"
 msgstr "冲突"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "冲突"
@@ -8221,6 +8222,14 @@ msgstr "修改链接目标、锚点和显示标签。"
 msgid "More"
 msgstr "更多"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "更多操作"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "更多操作（{syncAttentionLabel}）"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "更多信息"
@@ -9190,6 +9199,7 @@ msgstr "关闭——外部链接只显示 URL。不会有任何请求离开这�
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "关闭——搜索仅按关键词排序。不会有任何内容离开这台电脑。"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "离线"
@@ -10804,6 +10814,7 @@ msgstr "推荐"
 msgid "Recommended agent skill"
 msgstr "推荐代理技能"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "需要重新连接"
@@ -13149,6 +13160,7 @@ msgstr "同步模式"
 msgid "Sync now"
 msgstr "立即同步"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "同步已暂停"

@@ -3283,6 +3283,7 @@ msgstr "صارف، پروجیکٹ اور انضمام کی ترتیبات مقر
 msgid "conflict"
 msgstr "تصادم"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "تصادم"
@@ -8221,6 +8222,14 @@ msgstr "لنک کا ہدف، اینکر اور ظاہری لیبل تبدیل ک
 msgid "More"
 msgstr "مزید"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "مزید اعمال"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "مزید اعمال ({syncAttentionLabel})"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "مزید معلومات"
@@ -9190,6 +9199,7 @@ msgstr "بند — بیرونی لنکس صرف اپنا URL دکھاتے ہیں
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "بند — تلاش صرف کلیدی الفاظ سے درجہ بندی کرتی ہے۔ کوئی مواد اس کمپیوٹر سے باہر نہیں جاتا۔"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "آف لائن"
@@ -10804,6 +10814,7 @@ msgstr "تجویز کردہ"
 msgid "Recommended agent skill"
 msgstr "تجویز کردہ ایجنٹ کی مہارت"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "دوبارہ منسلک ہونا ضروری ہے"
@@ -13149,6 +13160,7 @@ msgstr "مطابقت پذیری کا موڈ"
 msgid "Sync now"
 msgstr "ابھی مطابق کریں"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "مطابقت پذیری روکی ہوئی"

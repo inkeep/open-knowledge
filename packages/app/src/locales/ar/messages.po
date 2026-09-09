@@ -3283,6 +3283,7 @@ msgstr "اضبط إعدادات المستخدم والمشروع والتكام
 msgid "conflict"
 msgstr "تعارض"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "تعارض"
@@ -8221,6 +8222,14 @@ msgstr "عدّل وجهة الرابط والمرساة وتسمية العرض.
 msgid "More"
 msgstr "المزيد"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "مزيد من الإجراءات"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "مزيد من الإجراءات ({syncAttentionLabel})"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "مزيد من المعلومات"
@@ -9190,6 +9199,7 @@ msgstr "معطّل — تعرض الروابط الخارجية رابطها ف�
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "معطّل — يرتّب البحث بالكلمات المفتاحية فقط. لا يغادر أي محتوى هذا الجهاز."
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "غير متصل"
@@ -10804,6 +10814,7 @@ msgstr "موصى به"
 msgid "Recommended agent skill"
 msgstr "مهارة الوكيل الموصى بها"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "إعادة الاتصال مطلوبة"
@@ -13149,6 +13160,7 @@ msgstr "وضع المزامنة"
 msgid "Sync now"
 msgstr "المزامنة الآن"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "المزامنة موقوفة مؤقتًا"

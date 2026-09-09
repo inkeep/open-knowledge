@@ -1922,6 +1922,7 @@
       "Chaque outil IA lit les compétences depuis son propre dossier. Pointez un dossier vers un autre et les deux outils verront les mêmes compétences : ajoutez une compétence une seule fois au lieu de la copier dans chaque outil."
     ],
     "JaU1ld": ["Le nom du thème contient des caractères non pris en charge"],
+    "JcD7qf": ["Plus d'actions"],
     "JddocZ": ["Activer/désactiver la colonne d'en-tête"],
     "Jejur6": ["Impossible de charger le document"],
     "JfPuv7": [["shareBranch"], " n'est pas un nom de branche valide."],
@@ -4545,6 +4546,7 @@
       "Les modèles hérités ne peuvent pas être renommés ici — renommez-le dans le dossier auquel il appartient."
     ],
     "jSY41h": ["« ", ["docName"], " » a pris trop de temps. Vérifiez votre connexion."],
+    "jSg1tA": ["Plus d'actions (", ["syncAttentionLabel"], ")"],
     "jTLWxh": [
       "Intègre une page externe dans une iframe en ligne (docs, démos, Figma, CodeSandbox)."
     ],

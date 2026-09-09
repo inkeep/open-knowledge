@@ -1874,6 +1874,7 @@
       "Cada ferramenta de IA lê as habilidades da sua própria pasta. Aponte uma pasta para outra e as duas ferramentas verão as mesmas habilidades: adicione uma habilidade uma vez em vez de copiá-la para cada ferramenta."
     ],
     "JaU1ld": ["O nome do tema contém caracteres não compatíveis"],
+    "JcD7qf": ["Mais ações"],
     "JddocZ": ["Alternar coluna de cabeçalho"],
     "Jejur6": ["Não deu para carregar o documento"],
     "JfPuv7": [["shareBranch"], " não é um nome de ramo válido."],
@@ -4420,6 +4421,7 @@
     ],
     "jSO1X5": ["Modelos herdados não podem ser renomeados aqui — renomeie na pasta que os contém."],
     "jSY41h": ["\"", ["docName"], "\" demorou demais. Verifique sua conexão."],
+    "jSg1tA": ["Mais ações (", ["syncAttentionLabel"], ")"],
     "jTLWxh": [
       "Incorpora uma página externa em um iframe embutido (documentação, demos, Figma, CodeSandbox)."
     ],

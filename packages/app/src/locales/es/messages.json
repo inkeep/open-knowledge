@@ -1892,6 +1892,7 @@
       "Cada herramienta de IA lee las habilidades desde su propia carpeta. Apunta una carpeta a otra y ambas herramientas verán las mismas habilidades: añade una habilidad una sola vez en lugar de copiarla en cada herramienta."
     ],
     "JaU1ld": ["El nombre del tema contiene caracteres no admitidos"],
+    "JcD7qf": ["Más acciones"],
     "JddocZ": ["Alternar columna de encabezado"],
     "Jejur6": ["No se pudo cargar el documento"],
     "JfPuv7": [["shareBranch"], " no es un nombre de rama válido."],
@@ -4506,6 +4507,7 @@
       "Las plantillas heredadas no se pueden renombrar aquí: hazlo en la carpeta que las contiene."
     ],
     "jSY41h": ["\"", ["docName"], "\" tardó demasiado. Revisa tu conexión."],
+    "jSg1tA": ["Más acciones (", ["syncAttentionLabel"], ")"],
     "jTLWxh": [
       "Incrusta una página externa en un iframe en línea (documentación, demos, Figma, CodeSandbox)."
     ],

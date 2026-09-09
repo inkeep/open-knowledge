@@ -1635,6 +1635,7 @@
       "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
     ],
     "JaU1ld": ["Nama tema berisi karakter yang tidak didukung"],
+    "JcD7qf": ["Tindakan lainnya"],
     "JddocZ": ["Alihkan kolom header"],
     "Jejur6": ["Dokumen tidak bisa dimuat"],
     "JfPuv7": [["shareBranch"], " bukan nama cabang yang valid."],
@@ -3909,6 +3910,7 @@
       "Templat warisan tidak bisa diganti namanya di sini — ganti namanya di folder yang memilikinya."
     ],
     "jSY41h": ["\"", ["docName"], "\" terlalu lama. Periksa koneksi Anda."],
+    "jSg1tA": ["Tindakan lainnya (", ["syncAttentionLabel"], ")"],
     "jTLWxh": [
       "Menyematkan halaman eksternal dalam iframe sebaris (dokumentasi, demo, Figma, CodeSandbox)."
     ],

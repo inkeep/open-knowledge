@@ -3283,6 +3283,7 @@ msgstr "사용자, 프로젝트 및 통합 설정을 구성합니다."
 msgid "conflict"
 msgstr "충돌"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "충돌"
@@ -8221,6 +8222,14 @@ msgstr "링크 대상, 앵커, 표시 레이블을 수정합니다."
 msgid "More"
 msgstr "더 보기"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "추가 작업"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "추가 작업 ({syncAttentionLabel})"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "추가 정보"
@@ -9190,6 +9199,7 @@ msgstr "꺼짐, 외부 링크에는 URL만 나타납니다. 이 컴퓨터 밖으
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "꺼짐, 검색은 키워드로만 순위를 매깁니다. 이 컴퓨터 밖으로 콘텐츠가 전송되지 않습니다."
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "오프라인"
@@ -10804,6 +10814,7 @@ msgstr "권장"
 msgid "Recommended agent skill"
 msgstr "권장 에이전트 스킬"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "다시 연결 필요"
@@ -13149,6 +13160,7 @@ msgstr "동기화 모드"
 msgid "Sync now"
 msgstr "지금 동기화"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "동기화 일시 중지됨"

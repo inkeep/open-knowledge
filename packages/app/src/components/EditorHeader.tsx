@@ -2,16 +2,19 @@
 
 import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
-import { Search } from 'lucide-react';
+import { MoreHorizontalIcon, Search } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useLayoutEffect, useRef, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Kbd } from '@/components/ui/kbd';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
+import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import {
@@ -22,6 +25,7 @@ import {
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { PresenceBar } from '@/presence/PresenceBar';
+import { SyncToastHost } from '@/presence/SyncToastHost';
 import { BetaBadge } from './BetaBadge';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
 import { HelpPopover } from './HelpPopover';
@@ -30,11 +34,24 @@ import { NavigationHistoryControls } from './NavigationHistoryControls';
 import { PublishToGitHubDialog } from './PublishToGitHubDialog';
 import { SettingsButton } from './SettingsButton';
 import { ShareButton } from './ShareButton';
-import { SyncStatusBadge } from './SyncStatusBadge';
+import { displayState, SyncStatusBadge } from './SyncStatusBadge';
 
 const AppMenubar = lazy(() =>
   import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
 );
+
+const HEADER_OVERFLOW_SLACK_PX = 8;
+const HEADER_TABS_GUTTER_PX = 8;
+
+type SyncAttention = 'conflict' | 'offline' | 'auth-error' | 'paused';
+
+function syncAttentionOf(status: GitSyncStatus | null): SyncAttention | null {
+  if (!status?.hasRemote) return null;
+  const state = displayState(status);
+  if (state === 'conflict' || state === 'offline' || state === 'auth-error') return state;
+  if (state === 'disabled' && status.pausedReason) return 'paused';
+  return null;
+}
 
 interface EditorHeaderProps {
   children?: ReactNode;
@@ -64,6 +81,11 @@ export function EditorHeader({
   const searchShortcutLabel = formatShortcutLabel('command-palette');
   const [publishOpen, setPublishOpen] = useState(false);
   const [chromeMeasured, setChromeMeasured] = useState(false);
+  const [actionsOverflowed, setActionsOverflowed] = useState(false);
+  const [tabsSuppressed, setTabsSuppressed] = useState(false);
+  const actionsOverflowedRef = useRef(false);
+  const measuredSignatureRef = useRef<string | null>(null);
+  const trailingIntrinsicWidthRef = useRef(0);
   const headerRef = useRef<HTMLElement>(null);
   const leadingActionsRef = useRef<HTMLDivElement>(null);
   const tabsHostRef = useRef<HTMLDivElement>(null);
@@ -81,6 +103,15 @@ export function EditorHeader({
     return null;
   })();
 
+  const { status: gitSyncStatus } = useGitSyncStatusDetailed();
+  const syncAttention = syncAttentionOf(gitSyncStatus);
+  const trailingContentSignature = [
+    String(reducedChrome),
+    String(noteWindow),
+    String(shareInput != null),
+    gitSyncStatus?.hasRemote ? displayState(gitSyncStatus) : 'no-remote',
+  ].join('|');
+
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const isCollapsed = sidebarState === 'collapsed';
   const reserveTrafficLights = isElectronHost && (isCollapsed || noteWindow);
@@ -97,14 +128,38 @@ export function EditorHeader({
     const trailingActions = trailingActionsRef.current;
     if (!header || !leadingActions || !tabsHost || !trailingActions) return;
 
+    if (measuredSignatureRef.current !== trailingContentSignature) {
+      measuredSignatureRef.current = trailingContentSignature;
+      actionsOverflowedRef.current = false;
+      trailingIntrinsicWidthRef.current = 0;
+    }
+
     const updateChromeWidths = () => {
-      header.style.setProperty('--editor-header-leading-width', `${leadingActions.offsetWidth}px`);
+      const leadingWidth = leadingActions.offsetWidth;
+      const leadingOffsetLeft = leadingActions.offsetLeft;
+      const trailingWidth = trailingActions.offsetWidth;
       const trailingMargin = Number.parseFloat(getComputedStyle(trailingActions).marginRight) || 0;
-      const rightRailWidth = Math.max(0, header.offsetWidth - tabsHost.offsetWidth);
-      header.style.setProperty(
-        '--editor-header-trailing-width',
-        `${Math.max(0, trailingActions.offsetWidth + trailingMargin - rightRailWidth)}px`,
-      );
+      const headerWidth = header.offsetWidth;
+      const tabsWidth = tabsHost.offsetWidth;
+
+      const rightRailWidth = Math.max(0, headerWidth - tabsWidth);
+      const trailingReserve = Math.max(0, trailingWidth + trailingMargin - rightRailWidth);
+      header.style.setProperty('--editor-header-leading-width', `${leadingWidth}px`);
+      header.style.setProperty('--editor-header-trailing-width', `${trailingReserve}px`);
+
+      if (headerWidth > 0) {
+        if (!actionsOverflowedRef.current) {
+          trailingIntrinsicWidthRef.current = trailingWidth;
+        }
+        const available = headerWidth - (leadingOffsetLeft + leadingWidth);
+        const next = trailingIntrinsicWidthRef.current + HEADER_OVERFLOW_SLACK_PX > available;
+        actionsOverflowedRef.current = next;
+        setActionsOverflowed(next);
+
+        const tabsReserved =
+          leadingOffsetLeft + leadingWidth + HEADER_TABS_GUTTER_PX + trailingReserve;
+        setTabsSuppressed(tabsWidth > 0 && tabsWidth - tabsReserved <= 0);
+      }
     };
     updateChromeWidths();
 
@@ -126,7 +181,23 @@ export function EditorHeader({
       cancelAnimationFrame(revealFrame);
       observer?.disconnect();
     };
-  }, []);
+  }, [trailingContentSignature]);
+
+  const showOverflowActions = !noteWindow && actionsOverflowed;
+
+  const syncAttentionLabel =
+    syncAttention === 'conflict'
+      ? t`Conflict`
+      : syncAttention === 'offline'
+        ? t`Offline`
+        : syncAttention === 'auth-error'
+          ? t`Reconnect required`
+          : syncAttention === 'paused'
+            ? t`Sync paused`
+            : null;
+  const overflowActionsLabel = syncAttentionLabel
+    ? t`More actions (${syncAttentionLabel})`
+    : t`More actions`;
 
   const headerActions = (
     <>
@@ -165,9 +236,10 @@ export function EditorHeader({
         ref={tabsHostRef}
         data-electron-drag={isElectronHost ? '' : undefined}
         data-editor-header-tabs=""
+        data-editor-header-tabs-suppressed={tabsSuppressed ? '' : undefined}
         className={cn(
           'absolute inset-y-0 left-0 z-10 flex min-w-0 w-[var(--editor-header-tabs-width,100%)] overflow-hidden',
-          !chromeMeasured && 'invisible',
+          (!chromeMeasured || tabsSuppressed) && 'invisible',
           isElectronHost && '[-webkit-app-region:drag]',
         )}
       >
@@ -258,13 +330,53 @@ export function EditorHeader({
         data-electron-drag={isElectronHost ? '' : undefined}
         data-editor-header-actions=""
         className={cn(
-          'absolute inset-y-0 right-0 z-20 flex items-center justify-end gap-2 px-3',
+          'absolute inset-y-0 right-0 z-20 flex items-center justify-end gap-2',
+          showOverflowActions ? 'px-1' : 'px-3',
           isElectronHost &&
             '[-webkit-app-region:drag] [&_button]:[-webkit-app-region:no-drag] [&_a]:[-webkit-app-region:no-drag]',
           isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >
-        {!noteWindow && headerActions}
+        {!noteWindow &&
+          (showOverflowActions ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={overflowActionsLabel}
+                  data-testid="header-overflow-actions-trigger"
+                  className="relative shrink-0 text-muted-foreground"
+                >
+                  <MoreHorizontalIcon aria-hidden="true" />
+                  {syncAttention ? (
+                    <span
+                      aria-hidden="true"
+                      data-testid="header-overflow-actions-sync-indicator"
+                      data-sync-attention={syncAttention}
+                      className={cn(
+                        'absolute top-0.5 right-0.5 size-1.5 rounded-full ring-1 ring-background',
+                        syncAttention === 'auth-error' && 'bg-destructive',
+                        syncAttention === 'offline' && 'bg-muted-foreground',
+                        (syncAttention === 'conflict' || syncAttention === 'paused') &&
+                          'bg-amber-500',
+                      )}
+                    />
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                data-editor-header-overflow-actions=""
+                className="flex w-auto max-w-[calc(100vw-1rem)] flex-wrap items-center justify-end gap-2 p-2"
+              >
+                {headerActions}
+              </PopoverContent>
+            </Popover>
+          ) : (
+            headerActions
+          ))}
+        {!noteWindow && <SyncToastHost />}
         {!reducedChrome && (
           <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
         )}

@@ -3283,6 +3283,7 @@ msgstr "Configura los ajustes de usuario, de proyecto y de integraciones."
 msgid "conflict"
 msgstr "conflicto"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Conflict"
 msgstr "Conflicto"
@@ -8221,6 +8222,14 @@ msgstr "Modifica el destino del enlace, el ancla y el texto mostrado."
 msgid "More"
 msgstr "Más"
 
+#: src/components/EditorHeader.tsx
+msgid "More actions"
+msgstr "Más acciones"
+
+#: src/components/EditorHeader.tsx
+msgid "More actions ({syncAttentionLabel})"
+msgstr "Más acciones ({syncAttentionLabel})"
+
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "More information"
 msgstr "Más información"
@@ -9190,6 +9199,7 @@ msgstr "Desactivado: los enlaces externos solo muestran su URL. No sale ninguna 
 msgid "Off — search ranks by keyword only. No content leaves this computer."
 msgstr "Desactivada: la búsqueda ordena solo por palabras clave. No sale ningún contenido de este equipo."
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "Sin conexión"
@@ -10804,6 +10814,7 @@ msgstr "Recomendado"
 msgid "Recommended agent skill"
 msgstr "Habilidad de agente recomendada"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "Hay que reconectar"
@@ -13149,6 +13160,7 @@ msgstr "Modo de sincronización"
 msgid "Sync now"
 msgstr "Sincronizar ahora"
 
+#: src/components/EditorHeader.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "Sincronización en pausa"

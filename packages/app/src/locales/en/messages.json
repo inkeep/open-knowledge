@@ -1609,6 +1609,7 @@
       "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
     ],
     "JaU1ld": ["Theme name has unsupported characters"],
+    "JcD7qf": ["More actions"],
     "JddocZ": ["Toggle header column"],
     "Jejur6": ["Couldn't load document"],
     "JfPuv7": [["shareBranch"], " isn't a valid branch name."],
@@ -3883,6 +3884,7 @@
     "jRsjlF": ["Repository not found — it may not exist, or the account used may not have access."],
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
+    "jSg1tA": ["More actions (", ["syncAttentionLabel"], ")"],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
     "jTUxaN": ["Enable Auto (Pull only)"],
     "jTdrn1": ["Couldn't check whether ", ["filePath"], " is still conflicted — retrying."],
