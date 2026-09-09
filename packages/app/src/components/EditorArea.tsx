@@ -1060,6 +1060,7 @@ function EditorAreaInner({
         ) : (
           <EmptyEditorState
             terminalOpen={terminalVisible}
+            bottomDockOpen={terminalVisible && terminalPlacement === 'bottom'}
             agentsOpen={agentsVisible}
             onRageStreak={
               activeNewTabId

@@ -1,16 +1,17 @@
-import { DocumentListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { DocumentListSuccessSchema, type TemplatesListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Info } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { CopyablePromptList } from '@/components/empty-state/CopyablePromptList';
 import { CreatePromptComposer } from '@/components/empty-state/CreatePromptComposer';
-import { CreateView } from '@/components/empty-state/CreateView';
+import { CreateView, FileCreationActions } from '@/components/empty-state/CreateView';
 import { EmptyStateHeader } from '@/components/empty-state/EmptyStateHeader';
 import { getEmptyStateCopy } from '@/components/empty-state/empty-state-copy';
 import { filterVisibleEntries } from '@/components/file-tree-utils';
 import { PackCardGrid } from '@/components/PackCardGrid';
 import { SeedDialog } from '@/components/SeedDialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { type AsyncState, useAllTemplates } from '@/hooks/use-folder-config';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { emitCreateTopLevelFile } from '@/lib/create-file-events';
 import type { OkPackId } from '@/lib/desktop-bridge-types';
@@ -20,13 +21,16 @@ import { cn } from '@/lib/utils';
 
 export function EmptyEditorState({
   terminalOpen = false,
+  bottomDockOpen = false,
   agentsOpen = false,
   onRageStreak,
 }: {
   terminalOpen?: boolean;
+  bottomDockOpen?: boolean;
   agentsOpen?: boolean;
   onRageStreak?: () => void;
 }) {
+  const templatesState = useAllTemplates();
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [seedDialogInitialPackId, setSeedDialogInitialPackId] = useState<OkPackId | undefined>(
     undefined,
@@ -97,14 +101,17 @@ export function EmptyEditorState({
     return (
       <div
         data-testid="empty-editor-state"
-        className={cn(
-          '@container/emptystate flex min-h-0 flex-1 flex-col items-center pb-8 pt-10',
-          terminalOpen ? 'justify-end' : 'justify-center',
-        )}
+        className="@container/emptystate flex min-h-0 flex-1 flex-col items-center overflow-y-auto subtle-scrollbar pb-8 pt-10"
       >
-        <div className="flex w-full flex-col items-center px-4 @md/emptystate:px-10 @2xl/emptystate:px-16">
+        <div
+          className={cn(
+            'flex w-full shrink-0 flex-col items-center px-4 @md/emptystate:px-10 @2xl/emptystate:px-16',
+            bottomDockOpen ? 'mt-auto' : 'my-auto',
+          )}
+        >
           {messageReady ? (
-            <TerminalEmptyHeader
+            <PanelEmptyState
+              templatesState={templatesState}
               isOnboarding={isOnboarding}
               celebrateSignal={celebrateSignal}
               onRageStreak={onRageStreak}
@@ -133,6 +140,7 @@ export function EmptyEditorState({
             />
           ) : (
             <CreateView
+              templatesState={templatesState}
               onRageStreak={onRageStreak}
               celebrateSignal={celebrateSignal}
               onAddStarterPack={() => {
@@ -160,11 +168,13 @@ export function countEntries(
   ).length;
 }
 
-function TerminalEmptyHeader({
+function PanelEmptyState({
+  templatesState,
   isOnboarding,
   celebrateSignal,
   onRageStreak,
 }: {
+  templatesState: AsyncState<readonly TemplatesListEntry[]>;
   isOnboarding: boolean;
   celebrateSignal: number;
   onRageStreak?: () => void;
@@ -173,13 +183,14 @@ function TerminalEmptyHeader({
   const isEmbedded = useIsEmbedded();
   const { title, subtitle } = getEmptyStateCopy({ isOnboarding, isEmbedded });
   return (
-    <div className="w-full max-w-5xl">
+    <div className="flex w-full max-w-5xl flex-col gap-8">
       <EmptyStateHeader
         title={t(title)}
         subtitle={t(subtitle)}
         celebrateSignal={celebrateSignal}
         onRageStreak={onRageStreak}
       />
+      <FileCreationActions templatesState={templatesState} compact />
     </div>
   );
 }
