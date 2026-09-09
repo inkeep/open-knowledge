@@ -1746,14 +1746,14 @@ export class ProviderPool {
     return entry;
   }
 
-  close(docName: string): void {
+  close(docName: string, via = 'unspecified'): void {
     const entry = this.entries.get(docName);
     if (!entry) return;
 
     this.destroyEntry(entry);
     this._entries.delete(docName);
     this.lruOrder = this.lruOrder.filter((n) => n !== docName);
-    this.discardBufferedUpdate(docName, 'pool-close');
+    this.discardBufferedUpdate(docName, `pool-close:${via}`);
 
     if (this.activeDocName === docName) {
       this.activeDocName = null;
@@ -1795,7 +1795,7 @@ export class ProviderPool {
     if (entry?.kind === 'active' && entry.persistence !== null) {
       const persistence = entry.persistence;
       try {
-        this.close(docName);
+        this.close(docName, 'clear-persistence-before-cleardata');
       } catch (err) {
         console.warn(`[ProviderPool] close before clearData threw for ${docName}:`, err);
       }
@@ -1810,7 +1810,7 @@ export class ProviderPool {
     }
     if (entry) {
       try {
-        this.close(docName);
+        this.close(docName, 'clear-persistence-before-idb-delete');
       } catch (err) {
         console.warn(`[ProviderPool] close before IDB-by-name delete threw for ${docName}:`, err);
       }
@@ -2032,7 +2032,7 @@ export class ProviderPool {
     for (const docName of this.lruOrder) {
       if (!this.isProtected(docName)) {
         mark('ok/pool/evict-lru', { docName });
-        this.close(docName);
+        this.close(docName, 'evict-lru');
         return true;
       }
     }

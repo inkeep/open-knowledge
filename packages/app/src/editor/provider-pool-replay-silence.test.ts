@@ -130,7 +130,7 @@ describe('ProviderPool replay — every return names itself', () => {
 
     expect(eventNamed(warn, 'ok-buffer-replay-discarded')).toMatchObject({
       docName,
-      via: 'pool-close',
+      via: 'pool-close:unspecified',
       durable: 'yes',
       replayByteLength: delta.byteLength,
     });
