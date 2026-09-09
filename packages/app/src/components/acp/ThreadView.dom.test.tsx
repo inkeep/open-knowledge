@@ -11,6 +11,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
 import type {
@@ -184,6 +185,7 @@ afterEach(() => {
   authenticateResult = Promise.resolve();
   model = null;
   threadState = { info: undefined, events: [], lastSeq: 5, replayThroughSeq: 5 };
+  window.location.hash = '';
 });
 
 describe('ThreadView agent settings', () => {
@@ -666,6 +668,58 @@ describe('ThreadView inline diff', () => {
 });
 
 describe('ThreadView permissions', () => {
+  test('moves focus from the composer to the primary permission when no overlay is open', () => {
+    model = makeModel();
+    const runningInfo = makeInfo({ status: 'running' });
+    const awaitingInfo = makeInfo({ status: 'awaiting_permission' });
+    const { rerender } = render(<ThreadView info={runningInfo} />);
+    screen.getByTestId('agent-thread-composer').focus();
+
+    model = makeModel({ items: [permission()] });
+    rerender(<ThreadView info={awaitingInfo} />);
+
+    expect(document.activeElement).toBe(screen.getByTestId('agent-thread-permission-allow'));
+  });
+
+  test('defers follow-the-agent navigation until settings closes', () => {
+    model = makeModel();
+    window.location.hash = '#settings';
+    let dialogOpen = true;
+    const view = () => (
+      <>
+        {dialogOpen ? (
+          <Dialog open>
+            <DialogContent>
+              <DialogTitle>Settings</DialogTitle>
+              <DialogDescription>Project preferences</DialogDescription>
+            </DialogContent>
+          </Dialog>
+        ) : null}
+        <ThreadView info={makeInfo({ status: 'awaiting_permission' })} />
+      </>
+    );
+    const { rerender } = render(view());
+    screen.getByRole('dialog');
+
+    model = makeModel({
+      items: [
+        toolCall({ toolKind: 'edit', rawInput: { docName: 'notes/today' } }),
+        permission({ toolCallId: 'c1' }),
+      ],
+    });
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 6 };
+    rerender(view());
+
+    screen.getByTestId('agent-thread-permission');
+    expect(window.location.hash).toBe('#settings');
+
+    dialogOpen = false;
+    threadState = { info: undefined, events: [], lastSeq: 7, replayThroughSeq: 7 };
+    rerender(view());
+
+    expect(window.location.hash).toBe('#/notes/today');
+  });
+
   test('stacks three-plus options top-to-bottom with the primary grant emphasized', () => {
     model = makeModel({
       items: [
