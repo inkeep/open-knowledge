@@ -1,4 +1,7 @@
-import type { WorkspaceSearchDocument } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+  type WorkspaceSearchDocument,
+} from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { CHUNK_CONFIG_ID, chunkDocument } from './chunking.ts';
 import {
@@ -7,7 +10,7 @@ import {
   EmbeddingDimsMismatchError,
   EmbeddingProviderError,
 } from './embedder.ts';
-import { hashContent, VectorCache } from './vector-cache.ts';
+import { hashContent, type IdentityDims, VectorCache } from './vector-cache.ts';
 
 const log = getLogger('embeddings');
 
@@ -16,8 +19,6 @@ function errMsg(err: unknown): string {
 }
 
 export const SEMANTIC_MIN_QUERY_LENGTH = 3;
-
-const EMBED_BATCH_CHUNK_LIMIT = 96;
 
 const MAX_CONSECUTIVE_EMBED_FAILURES = 5;
 
@@ -44,6 +45,8 @@ export interface SemanticSearchServiceOptions {
   cacheDir: string | null;
   enabled?: boolean;
   providerFingerprint?: string;
+  transportFingerprint?: string;
+  maxBatchSize?: number;
 }
 
 export class SemanticSearchService {
@@ -52,12 +55,16 @@ export class SemanticSearchService {
 
   private enabled: boolean;
   private providerFingerprint: string;
+  private transportFingerprint: string;
+  private maxBatchSize: number;
   private capable = false;
   private ready = false;
   private embedder: Embedder | null = null;
   private cache: VectorCache | null = null;
 
   private warmPromise: Promise<void> | null = null;
+  private warmGeneration = 0;
+  private cacheInitChain: Promise<void> = Promise.resolve();
   private embedChain: Promise<void> = Promise.resolve();
   private queuedDocs: readonly WorkspaceSearchDocument[] | null = null;
   private dimsDriftResets = 0;
@@ -67,6 +74,8 @@ export class SemanticSearchService {
     this.cacheDir = options.cacheDir;
     this.enabled = options.enabled ?? false;
     this.providerFingerprint = options.providerFingerprint ?? '';
+    this.transportFingerprint = options.transportFingerprint ?? '';
+    this.maxBatchSize = options.maxBatchSize ?? DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE;
   }
 
   isEnabled(): boolean {
@@ -82,30 +91,53 @@ export class SemanticSearchService {
     };
   }
 
-  applyConfig(input: { enabled: boolean; providerFingerprint: string }): void {
-    if (input.providerFingerprint !== this.providerFingerprint) {
-      this.providerFingerprint = input.providerFingerprint;
+  applyConfig(input: {
+    enabled: boolean;
+    providerFingerprint: string;
+    transportFingerprint: string;
+    maxBatchSize: number;
+  }): void {
+    const providerChanged = input.providerFingerprint !== this.providerFingerprint;
+    const transportChanged = input.transportFingerprint !== this.transportFingerprint;
+    this.providerFingerprint = input.providerFingerprint;
+    this.transportFingerprint = input.transportFingerprint;
+    this.maxBatchSize = input.maxBatchSize;
+    if (providerChanged) {
       this.dimsDriftResets = 0;
-      this.resetWarm();
+      this.resetWarm('provider');
+    } else if (transportChanged) {
+      this.resetWarm('transport');
     }
     if (input.enabled === this.enabled) return;
     this.enabled = input.enabled;
-    if (!input.enabled) {
-      this.cache?.clearMemory();
-      this.resetWarm();
-    }
+    if (!input.enabled) this.resetWarm('disabled');
   }
 
-  private resetWarm(): void {
+  private resetWarm(
+    reason: 'provider' | 'transport' | 'disabled' | 'credential' | 'dimensions',
+  ): void {
+    const cachedDocuments = this.cache?.embeddedCount ?? 0;
+    const retainCache = reason === 'transport' || reason === 'credential';
+    this.warmGeneration += 1;
     this.warmPromise = null;
     this.ready = false;
     this.capable = false;
     this.embedder = null;
-    this.cache = null;
+    if (reason === 'disabled') this.cache?.clearMemory();
+    if (reason === 'dimensions') this.cache?.discard();
+    if (!retainCache) this.cache = null;
+    log.info(
+      {
+        reason,
+        retainedInMemoryDocumentCount: retainCache ? cachedDocuments : 0,
+        unloadedInMemoryDocumentCount: retainCache ? 0 : cachedDocuments,
+      },
+      '[embeddings] resetting embedder',
+    );
   }
 
   reloadCredential(): void {
-    this.resetWarm();
+    this.resetWarm('credential');
   }
 
   private recoverFromDimsDrift(cache: VectorCache, err: EmbeddingDimsMismatchError): boolean {
@@ -113,7 +145,11 @@ export class SemanticSearchService {
     if (this.cache !== cache) return false;
     if (this.dimsDriftResets >= MAX_DIMS_DRIFT_RESETS) {
       log.error(
-        { expected: err.expected, got: err.got },
+        {
+          expected: err.expected,
+          got: err.got,
+          unloadedInMemoryDocumentCount: cache.embeddedCount,
+        },
         '[embeddings] provider vector length keeps changing — disabling semantic search until restart',
       );
       this.capable = false;
@@ -125,21 +161,21 @@ export class SemanticSearchService {
       { expected: err.expected, got: err.got },
       '[embeddings] provider vector length changed — discarding cached vectors and re-embedding',
     );
-    cache.discard();
-    this.resetWarm();
+    this.resetWarm('dimensions');
     return true;
   }
 
-  ensureWarm(): Promise<void> {
-    if (!this.enabled) return Promise.resolve();
-    if (this.ready) return Promise.resolve();
-    this.warmPromise ||= this.warm();
-    return this.warmPromise;
+  async ensureWarm(): Promise<void> {
+    while (this.enabled && !this.ready) {
+      this.warmPromise ||= this.warm(this.warmGeneration);
+      await this.warmPromise;
+    }
   }
 
-  private async warm(): Promise<void> {
+  private async warm(generation: number): Promise<void> {
     try {
       const embedder = await this.loadEmbedder();
+      if (generation !== this.warmGeneration || !this.enabled) return;
       if (!embedder) {
         this.capable = false;
         this.ready = true;
@@ -149,20 +185,33 @@ export class SemanticSearchService {
         );
         return;
       }
-      this.embedder = embedder;
-      const cache = new VectorCache({
+      const identityDims: IdentityDims = embedder.dims ?? 'auto';
+      const cacheOptions = {
         cacheDir: this.cacheDir,
         providerId: embedder.providerId,
         modelId: embedder.modelId,
-        dims: embedder.dims,
+        identityDims,
         chunkConfigId: CHUNK_CONFIG_ID,
-      });
-      await cache.init();
+      };
+      let cache = this.cache;
+      if (!cache?.matchesIdentity(cacheOptions)) {
+        cache = new VectorCache(cacheOptions);
+        const nextCache = cache;
+        const initialized = this.cacheInitChain.then(async () => {
+          if (generation !== this.warmGeneration || !this.enabled) return;
+          await nextCache.init();
+        });
+        this.cacheInitChain = initialized.catch(() => {});
+        await initialized;
+      }
+      if (generation !== this.warmGeneration || !this.enabled) return;
       if (cache.dims !== null) embedder.pinDims?.(cache.dims);
+      this.embedder = embedder;
       this.cache = cache;
       this.capable = true;
       this.ready = true;
     } catch (err) {
+      if (generation !== this.warmGeneration || !this.enabled) return;
       this.capable = false;
       this.ready = true;
       log.warn({ err }, '[embeddings] warm failed');
@@ -186,10 +235,11 @@ export class SemanticSearchService {
   }
 
   private async runEmbedPass(documents: readonly WorkspaceSearchDocument[]): Promise<void> {
-    await this.ensureWarm();
+    while (this.enabled && !this.ready) await this.ensureWarm();
     if (!this.enabled || !this.capable || !this.embedder || !this.cache) return;
     const cache = this.cache;
     const embedder = this.embedder;
+    const batchChunkLimit = this.maxBatchSize;
     const pageDocs = documents.filter((d) => d.kind === 'page');
     const activeIds = new Set(pageDocs.map((d) => d.id));
 
@@ -209,11 +259,13 @@ export class SemanticSearchService {
     }
 
     let consecutiveFailures = 0;
+    let completedDocumentCount = 0;
 
     const storeDoc = (p: Pending, vectors: Float32Array[]): void => {
       const observed = vectors[0]?.length;
       if (observed !== undefined) cache.pinDims(observed);
       cache.store(p.doc.id, p.contentHash, p.doc.modifiedTs, vectors);
+      completedDocumentCount += 1;
     };
 
     const embedGroup = async (group: Pending[]): Promise<boolean> => {
@@ -264,7 +316,7 @@ export class SemanticSearchService {
         if (!this.enabled) break;
         batch.push(p);
         batchChunks += Math.max(1, p.chunks.length);
-        if (batchChunks >= EMBED_BATCH_CHUNK_LIMIT) {
+        if (batchChunks >= batchChunkLimit) {
           const carryOn = await embedGroup(batch);
           batch = [];
           batchChunks = 0;
@@ -283,7 +335,18 @@ export class SemanticSearchService {
       return;
     }
 
-    if (!this.enabled || this.cache !== cache) return;
+    if (!this.enabled || this.cache !== cache) {
+      log.info(
+        {
+          reason: this.enabled ? 'cache-replaced' : 'disabled',
+          completedDocumentCount,
+          scheduledDocumentCount: pending.length,
+          corpusDocumentCount: activeIds.size,
+        },
+        '[embeddings] abandoning embed pass before persistence',
+      );
+      return;
+    }
     cache.retain(activeIds);
     await cache.persist();
   }

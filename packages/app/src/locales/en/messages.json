@@ -127,6 +127,7 @@
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
     "0m4Snh": ["Skills reassigned"],
+    "0mlCvF": ["characters"],
     "0niWj3": [
       ["removingCount", "plural", { "one": ["#", " removed"], "other": ["#", " removed"] }]
     ],
@@ -366,6 +367,7 @@
     "3zDeFb": ["Ruminating…"],
     "3zyg_A": ["Ignore patterns"],
     "4-Phgi": ["Show or hide agents"],
+    "42QMZH": ["requests"],
     "438Fca": ["Cloned successfully, but could not open the project."],
     "43qzxu": ["DevOps"],
     "44DSl0": [
@@ -850,6 +852,9 @@
     "9tJX8r": ["By meaning"],
     "9uI_rE": ["Undo"],
     "9uRLEH": ["Couldn't open \"", ["name"], "\" — it isn't in the project's skills yet."],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["Refactoring"],
     "9x-lMu": ["In this repo — collaborators get copies via git."],
     "9xCnv8": ["Hide Terminal"],
@@ -891,6 +896,7 @@
     "AUV-TY": ["Thinking"],
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
+    "AXMOeM": ["performance"],
     "AYoYhU": ["Update failed: ", ["0"]],
     "AaC-CE": ["Empty board"],
     "AcK_r0": ["Claude CLI"],
@@ -978,6 +984,7 @@
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["Reverted \"", ["name"], "\" to the installed version"],
     "BjitBo": ["Download ", ["0"]],
     "BkGtRl": [
@@ -1049,6 +1056,7 @@
     "CbxTfe": ["Select block"],
     "CcaU4i": ["Edits apply live and save automatically to this theme."],
     "ChMshD": ["Quit ", ["appName"]],
+    "ChdabN": ["Clear a field to restore its default value."],
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "ClII5l": ["Press the sun or moon on “Custom” above to use this theme."],
     "ClTEde": ["Stage the selected passage in the agents panel, ready to extend and send."],
@@ -1322,6 +1330,7 @@
     "FgQ7XZ": ["Couldn't load your bug reports."],
     "FgRAvd": ["Logs & system info"],
     "Fhp4Gn": ["View plugin"],
+    "Fim5F3": ["embeddings"],
     "FiyNln": ["Jump to selected text in property"],
     "FjkaiT": ["Zoom out"],
     "Fjz6aJ": ["Send to a new chat"],
@@ -1731,6 +1740,7 @@
     "L4Cdd9": ["or create a new file <0/>"],
     "L6Hhh6": ["(root)"],
     "L6Ud-t": ["Couldn't load conflicts — reload to retry."],
+    "L7NFTZ": ["Enter a number of seconds between ", ["minimum"], " and ", ["maximum"], "."],
     "L83DKQ": ["PATH install failed: ", ["summary"]],
     "L8fKuc": ["Run this in your terminal"],
     "L9Y9Om": ["Top linked pages"],
@@ -2187,6 +2197,7 @@
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QVk3SK": ["This file was deleted on the incoming branch (modify-delete conflict)."],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
@@ -2255,6 +2266,7 @@
     "RGCCrg": ["Copy share link"],
     "RGkNeJ": ["Initialize a starter pack"],
     "RGptDW": ["OpenKnowledge moved a document"],
+    "RH0e_f": ["timeout"],
     "RJ3a8Z": ["Looking for <0>", ["lookingForUrl"], "</0>."],
     "RJMO4B": [
       "From the ",
@@ -2716,6 +2728,9 @@
     "XYZ7tp": ["Unresolvable"],
     "XYlJJT": ["Setting up"],
     "XZkdtg": ["Switch branch"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["Show hidden files"],
     "Xet9MX": ["Failed to load backlinks"],
     "Xewl6B": ["Your local copy is behind. Pull the latest changes, then open the link again."],
@@ -3189,6 +3204,7 @@
     "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Collapsible content block (Notion-style toggle)."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": [
       "Jump to the markdown source for the block at the cursor, centered and highlighted."
     ],
@@ -3380,6 +3396,7 @@
     "eGUbmF": ["Copy selected file or folder"],
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
+    "eMWRAs": ["Pages indexed: ", ["semanticIndexedCount"], " of ", ["semanticTotalCount"], "."],
     "eNOyTV": [
       "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
     ],
@@ -3651,6 +3668,9 @@
     "gyHDWC": ["Fix all with AI (", ["count"], ")"],
     "gyYvCN": ["Push my edits every"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
+    "h-RPqa": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a fixed 8-second timeout per attempt, unchanged by this setting."
+    ],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
     "h2N-1n": ["Installed in ", ["0"]],
@@ -3888,6 +3908,7 @@
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
     "jTUxaN": ["Enable Auto (Pull only)"],
     "jTdrn1": ["Couldn't check whether ", ["filePath"], " is still conflicted — retrying."],
+    "jWwQo6": ["batch"],
     "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
@@ -3945,13 +3966,6 @@
       "</0> — most local servers ignore it. Add one only if yours needs it."
     ],
     "kBNHN1": ["Navigation history"],
-    "kCNU4q": [
-      "Indexing your pages — ",
-      ["semanticIndexedCount"],
-      " of ",
-      ["semanticTotalCount"],
-      " ready. Results may be incomplete."
-    ],
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
     "kEiVv6": [
@@ -3984,6 +3998,7 @@
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
     ],
     "kSiB3X": ["Couldn't move to ", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
     ],
@@ -4467,6 +4482,7 @@
     "q3W2nd": ["Couldn't add that comment: ", ["0"]],
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
     "q4efaG": [["filePath"], " is no longer in this skill"],
+    "q5uZbJ": ["Missing pages are indexed when you search. Search again for fuller results."],
     "q6-JVU": ["Loading pages"],
     "q63KUv": ["Add MCP & skill"],
     "q7F5am": ["title"],
@@ -4922,6 +4938,9 @@
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["About"],
     "uyOQ4e": ["Theme copied as base16 YAML"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
@@ -5302,11 +5321,13 @@
     "zbymaY": [["0"], "m ago"],
     "zd00pH": ["Copy Path"],
     "zgSFyG": ["External link"],
+    "zkkEFa": ["Enter a whole number between ", ["minimum"], " and ", ["maximum"], "."],
     "zkz0Fg": ["Set up syncing"],
     "zlErBl": ["Page headings error response did not match RFC 9457"],
     "zo3Dl7": ["Toggle thumbnails"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{",
       ["date"],

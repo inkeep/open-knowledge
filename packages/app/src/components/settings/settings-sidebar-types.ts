@@ -1,6 +1,7 @@
 export interface SidebarSubsection {
   id: string;
   label: string;
+  keywords?: string[];
   anchor: string;
 }
 

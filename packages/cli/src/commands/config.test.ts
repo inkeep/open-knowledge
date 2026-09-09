@@ -236,6 +236,35 @@ describe('runValidate', () => {
     }
   });
 
+  test('recovered transport overrides report their default and source without rejecting the config', () => {
+    const project = makeTempProject();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const localPath = projectLocalConfigPath(project.cwd);
+      const source = 'search:\n  semantic:\n    enabled: true\n    docTimeoutMs: 900000\n';
+      writeConfigYaml(localPath, source);
+      const out: string[] = [];
+
+      const outcome = runValidate({ cwd: project.cwd, log: (message) => out.push(message) });
+
+      expect(outcome.ok).toBe(true);
+      const output = out.join('\n');
+      expect(output).toContain('1 config layer(s) had issues');
+      expect(output).toContain('Configuration loaded with defaults for invalid settings:');
+      expect(output).not.toContain('Invalid configuration');
+      expect(output).not.toContain('✓ Configuration valid');
+      expect(output).toContain('search.semantic.docTimeoutMs');
+      expect(output).toContain('between 1 and 600000; using default 30000');
+      expect(output).toContain(`${localPath}:4:19`);
+      expect(output).not.toContain('900000');
+      expect(warn).not.toHaveBeenCalled();
+      expect(readFileSync(localPath, 'utf-8')).toBe(source);
+    } finally {
+      warn.mockRestore();
+      project.cleanup();
+    }
+  });
+
   test('source-located error rendering through real loadConfig', () => {
     const project = makeTempProject();
     try {

@@ -421,3 +421,69 @@ describe('server.* (canonical listener/exposure surface)', () => {
     }
   });
 });
+
+describe('search.semantic embedding transport tuning', () => {
+  test('accepts positive integer overrides and keeps the legacy defaults when absent', () => {
+    const configured = ConfigSchema.parse({
+      search: {
+        semantic: {
+          maxBatchSize: 2,
+          maxBatchChars: 16_000,
+          docTimeoutMs: 120_000,
+        },
+      },
+    }).search.semantic;
+    expect(configured.maxBatchSize).toBe(2);
+    expect(configured.maxBatchChars).toBe(16_000);
+    expect(configured.docTimeoutMs).toBe(120_000);
+
+    const defaults = ConfigSchema.parse({}).search.semantic;
+    expect(defaults.maxBatchSize).toBe(96);
+    expect(defaults.maxBatchChars).toBe(96_000);
+    expect(defaults.docTimeoutMs).toBe(30_000);
+  });
+
+  test.each([
+    ['maxBatchSize', 2_048, 96],
+    ['maxBatchChars', 16_384_000, 96_000],
+    ['docTimeoutMs', 600_000, 30_000],
+  ] as const)(
+    '%s preserves range endpoints and defaults invalid values',
+    (field, max, fallback) => {
+      for (const valid of [1, max]) {
+        expect(
+          ConfigSchema.parse({ search: { semantic: { [field]: valid } } }).search.semantic[field],
+        ).toBe(valid);
+      }
+      for (const invalid of [
+        0,
+        -1,
+        1.5,
+        '2',
+        null,
+        max + 1,
+        2_147_483_648,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+      ]) {
+        const parsed = ConfigSchema.safeParse({ search: { semantic: { [field]: invalid } } });
+        expect(parsed.success).toBe(true);
+        if (parsed.success) {
+          expect(parsed.data.search.semantic[field]).toBe(fallback);
+        }
+      }
+    },
+  );
+
+  test.each(['maxBatchSize', 'maxBatchChars', 'docTimeoutMs'] as const)(
+    '%s is project-local, non-agent-settable, and live-reloaded',
+    (field) => {
+      expect(getLeafFieldMeta(ConfigSchema, ['search', 'semantic', field])).toMatchObject({
+        scope: 'project-local',
+        defaultScope: 'project-local',
+        agentSettable: false,
+        reload: 'live',
+      });
+    },
+  );
+});

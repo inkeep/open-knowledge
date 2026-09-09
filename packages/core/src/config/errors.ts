@@ -43,6 +43,15 @@ const RemovedKeyErrorSchema = z.object({
   redirect: z.string(),
   source: ConfigIssueSourceSchema.optional(),
 });
+const ValueFallbackIssueSchema = z.object({
+  path: z.array(z.string()),
+  message: z.string(),
+  source: ConfigIssueSourceSchema.omit({ snippet: true }).optional(),
+});
+const ValueFallbackDiagnosticSchema = z.object({
+  code: z.literal('VALUE_FALLBACK'),
+  issues: z.array(ValueFallbackIssueSchema),
+});
 
 export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
   YamlParseErrorSchema,
@@ -87,6 +96,7 @@ export type KnownConfigValidationError = z.infer<typeof KnownConfigValidationErr
 
 export const ConfigDiagnosticSchema = z.discriminatedUnion('code', [
   RemovedKeyErrorSchema,
+  ValueFallbackDiagnosticSchema,
   YamlParseErrorSchema,
   SchemaInvalidErrorSchema,
   UnreadableErrorSchema,
@@ -95,8 +105,24 @@ export const ConfigDiagnosticSchema = z.discriminatedUnion('code', [
 export type ConfigDiagnostic = z.infer<typeof ConfigDiagnosticSchema>;
 
 export type RemovedKeyDiagnostic = Extract<ConfigDiagnostic, { code: 'REMOVED_KEY' }>;
+export type ValueFallbackDiagnostic = Extract<ConfigDiagnostic, { code: 'VALUE_FALLBACK' }>;
+export type RecoveredConfigDiagnostic = Extract<
+  ConfigDiagnostic,
+  { code: 'REMOVED_KEY' | 'VALUE_FALLBACK' }
+>;
 
 export const ScopedConfigDiagnosticSchema = z.discriminatedUnion('code', [
+  z.object({
+    code: z.literal('VALUE_FALLBACK'),
+    scope: WriteScopeSchema,
+    file: z.string(),
+    issues: z.array(
+      ValueFallbackIssueSchema.omit({ source: true }).extend({
+        line: ConfigIssueSourceSchema.shape.line.optional(),
+        column: ConfigIssueSourceSchema.shape.column.optional(),
+      }),
+    ),
+  }),
   z.object({
     code: z.literal('REMOVED_KEY'),
     scope: WriteScopeSchema,
@@ -180,6 +206,22 @@ function scopeGloss(scope: FieldScope): string {
 }
 
 export function humanFormat(error: ConfigValidationError): string {
+  if (error.code === 'VALUE_FALLBACK') {
+    const parsed = ValueFallbackDiagnosticSchema.safeParse(error);
+    if (parsed.success) {
+      if (parsed.data.issues.length === 0) {
+        return 'Configuration loaded with defaults for invalid settings.';
+      }
+      const lines = ['Configuration loaded with defaults for invalid settings:'];
+      for (const issue of parsed.data.issues) {
+        if (issue.source) {
+          lines.push(`  ${issue.source.file}:${issue.source.line}:${issue.source.column}`);
+        }
+        lines.push(`  ${issue.path.join('.')}: ${issue.message}`);
+      }
+      return lines.join('\n');
+    }
+  }
   if (!isKnownConfigError(error)) {
     return error.message ?? `Unknown error (${error.code}).`;
   }

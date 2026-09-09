@@ -5,10 +5,20 @@ import {
   type ConfigIssue,
   type ConfigValidationError,
   isKnownConfigError,
-  type RemovedKeyDiagnostic,
+  type RecoveredConfigDiagnostic,
+  type ValueFallbackDiagnostic,
 } from './errors.ts';
 import { detectRemovedKeys, stripRemovedKeys } from './removed-keys.ts';
-import { type Config, ConfigSchema } from './schema.ts';
+import {
+  type Config,
+  ConfigSchema,
+  MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MAX_EMBEDDINGS_MAX_BATCH_CHARS,
+  MAX_EMBEDDINGS_MAX_BATCH_SIZE,
+  MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MIN_EMBEDDINGS_MAX_BATCH_CHARS,
+  MIN_EMBEDDINGS_MAX_BATCH_SIZE,
+} from './schema.ts';
 import { locateIssue } from './source-locator.ts';
 
 export interface ReadConfigSafelyOptions {
@@ -23,7 +33,7 @@ export type ReadConfigSafelyResult =
       valid: true;
       value: Config;
       source?: string;
-      diagnostics: RemovedKeyDiagnostic[];
+      diagnostics: RecoveredConfigDiagnostic[];
     }
   | {
       valid: false;
@@ -74,6 +84,51 @@ function attemptSideline(
     );
     return undefined;
   }
+}
+
+function rawValueAtPath(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (current === null || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = Reflect.get(current, segment);
+  }
+  return current;
+}
+
+function detectEmbeddingsTransportFallbacks(input: {
+  rawConfig: unknown;
+  config: Config;
+  doc: Document;
+  source: string;
+  absPath: string;
+}): ValueFallbackDiagnostic[] {
+  const issues: ValueFallbackDiagnostic['issues'] = [];
+  const transportFields = [
+    ['maxBatchSize', MIN_EMBEDDINGS_MAX_BATCH_SIZE, MAX_EMBEDDINGS_MAX_BATCH_SIZE],
+    ['maxBatchChars', MIN_EMBEDDINGS_MAX_BATCH_CHARS, MAX_EMBEDDINGS_MAX_BATCH_CHARS],
+    ['docTimeoutMs', MIN_EMBEDDINGS_DOC_TIMEOUT_MS, MAX_EMBEDDINGS_DOC_TIMEOUT_MS],
+  ] as const;
+  for (const [field, minimum, maximum] of transportFields) {
+    const path = ['search', 'semantic', field];
+    const raw = rawValueAtPath(input.rawConfig, path);
+    const effective = input.config.search.semantic[field];
+    if (raw === undefined || raw === effective) continue;
+    const message = `Expected an integer between ${minimum} and ${maximum}; using default ${effective}.`;
+    const located = locateIssue({
+      file: input.absPath,
+      source: input.source,
+      doc: input.doc,
+      path,
+    });
+    issues.push({
+      path,
+      message,
+      ...(located !== undefined
+        ? { source: { file: located.file, line: located.line, column: located.column } }
+        : {}),
+    });
+  }
+  return issues.length > 0 ? [{ code: 'VALUE_FALLBACK', issues }] : [];
 }
 
 export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSafelyResult {
@@ -144,5 +199,15 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
     };
   }
 
-  return { valid: true, value: parsed.data, source: absPath, diagnostics: removedKeyDiagnostics };
+  const diagnostics: RecoveredConfigDiagnostic[] = [
+    ...removedKeyDiagnostics,
+    ...detectEmbeddingsTransportFallbacks({
+      rawConfig: cleaned,
+      config: parsed.data,
+      doc,
+      source,
+      absPath,
+    }),
+  ];
+  return { valid: true, value: parsed.data, source: absPath, diagnostics };
 }

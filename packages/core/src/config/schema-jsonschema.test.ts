@@ -396,3 +396,43 @@ describe('loose-mode forgiveness', () => {
     expect(config.bridge.flushOnHide.enabled).toBe(false);
   });
 });
+
+describe('semantic embedding transport JSON schema', () => {
+  test('publishes bounded-integer constraints and legacy defaults', () => {
+    const root = jsonSchema as {
+      properties?: {
+        search?: {
+          properties?: {
+            semantic?: { properties?: Record<string, unknown> };
+          };
+        };
+      };
+    };
+    const properties = root.properties?.search?.properties?.semantic?.properties;
+
+    expect(properties?.maxBatchSize).toMatchObject({
+      type: 'integer',
+      minimum: 1,
+      maximum: 2_048,
+      default: 96,
+    });
+    expect(properties?.maxBatchChars).toMatchObject({
+      type: 'integer',
+      minimum: 1,
+      maximum: 16_384_000,
+      default: 96_000,
+    });
+    expect(properties?.docTimeoutMs).toMatchObject({
+      type: 'integer',
+      minimum: 1,
+      maximum: 600_000,
+      default: 30_000,
+    });
+  });
+
+  test('schema tooling rejects an excessive timeout while runtime loading uses its default', () => {
+    const input = { search: { semantic: { docTimeoutMs: 2_147_483_648 } } };
+    expect(validate(input)).toBe(false);
+    expect(ConfigSchema.parse(input).search.semantic.docTimeoutMs).toBe(30_000);
+  });
+});

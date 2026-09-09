@@ -112,6 +112,13 @@ export function SettingsDialogShell({
     const tryFlash = (): boolean => {
       const el = container.querySelector<HTMLElement>(`[data-field="${fieldFlash.path}"]`);
       if (!el) return false;
+      const closedDisclosure = el.closest('[data-slot="collapsible"][data-state="closed"]');
+      if (closedDisclosure) {
+        closedDisclosure
+          .querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')
+          ?.click();
+        return false;
+      }
       el.scrollIntoView({ block: 'center' });
       el.classList.add(FLASH_CLASS);
       flashed = el;
@@ -119,11 +126,23 @@ export function SettingsDialogShell({
       return true;
     };
 
-    if (!tryFlash()) {
-      observer = new MutationObserver(() => {
-        if (tryFlash()) observer?.disconnect();
-      });
-      observer.observe(container, { childList: true, subtree: true });
+    observer = new MutationObserver(() => {
+      if (!tryFlash()) return;
+      observer?.disconnect();
+      if (giveUpTimer) {
+        clearTimeout(giveUpTimer);
+        giveUpTimer = null;
+      }
+    });
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    });
+    if (tryFlash()) {
+      observer.disconnect();
+    } else {
       giveUpTimer = setTimeout(() => observer?.disconnect(), 4000);
     }
 
@@ -198,7 +217,26 @@ export function SettingsDialogShell({
             { id: 'sharing', label: t`Config sharing`, anchor: 'section:sharing' },
           ] satisfies SidebarSubsection[],
         },
-        { id: 'search', label: t`Search` },
+        {
+          id: 'search',
+          label: t`Search`,
+          subsections: [
+            {
+              id: 'performance',
+              label: t`Embedding request settings`,
+              anchor: 'search.semantic.maxBatchSize',
+              keywords: [
+                t({ message: 'batch', context: 'settings search keyword' }),
+                t({ message: 'characters', context: 'settings search keyword' }),
+                t({ message: 'timeout', context: 'settings search keyword' }),
+                t({ message: 'embeddings', context: 'settings search keyword' }),
+                t({ message: 'requests', context: 'settings search keyword' }),
+                t({ message: 'performance', context: 'settings search keyword' }),
+                'Ollama',
+              ],
+            },
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
         ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Remote control` }] : []),

@@ -1730,6 +1730,10 @@ msgstr "新增這些檔案"
 msgid "Adds these folders"
 msgstr "新增這些資料夾"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr "為速度較慢或記憶體受限的嵌入伺服器調整索引請求的大小與逾時時間。大多數情況下應保持預設值。"
+
 #: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -2291,6 +2295,11 @@ msgstr "反向連結的回應結構與預期不符。"
 msgid "Base branch"
 msgstr "基底分支"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "batch"
+msgstr "批次"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "becomes a symlink"
 msgstr "變成符號連結"
@@ -2637,6 +2646,15 @@ msgstr "變更會自動儲存。"
 msgid "Changes saved automatically."
 msgstr "變更已自動儲存。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr "每次索引請求的字元預算"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "characters"
+msgstr "字元"
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "檢查更新"
@@ -2835,6 +2853,10 @@ msgstr "清除"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
 msgstr "清除 {keyName}"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Clear a field to restore its default value."
+msgstr "清空欄位即可還原預設值。"
 
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
@@ -5345,6 +5367,16 @@ msgid "Embed an image with optional alt text."
 msgstr "嵌入一張圖片，可選填替代文字。"
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr "嵌入請求設定"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "embeddings"
+msgstr "嵌入"
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "嵌入服務 API 金鑰"
 
@@ -5510,6 +5542,10 @@ msgstr "請輸入資料夾名稱（例如 brain）。"
 msgid "Enter a name for this theme."
 msgstr "輸入這個主題的名稱。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a number of seconds between {minimum} and {maximum}."
+msgstr "請輸入介於 {minimum} 和 {maximum} 之間的秒數。"
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "請輸入介於 1 到 65535 之間的連接埠。"
@@ -5541,6 +5577,10 @@ msgstr "請輸入有效的 URL（例如 https://api.openai.com/v1）。"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a valid URL, for example https://notes.example.com"
 msgstr "輸入有效的 URL，例如 https://notes.example.com"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a whole number between {minimum} and {maximum}."
+msgstr "請輸入介於 {minimum} 和 {maximum} 之間的整數。"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -6008,6 +6048,10 @@ msgstr "更新附件位置失敗——{detail}"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "更新 markdownlint 規則失敗"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr "更新效能設定失敗——{detail}"
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6845,6 +6889,10 @@ msgstr "你覺得 OpenKnowledge 如何？"
 msgid "How does sharing work?"
 msgstr "分享是怎麼運作的？"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a fixed 8-second timeout per attempt, unchanged by this setting."
+msgstr "OpenKnowledge 建立索引時等待每個嵌入請求的時間。搜尋請求每次嘗試的逾時時間固定為 8 秒，不受此設定影響。"
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "如何在「問題」、編輯器診斷、稽核和代理工具中報告缺少的專案本機文件、檔案和影像。"
@@ -7113,9 +7161,9 @@ msgstr "由於無法保存項目設置，索引維護已停止。檢查專案檔
 msgid "Indexed {embedded} of {total} pages."
 msgstr "已索引 {total} 個頁面中的 {embedded} 個。"
 
-#: src/components/CommandPalette.tsx
-msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
-msgstr "正在索引你的頁面——{semanticTotalCount} 個中已完成 {semanticIndexedCount} 個。結果可能不完整。"
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr "索引請求逾時（秒）"
 
 #: src/components/FrontmatterRow.tsx
 msgid "inherited"
@@ -7668,6 +7716,10 @@ msgstr "淺色"
 msgid "Light, dark, or follow the OS."
 msgstr "淺色、深色，或跟隨系統。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr "限制每個請求傳送的文字總量。超出預算的單一區塊會單獨傳送，文件不會再次分割。"
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "第 {displayLine} 行"
@@ -7989,6 +8041,10 @@ msgstr "正在尋找 <0>{lookingForUrl}</0>。"
 msgid "Lost connection to \"{docName}\"."
 msgstr "與「{docName}」的連線已中斷。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr "調低此值可減少每個請求的記憶體占用與工作量。批次越小，請求越多，整體索引速度可能變慢。"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "在每個資料夾中維護 generated 索引？"
@@ -8099,6 +8155,10 @@ msgstr "最多 {MAX_ATTACHMENTS} 個附件"
 msgid "Maximum agents already running"
 msgstr "同時執行的代理已達上限"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr "每次索引請求的最大文字區塊數"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
 msgstr "MCP 自動修復失敗"
@@ -8185,6 +8245,10 @@ msgstr "頁面不存在——點一下可建立"
 #: src/components/LinksPanel.tsx
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "頁面不存在：{linkTitle}。點一下可建立。"
+
+#: src/components/CommandPalette.tsx
+msgid "Missing pages are indexed when you search. Search again for fuller results."
+msgstr "尚未建立索引的頁面會在搜尋時建立索引。再次搜尋可取得更完整的結果。"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Missing palette colors"
@@ -10066,6 +10130,10 @@ msgstr "page-name"
 msgid "Pages are embedded the first time a search needs them."
 msgstr "頁面會在搜尋第一次需要它們的時候產生嵌入向量。"
 
+#: src/components/CommandPalette.tsx
+msgid "Pages indexed: {semanticIndexedCount} of {semanticTotalCount}."
+msgstr "已建立索引的頁面：{semanticIndexedCount} / {semanticTotalCount}。"
+
 #: src/editor/components/Mermaid.tsx
 msgid "Pan down"
 msgstr "向下平移"
@@ -10209,6 +10277,11 @@ msgstr "待處理"
 #: src/components/acp/working-status.ts
 msgid "Percolating…"
 msgstr "醞釀中…"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "performance"
+msgstr "效能"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
@@ -11309,6 +11382,11 @@ msgstr "找不到儲存庫——它可能不存在，或所用帳戶可能沒有
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "找不到儲存庫。它可能已被重新命名、刪除或移動。"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "requests"
+msgstr "請求"
+
 #: src/components/AddPropertyNameField.tsx
 msgid "required"
 msgstr "必填"
@@ -11662,6 +11740,7 @@ msgstr "儲存這則註解（Enter）"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Saved"
 msgstr "已儲存"
 
@@ -14328,6 +14407,11 @@ msgstr "收拾中…"
 #: src/components/TimelinePanel.tsx
 msgid "Timeline"
 msgstr "時間軸"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "timeout"
+msgstr "逾時"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Tint and badge files that have lint or link problems, without opening them."

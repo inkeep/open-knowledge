@@ -12,8 +12,8 @@ const submitRow = (page: Page) => page.locator('[data-testid="command-palette-se
 const emptyNotice = (page: Page) => page.locator('[data-testid="command-palette-semantic-empty"]');
 const resultsGroup = (page: Page) =>
   page.locator('[data-testid="command-palette-semantic-results"]');
-const indexingBanner = (page: Page) =>
-  page.locator('[data-testid="command-palette-semantic-indexing"]');
+const coverageBanner = (page: Page) =>
+  page.locator('[data-testid="command-palette-semantic-coverage"]');
 
 const CAPABLE_STATUS = {
   enabled: true,
@@ -212,12 +212,13 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await expect(submitRow(page)).toBeVisible();
   });
 
-  test('shows an indexing banner with coverage while the corpus is not fully embedded', async ({
+  test('explains indexing on search and refreshes coverage until complete', async ({
     page,
     api,
   }) => {
+    let embedded = 0;
     await page.route('**/api/semantic-status', async (route) => {
-      await route.fulfill({ json: { ...CAPABLE_STATUS, embedded: 1, total: 4 } });
+      await route.fulfill({ json: { ...CAPABLE_STATUS, embedded, total: 4 } });
     });
     await api.seedDocs([{ name: 's007', markdown: '# s007\n\nBody.' }]);
     await page.setViewportSize(DESKTOP_VIEWPORT);
@@ -225,11 +226,19 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
     await openPalette(page);
     await semanticPill(page).click();
-    await expect(indexingBanner(page)).toBeVisible();
-    await expect(indexingBanner(page)).toContainText('1 of 4');
+    await expect(coverageBanner(page)).toHaveText(
+      'Pages indexed: 0 of 4. Missing pages are indexed when you search. Search again for fuller results.',
+    );
+    await expect(coverageBanner(page).getByRole('status')).toHaveText('Pages indexed: 0 of 4.');
+    await expect(coverageBanner(page).getByLabel('Loading')).toHaveCount(0);
+    embedded = 1;
+    await expect(coverageBanner(page)).toContainText('Pages indexed: 1 of 4.');
+    await expect(coverageBanner(page).getByRole('status')).toHaveText('Pages indexed: 1 of 4.');
+    embedded = 4;
+    await expect(coverageBanner(page)).toBeHidden();
   });
 
-  test('no indexing banner when the corpus is fully embedded', async ({ page, api }) => {
+  test('no coverage banner when the corpus is fully embedded', async ({ page, api }) => {
     await fakeCapability(page);
     await api.seedDocs([{ name: 's008', markdown: '# s008\n\nBody.' }]);
     await page.setViewportSize(DESKTOP_VIEWPORT);
@@ -238,6 +247,6 @@ test.describe('command-palette semantic mode — gate, pill, submit, sticky, esc
     await openPalette(page);
     await semanticPill(page).click();
     await expect(emptyNotice(page)).toBeVisible();
-    await expect(indexingBanner(page)).toBeHidden();
+    await expect(coverageBanner(page)).toBeHidden();
   });
 });

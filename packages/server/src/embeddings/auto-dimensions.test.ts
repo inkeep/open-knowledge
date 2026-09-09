@@ -5,7 +5,8 @@ import {
   createWorkspaceSearchDocument,
   type WorkspaceSearchDocument,
 } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getLogger } from '../logger.ts';
 import { createOpenAiEmbedder } from './embedder.ts';
 import {
   createFakeEmbeddingsFetch,
@@ -131,17 +132,30 @@ describe('auto-detected embedding dimensions', () => {
   });
 
   test('a query-side size change recovers even when no document changed', async () => {
-    const { service } = makeService({ dims: 1024, driftDims: 1536, driftAfterRequests: 1 });
-    await service.embedCorpus(corpus);
-    expect(service.getStatus().embeddedCount).toBe(corpus.length);
+    const info = vi.spyOn(getLogger('embeddings'), 'info');
+    try {
+      const { service } = makeService({ dims: 1024, driftDims: 1536, driftAfterRequests: 1 });
+      await service.embedCorpus(corpus);
+      expect(service.getStatus().embeddedCount).toBe(corpus.length);
 
-    expect(await service.queryScores('session credentials', corpus)).toBeNull();
-    expect(service.getStatus().ready).toBe(false);
+      expect(await service.queryScores('session credentials', corpus)).toBeNull();
+      expect(service.getStatus().ready).toBe(false);
+      expect(info).toHaveBeenCalledWith(
+        {
+          reason: 'dimensions',
+          retainedInMemoryDocumentCount: 0,
+          unloadedInMemoryDocumentCount: corpus.length,
+        },
+        '[embeddings] resetting embedder',
+      );
 
-    await service.embedCorpus(corpus);
-    const scores = await service.queryScores('session credentials', corpus);
-    expect(scores?.size).toBe(corpus.length);
-    expect(readManifest().dims).toBe(1536);
+      await service.embedCorpus(corpus);
+      const scores = await service.queryScores('session credentials', corpus);
+      expect(scores?.size).toBe(corpus.length);
+      expect(readManifest().dims).toBe(1536);
+    } finally {
+      info.mockRestore();
+    }
   });
 
   test('survives exactly MAX_DIMS_DRIFT_RESETS size changes, then gives up', async () => {
@@ -202,7 +216,12 @@ describe('auto-detected embedding dimensions', () => {
     expect(await service.queryScores('session credentials', corpus)).toBeNull();
     expect(requests.length).toBe(spent);
 
-    service.applyConfig({ enabled: true, providerFingerprint: `${BASE_URL}|other|auto` });
+    service.applyConfig({
+      enabled: true,
+      providerFingerprint: `${BASE_URL}|other|auto`,
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     await service.embedCorpus(nextCorpus());
     await service.embedCorpus(nextCorpus());
     expect(requests.length).toBeGreaterThan(spent);
@@ -218,6 +237,8 @@ describe('auto-detected embedding dimensions', () => {
     first.service.applyConfig({
       enabled: true,
       providerFingerprint: `${BASE_URL}|another-model|auto`,
+      transportFingerprint: '',
+      maxBatchSize: 96,
     });
     expect(first.service.getStatus().embeddedCount).toBe(0);
 

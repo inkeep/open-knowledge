@@ -43,6 +43,17 @@ function toScoped(
   file: string,
 ): ScopedConfigDiagnostic {
   switch (diagnostic.code) {
+    case 'VALUE_FALLBACK':
+      return {
+        code: 'VALUE_FALLBACK',
+        scope,
+        file,
+        issues: diagnostic.issues.map((issue) => ({
+          path: issue.path,
+          message: issue.message,
+          ...(issue.source ? { line: issue.source.line, column: issue.source.column } : {}),
+        })),
+      };
     case 'REMOVED_KEY':
       return {
         code: 'REMOVED_KEY',

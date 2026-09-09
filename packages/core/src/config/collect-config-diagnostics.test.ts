@@ -174,6 +174,40 @@ describe('collectConfigDiagnostics', () => {
     expect(existsSync(file)).toBe(true);
   });
 
+  test('recovered transport values surface one value-free finding without renaming the file', () => {
+    const file = writeScopeRaw(
+      'project-local',
+      'search:\n  semantic:\n    maxBatchSize: PRIVATE_INVALID_VALUE\n    docTimeoutMs: 900000\n',
+    );
+
+    const { diagnostics } = collect();
+
+    expect(diagnostics).toEqual([
+      {
+        code: 'VALUE_FALLBACK',
+        scope: 'project-local',
+        file,
+        issues: [
+          {
+            path: ['search', 'semantic', 'maxBatchSize'],
+            message: 'Expected an integer between 1 and 2048; using default 96.',
+            line: 3,
+            column: 19,
+          },
+          {
+            path: ['search', 'semantic', 'docTimeoutMs'],
+            message: 'Expected an integer between 1 and 600000; using default 30000.',
+            line: 4,
+            column: 19,
+          },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain('PRIVATE_INVALID_VALUE');
+    expect(JSON.stringify(diagnostics)).not.toContain('900000');
+    expect(existsSync(file)).toBe(true);
+  });
+
   test('an unparseable layer surfaces a value-free YAML_PARSE finding without renaming the file', () => {
     const file = writeScopeRaw('project', 'content:\n  dir: [invalid yaml');
 

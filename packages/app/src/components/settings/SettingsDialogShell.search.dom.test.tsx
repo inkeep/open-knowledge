@@ -1,5 +1,5 @@
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -64,7 +64,10 @@ const FAKE_RULE_CATALOG = [
   },
 ];
 
-vi.doMock('@inkeep/open-knowledge-core', () => ({
+vi.doMock('@inkeep/open-knowledge-core', async () => ({
+  ...(await vi.importActual<typeof import('@inkeep/open-knowledge-core')>(
+    '@inkeep/open-knowledge-core',
+  )),
   get SHOW_INSTALL_SKILL() {
     return true;
   },
@@ -77,6 +80,7 @@ vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
     return (
       <div data-testid="settings-body-probe">
         {props.activeId === 'preferences' ? <div data-field="editor.wordWrap" /> : null}
+        {props.activeId === 'search' ? <SearchSection /> : null}
       </div>
     );
   },
@@ -112,6 +116,7 @@ vi.doMock('@/lib/handoff/use-claude-desktop-integration', () => ({
 }));
 
 const { SettingsDialogShell } = await import('./SettingsDialogShell');
+const { SearchSection } = await import('./SearchSection');
 
 function latestProbe(): BodyProps | undefined {
   return probeProps[probeProps.length - 1];
@@ -130,6 +135,7 @@ describe('settings dialog search', () => {
   afterEach(() => {
     cleanup();
     consoleErrorSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   test('empty query shows the plain group nav, no results list', () => {
@@ -221,5 +227,56 @@ describe('settings dialog search', () => {
     });
     expect(scrollSpy).toHaveBeenCalled();
     scrollSpy.mockRestore();
+  });
+
+  test('search reveals the tuning fields and reopens them after an explicit collapse', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const scrollSpy = vi
+      .spyOn(HTMLElement.prototype, 'scrollIntoView')
+      .mockImplementation(() => {});
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    for (const query of ['timeout', 'Ollama']) {
+      await user.type(screen.getByTestId('settings-search-input'), query);
+      await user.click(
+        await screen.findByTestId('settings-search-result-subsection:search:performance'),
+      );
+
+      expect(await screen.findByTestId('settings-search-max-batch-size')).toBeTruthy();
+      expect(screen.getByTestId('settings-search-max-batch-chars')).toBeTruthy();
+      expect(screen.getByTestId('settings-search-doc-timeout-seconds')).toBeTruthy();
+      expect(
+        screen
+          .getByTestId('settings-search-performance')
+          .classList.contains('animate-settings-nav-flash'),
+      ).toBe(true);
+      expect(scrollSpy).toHaveBeenCalled();
+      await user.click(screen.getByTestId('settings-search-performance-trigger'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('settings-search-max-batch-size')).toBeNull(),
+      );
+    }
+
+    scrollSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('successful disclosure navigation retires its give-up timer and clears the flash', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+    await user.type(screen.getByTestId('settings-search-input'), 'timeout');
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByTestId('settings-search-result-subsection:search:performance'));
+    await act(async () => {});
+    const disclosure = screen.getByTestId('settings-search-performance');
+
+    expect(screen.getByTestId('settings-search-max-batch-size')).toBeTruthy();
+    expect(disclosure.classList.contains('animate-settings-nav-flash')).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(750));
+    expect(disclosure.classList.contains('animate-settings-nav-flash')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    fetchSpy.mockRestore();
   });
 });

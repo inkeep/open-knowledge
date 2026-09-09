@@ -153,6 +153,7 @@
     "0jD-Gn": ["Uma base de conhecimento de equipe, uma wiki pessoal, documentação de projeto..."],
     "0kTAXe": ["Abrir a fonte: ", ["mirrorSrc"]],
     "0m4Snh": ["Habilidades reatribuídas"],
+    "0mlCvF": ["caracteres"],
     "0niWj3": [
       [
         "removingCount",
@@ -431,6 +432,7 @@
     "3zDeFb": ["Remoendo…"],
     "3zyg_A": ["Padrões de exclusão"],
     "4-Phgi": ["Mostrar ou ocultar os agentes"],
+    "42QMZH": ["solicitações"],
     "438Fca": ["Clonado com sucesso, mas não foi possível abrir o projeto."],
     "43qzxu": ["DevOps"],
     "44DSl0": [
@@ -1001,6 +1003,9 @@
       ["name"],
       "\" — ela ainda não está entre as habilidades do projeto."
     ],
+    "9wIf0H": [
+      "Reduza este valor para diminuir o uso de memória e o trabalho por requisição. Lotes menores enviam mais requisições e podem deixar a indexação mais lenta no geral."
+    ],
     "9wQrUU": ["Refatoração"],
     "9x-lMu": ["Neste repositório — colaboradores recebem cópias via git."],
     "9xCnv8": ["Ocultar o Terminal"],
@@ -1048,6 +1053,7 @@
     "AUV-TY": ["Pensando"],
     "AVW-K9": ["Falha ao carregar as páginas órfãs"],
     "AWOSPo": ["Aproximar"],
+    "AXMOeM": ["desempenho"],
     "AYoYhU": ["Falha na atualização: ", ["0"]],
     "AaC-CE": ["Quadro vazio"],
     "AcK_r0": ["Claude CLI"],
@@ -1145,6 +1151,7 @@
     "Bdha5y": ["Publicando..."],
     "BeWTQy": ["Carregando pacotes iniciais"],
     "BgV29F": ["Campo de busca do editor visual em foco"],
+    "Bgaa_U": ["Falha ao atualizar a configuração de desempenho — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
@@ -1230,6 +1237,7 @@
     "CbxTfe": ["Selecionar bloco"],
     "CcaU4i": ["As alterações são aplicadas imediatamente e salvas automaticamente neste tema."],
     "ChMshD": ["Encerrar o ", ["appName"]],
+    "ChdabN": ["Limpe um campo para restaurar seu valor padrão."],
     "Ck9XRt": ["Não deu para salvar a chave — tente de novo."],
     "ClII5l": ["Pressione o sol ou a lua em “Custom” acima para usar este tema."],
     "ClTEde": [
@@ -1525,6 +1533,7 @@
     "FgQ7XZ": ["Não foi possível carregar seus relatórios de erro."],
     "FgRAvd": ["Logs e informações do sistema"],
     "Fhp4Gn": ["Ver o plugin"],
+    "Fim5F3": ["embeddings"],
     "FiyNln": ["Ir para o texto selecionado na propriedade"],
     "FjkaiT": ["Afastar"],
     "Fjz6aJ": ["Enviar para um novo chat"],
@@ -2002,6 +2011,7 @@
     "L4Cdd9": ["ou crie um novo arquivo <0/>"],
     "L6Hhh6": ["(raiz)"],
     "L6Ud-t": ["Não foi possível carregar os conflitos. Recarregue para tentar de novo."],
+    "L7NFTZ": ["Insira um número de segundos entre ", ["minimum"], " e ", ["maximum"], "."],
     "L83DKQ": ["A instalação no PATH falhou: ", ["summary"]],
     "L8fKuc": ["Rode isto no seu terminal"],
     "L9Y9Om": ["Páginas mais ligadas"],
@@ -2500,6 +2510,7 @@
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
+    "QRSdsO": ["Tempo limite da requisição de indexação (segundos)"],
     "QVk3SK": ["Este arquivo foi excluído no ramo recebido (conflito modify-delete)."],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
@@ -2573,6 +2584,7 @@
     "RGCCrg": ["Copiar link de compartilhamento"],
     "RGkNeJ": ["Inicializar um pacote inicial"],
     "RGptDW": ["OpenKnowledge moveu um documento"],
+    "RH0e_f": ["tempo limite"],
     "RJ3a8Z": ["Procurando <0>", ["lookingForUrl"], "</0>."],
     "RJMO4B": [
       "Do plugin ",
@@ -3123,6 +3135,9 @@
     "XYZ7tp": ["Não resolvido"],
     "XYlJJT": ["Configurando"],
     "XZkdtg": ["Trocar de ramo"],
+    "Xafwko": [
+      "Limita o texto combinado enviado em cada requisição. Um fragmento maior é enviado sozinho; os documentos não são divididos novamente."
+    ],
     "XcGbim": ["Mostrar os arquivos ocultos"],
     "Xet9MX": ["Falha ao carregar os retrolinks"],
     "Xewl6B": ["Sua cópia local está atrasada. Traga as últimas alterações e abra o link de novo."],
@@ -3639,6 +3654,7 @@
     "cRm498": ["Ainda não há arquivos de esquema neste projeto — crie um para começar a validar."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Bloco de conteúdo recolhível (alternador no estilo Notion)."],
+    "cTrVa1": ["Configurações das requisições de embeddings"],
     "cU-seF": ["Ir para o código markdown do bloco onde está o cursor, centralizado e destacado."],
     "cUK8lW": [
       [
@@ -3867,6 +3883,13 @@
     "eGUbmF": ["Copiar o arquivo ou a pasta selecionados"],
     "eJitUk": ["Enviar do computador"],
     "eKThTQ": ["Falha ao reordenar"],
+    "eMWRAs": [
+      "Páginas indexadas: ",
+      ["semanticIndexedCount"],
+      " de ",
+      ["semanticTotalCount"],
+      "."
+    ],
     "eNOyTV": [
       "Você não tem permissão para fazer push neste repositório. Automático (somente Pull) ainda pode manter sua cópia atualizada."
     ],
@@ -4172,6 +4195,9 @@
     "gyHDWC": ["Corrigir tudo com IA (", ["count"], ")"],
     "gyYvCN": ["Enviar minhas edições a cada"],
     "h-AdvS": ["As pastas e os modelos já estão aqui, então não há nada a acrescentar."],
+    "h-RPqa": [
+      "Quanto tempo o OpenKnowledge aguarda cada solicitação de embedding durante a indexação. As solicitações de pesquisa têm um tempo limite fixo de 8 segundos por tentativa, que não é alterado por esta configuração."
+    ],
     "h06R3C": ["Nenhuma página está sem links de saída no grafo."],
     "h16FyT": ["Listas"],
     "h2N-1n": ["Instalado em ", ["0"]],
@@ -4431,6 +4457,7 @@
       ["filePath"],
       " ainda está em conflito — tentando novamente."
     ],
+    "jWwQo6": ["lote"],
     "jWzDfC": ["Verificando quais ferramentas de IA você tem"],
     "jZ_E5M": ["Falha ao buscar — veja os logs do servidor para os detalhes."],
     "j_Z6g7": ["Padrão compartilhado"],
@@ -4488,13 +4515,6 @@
       "</0> — a maioria dos servidores locais ignora. Adicione uma só se o seu precisar."
     ],
     "kBNHN1": ["Histórico de navegação"],
-    "kCNU4q": [
-      "Indexando suas páginas — ",
-      ["semanticIndexedCount"],
-      " de ",
-      ["semanticTotalCount"],
-      " prontas. Os resultados podem estar incompletos."
-    ],
     "kCjkGY": ["Isto pode demorar um pouco. Seu conteúdo markdown é preservado."],
     "kCqCyf": ["Abre o painel de diagnósticos de análise do CodeMirror."],
     "kEiVv6": [
@@ -4527,6 +4547,7 @@
       "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
     ],
     "kSiB3X": ["Não foi possível mover para ", ["trashNoun"]],
+    "kUgGPO": ["Orçamento de caracteres por requisição de indexação"],
     "kV2YZv": [
       "Não vê <0>Habilidades</0>? Ative antes <1>Configurações <2/> Recursos <3/> Execução de código e criação de arquivos</1>."
     ],
@@ -5054,6 +5075,9 @@
     "q3W2nd": ["Não deu para adicionar esse comentário: ", ["0"]],
     "q4YJl_": ["A sessão de terminal terminou (código de saída ", ["0"], ")."],
     "q4efaG": [["filePath"], " não está mais nesta skill"],
+    "q5uZbJ": [
+      "As páginas restantes são indexadas ao pesquisar. Pesquise novamente para obter resultados mais completos."
+    ],
     "q6-JVU": ["Carregando páginas"],
     "q63KUv": ["Adicionar MCP e habilidade"],
     "q7F5am": ["título"],
@@ -5558,6 +5582,9 @@
     "uoJF_D": ["Foi difícil demais configurar ou começar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["O comando falhou."],
+    "uwzRx4": [
+      "Ajuste o tamanho e o tempo limite das requisições de indexação para servidores de embeddings lentos ou com pouca memória. A maioria das configurações deve manter os valores padrão."
+    ],
     "uyJsf6": ["Sobre"],
     "uyOQ4e": ["Tema copiado como YAML base16"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "many": ["tokens"], "other": ["tokens"] }]],
@@ -5998,11 +6025,13 @@
     "zbymaY": ["há ", ["0"], " min"],
     "zd00pH": ["Copiar caminho"],
     "zgSFyG": ["Link externo"],
+    "zkkEFa": ["Insira um número inteiro entre ", ["minimum"], " e ", ["maximum"], "."],
     "zkz0Fg": ["Configurar a sincronização"],
     "zlErBl": ["A resposta de erro dos títulos da página não seguiu a RFC 9457"],
     "zo3Dl7": ["Mostrar ou ocultar as miniaturas"],
     "zpfN9p": ["Ainda não há comentários. Selecione um texto no documento para adicionar um."],
     "zq2eBA": ["Ver no código"],
+    "zqQlBg": ["Máximo de fragmentos de texto por requisição de indexação"],
     "zrP8HX": [
       "O frontmatter com que começa cada documento criado a partir deste modelo. Os valores são YAML — uma lista é <0>[a, b]</0>; <1>{",
       ["date"],

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -24,12 +24,77 @@ function makeCache(
     cacheDir: dir,
     providerId: over.providerId ?? 'https://api.test/v1',
     modelId: over.modelId ?? 'test-model',
-    dims: DIMS,
+    identityDims: DIMS,
     chunkConfigId: over.chunkConfigId ?? 'c1-o0',
   });
 }
 
 describe('VectorCache', () => {
+  test.each([
+    { providerId: 'https://other.test/v1' },
+    { modelId: 'other-model' },
+    { identityDims: DIMS + 1 },
+    { chunkConfigId: 'other-chunks' },
+  ])('memory and disk reject the same identity difference: %j', async (change) => {
+    const identity = {
+      providerId: 'https://api.test/v1',
+      modelId: 'test-model',
+      identityDims: DIMS,
+      chunkConfigId: 'c1-o0',
+    };
+    const cache = new VectorCache({ cacheDir: dir, ...identity });
+    await cache.init();
+    cache.store('page:a', hashContent('a'), 1, [vec(1, 0, 0, 0)]);
+    await cache.persist();
+    expect(cache.matchesIdentity(identity)).toBe(true);
+    const changedIdentity = { ...identity, ...change };
+    expect(cache.matchesIdentity(changedIdentity)).toBe(false);
+    const reopened = new VectorCache({ cacheDir: dir, ...changedIdentity });
+    await reopened.init();
+    expect(reopened.embeddedCount).toBe(0);
+  });
+
+  test('auto identity stays distinct from explicit dimensions after dimensions are pinned', async () => {
+    const identity = {
+      providerId: 'https://api.test/v1',
+      modelId: 'test-model',
+      identityDims: 'auto' as const,
+      chunkConfigId: 'c1-o0',
+    };
+    const cache = new VectorCache({ cacheDir: dir, ...identity });
+    await cache.init();
+    cache.pinDims(DIMS);
+    cache.store('page:a', hashContent('a'), 1, [vec(1, 0, 0, 0)]);
+    await cache.persist();
+    expect(cache.matchesIdentity(identity)).toBe(true);
+    expect(cache.matchesIdentity({ ...identity, identityDims: DIMS })).toBe(false);
+    const reopened = new VectorCache({ cacheDir: dir, ...identity, identityDims: DIMS });
+    await reopened.init();
+    expect(reopened.embeddedCount).toBe(0);
+  });
+
+  test('a null manifest identity is invalid rather than the auto sentinel', async () => {
+    const identity = {
+      providerId: 'https://api.test/v1',
+      modelId: 'test-model',
+      identityDims: 'auto' as const,
+      chunkConfigId: 'c1-o0',
+    };
+    const cache = new VectorCache({ cacheDir: dir, ...identity });
+    await cache.init();
+    cache.pinDims(DIMS);
+    cache.store('page:a', hashContent('a'), 1, [vec(1, 0, 0, 0)]);
+    await cache.persist();
+    const manifestPath = join(dir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.identityDims = null;
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const reopened = new VectorCache({ cacheDir: dir, ...identity });
+    await reopened.init();
+    expect(reopened.embeddedCount).toBe(0);
+    expect(existsSync(manifestPath)).toBe(false);
+  });
+
   test('store → persist → re-init round-trips vectors', async () => {
     const a = makeCache();
     await a.init();
@@ -128,7 +193,7 @@ describe('VectorCache', () => {
       cacheDir: null,
       providerId: 'p',
       modelId: 'm',
-      dims: DIMS,
+      identityDims: DIMS,
       chunkConfigId: 'c',
     });
     await c.init();

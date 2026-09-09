@@ -315,6 +315,11 @@ function statusCommand(): Command {
                 model: cfg.model,
                 dimensions: cfg.dimensions ?? null,
               },
+              transport: {
+                maxBatchSize: cfg.maxBatchSize,
+                maxBatchChars: cfg.maxBatchChars,
+                docTimeoutMs: cfg.docTimeoutMs,
+              },
             },
           })}\n`,
         );
@@ -344,6 +349,9 @@ function statusCommand(): Command {
         `    provider:   ${cfg.baseUrl}`,
         `    model:      ${cfg.model}`,
         `    dimensions: ${cfg.dimensions ?? 'auto (detected from the endpoint)'}`,
+        `    batch size: ${cfg.maxBatchSize} chunks maximum per indexing request`,
+        `    characters: ${cfg.maxBatchChars} approximate characters per indexing request`,
+        `    timeout:    ${cfg.docTimeoutMs} ms per indexing request attempt`,
       ];
 
       const hints: string[] = [];

@@ -404,6 +404,14 @@ async function storeConfigDocInner(
 
 type ApplyExternalConfigChangeOutcome = 'applied' | 'rejected' | 'no-op';
 
+export function isConfigEcho(
+  documentName: string,
+  content: string,
+  ctx: ConfigPersistenceCtx,
+): boolean {
+  return ctx.lkgCache.get(documentName) === content;
+}
+
 export function applyExternalConfigChange(
   document: Y.Doc | null,
   documentName: string,
@@ -412,8 +420,7 @@ export function applyExternalConfigChange(
 ): ApplyExternalConfigChangeOutcome {
   if (!document) return 'no-op';
 
-  const lkg = ctx.lkgCache.get(documentName);
-  if (lkg !== undefined && lkg === content) return 'no-op';
+  if (isConfigEcho(documentName, content, ctx)) return 'no-op';
 
   const scope = configScopeAttr(documentName);
   const validation = withConfigSpanSync(

@@ -1,11 +1,21 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import {
+  type ConfigBinding,
   checkEmbeddingsBaseUrl,
   DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
   type LocalOpEmbeddingsTestResponse,
+  MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MAX_EMBEDDINGS_MAX_BATCH_CHARS,
+  MAX_EMBEDDINGS_MAX_BATCH_SIZE,
+  MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MIN_EMBEDDINGS_MAX_BATCH_CHARS,
+  MIN_EMBEDDINGS_MAX_BATCH_SIZE,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
@@ -23,6 +33,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
@@ -34,6 +45,7 @@ import {
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 const SETTLE_REFRESH_DELAYS_MS = [2500, 5000] as const;
+const PERFORMANCE_CLEAR_HINT_ID = 'settings-search-performance-clear-hint';
 
 export function SearchSection({ transport }: { transport?: EmbeddingsKeyTransport }) {
   const { t } = useLingui();
@@ -55,6 +67,12 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const configuredBaseUrl =
     projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
   const configuredModel = projectLocalConfig?.search?.semantic?.model ?? DEFAULT_EMBEDDINGS_MODEL;
+  const configuredMaxBatchSize =
+    projectLocalConfig?.search?.semantic?.maxBatchSize ?? DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE;
+  const configuredMaxBatchChars =
+    projectLocalConfig?.search?.semantic?.maxBatchChars ?? DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS;
+  const configuredDocTimeoutMs =
+    projectLocalConfig?.search?.semantic?.docTimeoutMs ?? DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
 
   const [baseUrlDraft, setBaseUrlDraft] = useState(configuredBaseUrl);
   const [modelDraft, setModelDraft] = useState(configuredModel);
@@ -63,6 +81,9 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     model: string;
   } | null>(null);
   const [disclosureOverride, setDisclosureOverride] = useState<boolean | null>(null);
+  const [performanceDisclosureOverride, setPerformanceDisclosureOverride] = useState<
+    boolean | null
+  >(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     response: LocalOpEmbeddingsTestResponse | null;
@@ -86,11 +107,21 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const hasProviderOverride =
     configuredBaseUrl !== DEFAULT_EMBEDDINGS_BASE_URL ||
     configuredModel !== DEFAULT_EMBEDDINGS_MODEL;
+  const hasTransportOverride =
+    configuredMaxBatchSize !== DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE ||
+    configuredMaxBatchChars !== DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS ||
+    configuredDocTimeoutMs !== DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
   const disclosureOpen = disclosureOverride ?? hasProviderOverride;
+  const performanceDisclosureOpen = performanceDisclosureOverride ?? hasTransportOverride;
 
   function scheduleSettleRefresh() {
     for (const timer of settleTimersRef.current) clearTimeout(timer);
     settleTimersRef.current = SETTLE_REFRESH_DELAYS_MS.map((delay) => setTimeout(refresh, delay));
+  }
+
+  function onTuningCommitted() {
+    refresh();
+    scheduleSettleRefresh();
   }
 
   function write(next: boolean): boolean {
@@ -413,6 +444,87 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         </CollapsibleContent>
       </Collapsible>
 
+      <Collapsible
+        open={performanceDisclosureOpen}
+        onOpenChange={setPerformanceDisclosureOverride}
+        className="rounded-md border"
+        data-testid="settings-search-performance"
+        data-field="search.semantic.maxBatchSize"
+      >
+        <CollapsibleTrigger
+          className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
+          data-testid="settings-search-performance-trigger"
+        >
+          <Trans>Embedding request settings</Trans>
+          <ChevronRight
+            className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+            aria-hidden
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent
+          className="flex flex-col gap-4 border-t px-3 py-3"
+          onFocusCapture={() => setPerformanceDisclosureOverride(true)}
+        >
+          <p className="text-muted-foreground text-1sm">
+            <Trans>
+              Adjust indexing request size and timeout for slow or memory-constrained embedding
+              servers. Most setups should keep the defaults.
+            </Trans>
+          </p>
+          <p id={PERFORMANCE_CLEAR_HINT_ID} className="text-muted-foreground text-1sm">
+            <Trans>Clear a field to restore its default value.</Trans>
+          </p>
+          <PerformanceTuningField
+            id="settings-search-max-batch-size"
+            label={<Trans>Maximum text chunks per indexing request</Trans>}
+            help={
+              <Trans>
+                Lower this to reduce memory use and work per request. Smaller batches send more
+                requests and may make indexing slower overall.
+              </Trans>
+            }
+            configKey="maxBatchSize"
+            configuredValue={configuredMaxBatchSize}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+          <PerformanceTuningField
+            id="settings-search-max-batch-chars"
+            label={<Trans>Character budget per indexing request</Trans>}
+            help={
+              <Trans>
+                Limits the combined text sent in each request. A single larger chunk is sent on its
+                own; documents are not split again.
+              </Trans>
+            }
+            configKey="maxBatchChars"
+            configuredValue={configuredMaxBatchChars}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+          <PerformanceTuningField
+            id="settings-search-doc-timeout-seconds"
+            label={<Trans>Indexing request timeout (seconds)</Trans>}
+            help={
+              <Trans>
+                How long OpenKnowledge waits for each embedding request while indexing. Search
+                requests use a fixed 8-second timeout per attempt, unchanged by this setting.
+              </Trans>
+            }
+            configKey="docTimeoutMs"
+            configuredValue={configuredDocTimeoutMs}
+            defaultValue={DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+        </CollapsibleContent>
+      </Collapsible>
+
       <EnableSemanticSearchConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -425,6 +537,165 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         onConfirm={onConfirmProviderChange}
       />
     </section>
+  );
+}
+
+type PerformanceTuningKey = 'maxBatchSize' | 'maxBatchChars' | 'docTimeoutMs';
+
+const PERFORMANCE_TUNING_BOUNDS: Record<
+  PerformanceTuningKey,
+  { min: number; max: number; displayDivisor?: number }
+> = {
+  maxBatchSize: { min: MIN_EMBEDDINGS_MAX_BATCH_SIZE, max: MAX_EMBEDDINGS_MAX_BATCH_SIZE },
+  maxBatchChars: { min: MIN_EMBEDDINGS_MAX_BATCH_CHARS, max: MAX_EMBEDDINGS_MAX_BATCH_CHARS },
+  docTimeoutMs: {
+    min: MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+    max: MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+    displayDivisor: 1000,
+  },
+};
+
+interface PerformanceTuningFieldProps {
+  id: string;
+  label: ReactNode;
+  help: ReactNode;
+  configKey: PerformanceTuningKey;
+  configuredValue: number;
+  defaultValue: number;
+  binding: ConfigBinding | null;
+  bindingReady: boolean;
+  onCommitted: () => void;
+}
+
+function PerformanceTuningField({
+  id,
+  label,
+  help,
+  configKey,
+  configuredValue,
+  defaultValue,
+  binding,
+  bindingReady,
+  onCommitted,
+}: PerformanceTuningFieldProps) {
+  const { t, i18n } = useLingui();
+  const bounds = PERFORMANCE_TUNING_BOUNDS[configKey];
+  const displayDivisor = bounds.displayDivisor ?? 1;
+  const displayedConfiguredValue = configuredValue / displayDivisor;
+  const displayedDefaultValue = defaultValue / displayDivisor;
+  const displayedMinimum = bounds.min / displayDivisor;
+  const displayedMaximum = bounds.max / displayDivisor;
+  const [draft, setDraft] = useState(String(displayedConfiguredValue));
+  const [error, setError] = useState<string | null>(null);
+  const [savedValue, setSavedValue] = useState<number | null>(null);
+  const [previousConfiguredValue, setPreviousConfiguredValue] = useState(displayedConfiguredValue);
+
+  if (displayedConfiguredValue !== previousConfiguredValue) {
+    setPreviousConfiguredValue(displayedConfiguredValue);
+    setDraft(String(displayedConfiguredValue));
+    setError(null);
+    if (savedValue !== configuredValue) setSavedValue(null);
+  }
+
+  useEffect(() => {
+    if (savedValue === null) return;
+    const timer = setTimeout(() => setSavedValue(null), 1500);
+    return () => clearTimeout(timer);
+  }, [savedValue]);
+
+  const acceptsFractionalDisplay = displayDivisor > 1;
+
+  function commit(): void {
+    const trimmed = draft.trim();
+    const source = trimmed === '' ? String(displayedDefaultValue) : trimmed;
+    const pattern = acceptsFractionalDisplay ? /^\d+(?:\.\d+)?$/ : /^\d+$/;
+    const displayValue = Number(source);
+    const storedValue = Math.round(displayValue * displayDivisor);
+    if (
+      !pattern.test(source) ||
+      !Number.isSafeInteger(storedValue) ||
+      displayValue < displayedMinimum ||
+      displayValue > displayedMaximum
+    ) {
+      const numberFormat = new Intl.NumberFormat(i18n.locale);
+      const minimum = numberFormat.format(displayedMinimum);
+      const maximum = numberFormat.format(displayedMaximum);
+      setError(
+        acceptsFractionalDisplay
+          ? t`Enter a number of seconds between ${minimum} and ${maximum}.`
+          : t`Enter a whole number between ${minimum} and ${maximum}.`,
+      );
+      return;
+    }
+    if (binding === null) {
+      setError(t`Search settings not yet loaded — try again in a moment`);
+      return;
+    }
+    if (storedValue === configuredValue) {
+      setDraft(String(displayValue));
+      setError(null);
+      return;
+    }
+
+    const semanticPatch: Partial<Record<PerformanceTuningKey, number>> = {
+      [configKey]: storedValue,
+    };
+    const result = binding.patch({ search: { semantic: semanticPatch } });
+    if (!result.ok) {
+      const detail = humanFormat(result.error);
+      const message = t`Failed to update performance setting — ${detail}`;
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    setDraft(String(displayValue));
+    setError(null);
+    setSavedValue(storedValue);
+    onCommitted();
+  }
+
+  const messageId = `${id}-message`;
+  const helpId = `${id}-help`;
+  return (
+    <Field data-invalid={error !== null} data-disabled={!bindingReady} className="gap-2">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          setSavedValue(null);
+          if (error !== null) setError(null);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            commit();
+          }
+        }}
+        disabled={!bindingReady}
+        inputMode={acceptsFractionalDisplay ? 'decimal' : 'numeric'}
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={error !== null}
+        aria-describedby={`${helpId} ${messageId} ${PERFORMANCE_CLEAR_HINT_ID}`}
+        data-testid={id}
+        className="h-8 font-mono text-sm"
+      />
+      <FieldDescription id={helpId} className="nth-last-2:mt-0" data-testid={`${id}-help`}>
+        {help}
+      </FieldDescription>
+      <FieldDescription
+        id={messageId}
+        aria-live="polite"
+        aria-atomic="true"
+        className={error ? 'text-1sm text-destructive' : 'text-muted-foreground text-1sm'}
+        data-testid={error ? `${id}-error` : `${id}-saved`}
+      >
+        {error ?? (savedValue !== null ? <Trans>Saved</Trans> : null)}
+      </FieldDescription>
+    </Field>
   );
 }
 

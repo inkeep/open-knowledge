@@ -54,6 +54,15 @@ const DEFAULT_LOSS_CAPTURE_MAX_BYTES = 12_582_912;
 
 export const DEFAULT_EMBEDDINGS_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small';
+export const DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE = 96;
+export const DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS = 96_000;
+export const DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS = 30_000;
+export const MIN_EMBEDDINGS_MAX_BATCH_SIZE = 1;
+export const MAX_EMBEDDINGS_MAX_BATCH_SIZE = 2_048;
+export const MIN_EMBEDDINGS_MAX_BATCH_CHARS = 1;
+export const MAX_EMBEDDINGS_MAX_BATCH_CHARS = 16_384_000;
+export const MIN_EMBEDDINGS_DOC_TIMEOUT_MS = 1;
+export const MAX_EMBEDDINGS_DOC_TIMEOUT_MS = 600_000;
 
 export const DEFAULT_SERVER_BIND: readonly string[] = Object.freeze(['127.0.0.1']);
 
@@ -797,11 +806,59 @@ export const ConfigSchema = z.looseObject({
                 'Optional hard cutoff: drop any "by meaning" match whose cosine similarity is below this value. Off by default (0) because retrieval is rank-based (the closest pages are returned regardless of absolute score) and the right cutoff is model-specific. Set it only to suppress weak matches for a specific provider/model whose cosine scale you know. Most setups should leave it unset and rely on the result-count cap.',
             })
             .optional(),
+          maxBatchSize: z
+            .number()
+            .int()
+            .min(MIN_EMBEDDINGS_MAX_BATCH_SIZE)
+            .max(MAX_EMBEDDINGS_MAX_BATCH_SIZE)
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                "Maximum number of text chunks sent in one indexing request (1–2048, default 96). The ceiling follows OpenAI's input-array limit; other providers may impose different limits. Larger requests may still be split by the character budget. Changing it preserves cached vectors and document chunking; it applies to the next indexing pass. Invalid values use the default and are reported by ok config validate and server logs.",
+            })
+            .default(DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE)
+            .catch(DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE),
+          maxBatchChars: z
+            .number()
+            .int()
+            .min(MIN_EMBEDDINGS_MAX_BATCH_CHARS)
+            .max(MAX_EMBEDDINGS_MAX_BATCH_CHARS)
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Approximate cumulative character budget per indexing request (1–16384000, default 96000). A single chunk can exceed this budget. OpenAI separately caps total input at 300000 tokens per request; this character budget does not enforce that limit, and high values can produce rejected requests. Other providers have their own limits. Changing it preserves cached vectors and document chunking; it applies to the next indexing pass. Invalid values use the default and are reported by ok config validate and server logs.',
+            })
+            .default(DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS)
+            .catch(DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS),
+          docTimeoutMs: z
+            .number()
+            .int()
+            .min(MIN_EMBEDDINGS_DOC_TIMEOUT_MS)
+            .max(MAX_EMBEDDINGS_DOC_TIMEOUT_MS)
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Timeout in milliseconds for each indexing request attempt (1–600000, default 30000). A request can retry four times, and a failed grouped request can trigger individual-document requests. There is no total indexing-pass deadline: large timeouts can delay newly queued work for hours. The query timeout remains 8 seconds per attempt. Changing it preserves cached vectors and applies to the next indexing pass; an in-progress pass keeps its current timeout. Invalid values use the default and are reported by ok config validate and server logs.',
+            })
+            .default(DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS)
+            .catch(DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS),
         })
         .default({
           enabled: false,
           baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
           model: DEFAULT_EMBEDDINGS_MODEL,
+          maxBatchSize: DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+          maxBatchChars: DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+          docTimeoutMs: DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
         }),
     })
     .default({
@@ -809,6 +866,9 @@ export const ConfigSchema = z.looseObject({
         enabled: false,
         baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
         model: DEFAULT_EMBEDDINGS_MODEL,
+        maxBatchSize: DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+        maxBatchChars: DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+        docTimeoutMs: DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
       },
     }),
   contentRules: z

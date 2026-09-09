@@ -313,14 +313,14 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     (semanticCapability?.enabled ?? false) && (semanticCapability?.keyPresent ?? false);
   const semanticIndexedCount = semanticCapability?.embedded ?? 0;
   const semanticTotalCount = semanticCapability?.total ?? 0;
-  const semanticIndexing =
+  const semanticCoverageIncomplete =
     semanticCapable && semanticTotalCount > 0 && semanticIndexedCount < semanticTotalCount;
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshSemanticStatus is behaviorally stable; re-arm only on the gating booleans.
   useEffect(() => {
-    if (!open || !isSemanticMode || !semanticIndexing) return;
+    if (!open || !isSemanticMode || !semanticCoverageIncomplete) return;
     const id = window.setInterval(() => refreshSemanticStatus(), 2500);
     return () => window.clearInterval(id);
-  }, [open, isSemanticMode, semanticIndexing]);
+  }, [open, isSemanticMode, semanticCoverageIncomplete]);
   const handoffInput = buildHandoffInput({ docName: activeDocName, workspace });
 
   const workspaceEntries = buildWorkspaceEntries(
@@ -923,17 +923,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           {isSemanticMode && semanticView ? (
             <>
               {}
-              {semanticIndexing ? (
+              {semanticCoverageIncomplete ? (
                 <div
-                  className="flex items-center gap-2 px-3 py-2 text-muted-foreground text-xs"
-                  role="status"
-                  aria-live="polite"
-                  data-testid="command-palette-semantic-indexing"
+                  className="px-3 py-2 text-muted-foreground text-xs"
+                  data-testid="command-palette-semantic-coverage"
                 >
-                  <Spinner aria-hidden="true" className="size-3.5" />
+                  <span role="status" aria-live="polite">
+                    <Trans>
+                      Pages indexed: {semanticIndexedCount} of {semanticTotalCount}.
+                    </Trans>
+                  </span>{' '}
                   <Trans>
-                    Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready.
-                    Results may be incomplete.
+                    Missing pages are indexed when you search. Search again for fuller results.
                   </Trans>
                 </div>
               ) : null}

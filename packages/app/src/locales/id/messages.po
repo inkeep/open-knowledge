@@ -1726,6 +1726,10 @@ msgstr "Menambahkan berkas ini"
 msgid "Adds these folders"
 msgstr "Menambahkan folder ini"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr "Sesuaikan ukuran dan batas waktu permintaan pengindeksan untuk server embedding yang lambat atau terbatas memori. Sebagian besar penyiapan sebaiknya mempertahankan nilai bawaan."
+
 #: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -2287,6 +2291,11 @@ msgstr "Respons tautan balik tidak sesuai bentuk yang diharapkan."
 msgid "Base branch"
 msgstr "Cabang dasar"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "batch"
+msgstr "batch"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "becomes a symlink"
 msgstr "menjadi tautan simbolik"
@@ -2633,6 +2642,15 @@ msgstr "Perubahan disimpan otomatis."
 msgid "Changes saved automatically."
 msgstr "Perubahan disimpan otomatis."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr "Anggaran karakter per permintaan pengindeksan"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "characters"
+msgstr "karakter"
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "Periksa pembaruan"
@@ -2831,6 +2849,10 @@ msgstr "Bersihkan"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
 msgstr "Bersihkan {keyName}"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Clear a field to restore its default value."
+msgstr "Kosongkan kolom untuk mengembalikan nilai defaultnya."
 
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
@@ -5341,6 +5363,16 @@ msgid "Embed an image with optional alt text."
 msgstr "Menyematkan gambar dengan teks alternatif opsional."
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr "Pengaturan permintaan embedding"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "embeddings"
+msgstr "embedding"
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "Kunci API embedding"
 
@@ -5506,6 +5538,10 @@ msgstr "Masukkan nama folder (mis. otak)."
 msgid "Enter a name for this theme."
 msgstr "Masukkan nama untuk tema ini."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a number of seconds between {minimum} and {maximum}."
+msgstr "Masukkan jumlah detik antara {minimum} dan {maximum}."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "Masukkan port antara 1 dan 65535."
@@ -5537,6 +5573,10 @@ msgstr "Masukkan URL yang valid (misalnya https://api.openai.com/v1)."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a valid URL, for example https://notes.example.com"
 msgstr "Masukkan URL yang valid, misalnya https://notes.example.com"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a whole number between {minimum} and {maximum}."
+msgstr "Masukkan bilangan bulat antara {minimum} dan {maximum}."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -6004,6 +6044,10 @@ msgstr "Gagal memperbarui lokasi lampiran — {detail}"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "Gagal memperbarui aturan markdownlint"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr "Gagal memperbarui pengaturan performa — {detail}"
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6841,6 +6885,10 @@ msgstr "Bagaimana pendapat Anda tentang OpenKnowledge?"
 msgid "How does sharing work?"
 msgstr "Bagaimana cara kerja berbagi?"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a fixed 8-second timeout per attempt, unchanged by this setting."
+msgstr "Berapa lama OpenKnowledge menunggu setiap permintaan embedding saat pengindeksan. Permintaan pencarian memiliki batas waktu tetap 8 detik per percobaan, yang tidak berubah oleh pengaturan ini."
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "Cara dokumen, file, dan gambar lokal proyek yang hilang dilaporkan di Masalah, diagnostik editor, audit, dan alat agen."
@@ -7109,9 +7157,9 @@ msgstr "Pemeliharaan indeks tidak dilakukan karena pengaturan proyek tidak dapat
 msgid "Indexed {embedded} of {total} pages."
 msgstr "{embedded} dari {total} halaman terindeks."
 
-#: src/components/CommandPalette.tsx
-msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
-msgstr "Mengindeks halaman Anda — {semanticIndexedCount} dari {semanticTotalCount} siap. Hasilnya mungkin belum lengkap."
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr "Batas waktu permintaan pengindeksan (detik)"
 
 #: src/components/FrontmatterRow.tsx
 msgid "inherited"
@@ -7664,6 +7712,10 @@ msgstr "Terang"
 msgid "Light, dark, or follow the OS."
 msgstr "Terang, gelap, atau ikuti sistem."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr "Membatasi total teks yang dikirim dalam setiap permintaan. Potongan yang lebih besar dikirim sendiri; dokumen tidak dipecah lagi."
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "baris {displayLine}"
@@ -7985,6 +8037,10 @@ msgstr "Mencari <0>{lookingForUrl}</0>."
 msgid "Lost connection to \"{docName}\"."
 msgstr "Koneksi ke \"{docName}\" terputus."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr "Turunkan nilai ini untuk mengurangi penggunaan memori dan beban per permintaan. Batch yang lebih kecil mengirim lebih banyak permintaan dan dapat memperlambat pengindeksan secara keseluruhan."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "Pertahankan indeks generated di setiap folder?"
@@ -8095,6 +8151,10 @@ msgstr "Maksimal {MAX_ATTACHMENTS} lampiran"
 msgid "Maximum agents already running"
 msgstr "Jumlah agen yang berjalan sudah maksimal"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr "Maksimum potongan teks per permintaan pengindeksan"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
 msgstr "Perbaikan otomatis MCP gagal"
@@ -8181,6 +8241,10 @@ msgstr "Halaman belum ada — klik untuk membuat"
 #: src/components/LinksPanel.tsx
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "Halaman belum ada: {linkTitle}. Klik untuk membuat."
+
+#: src/components/CommandPalette.tsx
+msgid "Missing pages are indexed when you search. Search again for fuller results."
+msgstr "Halaman yang belum terindeks akan diindeks saat Anda mencari. Cari lagi untuk mendapatkan hasil yang lebih lengkap."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Missing palette colors"
@@ -10062,6 +10126,10 @@ msgstr "nama-halaman"
 msgid "Pages are embedded the first time a search needs them."
 msgstr "Halaman di-embed pertama kali ketika sebuah pencarian membutuhkannya."
 
+#: src/components/CommandPalette.tsx
+msgid "Pages indexed: {semanticIndexedCount} of {semanticTotalCount}."
+msgstr "Halaman terindeks: {semanticIndexedCount} dari {semanticTotalCount}."
+
 #: src/editor/components/Mermaid.tsx
 msgid "Pan down"
 msgstr "Geser ke bawah"
@@ -10205,6 +10273,11 @@ msgstr "tertunda"
 #: src/components/acp/working-status.ts
 msgid "Percolating…"
 msgstr "Mengendap…"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "performance"
+msgstr "performa"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
@@ -11305,6 +11378,11 @@ msgstr "Repositori tidak ditemukan — mungkin ia tidak ada, atau akun yang digu
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "Repositori tidak ditemukan. Mungkin ia sudah diganti nama, dihapus, atau dipindahkan."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "requests"
+msgstr "permintaan"
+
 #: src/components/AddPropertyNameField.tsx
 msgid "required"
 msgstr "wajib"
@@ -11658,6 +11736,7 @@ msgstr "Simpan komentar ini (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Saved"
 msgstr "Tersimpan"
 
@@ -14324,6 +14403,11 @@ msgstr "Merapikan…"
 #: src/components/TimelinePanel.tsx
 msgid "Timeline"
 msgstr "Lini masa"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "timeout"
+msgstr "batas waktu"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Tint and badge files that have lint or link problems, without opening them."

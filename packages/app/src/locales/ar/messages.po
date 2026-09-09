@@ -1730,6 +1730,10 @@ msgstr "يضيف هذه الملفات"
 msgid "Adds these folders"
 msgstr "يضيف هذه المجلدات"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr "اضبط حجم طلب الفهرسة ومهلته لخوادم التضمينات البطيئة أو المحدودة الذاكرة. ينبغي لمعظم الإعدادات الإبقاء على القيم الافتراضية."
+
 #: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -2291,6 +2295,11 @@ msgstr "لم تطابق استجابة الروابط الخلفية الشكل 
 msgid "Base branch"
 msgstr "الفرع الأساسي"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "batch"
+msgstr "دفعة"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "becomes a symlink"
 msgstr "يصبح رابطًا رمزيًا"
@@ -2637,6 +2646,15 @@ msgstr "تُحفظ التغييرات تلقائيًا."
 msgid "Changes saved automatically."
 msgstr "حُفظت التغييرات تلقائيًا."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr "ميزانية الأحرف لكل طلب فهرسة"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "characters"
+msgstr "أحرف"
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "التحقق من التحديثات"
@@ -2835,6 +2853,10 @@ msgstr "مسح"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Clear {keyName}"
 msgstr "مسح {keyName}"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Clear a field to restore its default value."
+msgstr "أفرغ الحقل لاستعادة قيمته الافتراضية."
 
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
@@ -5345,6 +5367,16 @@ msgid "Embed an image with optional alt text."
 msgstr "ضمّن صورة مع نص بديل اختياري."
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr "إعدادات طلبات التضمين"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "embeddings"
+msgstr "تضمينات"
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "مفتاح API للتضمينات"
 
@@ -5510,6 +5542,10 @@ msgstr "أدخل اسم مجلد (مثل brain)."
 msgid "Enter a name for this theme."
 msgstr "أدخل اسمًا لهذه السمة."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a number of seconds between {minimum} and {maximum}."
+msgstr "أدخل عددًا من الثواني بين {minimum} و{maximum}."
+
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "أدخل منفذًا بين 1 و65535."
@@ -5541,6 +5577,10 @@ msgstr "أدخل رابطًا صالحًا (مثل https://api.openai.com/v1)."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a valid URL, for example https://notes.example.com"
 msgstr "أدخل عنوان URL صالحًا، على سبيل المثال https://notes.example.com"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a whole number between {minimum} and {maximum}."
+msgstr "أدخل عددًا صحيحًا بين {minimum} و{maximum}."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -6008,6 +6048,10 @@ msgstr "فشل تحديث موقع المرفقات — {detail}"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "فشل تحديث قواعد markdownlint"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr "فشل تحديث إعداد الأداء — {detail}"
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6845,6 +6889,10 @@ msgstr "ما رأيك في OpenKnowledge؟"
 msgid "How does sharing work?"
 msgstr "كيف تعمل المشاركة؟"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a fixed 8-second timeout per attempt, unchanged by this setting."
+msgstr "المدة التي ينتظرها OpenKnowledge لكل طلب تضمين أثناء الفهرسة. لطلبات البحث مهلة ثابتة تبلغ 8 ثوانٍ لكل محاولة، ولا يغيّرها هذا الإعداد."
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "كيفية الإبلاغ عن مستندات المشروع المحلية والملفات والصور المفقودة في المشكلات وتشخيصات المحرر وعمليات التدقيق وأدوات الوكيل."
@@ -7113,9 +7161,9 @@ msgstr "توقفت صيانة الفهرس بسبب تعذر حفظ إعداد �
 msgid "Indexed {embedded} of {total} pages."
 msgstr "تمت فهرسة {embedded} من {total} صفحة."
 
-#: src/components/CommandPalette.tsx
-msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
-msgstr "تجري فهرسة صفحاتك — {semanticIndexedCount} من {semanticTotalCount} جاهزة. قد تكون النتائج ناقصة."
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr "مهلة طلب الفهرسة (بالثواني)"
 
 #: src/components/FrontmatterRow.tsx
 msgid "inherited"
@@ -7668,6 +7716,10 @@ msgstr "فاتح"
 msgid "Light, dark, or follow the OS."
 msgstr "فاتح أو داكن أو تتبع نظام التشغيل."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr "يحدّ من إجمالي النص المُرسل في كل طلب. تُرسل القطعة الأكبر بمفردها، ولا تُقسَّم المستندات من جديد."
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "السطر {displayLine}"
@@ -7989,6 +8041,10 @@ msgstr "يجري البحث عن <0>{lookingForUrl}</0>."
 msgid "Lost connection to \"{docName}\"."
 msgstr "فُقد الاتصال بـ «{docName}»."
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr "اخفض هذه القيمة لتقليل استهلاك الذاكرة والعمل لكل طلب. الدفعات الأصغر ترسل طلبات أكثر وقد تجعل الفهرسة أبطأ إجمالًا."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "هل تريد الحفاظ على فهارس generated في كل مجلد؟"
@@ -8099,6 +8155,10 @@ msgstr "بحد أقصى {MAX_ATTACHMENTS} مرفقات"
 msgid "Maximum agents already running"
 msgstr "يعمل الحد الأقصى من الوكلاء بالفعل"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr "الحد الأقصى لقطع النص لكل طلب فهرسة"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
 msgstr "فشل الإصلاح التلقائي لـ MCP"
@@ -8185,6 +8245,10 @@ msgstr "صفحة مفقودة — انقر لإنشائها"
 #: src/components/LinksPanel.tsx
 msgid "Missing page: {linkTitle}. Click to create."
 msgstr "صفحة مفقودة: {linkTitle}. انقر لإنشائها."
+
+#: src/components/CommandPalette.tsx
+msgid "Missing pages are indexed when you search. Search again for fuller results."
+msgstr "تُفهرس الصفحات المتبقية عند البحث. ابحث مرة أخرى للحصول على نتائج أكثر اكتمالًا."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Missing palette colors"
@@ -10066,6 +10130,10 @@ msgstr "page-name"
 msgid "Pages are embedded the first time a search needs them."
 msgstr "تُضمَّن الصفحات أول مرة يحتاجها فيها بحث."
 
+#: src/components/CommandPalette.tsx
+msgid "Pages indexed: {semanticIndexedCount} of {semanticTotalCount}."
+msgstr "الصفحات المفهرسة: {semanticIndexedCount} من {semanticTotalCount}."
+
 #: src/editor/components/Mermaid.tsx
 msgid "Pan down"
 msgstr "تحريك لأسفل"
@@ -10209,6 +10277,11 @@ msgstr "معلّق"
 #: src/components/acp/working-status.ts
 msgid "Percolating…"
 msgstr "يجري الترشيح…"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "performance"
+msgstr "أداء"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Permanently deletes <0>{targetGitPath}</0> and all its git history. Working files stay in place. If the parent git repo is intentional (e.g. you cloned it), cancel and pick a location outside it."
@@ -11309,6 +11382,11 @@ msgstr "لم يُعثر على المستودع — ربما لا يكون مو�
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "لم يُعثر على المستودع. ربما أُعيدت تسميته أو حُذف أو نُقل."
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "requests"
+msgstr "طلبات"
+
 #: src/components/AddPropertyNameField.tsx
 msgid "required"
 msgstr "مطلوب"
@@ -11662,6 +11740,7 @@ msgstr "حفظ هذا التعليق (Enter)"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/OkignoreSection.tsx
+#: src/components/settings/SearchSection.tsx
 msgid "Saved"
 msgstr "تم الحفظ"
 
@@ -14328,6 +14407,11 @@ msgstr "يجري الترتيب…"
 #: src/components/TimelinePanel.tsx
 msgid "Timeline"
 msgstr "الخط الزمني"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "timeout"
+msgstr "مهلة"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Tint and badge files that have lint or link problems, without opening them."

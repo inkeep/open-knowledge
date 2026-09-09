@@ -5,10 +5,11 @@ import {
   createWorkspaceSearchDocument,
   type WorkspaceSearchDocument,
 } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { getLogger } from '../logger.ts';
 import { CHUNK_CONFIG_ID } from './chunking.ts';
 import { createConceptEmbedder } from './concept-embedder.ts';
-import type { Embedder } from './embedder.ts';
+import { createOpenAiEmbedder, type Embedder } from './embedder.ts';
 import { SemanticSearchService } from './semantic-search-service.ts';
 import { VectorCache } from './vector-cache.ts';
 
@@ -173,10 +174,20 @@ describe('SemanticSearchService', () => {
     const svc = makeService({ enabled: true });
     await svc.embedCorpus(corpus);
     expect(svc.getStatus().embeddedCount).toBe(2);
-    svc.applyConfig({ enabled: false, providerFingerprint: '' });
+    svc.applyConfig({
+      enabled: false,
+      providerFingerprint: '',
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     expect(svc.getStatus().embeddedCount).toBe(0);
     expect(await svc.queryScores('auth retries', corpus)).toBeNull();
-    svc.applyConfig({ enabled: true, providerFingerprint: '' });
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: '',
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     await svc.embedCorpus(corpus);
     expect(svc.getStatus().embeddedCount).toBe(2);
   });
@@ -202,8 +213,91 @@ describe('SemanticSearchService', () => {
     expect(svc.getStatus().capable).toBe(true);
   });
 
+  test('credential rotation reuses vectors and key removal prevents semantic queries', async () => {
+    let apiKey: string | null = 'first-key';
+    const requests: Array<{ authorization: string | null; input: string[] }> = [];
+    const svc = new SemanticSearchService({
+      loadEmbedder: async () =>
+        apiKey
+          ? createOpenAiEmbedder(
+              { baseUrl: 'https://embeddings.example/v1', model: 'test', apiKey },
+              {
+                fetchImpl: async (_url, init) => {
+                  const { input } = JSON.parse(String(init?.body)) as { input: string[] };
+                  requests.push({
+                    authorization: new Headers(init?.headers).get('authorization'),
+                    input,
+                  });
+                  return new Response(
+                    JSON.stringify({
+                      data: input.map((_, index) => ({ index, embedding: [1, 0, 0] })),
+                    }),
+                  );
+                },
+              },
+            )
+          : null,
+      cacheDir: null,
+      enabled: true,
+    });
+    await svc.embedCorpus(corpus);
+    expect(requests).toHaveLength(1);
+    apiKey = 'rotated-key';
+    svc.reloadCredential();
+    expect(svc.getStatus()).toMatchObject({
+      ready: false,
+      capable: false,
+      embeddedCount: corpus.length,
+    });
+    await svc.embedCorpus(corpus);
+    expect(requests).toHaveLength(1);
+    expect(await svc.queryScores('authentication', corpus)).not.toBeNull();
+    expect(requests[1]).toEqual({ authorization: 'Bearer rotated-key', input: ['authentication'] });
+
+    apiKey = null;
+    svc.reloadCredential();
+    expect(await svc.queryScores('authentication', corpus)).toBeNull();
+    await svc.embedCorpus(corpus);
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: false,
+      embeddedCount: corpus.length,
+    });
+    expect(await svc.queryScores('authentication', corpus)).toBeNull();
+    expect(requests).toHaveLength(2);
+  });
+
+  test('a changed identity replaces a cache retained during credential reload', async () => {
+    let modelId = 'first-model';
+    let documentInputs = 0;
+    const svc = new SemanticSearchService({
+      loadEmbedder: async () => {
+        const inner = createConceptEmbedder({ concepts });
+        return {
+          ...inner,
+          modelId,
+          embed: (texts, options) => {
+            if (options.role === 'document') documentInputs += texts.length;
+            return inner.embed(texts, options);
+          },
+        };
+      },
+      cacheDir: null,
+      enabled: true,
+    });
+    await svc.embedCorpus(corpus);
+    expect(documentInputs).toBe(corpus.length);
+    modelId = 'next-model';
+    svc.reloadCredential();
+    await svc.ensureWarm();
+    expect(svc.getStatus().embeddedCount).toBe(0);
+    await svc.embedCorpus(corpus);
+    expect(documentInputs).toBe(corpus.length * 2);
+  });
+
   test('disable racing an in-flight embed pass does NOT wipe the on-disk cache', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-vec-race-'));
+    const info = vi.spyOn(getLogger('embeddings'), 'info');
     try {
       const inner = createConceptEmbedder({ concepts });
       let release: (() => void) | null = null;
@@ -243,20 +337,43 @@ describe('SemanticSearchService', () => {
         doc('new-topic', 'a fresh note about backoff and retries', 5),
       ]);
       await enteredEmbed;
-      svc.applyConfig({ enabled: false, providerFingerprint: '' });
+      svc.applyConfig({
+        enabled: false,
+        providerFingerprint: '',
+        transportFingerprint: '',
+        maxBatchSize: 96,
+      });
+      expect(info).toHaveBeenCalledWith(
+        {
+          reason: 'disabled',
+          retainedInMemoryDocumentCount: 0,
+          unloadedInMemoryDocumentCount: corpus.length,
+        },
+        '[embeddings] resetting embedder',
+      );
       release?.();
       await pending;
+      expect(info).toHaveBeenCalledWith(
+        {
+          reason: 'disabled',
+          completedDocumentCount: 1,
+          scheduledDocumentCount: 1,
+          corpusDocumentCount: 3,
+        },
+        '[embeddings] abandoning embed pass before persistence',
+      );
 
       const reopened = new VectorCache({
         cacheDir: dir,
         providerId: gated.providerId,
         modelId: gated.modelId,
-        dims: gated.dims,
+        identityDims: gated.dims ?? 'auto',
         chunkConfigId: CHUNK_CONFIG_ID,
       });
       await reopened.init();
       expect(reopened.embeddedCount).toBe(2);
     } finally {
+      info.mockRestore();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -274,12 +391,324 @@ describe('SemanticSearchService', () => {
     });
     await svc.embedCorpus(corpus);
     expect(loads).toBe(1);
-    svc.applyConfig({ enabled: true, providerFingerprint: 'openai|text-embedding-3-small|1536' });
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: 'openai|text-embedding-3-small|1536',
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     await svc.embedCorpus(corpus);
     expect(loads).toBe(1);
-    svc.applyConfig({ enabled: true, providerFingerprint: 'openai|text-embedding-3-large|3072' });
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: 'openai|text-embedding-3-large|3072',
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     await svc.embedCorpus(corpus);
     expect(loads).toBe(2);
+  });
+
+  test('applyConfig transport-fingerprint change re-loads only the embedder and reuses vectors', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-sem-transport-reload-'));
+    const info = vi.spyOn(getLogger('embeddings'), 'info');
+    let loads = 0;
+    let documentInputs = 0;
+    try {
+      const svc = new SemanticSearchService({
+        loadEmbedder: () => {
+          loads += 1;
+          const inner = createConceptEmbedder({ concepts });
+          return Promise.resolve({
+            ...inner,
+            embed: (texts, options) => {
+              if (options.role === 'document') documentInputs += texts.length;
+              return inner.embed(texts, options);
+            },
+          });
+        },
+        cacheDir: dir,
+        enabled: true,
+        providerFingerprint: 'openai|model|auto',
+        transportFingerprint: '96|96000|30000',
+      });
+      await svc.embedCorpus(corpus);
+      const firstDocumentInputs = documentInputs;
+      expect(loads).toBe(1);
+      expect(firstDocumentInputs).toBeGreaterThan(0);
+
+      svc.applyConfig({
+        enabled: true,
+        providerFingerprint: 'openai|model|auto',
+        transportFingerprint: '2|16000|120000',
+        maxBatchSize: 2,
+      });
+      expect(svc.getStatus().embeddedCount).toBe(corpus.length);
+      expect(info).toHaveBeenCalledWith(
+        {
+          reason: 'transport',
+          retainedInMemoryDocumentCount: corpus.length,
+          unloadedInMemoryDocumentCount: 0,
+        },
+        '[embeddings] resetting embedder',
+      );
+      await svc.embedCorpus(corpus);
+
+      expect(loads).toBe(2);
+      expect(documentInputs).toBe(firstDocumentInputs);
+    } finally {
+      info.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('corpus request batches honor configured limits above 96 and after live tuning', async () => {
+    const requests: string[][] = [];
+    let maxBatchSize = 128;
+    const svc = new SemanticSearchService({
+      loadEmbedder: () =>
+        Promise.resolve(
+          createOpenAiEmbedder(
+            { baseUrl: 'https://embeddings.example/v1', model: 'test', dimensions: 3 },
+            {
+              maxBatchSize,
+              fetchImpl: async (_input, init) => {
+                const { input } = JSON.parse(String(init?.body)) as { input: string[] };
+                requests.push(input);
+                return new Response(
+                  JSON.stringify({
+                    data: input.map((_, index) => ({ index, embedding: [1, 0, 0] })),
+                  }),
+                );
+              },
+            },
+          ),
+        ),
+      cacheDir: null,
+      enabled: true,
+      maxBatchSize,
+      transportFingerprint: '128',
+    });
+    const pages = Array.from({ length: 260 }, (_, i) => doc(`page-${i}`, `Unique page ${i}`));
+    await svc.embedCorpus(pages.slice(0, 200));
+    expect(requests.map((inputs) => inputs.length)).toEqual([128, 72]);
+
+    maxBatchSize = 2;
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: '',
+      transportFingerprint: '2',
+      maxBatchSize,
+    });
+    requests.length = 0;
+    await svc.embedCorpus(pages);
+    expect(requests).toHaveLength(30);
+    expect(requests.every((inputs) => inputs.length === 2)).toBe(true);
+    expect(requests.flat()).toEqual(pages.slice(200).map((page) => page.content));
+  });
+
+  test('transport changes preserve a pending pass and its persisted progress across restart', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-sem-transport-pending-'));
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const calls: number[] = [];
+    let pauseNext = false;
+    const loadEmbedder = async (): Promise<Embedder> => {
+      const inner = createConceptEmbedder({ concepts });
+      return {
+        ...inner,
+        async embed(texts, opts) {
+          if (opts.role === 'document') {
+            calls.push(texts.length);
+            if (pauseNext) {
+              pauseNext = false;
+              started.resolve();
+              await release.promise;
+            }
+          }
+          return inner.embed(texts, opts);
+        },
+      };
+    };
+    try {
+      const svc = new SemanticSearchService({
+        loadEmbedder,
+        cacheDir: dir,
+        enabled: true,
+        maxBatchSize: 2,
+        transportFingerprint: '2',
+      });
+      await svc.embedCorpus(corpus);
+      calls.length = 0;
+      const extended = [
+        ...corpus,
+        ...Array.from({ length: 5 }, (_, i) => doc(`new-${i}`, `auth ${i}`)),
+      ];
+      pauseNext = true;
+      const pending = svc.embedCorpus(extended);
+      await started.promise;
+      svc.applyConfig({
+        enabled: true,
+        providerFingerprint: '',
+        transportFingerprint: '1',
+        maxBatchSize: 1,
+      });
+      expect(svc.getStatus().embeddedCount).toBe(corpus.length);
+      await svc.ensureWarm();
+      expect(svc.getStatus().embeddedCount).toBe(corpus.length);
+      release.resolve();
+      await pending;
+      expect(calls).toEqual([2, 2, 1]);
+      expect(svc.getStatus().embeddedCount).toBe(extended.length);
+
+      const restarted = new SemanticSearchService({ loadEmbedder, cacheDir: dir, enabled: true });
+      calls.length = 0;
+      await restarted.embedCorpus(extended);
+      expect(calls).toEqual([]);
+      expect(restarted.getStatus().embeddedCount).toBe(extended.length);
+      expect(await restarted.queryScores('authentication', extended)).not.toBeNull();
+    } finally {
+      release.resolve();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a pending corpus pass waits for the current transport loader after its old loader settles', async () => {
+    const initial = Promise.withResolvers<Embedder | null>();
+    const current = Promise.withResolvers<Embedder | null>();
+    const loadEmbedder = vi
+      .fn<() => Promise<Embedder | null>>()
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(current.promise);
+    const svc = new SemanticSearchService({ loadEmbedder, cacheDir: null, enabled: true });
+    const pending = svc.embedCorpus(corpus);
+    await vi.waitFor(() => expect(loadEmbedder).toHaveBeenCalledTimes(1));
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: '',
+      transportFingerprint: '2',
+      maxBatchSize: 2,
+    });
+    initial.resolve(null);
+    await vi.waitFor(() => expect(loadEmbedder).toHaveBeenCalledTimes(2));
+    expect(svc.getStatus()).toMatchObject({ ready: false, embeddedCount: 0 });
+    current.resolve(createConceptEmbedder({ concepts }));
+    await pending;
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: true,
+      embeddedCount: corpus.length,
+    });
+  });
+
+  test('a corpus pass re-warms when config changes after ensureWarm resolves but before the pass resumes', async () => {
+    const loadEmbedder = vi.fn(async () => createConceptEmbedder({ concepts }));
+    const svc = new SemanticSearchService({ loadEmbedder, cacheDir: null, enabled: true });
+    const warming = svc.ensureWarm();
+    const pending = svc.embedCorpus(corpus);
+    const changed = warming.then(() => {
+      expect(svc.getStatus().ready).toBe(true);
+      svc.applyConfig({
+        enabled: true,
+        providerFingerprint: '',
+        transportFingerprint: '2',
+        maxBatchSize: 2,
+      });
+    });
+    await Promise.all([pending, changed]);
+    expect(loadEmbedder).toHaveBeenCalledTimes(2);
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: true,
+      embeddedCount: corpus.length,
+    });
+  });
+
+  test('successive transport loaders settling in reverse order keep the newest embedder', async () => {
+    const loaders = Array.from({ length: 3 }, () => Promise.withResolvers<Embedder | null>());
+    const loadEmbedder = vi
+      .fn<() => Promise<Embedder | null>>()
+      .mockReturnValueOnce(loaders[0].promise)
+      .mockReturnValueOnce(loaders[1].promise)
+      .mockReturnValueOnce(loaders[2].promise);
+    const svc = new SemanticSearchService({ loadEmbedder, cacheDir: null, enabled: true });
+    const pending = svc.embedCorpus(corpus);
+    await vi.waitFor(() => expect(loadEmbedder).toHaveBeenCalledTimes(1));
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: '',
+      transportFingerprint: '2',
+      maxBatchSize: 2,
+    });
+    const middleWarm = svc.ensureWarm();
+    svc.applyConfig({
+      enabled: true,
+      providerFingerprint: '',
+      transportFingerprint: '1',
+      maxBatchSize: 1,
+    });
+    const latestWarm = svc.ensureWarm();
+    const inner = createConceptEmbedder({ concepts });
+    const embed = vi.fn(inner.embed);
+    loaders[2].resolve({ ...inner, embed });
+    await latestWarm;
+    loaders[1].resolve(null);
+    await middleWarm;
+    loaders[0].resolve(null);
+    await pending;
+    expect(embed.mock.calls.map(([texts]) => texts.length)).toEqual([1, 1]);
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: true,
+      embeddedCount: corpus.length,
+    });
+    expect(await svc.queryScores('authentication', corpus)).not.toBeNull();
+    expect(loadEmbedder).toHaveBeenCalledTimes(3);
+  });
+
+  test('a superseded cache initialization finishes before the new provider initializes its cache', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-sem-cache-init-'));
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const init = VectorCache.prototype.init;
+    const initialize = vi
+      .spyOn(VectorCache.prototype, 'init')
+      .mockImplementationOnce(async function () {
+        started.resolve();
+        await release.promise;
+        await init.call(this);
+      });
+    let modelId = 'old';
+    const loadEmbedder = async (): Promise<Embedder> => ({
+      ...createConceptEmbedder({ concepts }),
+      modelId,
+    });
+    try {
+      const svc = new SemanticSearchService({ loadEmbedder, cacheDir: dir, enabled: true });
+      const pending = svc.embedCorpus(corpus);
+      await started.promise;
+      modelId = 'new';
+      svc.applyConfig({
+        enabled: true,
+        providerFingerprint: 'new',
+        transportFingerprint: '',
+        maxBatchSize: 96,
+      });
+      const currentWarm = svc.ensureWarm();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(initialize).toHaveBeenCalledTimes(1);
+      release.resolve();
+      await Promise.all([pending, currentWarm]);
+      expect(initialize).toHaveBeenCalledTimes(2);
+      const restarted = new SemanticSearchService({ loadEmbedder, cacheDir: dir, enabled: true });
+      await restarted.ensureWarm();
+      expect(restarted.getStatus().embeddedCount).toBe(corpus.length);
+    } finally {
+      release.resolve();
+      initialize.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test('max chunk cosine roll-up: a buried passage still surfaces the doc', async () => {

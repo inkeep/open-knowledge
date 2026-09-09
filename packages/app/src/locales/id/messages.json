@@ -127,6 +127,7 @@
     "0jD-Gn": ["Basis pengetahuan tim, wiki pribadi, dokumentasi proyek..."],
     "0kTAXe": ["Buka sumber: ", ["mirrorSrc"]],
     "0m4Snh": ["Keterampilan dialihkan"],
+    "0mlCvF": ["karakter"],
     "0niWj3": [["removingCount", "plural", { "other": ["#", " dihapus"] }]],
     "0pLDSn": ["Bilah alat Keterampilan"],
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
@@ -363,6 +364,7 @@
     "3zDeFb": ["Merenung…"],
     "3zyg_A": ["Pola abaikan"],
     "4-Phgi": ["Tampilkan atau sembunyikan agen"],
+    "42QMZH": ["permintaan"],
     "438Fca": ["Berhasil dikloning, tetapi proyeknya tidak dapat dibuka."],
     "43qzxu": ["DevOps"],
     "44DSl0": [
@@ -862,6 +864,9 @@
     "9tJX8r": ["Berdasarkan makna"],
     "9uI_rE": ["Batalkan"],
     "9uRLEH": ["\"", ["name"], "\" tidak bisa dibuka — ia belum ada di keterampilan proyek ini."],
+    "9wIf0H": [
+      "Turunkan nilai ini untuk mengurangi penggunaan memori dan beban per permintaan. Batch yang lebih kecil mengirim lebih banyak permintaan dan dapat memperlambat pengindeksan secara keseluruhan."
+    ],
     "9wQrUU": ["Refaktor"],
     "9x-lMu": ["Di repositori ini — kolaborator mendapat salinan lewat git."],
     "9xCnv8": ["Sembunyikan Terminal"],
@@ -903,6 +908,7 @@
     "AUV-TY": ["Berpikir"],
     "AVW-K9": ["Gagal memuat halaman yatim"],
     "AWOSPo": ["Perbesar"],
+    "AXMOeM": ["performa"],
     "AYoYhU": ["Pembaruan gagal: ", ["0"]],
     "AaC-CE": ["Papan kosong"],
     "AcK_r0": ["Claude CLI"],
@@ -976,6 +982,7 @@
     "Bdha5y": ["Menerbitkan..."],
     "BeWTQy": ["Memuat paket awal"],
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
+    "Bgaa_U": ["Gagal memperbarui pengaturan performa — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
@@ -1047,6 +1054,7 @@
     "CbxTfe": ["Pilih blok"],
     "CcaU4i": ["Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."],
     "ChMshD": ["Keluar dari ", ["appName"]],
+    "ChdabN": ["Kosongkan kolom untuk mengembalikan nilai defaultnya."],
     "Ck9XRt": ["Kuncinya tidak bisa disimpan — silakan coba lagi."],
     "ClII5l": ["Tekan ikon matahari atau bulan pada “Custom” di atas untuk memakai tema ini."],
     "ClTEde": ["Siapkan bagian yang dipilih di panel agen, siap dilengkapi dan dikirim."],
@@ -1329,6 +1337,7 @@
     "FgQ7XZ": ["Laporan bug Anda tidak bisa dimuat."],
     "FgRAvd": ["Log & info sistem"],
     "Fhp4Gn": ["Lihat plugin"],
+    "Fim5F3": ["embedding"],
     "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
     "Fjz6aJ": ["Kirim ke obrolan baru"],
@@ -1763,6 +1772,7 @@
     "L4Cdd9": ["atau buat berkas baru <0/>"],
     "L6Hhh6": ["(akar)"],
     "L6Ud-t": ["Tidak dapat memuat konflik. Muat ulang untuk mencoba lagi."],
+    "L7NFTZ": ["Masukkan jumlah detik antara ", ["minimum"], " dan ", ["maximum"], "."],
     "L83DKQ": ["Pemasangan PATH gagal: ", ["summary"]],
     "L8fKuc": ["Jalankan ini di terminal Anda"],
     "L9Y9Om": ["Halaman paling banyak ditaut"],
@@ -2205,6 +2215,7 @@
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
+    "QRSdsO": ["Batas waktu permintaan pengindeksan (detik)"],
     "QVk3SK": ["Berkas ini dihapus di cabang masuk (konflik modify-delete)."],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
@@ -2266,6 +2277,7 @@
     "RGCCrg": ["Salin tautan berbagi"],
     "RGkNeJ": ["Inisialisasi sebuah paket awal"],
     "RGptDW": ["OpenKnowledge memindahkan sebuah dokumen"],
+    "RH0e_f": ["batas waktu"],
     "RJ3a8Z": ["Mencari <0>", ["lookingForUrl"], "</0>."],
     "RJMO4B": [
       "Dari plugin ",
@@ -2743,6 +2755,9 @@
     "XYZ7tp": ["Tidak terselesaikan"],
     "XYlJJT": ["Menyiapkan"],
     "XZkdtg": ["Ganti cabang"],
+    "Xafwko": [
+      "Membatasi total teks yang dikirim dalam setiap permintaan. Potongan yang lebih besar dikirim sendiri; dokumen tidak dipecah lagi."
+    ],
     "XcGbim": ["Tampilkan berkas tersembunyi"],
     "Xet9MX": ["Gagal memuat tautan balik"],
     "Xewl6B": ["Salinan lokal Anda tertinggal. Tarik perubahan terbaru, lalu buka tautannya lagi."],
@@ -3226,6 +3241,7 @@
     "cRm498": ["Belum ada berkas skema di proyek ini — buat satu untuk mulai memvalidasi."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Blok konten yang dapat dilipat (toggle gaya Notion)."],
+    "cTrVa1": ["Pengaturan permintaan embedding"],
     "cU-seF": ["Lompat ke sumber markdown untuk blok di posisi kursor, terpusat dan tersorot."],
     "cUK8lW": [["conflictCount", "plural", { "other": ["#", " konflik"] }]],
     "cUagXn": ["Tambahkan ke ", ["gitignorePath"]],
@@ -3392,6 +3408,13 @@
     "eGUbmF": ["Salin berkas atau folder terpilih"],
     "eJitUk": ["Unggah dari komputer"],
     "eKThTQ": ["Gagal menata ulang"],
+    "eMWRAs": [
+      "Halaman terindeks: ",
+      ["semanticIndexedCount"],
+      " dari ",
+      ["semanticTotalCount"],
+      "."
+    ],
     "eNOyTV": [
       "Anda tidak punya izin push ke repositori ini. Otomatis (hanya Pull) tetap bisa menjaga salinan Anda mutakhir."
     ],
@@ -3664,6 +3687,9 @@
     "gyHDWC": ["Perbaiki semua dengan AI (", ["count"], ")"],
     "gyYvCN": ["Kirim suntingan saya setiap"],
     "h-AdvS": ["Folder dan templatnya sudah ada di sini, jadi tidak ada yang perlu ditambahkan."],
+    "h-RPqa": [
+      "Berapa lama OpenKnowledge menunggu setiap permintaan embedding saat pengindeksan. Permintaan pencarian memiliki batas waktu tetap 8 detik per percobaan, yang tidak berubah oleh pengaturan ini."
+    ],
     "h06R3C": ["Tidak ada halaman yang kehilangan tautan graf keluar."],
     "h16FyT": ["Daftar"],
     "h2N-1n": ["Terpasang di ", ["0"]],
@@ -3916,6 +3942,7 @@
     ],
     "jTUxaN": ["Aktifkan Otomatis (hanya Pull)"],
     "jTdrn1": ["Tidak dapat memeriksa apakah ", ["filePath"], " masih berkonflik — mencoba lagi."],
+    "jWwQo6": ["batch"],
     "jWzDfC": ["Memeriksa alat AI yang Anda miliki"],
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],
     "j_Z6g7": ["Bawaan bersama"],
@@ -3973,13 +4000,6 @@
       "</0> — kebanyakan server lokal mengabaikannya. Tambahkan hanya jika milik Anda memerlukannya."
     ],
     "kBNHN1": ["Riwayat navigasi"],
-    "kCNU4q": [
-      "Mengindeks halaman Anda — ",
-      ["semanticIndexedCount"],
-      " dari ",
-      ["semanticTotalCount"],
-      " siap. Hasilnya mungkin belum lengkap."
-    ],
     "kCjkGY": ["Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."],
     "kCqCyf": ["Membuka panel diagnostik lint CodeMirror."],
     "kEiVv6": [
@@ -4012,6 +4032,7 @@
       "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
     ],
     "kSiB3X": ["Tidak dapat memindahkan ke ", ["trashNoun"]],
+    "kUgGPO": ["Anggaran karakter per permintaan pengindeksan"],
     "kV2YZv": [
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
     ],
@@ -4490,6 +4511,9 @@
     "q3W2nd": ["Komentar itu tidak bisa ditambahkan: ", ["0"]],
     "q4YJl_": ["Sesi terminal berakhir (kode keluar ", ["0"], ")."],
     "q4efaG": [["filePath"], " sudah tidak ada di skill ini"],
+    "q5uZbJ": [
+      "Halaman yang belum terindeks akan diindeks saat Anda mencari. Cari lagi untuk mendapatkan hasil yang lebih lengkap."
+    ],
     "q6-JVU": ["Memuat halaman"],
     "q63KUv": ["Tambahkan MCP & keterampilan"],
     "q7F5am": ["judul"],
@@ -4926,6 +4950,9 @@
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
+    "uwzRx4": [
+      "Sesuaikan ukuran dan batas waktu permintaan pengindeksan untuk server embedding yang lambat atau terbatas memori. Sebagian besar penyiapan sebaiknya mempertahankan nilai bawaan."
+    ],
     "uyJsf6": ["Tentang"],
     "uyOQ4e": ["Tema disalin sebagai YAML base16"],
     "uynXup": [["tokens", "plural", { "other": ["token"] }]],
@@ -5308,11 +5335,13 @@
     "zbymaY": [["0"], " mnt lalu"],
     "zd00pH": ["Salin Jalur"],
     "zgSFyG": ["Tautan eksternal"],
+    "zkkEFa": ["Masukkan bilangan bulat antara ", ["minimum"], " dan ", ["maximum"], "."],
     "zkz0Fg": ["Siapkan sinkronisasi"],
     "zlErBl": ["Respons galat judul halaman tidak sesuai RFC 9457"],
     "zo3Dl7": ["Tampilkan atau sembunyikan gambar mini"],
     "zpfN9p": ["Belum ada komentar. Pilih teks di dokumen untuk menambahkan satu."],
     "zq2eBA": ["Lihat di sumber"],
+    "zqQlBg": ["Maksimum potongan teks per permintaan pengindeksan"],
     "zrP8HX": [
       "Frontmatter yang mengawali setiap dokumen yang dibuat dari templat ini. Nilainya berupa YAML — daftar ditulis <0>[a, b]</0>; <1>{",
       ["date"],

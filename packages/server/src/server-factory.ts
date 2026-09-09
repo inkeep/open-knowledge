@@ -89,7 +89,7 @@ import {
   startConfigFileWatcher,
   startMultiPathConfigFileWatcher,
 } from './config-file-watcher.ts';
-import { applyExternalConfigChange } from './config-persistence.ts';
+import { applyExternalConfigChange, isConfigEcho } from './config-persistence.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import {
   createConflictLifecycleSeedExtension,
@@ -131,6 +131,7 @@ import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
+  type LoadOpenAiEmbedderInput,
   loadOpenAiEmbedder,
   normalizeProviderId,
   type ResolvedSemanticConfig,
@@ -306,7 +307,7 @@ export interface ServerOptions {
   pullIntervalSeconds?: number;
   pushIntervalSeconds?: number;
   embeddingsKeyStore?: EmbeddingsKeyStore | null;
-  embedderLoader?: () => Promise<Embedder | null>;
+  embedderLoader?: (input: LoadOpenAiEmbedderInput) => Promise<Embedder | null>;
   singleDocRelPath?: string;
   ephemeral?: boolean;
   generatedIndexTestHooks?: {
@@ -605,8 +606,32 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
   }
 
-  function logConfigDiagnosticsOnce(): void {
+  function logConfigDiagnostics(configDocName?: string): void {
+    const configDocNamesByScope = {
+      user: CONFIG_DOC_NAME_USER,
+      project: CONFIG_DOC_NAME_PROJECT,
+      'project-local': CONFIG_DOC_NAME_PROJECT_LOCAL,
+    };
     for (const finding of readConfigDiagnostics().diagnostics) {
+      if (configDocName !== undefined && configDocNamesByScope[finding.scope] !== configDocName) {
+        continue;
+      }
+      if (finding.code === 'VALUE_FALLBACK') {
+        for (const issue of finding.issues) {
+          log.warn(
+            {
+              code: finding.code,
+              scope: finding.scope,
+              file: finding.file,
+              path: issue.path.join('.'),
+              line: issue.line,
+              column: issue.column,
+            },
+            `[config] ${issue.path.join('.')}: ${issue.message}`,
+          );
+        }
+        continue;
+      }
       if (finding.code !== 'REMOVED_KEY') continue;
       log.warn(
         { scope: finding.scope, file: finding.file, path: finding.path.join('.') },
@@ -617,6 +642,10 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   function semanticProviderFingerprint(cfg: ResolvedSemanticConfig): string {
     return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
+  }
+
+  function semanticTransportFingerprint(cfg: ResolvedSemanticConfig): string {
+    return `${cfg.maxBatchSize}|${cfg.maxBatchChars}|${cfg.docTimeoutMs}`;
   }
 
   let lastAppliedAttachmentFolderPath: string | undefined;
@@ -645,6 +674,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     semanticSearch.applyConfig({
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
+      transportFingerprint: semanticTransportFingerprint(semCfg),
+      maxBatchSize: semCfg.maxBatchSize,
     });
     if (configDocName === CONFIG_DOC_NAME_PROJECT) {
       try {
@@ -775,19 +806,25 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const initialSemanticConfig = readSemanticSearchConfig();
   const semanticSearch = new SemanticSearchService({
-    loadEmbedder:
-      options.embedderLoader ??
-      (() => {
-        const cfg = readSemanticSearchConfig();
-        return loadOpenAiEmbedder({
-          keyStore: options.embeddingsKeyStore ?? null,
-          projectDir,
-          config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
-        });
-      }),
+    loadEmbedder: () => {
+      const cfg = readSemanticSearchConfig();
+      const input: LoadOpenAiEmbedderInput = {
+        keyStore: options.embeddingsKeyStore ?? null,
+        projectDir,
+        config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
+        options: {
+          maxBatchSize: cfg.maxBatchSize,
+          maxBatchChars: cfg.maxBatchChars,
+          docTimeoutMs: cfg.docTimeoutMs,
+        },
+      };
+      return (options.embedderLoader ?? loadOpenAiEmbedder)(input);
+    },
     cacheDir: join(getLocalDir(projectDir), 'embeddings'),
     enabled: initialSemanticConfig.enabled,
     providerFingerprint: semanticProviderFingerprint(initialSemanticConfig),
+    transportFingerprint: semanticTransportFingerprint(initialSemanticConfig),
+    maxBatchSize: initialSemanticConfig.maxBatchSize,
   });
 
   let loadedPrincipal: Principal | null = null;
@@ -1231,6 +1268,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       log.warn({ err }, '[index] generated-index settings reflection deferred to config watcher');
     }
     applyPersistedConfigToConsumers(CONFIG_DOC_NAME_PROJECT, enabled);
+    logConfigDiagnostics(CONFIG_DOC_NAME_PROJECT);
     return { ...getGeneratedIndexSettingsStatus(), applied: true };
   }
 
@@ -1560,7 +1598,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
       onConfigRejected: (docName, error) =>
         cc1Broadcaster?.emitConfigValidationRejected(docName, error),
-      onConfigPersisted: applyPersistedConfigToConsumers,
+      onConfigPersisted: (docName) => {
+        applyPersistedConfigToConsumers(docName);
+        logConfigDiagnostics(docName);
+      },
       onManagedSkillPersisted: (docName) => {
         const parsed = parseManagedArtifactName(docName);
         if (parsed?.kind !== 'skill' || parsed.scope !== 'global') return;
@@ -3107,6 +3148,11 @@ export function createServer(options: ServerOptions): ServerInstance {
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] starting');
         const cleanup = await startConfigFileWatcher(absPath, (content) => {
           const document = hocuspocus.documents.get(configDocName);
+          const alreadyApplied = isConfigEcho(
+            configDocName,
+            content,
+            persistence.configPersistenceCtx,
+          );
           log.info(
             {
               docName: configDocName,
@@ -3122,10 +3168,13 @@ export function createServer(options: ServerOptions): ServerInstance {
             persistence.configPersistenceCtx,
           );
           log.info(
-            { docName: configDocName, outcome },
+            { docName: configDocName, outcome, isEcho: alreadyApplied },
             '[config-file-watcher] applyExternalConfigChange outcome',
           );
           applyPersistedConfigToConsumers(configDocName);
+          if (!alreadyApplied) {
+            logConfigDiagnostics(configDocName);
+          }
         });
         configFileWatcherCleanups.push({ docName: configDocName, cleanup });
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] started');
@@ -3924,7 +3973,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     const readyElapsed = bootElapsedMs();
     if (readyElapsed !== undefined) recordBootPhase('readyMs', readyElapsed);
 
-    logConfigDiagnosticsOnce();
+    logConfigDiagnostics();
   }
 
   initAsync().then(
