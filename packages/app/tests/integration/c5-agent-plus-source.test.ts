@@ -1,17 +1,3 @@
-/**
- * C5: Agent write + concurrent source mode (Y.Text) edits.
- *
- * Symmetric to C4 but validates the Y.Text write surface. Agent writes via
- * the HTTP API use applyAgentMarkdownWrite (XmlFragment-authoritative,
- * precedent #12) which mirrors to Y.Text via applyByPrefixSuffix. Client
- * source-mode edits write directly to Y.Text. The server observer (Observer B
- * under OBSERVER_SYNC_ORIGIN) parses the merged Y.Text and applies to
- * XmlFragment via updateYFragment.
- *
- * Per-test docName isolation via createTestClient/createTestClients.
- * Client lifecycle in try/finally (not afterEach).
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';

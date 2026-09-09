@@ -1,22 +1,4 @@
-/**
- * Structural enforcement of the paired-write contract (precedent #38).
- *
- * Walks every `<doc>.transact(fn, origin)` call site in `packages/server/src/`
- * via ts-morph and asserts that paired-write origins route through one of
- * the three sanctioned sibling primitives in `bridge-intake.ts`:
- * `composeAndWriteRawBody`, `replaceRawBody`, `deriveFragmentFromYtext`.
- *
- * Why structural, not textual: the STOP rule "paired-write origins must call
- * a sanctioned primitive" had only a sentence backing it. Past
- * iterations shipped ordering bugs past that sentence. This test fails the
- * build when a new transact site bypasses the primitive — no reviewer-
- * attention budget required.
- *
- * Allowlists are typed `Set<string>` literals colocated with the test (not
- * out-of-band). Adding a new entry forces explicit classification: any new
- * origin name that doesn't match one of the three buckets fails loudly with
- * a message naming the file:line and the unrecognized origin.
- */
+/** Structural enforcement of the paired-write contract (precedent #38). */
 
 import { join, relative } from 'node:path';
 import {

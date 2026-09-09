@@ -1,24 +1,4 @@
-/**
- * no-hand-rolled-spinner — oxlint rule fixture test.
- *
- * Rule:    `lint-plugins/ok-rules/rules/no-hand-rolled-spinner.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-hand-rolled-spinner.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules), which
- * requires every rule to ship with a fixture-file test. This rule was the one
- * exception: it shipped without a fixture under both the retired GritQL plugin
- * and the initial oxlint port, so the contract named a guarantee it did not have.
- *
- * Three guarantees, each its own test:
- *   1. Fires on exactly the planted positives and on no negative — the
- *      bidirectional `toBe(5)` count, plus the diagnostic-message contract.
- *   2. Registered and enabled, and deliberately unscoped: a class string can
- *      appear anywhere, so this rule belongs in `UNSCOPED_RULES` rather than
- *      carrying a `RULE_SCOPES` entry.
- *   3. The `\b` delimiter admits `animate-spin-slow` but not `animate-spinner`.
- *      The two look symmetric and are not, so the asymmetry is pinned directly
- *      rather than left to the aggregate count.
- */
+/** The `no-hand-rolled-spinner` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

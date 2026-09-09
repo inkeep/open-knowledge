@@ -398,34 +398,9 @@ export function buildPatternDConstructorOptions(
 }
 
 /**
- * TiptapEditor — Pattern D (Suspense + `use(promise)`) mount path. The only
- * editor mount path in the app; precedent #18(d) substrate is the production
- * default since the rollout retirement.
- *
- * Editor reference is stable from render 1: `use(mountTiptapEditorPromise(...))`
- * suspends until the editor is constructed AND mounted (mount-promise.ts owns
- * `await scheduler.yield()` → `new Editor({element: null})` →
- * `await scheduler.yield()` → `editor.mount(transient)`).
- * `<EditorContent>` only ever sees a fully-mounted editor — no null-state hop,
- * no `EditorContentWithKey` random-key cascade.
- *
- * Suspense fallback: the parent `EditorActivityPool` already wraps with
- * `<Suspense fallback={<EditorSkeleton/>}>` (same skeleton precedent #18(d)
- * source-mode-defer uses); user sees one atomic skeleton-to-editor transition.
- *
- * Mount failure: promise rejects → `use()` throws → `DocumentErrorBoundary`
- * catches → "Try again" recycles cache.
- *
- * Cancellation: `parkTiptapEditor(entry)` on unmount → mount-promise cache is
- * preserved across V2-admit park (so warm reopen returns the same resolved
- * promise reference and `use()` short-circuits without Suspense). On
- * V2-refuse park or kill-switch, `invalidateMountPromise(docName)` aborts
- * any in-flight construction via AbortController.
- *
- * StrictMode: editor reference is stable across the dev-mode double-invoke —
- * the V2 cache HIT path on remount returns the same parked entry, and
- * mount-promise's module-level cache returns the same promise reference within
- * a single mount lifecycle.
+ * The only editor mount path in the app: Suspense plus `use(mountTiptapEditorPromise(...))` per
+ * precedent #18(d), so `<EditorContent>` only ever sees a fully mounted editor and a mount
+ * failure surfaces through `DocumentErrorBoundary`.
  */
 export const TiptapEditor: FC<TiptapEditorProps> = ({
   provider,
@@ -1239,19 +1214,9 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       )}
       {}
       <SelectionAnnouncer editor={editor} />
-      {/*
-       * <InteractionLayerView> renders the singleton PropPanel / Toolbar /
-       * Breadcrumb subtree FOR THE ACTIVE chip — inside the main React tree
-       * so PropPanel renderers (InternalLinkPropPanel, WikiLinkPropPanel)
-       * inherit context providers like <PageListProvider> + <ThemeProvider>.
-       * The layer host (per-editor WeakMap) provides the store; the View
-       * subscribes via useState + subscribe and renders the active
-       * registration's controls. RawMdxFallback is handled inline
-       * via `RawMdxFallbackCMView` (per precedent #30 "all user content
-       * visible and editable") and does not register with InteractionLayer.
-       *
-       * Rendered AFTER EditorContent so its absolute-positioned PropPanels
-       * stack above editor content (z-index handled in CSS).
+      {/**
+       * RawMdxFallback renders inline via `RawMdxFallbackCMView` (precedent #30) and never
+       * registers with InteractionLayer.
        */}
       <InteractionLayerView store={getInteractionLayer(editor).store} />
     </div>

@@ -81,50 +81,12 @@ const TextDocEditor = lazy(async () => ({
 }));
 
 /**
- * Large-doc threshold in Y.Text characters. Above this, the non-active editor
- * is defer-mounted on cold load instead of pre-mounting both per
- * precedent #18(b)'s small-to-medium-doc default. Once the user toggles to
- * the deferred mode, that editor mounts and stays mounted — so subsequent
- * toggles remain CSS-only and cost nothing.
- *
- * Value rationale (500_000 chars ≈ 500 KB plain text):
- *   - README.md / AGENTS.md / CLAUDE.md (≤150 KB) — BELOW. No change from
- *     pre-mount-both default; toggle stays instant.
- *   - perf-fixtures/big-doc.md (3.25 MB, generated) — ABOVE. Cold load skips the non-active
- *     editor's initial mount+parse; first toggle pays the cost; subsequent
- *     toggles are instant.
- *
- * The threshold is a tuning knob, not a contract. Moving it UP regresses
- * the fix for smaller "large" docs; moving it DOWN unnecessarily delays
- * first-toggle UX for medium docs where pre-mount-both was already fast
- * enough.
- *
- * FIRST-TOGGLE COST: On a 3.25 MB doc, the first mode toggle after cold
- * load pays the deferred editor's cold mount — measured at
- * `toSourceMs ≈ 223 ms`. Proportional scaling to a ~9.7 MB doc puts first
- * toggle in the 500–800 ms range. Perceptible but well below the ~1 s
- * hang threshold. Subsequent toggles remain CSS-only. Future engineers:
- * do not assume defer-mount is free at the toggle boundary; it trades
- * cold-load latency for one-time first-toggle latency on the deferred
- * mode. See `ACTIVITY_MOUNT_LIMIT` — both constants are parts of
- * the same Activity-mount hygiene pattern.
+ * Above this, the non-active editor is defer-mounted on cold load instead of pre-mounting both per
+ * precedent #18(b)'s small-to-medium-doc default.
  */
 export const LARGE_DOC_CHAR_THRESHOLD = readNumericOverride('LARGE_DOC_CHAR_THRESHOLD', 500_000);
 
-/**
- * Pure helper — given the doc size and the current mode-visit history,
- * compute which editors should be rendered.
- *
- * Below the threshold: always both (pre-mount-both, precedent #18(b) default).
- * Above the threshold: only modes that have been visited at least once.
- * Active mode is ALWAYS considered visited for the purpose of this computation,
- * so the call site never sees `renderSource=false && renderVisual=false`.
- *
- * `isLarge` surfaces the threshold branch taken so the caller can emit an
- * `ok/activity/defer-mount` mark for observability. It is NOT load-bearing
- * for the gating decision itself — always derive render flags from this
- * helper's output.
- */
+/** Below the threshold: always both (pre-mount-both, precedent #18(b) default). */
 interface EditorMountGateArgs {
   ytextLength: number;
   isSourceMode: boolean;
@@ -189,48 +151,8 @@ export function computeIsNewDoc(args: {
 }
 
 /**
- * Minimum number of editors mounted concurrently inside `<Activity>`
- * boundaries. Decoupled from `MAX_POOL` (exported from `provider-pool.ts`,
- * default 10) per precedent #18(c): every visible split-pane document is
- * mandatory, then MRU hidden documents fill this warm floor. Pool-resident
- * docs outside that list keep their warm provider (so revisiting is fast via
- * Suspense-gated remount with `syncPromise` resolving immediately from
- * `hasSynced=true`) but skip the per-editor memory + observer-CPU cost of
- * keeping the TipTap + CodeMirror instances alive.
- *
- * 3 covers the "alt-tab between recent docs" pattern dominant for the
- * primary personas.
- *
- * Changing either this value or `MAX_POOL` is an ASK_FIRST boundary — they're
- * coupled by design. If one moves, audit the other for sympathetic impact.
- *
- * **LIMIT=3 is a stable decision, not a temporary holdpoint.** Both the
- * TipTap-editor-cost argument (LIMIT=1 doesn't avoid `createEditor` cost
- * because `@tiptap/react`'s `useEditor` destroys on effect-cleanup anyway)
- * and the scroll-state argument (scroll preservation requires refs to
- * survive, which requires Activity hidden not full unmount) stand
- * independently of the V2 editor cache. A module-level editor cache changes
- * the first argument's mechanics but not the second — LIMIT stays at 3 to
- * keep ScrollPreservingContainer's `useRef` alive across navigation.
- *
- * Reducing this value to 1 was attempted as a warm-switch fix, then
- * REVERTED — LIMIT=1 broke scroll-position survival across A→B→A because
- * `ScrollPreservingContainer` stores its saved scrollTop in a `useRef`, and
- * refs persist across `<Activity>` mode flips but are lost on full unmount.
- * With LIMIT=3, ScrollPreservingContainer stays mounted for non-active docs
- * (effects paused via Activity-hidden; ref state preserved), so revisiting
- * restores scroll position. With LIMIT=1, the container unmounts on nav and
- * the ref is destroyed. TipTap editor state WAS being destroyed regardless
- * (its `useEditor` schedules destroy on effect-cleanup, so LIMIT=3 + hidden
- * transition = same destroy path as LIMIT=1 + unmount), but scroll state was
- * load-bearing. Conclusion: warm-switch latency is architecturally bounded
- * by TipTap's `createEditor` overhead (~350 ms schema + Yjs bind + DOM attach,
- * fixed cost regardless of doc size or `ACTIVITY_MOUNT_LIMIT`); unlocking
- * <100 ms warm-switch requires a module-level Editor cache outside React's
- * lifecycle.
- *
- * See `LARGE_DOC_CHAR_THRESHOLD` — both constants are parts of the same
- * Activity-mount hygiene pattern (precedent #18(c) / precedent #24).
+ * `ACTIVITY_MOUNT_LIMIT` and `MAX_POOL` in `provider-pool.ts` are coupled by design; changing
+ * either requires auditing the other (precedent #18(c) / precedent #24).
  */
 export const ACTIVITY_MOUNT_LIMIT = readNumericOverride('ACTIVITY_MOUNT_LIMIT', 3);
 
@@ -394,7 +316,10 @@ function EditorActivityPoolInner({
       evicted,
     });
     priorMountKeyRef.current = mountKey;
-    // cached-but-not-Activity-mounted editors (precedent #27(b)). Bounds
+    /**
+     * Drives provider connect/disconnect for cached-but-not-Activity-mounted editors, bounding
+     * remote-peer CRDT load to the top ACTIVITY_MOUNT_LIMIT (precedent #27(b)).
+     */
     setActivityMountList(mounted);
   }, [mountKey, activeDocName]);
 
@@ -815,7 +740,10 @@ function ActivityEntry({
 }: ActivityEntryProps) {
   const recoveryView = getServerRestartRecoveryView(entry.docName, serverRestartRecovery);
 
-  // (preserving precedent #18(b)'s hybrid render tree — Suspense + error
+  /**
+   * A conflicted doc swaps the editor children for the diff view inside the same
+   * DocumentBoundary, preserving precedent #18(b)'s hybrid render tree.
+   */
   const lifecycleStatus = useLifecycleStatus(entry.docName);
   const isConflict = lifecycleStatus === 'conflict';
   const isMermaid = isMermaidDocFile(entry.docName);
@@ -831,7 +759,7 @@ function ActivityEntry({
 
   const bodyAnchorRef = useRef<HTMLDivElement>(null);
 
-  // Small/medium docs keep pre-mount-both (precedent #18(b) default): mode swap
+  /** Small and medium docs keep pre-mount-both, the precedent #18(b) default. */
   const ytextLength = entry.provider.document.getText('source').length;
 
   const [lastVisibleIsSourceMode, setLastVisibleIsSourceMode] = useState(isSourceMode);
@@ -953,22 +881,20 @@ function ActivityEntry({
               >
                 <DocumentBoundary docName={entry.docName} provider={entry.provider}>
                   {isConflict ? (
-                    /* While `lifecycle.status === 'conflict'` the
-                       DiffViewBoundary replaces the editor children. The
-                       outer DocumentBoundary's syncPromise gate + the
-                       Suspense/error scopes above stay intact (precedent
-                       #18(b) hybrid render tree preserved — we swap children,
-                       not boundaries). Y.Doc identity is unchanged across
-                       the swap, so Y.Text content + undo history survive. */
+                    /*
+                     * The outer DocumentBoundary's syncPromise gate + the Suspense/error scopes
+                     * above stay intact (precedent #18(b) hybrid render tree preserved — we swap
+                     * children, not boundaries).
+                     */
                     <Suspense fallback={<EditorSkeleton />}>
                       <LazyDiffViewBoundary docName={entry.docName} provider={entry.provider} />
                     </Suspense>
                   ) : isMermaid ? (
-                    /* Standalone Mermaid doc: dedicated diagram (wysiwyg) + editable
-                       source editor, both bound to this doc's Y.Text('source').
-                       Swaps the editor CHILDREN inside the same DocumentBoundary
-                       (like the conflict branch above) so the precedent #18(b)
-                       hybrid render tree + Y.Doc identity are preserved. */
+                    /*
+                     * Swaps the editor CHILDREN inside the same DocumentBoundary (like the conflict
+                     * branch above) so the precedent #18(b) hybrid render tree + Y.Doc identity are
+                     * preserved.
+                     */
                     <MermaidDocEditor
                       docName={entry.docName}
                       provider={entry.provider}

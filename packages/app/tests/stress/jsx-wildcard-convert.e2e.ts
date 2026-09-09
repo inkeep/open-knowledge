@@ -1,38 +1,7 @@
 /**
- * Playwright regression pin for the wildcard + render-error
- * auto-convert path in `JsxComponentView`.
- *
- * Bug class this guards against:
- *   `JsxComponentView` registers an effect that schedules a
- *   `requestAnimationFrame` to replace an unregistered `jsxComponent` with
- *   a `rawMdxFallback` (Precedent #30 — "all user content visible and
- *   editable; if a component render fails, the NodeView swaps to a nested
- *   CM"). The effect uses a `convertedRef` one-shot guard. Flipping that
- *   ref BEFORE the rAF fires is StrictMode-unsafe: the intentional
- *   unmount-remount cycle's cleanup cancels the rAF, the ref stays flipped
- *   across remount (refs persist by fiber identity), the remount's effect
- *   early-returns, and no dispatch ever lands. Symptom: unregistered
- *   components render stuck forever on the
- *   "Unknown: `<ComponentName>` — opening source editor..." placeholder.
- *   Production is unaffected (no StrictMode double-invoke); dev, CI, and
- *   any future component-testing tier all hit the bug.
- *
- * This scenario exercises the path end-to-end in a real browser:
- *   - Seed a doc containing an unregistered `<UnknownWidget>` MDX element.
- *   - Open the doc; wait for sync.
- *   - Poll until PM state has a `rawMdxFallback` whose reason names
- *     "UnknownWidget" AND there is no residual `jsxComponent` with
- *     componentName "UnknownWidget".
- *
- * Perturbation: reverting the post-dispatch `convertedRef.current = true`
- * flip — i.e., restoring the pre-dispatch flip — fails
- * this test deterministically. The poll times out because the remount's
- * effect early-returns and the conversion never lands.
- *
- * Intentionally NOT testing implementation details (convertedRef's value,
- * rAF scheduling, StrictMode-specific double-invoke behavior). The
- * assertion is on observable PM state — the node type the user sees and
- * any downstream code consumes.
+ * Playwright pin for `JsxComponentView`'s wildcard and render-error auto-convert into a
+ * `rawMdxFallback` (precedent #30, all user content visible and editable). Flipping the one-shot
+ * ref before the rAF fires is StrictMode-unsafe and leaves the placeholder stuck forever.
  */
 
 import { randomUUID } from 'node:crypto';

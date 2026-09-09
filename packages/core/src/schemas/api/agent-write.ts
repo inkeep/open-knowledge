@@ -1,14 +1,6 @@
 /**
- * Cluster A: agent-write / -write-md / -patch / -undo
- *
- * Mutating handlers that write to Y.Docs through the agent attribution path
- * (precedent #24). `withValidation()` enforces these schemas at the wire
- * boundary; the handler receives an already-typed body. Body-shape failures
- * (schema rejection) emit `urn:ok:error:invalid-request` PRE-identity —
- * semantically OK because no Y.Doc mutation is attempted. Semantic failures
- * (reserved docname, target-not-found, stale-target, no-active-session) emit
- * POST-identity. The `attribution-sweep-coverage.test.ts` ordering check
- * enforces this distinction.
+ * Cluster A: agent-write / -write-md / -patch / -undo Mutating handlers that write to Y.Docs
+ * through the agent attribution path (precedent #24).
  */
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';

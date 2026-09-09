@@ -1,24 +1,3 @@
-/**
- * `bootServer` — HTTP + WebSocket wrapping layer around `createServer()`.
- *
- * Three consumers share this composed boot path:
- *   1. CLI `ok start` (via `bootStartServer` in packages/cli)
- *   2. Electron utility process (direct import — precedent #14-adjacent)
- *   3. Integration tests
- *
- * Before this extraction every consumer reimplemented HTTP + WS upgrade
- * + `listen()` + `updateServerLockPort` + idle-shutdown + composite destroy.
- * The extraction consolidates those ~150 LOC here so all three callers share
- * a single tested orchestrator.
- *
- * Opt-outs (Electron utility uses these):
- *   - `idleShutdownMs: null` — disable idle-shutdown entirely
- *   - `skipAutoInit: true` — skip the pre-createServer scaffold hook
- *
- * CLI-specific concerns (`initContent`, banner, signal handlers)
- * are NOT part of bootServer — the CLI wrapper layers them on top via
- * injected callbacks + post-return orchestration.
- */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { homedir } from 'node:os';

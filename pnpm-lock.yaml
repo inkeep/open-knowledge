@@ -230,6 +230,9 @@ importers:
       vitest:
         specifier: ^4.1.0
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(happy-dom@20.10.6)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))
+      yaml:
+        specifier: ^2.8.3
+        version: 2.9.0
 
   docs:
     dependencies:

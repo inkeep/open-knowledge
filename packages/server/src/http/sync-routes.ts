@@ -238,7 +238,10 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         return;
       }
       const { file, strategy, content } = body;
-      // handlers (precedent #24); body `principalId` is ignored by contract,
+      /**
+       * `extractActorIdentity` is the mandated resolver for actor-attributed handlers
+       * (precedent #24); body `principalId` is ignored by contract.
+       */
       const actor = extractActorIdentity(body as unknown as Record<string, unknown>, getPrincipal);
       let claimedDocName: string | undefined;
       if (projectDir && (actor.kind === 'agent' || actor.kind === 'principal')) {

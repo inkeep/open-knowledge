@@ -1,38 +1,6 @@
 /**
- * Callout — DIY renderer for the 15-type callout system (5 GFM + 10
- * Obsidian-parity).
- *
- * Renders the descriptor's 7-prop surface: `type` (15-value enum),
- * `title`, `icon` (namespaced lucide), `color` (hex accent override),
- * `collapsible`, `defaultOpen`, and `children` (the PM-managed
- * NodeViewContent slot).
- *
- * Two render branches:
- *
- *   1. Static (collapsible !== true): flex container with a left-border accent,
- *      type-inferred icon, optional title row, and the body.
- *
- *   2. Collapsible (collapsible === true): native HTML5 <details>/<summary>.
- *      `defaultOpen` maps to the `open` attribute. The summary carries the
- *      icon + title (no editable chrome — PM does not mount inside <summary>).
- *      Body renders unconditionally; browsers display:none the content when
- *      collapsed but DOM is retained, so PM children stay live.
- *
- * The component accepts `children` (NodeViewContent injected by JsxComponentView)
- * as an opaque React element and places it inside the body region. The
- * surrounding chrome is non-editable; clicking the summary toggles the open
- * state via native browser behavior (no JS handler needed).
- *
- * Zero upstream-docs-lib React imports — all styling flows
- * through Tailwind utility classes + the `[data-component-type="callout"]`
- * selector in globals.css (OK shadcn semantic tokens). An inline
- * `--callout-type-color` CSS variable drives the left-border accent +
- * selection-halo; when the user authors a `color` prop, the inline style
- * overrides the per-type default.
- *
- * Precedent #30 (all user content visible): children slot is ALWAYS rendered,
- * never `display: none` via React. Native `<details>` does its own
- * display-toggle inside the browser — that is orthogonal to the precedent.
+ * Precedent #30 (all user content visible): children slot is ALWAYS rendered, never `display: none`
+ * via React.
  */
 
 import { Trans } from '@lingui/react/macro';

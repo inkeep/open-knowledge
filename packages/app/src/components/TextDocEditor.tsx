@@ -1,24 +1,6 @@
 /**
- * Editor for an editable text doc (`.ts` / `.json` / `.css` / `.txt` / … —
- * see `EDITABLE_TEXT_FILE_EXTENSIONS`). These are verbatim
- * Y.Text('source')-only CRDT docs, the same doc class as standalone Mermaid
- * docs (markdown bridge gated off server-side; bytes stored verbatim), so a
- * plain-text file edits like a normal IDE buffer: CodeMirror bound to the
- * shared `Y.Text` via `yCollab`, collaborative cursors included.
- *
- * Language highlighting resolves lazily from the file extension through the
- * same `text-viewer-languages` loader the read-only asset `TextViewer` uses —
- * grammars stay out of the main bundle and unknown extensions fall back to
- * plain text.
- *
- * There is no wysiwyg mode for a code file, so the editor renders the same
- * CodeMirror surface regardless of the global source-mode toggle (mirrors how
- * a diagram doc treats "wysiwyg" as its rendered form; here source IS the
- * only form).
- *
- * Mounted by `EditorActivityPool` inside the doc's `DocumentBoundary` (peer
- * to the MermaidDocEditor branch), so `provider` is sync-gated and the
- * precedent #18(b) hybrid render tree is preserved.
+ * Mounted by `EditorActivityPool` inside the doc's `DocumentBoundary` (peer to the MermaidDocEditor
+ * branch), so `provider` is sync-gated and the precedent #18(b) hybrid render tree is preserved.
  */
 
 import { type Language, syntaxHighlighting } from '@codemirror/language';

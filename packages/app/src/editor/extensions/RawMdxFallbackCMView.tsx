@@ -1,18 +1,7 @@
 /**
- * RawMdxFallback NodeView with embedded CodeMirror 6.
- *
- * Implements the canonical ProseMirror + CodeMirror pattern
- * (prosemirror.net/examples/codemirror/) adapted for TipTap's React NodeView.
- *
- * Architecture (Precedent #28 — direct PM dispatch, NOT y-codemirror.next):
- *   CM keystroke → forwardUpdate → PM transaction → y-prosemirror → CRDT
- *   PM change → NodeView.update(node) → computeChange → CM transaction
- *   Single `updating` boolean prevents feedback loops.
- *
- * This NodeView embeds a CodeMirror EditorView inside a React component.
- * The CM instance is NOT mounted via React (would conflict with PM's DOM management).
- * Instead, CM is mounted imperatively into a ref'd container, and React
- * renders the chrome (badge, border) around it.
+ * Architecture (Precedent #28 — direct PM dispatch, NOT y-codemirror.next): CM keystroke →
+ * forwardUpdate → PM transaction → y-prosemirror → CRDT PM change → NodeView.update(node) →
+ * computeChange → CM transaction Single `updating` boolean prevents feedback loops.
  */
 
 import { Compartment } from '@codemirror/state';
@@ -87,43 +76,9 @@ export function computeCMSelectionForwarding(opts: {
 }
 
 /**
- * Attempt to upgrade a `rawMdxFallback`'s source back to its parsed form.
- * Given the current CM source and the PM schema, returns an array of PM
- * Nodes to replace the rawMdxFallback with, or `null` if the upgrade
- * shouldn't happen.
- *
- * Called on CM blur — matches Obsidian's live-preview cursor-exit
- * trigger, which for our nested-CM architecture collapses to browser
- * blur because nested CM focus IS the source reveal.
- *
- * **Multi-block upgrades are supported** — `parseWithFallback`'s
- * recovery often absorbs adjacent blocks into one fallback (a broken
- * MDX tag's scope isn't cleanly bounded, so the parser keeps
- * consuming until it finds a valid close or EOF, swallowing following
- * paragraphs). If the user fixes the broken tag, the source parses to
- * multiple VALID blocks. Returning all of them lets the caller splice
- * them all back in — matches the user's mental model ("I fixed the
- * broken thing; the whole fallback should go away").
- *
- * Returns `null` (= no-op, preserve the existing rawMdxFallback) when:
- *   - Parse produces zero blocks (empty source → let caller decide;
- *     `MarkdownManager.parse("")` actually short-circuits to one empty
- *     paragraph, so this branch is rarely hit in practice)
- *   - Parse result contains ANY `rawMdxFallback` child (source still
- *     invalid — the fallback recovery tried the fix and still failed
- *     on some part of the block; preserving the existing fallback
- *     beats churning Y.XmlElement identity for the same parse state
- *     per Precedent #10 on Item-preservation)
- *   - `parseWithFallback` is contractually never-throws, but
- *     `schema.nodeFromJSON` CAN throw on future schema-drift edges
- *     ("Invalid content for node ..."). Such throws are caught here
- *     and surface as a structured `raw-mdx-upgrade-failure` log event;
- *     the fallback stays in place so the user can keep editing.
- *     Silent throws would otherwise escape to CodeMirror's
- *     updateListener catch and leave the user with no signal.
- *
- * The caller must guard dispatch with `updatingRef` to prevent feedback
- * loops — this function is pure state inspection.
+ * Attempts to upgrade a `rawMdxFallback`'s source back to its parsed form on CM blur, returning
+ * `null` to preserve the existing fallback when the source still parses to one, which beats
+ * churning Y.XmlElement identity for the same parse state (precedent #10).
  */
 export function tryParseUpgrade(source: string, schema: Schema): PmNode[] | null {
   const mgr = getSharedMarkdownManager();

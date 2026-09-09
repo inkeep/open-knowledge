@@ -1,46 +1,6 @@
 /**
- * Mechanical guard for the E2E suite's zero-allowlist anti-pattern bans.
- *
- * Each banned pattern is enforced by a per-pattern test. Failure messages
- * list `<file>:<line>` for every violation so the developer can fix without
- * having to re-grep.
- *
- * Template: `packages/app/src/editor/clipboard/wysiwyg-stop-rule.test.ts` —
- * same per-pattern shape, same string-grep enforcement (cheapest mechanical
- * check that catches both spellings of each banned construct).
- *
- * Patterns enforced:
- *   1. `page.waitForTimeout(`
- *   2. `waitUntil: 'networkidle'`
- *   3. `new Promise(r => setTimeout(r,`
- *   4. `page.pause(`
- *   5. `test.skip(browserName === 'webkit'` — ratchet
- *   6. Inner-file helper imports     — barrel contract
- *   7. Ungated `window.__` writes outside the allowlist
- *   8. `window.__activeEditor` writes outside DocumentContext.tsx
- *      (regression — merge collision: TiptapEditor direct
- *      assignment clashed with main's getter-only defineProperty
- *      and threw TypeError on any doc open in DEV)
- *   9. `:has()` in selection-halo CSS rules (precedent #34 — innermost-wins
- *      via plugin state, not `:has()` cascade; Firefox compat + large-doc
- *      perf + SSR parity)
- *  10. Selection halo transition uses bare `ease-out` instead of
- *      `var(--ease-out-strong)` — consistency with the repo's custom
- *      easing token
- *  11. Static value imports of the DEV ACP thread harness, which would
- *      defeat the dynamic-import gate that keeps it out of production
- *  12. Remote placeholder-image hosts anywhere under
- *      tests/{stress,visual,a11y} — every `.ts`, not just `*.e2e.ts`,
- *      because entry 6 channels shared logic into `_helpers/` and the stub
- *      this rule replaced lived exactly there. Local fixtures decode
- *      deterministically; remote ones flake offline.
- *      Host-scoped deliberately, not lazily. The three hosts are the ones
- *      this repo actually contains in image-source position (docs' img
- *      reference, CM6-ELEMENTS.md, showcase/), not a guess at vendors; and
- *      an image-source-scoped predicate would miss the spellings that carry
- *      a host here, while redding the specs that put a reserved-name URL in
- *      genuine image-source position, where the decode is either irrelevant
- *      or required to fail — see the self-test below, which pins both halves
+ * Selection-halo chrome comes from plugin state and never from the `:has()` cascade, and this
+ * suite is the mechanical guard for that ban (precedent #34).
  */
 
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';

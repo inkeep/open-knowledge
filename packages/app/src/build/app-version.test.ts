@@ -1,8 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CLIENT_RUNTIME_VERSION_FALLBACK } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { APP_VERSION_ENV_VAR, injectAppVersionEnv, resolveAppVersion } from './app-version.ts';
+import {
+  APP_VERSION_ENV_VAR,
+  APP_VERSION_UNKNOWN,
+  injectAppVersionEnv,
+  resolveAppVersion,
+} from './app-version.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appPkgVersion = (
@@ -11,13 +17,18 @@ const appPkgVersion = (
   }
 ).version;
 
+describe('the unresolved-version sentinel', () => {
+  test('matches the core client-version fallback it is duplicated from', () => {
+    expect(APP_VERSION_UNKNOWN).toBe(CLIENT_RUNTIME_VERSION_FALLBACK);
+  });
+});
+
 describe('resolveAppVersion', () => {
   test('returns the real packages/app/package.json version, not a sentinel', () => {
     const version = resolveAppVersion();
     expect(version).toBe(appPkgVersion);
-    // A build must never silently inject a placeholder.
     expect(version).not.toBe('dev');
-    expect(version).not.toBe('0.0.0-unknown');
+    expect(version).not.toBe(APP_VERSION_UNKNOWN);
   });
 });
 
@@ -38,12 +49,6 @@ describe('injectAppVersionEnv', () => {
   });
 });
 
-// guard: the injection must be wired into EVERY build path or the browser
-// silently falls back to the sentinel. The two configs cannot be imported in
-// the unit tier (vite.config pulls in the full server via hocuspocusPlugin;
-// electron.vite runs a top-level `await babel()` and needs the electron-vite
-// runner) — runtime coverage here is infeasible, so we assert the wiring at the
-// source level instead.
 describe('build-path wiring (R-3)', () => {
   const repoConfigs = [
     resolve(here, '..', '..', 'vite.config.ts'),

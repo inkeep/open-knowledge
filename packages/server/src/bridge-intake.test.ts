@@ -1,32 +1,6 @@
 /**
- * Unit tests for the three sibling write-side primitives in
- * `bridge-intake.ts` — the shared substrate of the Y.Text-is-truth
- * contract (precedent #38). Each primitive owns one paired-write
- * semantics and gets its own `describe` block here:
- *
- *   - `composeAndWriteRawBody` — file-watcher + agent-write semantics
- *     (parse → ytext-first applyFastDiff → fragment derive). Item-
- *     preserving via character-level DMP.
- *   - `replaceRawBody` — rollback semantics (parse → ytext-first FULL
- *     OVERWRITE delete/insert → fragment derive). The non-incremental
- *     replacement is the load-bearing signal to Y.UndoManager that this
- *     is a rollback, not an edit; DMP-based diff would over-preserve
- *     Items the user explicitly rolled back.
- *   - `deriveFragmentFromYtext` — agent-undo semantics (NO ytext write;
- *     UM.undo() has already mutated ytext to the post-undo state, this
- *     primitive only re-derives the fragment).
- *
- * Properties exercised across the three blocks:
- *   - Y.Text receives raw bytes verbatim (no canonicalization)
- *   - XmlFragment derives from `parse(body)` via updateYFragment
- *   - Both writes are atomic inside the caller's outer transact
- *   - Write order is ytext-first then fragment
- *   - Whitespace-meaningful bytes (leading/trailing newlines) survive
- *   - Source-form delimiters (`__foo__` not `**foo**`) survive
- *   - No primitive calls doc.transact() itself (caller-wrap is mandatory)
- *   - The primitive distinguishing-features hold under regression
- *     (replaceRawBody = full overwrite; deriveFragmentFromYtext = zero
- *     ytext writes)
+ * Unit tests for the three sibling write-side primitives in `bridge-intake.ts` — the shared
+ * substrate of the Y.Text-is-truth contract (precedent #38).
  */
 
 import { normalizeBridge, stripFrontmatter } from '@inkeep/open-knowledge-core';

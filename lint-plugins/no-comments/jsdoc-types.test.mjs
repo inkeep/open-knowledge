@@ -2,16 +2,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { analyzeSource, loadPrecedentNumbers } from './index.mjs';
+import { analyzeSource, loadPrecedentRegistry } from './index.mjs';
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(MODULE_DIR, '..', '..');
-const PRECEDENTS = loadPrecedentNumbers(REPO_ROOT);
+const PRECEDENTS = loadPrecedentRegistry(REPO_ROOT);
 
 const FIXTURE = readFileSync(join(MODULE_DIR, '__fixtures__', 'jsdoc-types.fixture.mjs'), 'utf8');
 
 function violationsFor(source, relPath) {
-  return analyzeSource({ source, relPath, precedentNumbers: PRECEDENTS }).violations;
+  return analyzeSource({ source, relPath, precedentRegistry: PRECEDENTS }).violations;
 }
 
 describe('the jsdoc-type class: the only typing mechanism the untyped strata have', () => {

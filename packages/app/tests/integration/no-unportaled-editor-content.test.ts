@@ -1,22 +1,4 @@
-/**
- * `no-unportaled-editor-content` oxlint rule test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-unportaled-editor-content.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-unportaled-editor-content.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). The
- * fixture pairs 3 positive cases (bare/paired/nested `<EditorContent />`)
- * with 3 negative cases (canonical portaled site with inline suppression,
- * `<PureEditorContent />` sibling, bare import). The test asserts the
- * rule fires exactly 3 times.
- *
- * Exact equality (`toBe(3)`) catches drift in both directions:
- *   - false-negative: a weakened pattern drops below 3 → fails
- *   - false-positive: a widened pattern fires on a negative case → above 3 → fails
- *
- * real input → public
- * interface (`oxlintFixtureArgs()` → `pnpm exec oxlint`) → observable outcome (diagnostic count).
- */
+/** The `no-unportaled-editor-content` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

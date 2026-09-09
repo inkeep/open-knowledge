@@ -1,39 +1,7 @@
 /**
- * Source-view clipboard extension — `EditorView.domEventHandlers` for copy,
- * cut, and paste per precedent #19(c).
- *
- * CodeMirror 6 has no equivalent to PM's `clipboardTextSerializer` /
- * `clipboardSerializer` hooks, so we override the DOM events directly.
- * This is the only view where DOM-level override is acceptable (WYSIWYG
- * uses PM's hooks instead per precedent #19(b)). User-facing behavior is
- * symmetric across both views:
- *
- *   - Copy/cut write text/plain = markdown source AND text/html =
- *     source-shaped HTML wrapper (via `buildSourceModeHtml` — a
- *     `<pre class="mdx-component"><code>` envelope, NOT rendered output).
- *
- *   - Paste routes through a branch dispatcher parallel to WYSIWYG paste,
- *     except source-mode never upgrades editor-origin text into a fenced code
- *     block. Source's insertion IS markdown text, so the
- *     source-wrapper tiebreak (Branch B-wrapper), the markdown-first
- *     tiebreak (Branch B), the Branch C `data-pm-slice` check, and Branch E
- *     all resolve to "let CM6 default text/plain verbatim insert run";
- *     Branch D remains the converter for generic HTML.
- *     The dispatcher's value here is structural, not behavioral. The
- *     tiebreak fires AHEAD of Branch C and Branch D for the narrow case
- *     where external markdown carries a rich-HTML preview; without it
- *     Branch D's `htmlToMdast` would normalize bytes that the user pasted
- *     as canonical markdown.
- *
- *   - Cmd+Shift+V detected via `pasteShiftHeld(event)` (keyboard-event
- *     tracker — ClipboardEvent does not expose shiftKey natively).
- *
- *   - Large-paste chunked insert: payloads >500KB bypass the CM6 dispatch
- *     and land via `chunkedYTextInsert` directly. A Y.RelativePosition is
- *     pinned before the first chunk so concurrent peers writing at offsets
- *     ≤ writeIndex during rAF yields do not shift the target. Mid-stream
- *     failure surfaces as a structured `clipboard-chunked-insert-failed`
- *     event with partial-progress fields.
+ * Source-view clipboard extension — `EditorView.domEventHandlers` for copy, cut, and paste per
+ * precedent #19(c). This is the only view where DOM-level override is acceptable (WYSIWYG uses PM's
+ * hooks instead per precedent #19(b)).
  */
 
 import type { Extension } from '@codemirror/state';

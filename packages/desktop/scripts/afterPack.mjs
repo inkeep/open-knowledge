@@ -6,50 +6,9 @@ import { ensureNodePtySpawnHelperExecutable } from './ensure-node-pty-exec.mjs';
 import { resolveElectronBinary } from './resolve-electron-binary.mjs';
 import { targetFuses } from './target-fuses.mjs';
 
-/**
- * electron-builder `afterPack` hook — runs on the packed `.app` bundle before
- * code-signing. We flip the Electron fuses to harden the runtime: disable
- * NODE_OPTIONS env ingestion, require asar integrity validation, and only load
- * app code from asar. Cookie encryption is ON as a defense-in-depth hygiene
- * fuse. EnableNodeCliInspect is left ON because Playwright's `_electron.launch`
- * requires the inspect CLI arguments to attach.
- *
- * RunAsNode is ENABLED. The bundled `ok.sh` wrapper needs
- * `ELECTRON_RUN_AS_NODE=1` to work in packaged builds; VS Code + Atom
- * precedent. Full rationale + defense-in-depth argument at `./target-fuses.mjs`.
- *
- * Fuses are flipped BEFORE the Developer ID signature is applied — electron
- * ships with an ad-hoc Darwin signature that flipFuses would invalidate, so
- * we set `resetAdHocDarwinSignature: true` to keep the intermediate binary
- * in a valid ad-hoc-signed state until electron-builder re-signs with the
- * Developer ID cert.
- *
- * Post-sign verification of these same fuses lives in `afterSign.mjs`
- * ("Windows signtool has shipped silent fuse-clobber regressions; paranoid
- * verification is load-bearing"). Both hooks import the same `targetFuses`
- * map from `./target-fuses.mjs` — flip-time and verify-time cannot drift.
- */
-
 export default async function afterPack(context) {
   const { appOutDir, packager, electronPlatformName } = context;
 
-  // Fuses flip on EVERY platform (D9). An off-darwin build without the flip
-  // would ship with RunAsNode still at Electron's default — but also without
-  // the NODE_OPTIONS/asar-integrity hardening, and any drift between
-  // platforms here would surface as "works on mac, silently broken CLI on
-  // win/linux". Only the darwin-specific steps below (helper bundle,
-  // node-pty spawn-helper chmod) stay gated.
-
-  // Universal builds: electron-builder packs arm64 and x64 into separate
-  // `mac-universal-<arch>-temp` dirs, fires afterPack on each, then calls
-  // @electron/universal.makeUniversalApp to merge them. That merge asserts
-  // that all non-Mach-O files have identical SHAs across arches — and
-  // flipping fuses perturbs `Contents/Frameworks/.../CodeSignature/
-  // CodeResources` differently per arch, breaking the SHA-parity check.
-  // The canonical fix is to only flip fuses on the MERGED universal app
-  // (which has a fat Mach-O binary; @electron/fuses v2 handles that shape
-  // correctly). Detect the final output dir by the absence of the `-temp`
-  // suffix.
   if (appOutDir.endsWith('-temp')) {
     console.log(
       `[afterPack] skipping per-arch temp "${appOutDir}" — fuses flip on the merged universal app`,
@@ -76,16 +35,10 @@ export default async function afterPack(context) {
   try {
     await flipFuses(electronBinary, {
       version: FuseVersion.V1,
-      // Darwin-only concern: electron ships with an ad-hoc signature that
-      // the flip would invalidate. Harmless no-op elsewhere, but keep it
-      // scoped so the intent is legible.
       resetAdHocDarwinSignature: electronPlatformName === 'darwin',
       ...targetFuses,
     });
   } catch (err) {
-    // Phase-annotated so a fuse-flip failure is distinguishable from a
-    // post-sign verification failure in afterSign.mjs — the remediation
-    // paths differ (rollback vs investigate re-sign pipeline).
     throw new Error(
       `[afterPack] fuse flip failed on ${electronBinary}: ${
         err instanceof Error ? err.message : String(err)
@@ -96,12 +49,6 @@ export default async function afterPack(context) {
 
   console.log('[afterPack] fuses flipped successfully; electron-builder will re-sign next');
 
-  // Everything below is darwin-only: the LSUIElement helper bundle exists to
-  // suppress the macOS Dock "exec" placeholder (no Dock/LaunchServices
-  // concept on win/linux — resolve-detached-spawn-args.ts uses
-  // parentExecPath directly there). The node-pty chmod is also mac-specific:
-  // Linux prebuilds do not use a separate spawn-helper, while the Windows
-  // package excludes node-pty.
   if (electronPlatformName !== 'darwin') {
     console.log(
       `[afterPack] fuses done; skipping darwin-only helper-bundle + node-pty steps on "${electronPlatformName}"`,
@@ -109,32 +56,6 @@ export default async function afterPack(context) {
     return;
   }
 
-  // Detached-server helper bundle: clone the Electron Helper stub binary
-  // into our `OpenKnowledge Server.app/Contents/MacOS/` slot. electron-
-  // builder's `extraFiles` (in electron-builder.yml) lands the Info.plist
-  // alongside but cannot reference output-only artifacts, so the MacOS
-  // binary itself is populated here. We source from Electron's own helper
-  // stub because its rpath is `@executable_path/../../..` (3 ups, the
-  // helper-bundle filesystem position) — sourcing from the parent's main
-  // binary would give us a stub whose rpath is `@executable_path/../Frameworks`
-  // (1 up) and dyld would fail at child launch. Note that electron-builder
-  // renames `Electron Helper.app` → `<productName> Helper.app` during
-  // packaging, so we source from the renamed path.
-  //
-  // The helper bundle's `Info.plist` declares `LSUIElement=true` so the
-  // spawned detached server doesn't register a macOS Dock tile — without
-  // it, LaunchServices treats the re-exec as a duplicate `.app` launch
-  // and pins a stuck "exec" Dock placeholder for the child's lifetime.
-  //
-  // The cloned binary inside `OpenKnowledge Server.app` MUST be named
-  // `<productName> Helper` (matching the canonical Electron generic-helper
-  // basename). Electron's helper stub inspects its own `_NSGetExecutablePath()`
-  // basename early in boot and SIGTRAPs silently (exit 133, empty stderr)
-  // for any other name — including descriptive variants like "OpenKnowledge
-  // Server" or invented suffixes like "Helper (Server)" not in Electron's
-  // hardcoded {generic, Renderer, GPU, Plugin} type set. The bundle directory
-  // name (`OpenKnowledge Server.app`) is free to be descriptive — only the
-  // executable basename is load-bearing.
   const electronHelperStub = join(
     appOutDir,
     `${appName}.app`,
@@ -164,10 +85,6 @@ export default async function afterPack(context) {
     try {
       mkdirSync(serverHelperMacOsDir, { recursive: true });
     } catch (err) {
-      // Phase-annotated to match the fuse-flip + clone error shapes above.
-      // EACCES/ENOSPC/EROFS on the output dir all surface here — distinguish
-      // from afterSign.mjs verify-time failures so the remediation path
-      // (output-dir perms / disk space) is unambiguous.
       throw new Error(
         `[afterPack] failed to create MacOS dir for helper bundle at ${serverHelperMacOsDir}: ${
           err instanceof Error ? err.message : String(err)
@@ -176,11 +93,6 @@ export default async function afterPack(context) {
       );
     }
   }
-  // Split into two phase-annotated blocks — copy vs chmod failures have
-  // distinct remediation paths: copy fails on EACCES/ENOSPC/EIO at the
-  // output dir (check space + perms on the build output); chmod fails on
-  // EPERM (file ownership / SIP-style protection on the target). Keeping
-  // them merged would lose the remediation breadcrumb.
   try {
     copyFileSync(electronHelperStub, serverHelperBinary);
   } catch (err) {
@@ -202,13 +114,6 @@ export default async function afterPack(context) {
     );
   }
 
-  // PkgInfo: every Electron helper bundle ships an 8-byte "APPL????" file
-  // at `Contents/PkgInfo` (legacy Carbon type+creator code). Missing
-  // PkgInfo isn't load-bearing for this binary's startup, but it diverges
-  // from the bundle shape every other Electron helper carries and from
-  // what LaunchServices expects of an `APPL` package. Add it here so the
-  // Server.app bundle is structurally indistinguishable from its sibling
-  // Helper bundles.
   const serverHelperPkgInfo = join(serverHelperBundleDir, 'Contents', 'PkgInfo');
   try {
     writeFileSync(serverHelperPkgInfo, 'APPL????');
@@ -224,9 +129,6 @@ export default async function afterPack(context) {
     `[afterPack] cloned Electron Helper stub into OpenKnowledge Server.app MacOS slot at ${serverHelperBinary}`,
   );
 
-  // node-pty's prebuilt spawn-helper ships 0644 (node-pty#850); the
-  // `**/node-pty/prebuilds/**` asarUnpack rule lands it on disk but keeps that
-  // mode, so make it executable before electron-builder re-signs.
   const resourcesDir = join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
   const ptyHelpers = ensureNodePtySpawnHelperExecutable(resourcesDir);
   console.log(`[afterPack] node-pty spawn-helper marked executable (${ptyHelpers.length} file(s))`);

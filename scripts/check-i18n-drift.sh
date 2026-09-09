@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-#
-# Run `lingui extract` (the canonical extractor wired via `pnpm run i18n` in
-# packages/app) and fail if the committed catalogs at
-# packages/app/src/locales/{en,pseudo}/messages.{po,json} do not match what the
-# extractor would produce against the current `<Trans>` / t`...` macros under
-# packages/app/src. Mirrors check-schema-snapshot-clean.sh so `pnpm check`
-# catches drift before push.
-#
-# Canonical source: packages/app/src/**/*.{ts,tsx} (per packages/app/lingui.config.ts).
-# Regenerate after adding strings:
-#   cd packages/app && pnpm run i18n
-#
-# Lingui's CLI has no `--check` mode, so we run the real extract+compile+format
-# path and compare against the working tree via `git diff --quiet`. The catalog
-# files are content-stable for unchanged source, so a clean tree before this
-# script stays clean after a no-drift run.
 set -euo pipefail
 
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \

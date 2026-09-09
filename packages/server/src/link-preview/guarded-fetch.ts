@@ -42,10 +42,7 @@ export interface GuardedFetchFailure {
 
 export type GuardedFetchResult = GuardedFetchSuccess | GuardedFetchFailure;
 
-/**
- * One resolved DNS record; mirrors the fields of a getaddrinfo lookup.
- * @lintignore Referenced by the exported HostResolver type; no direct importer.
- */
+/** @lintignore Referenced by the exported HostResolver type; no direct importer. */
 export interface ResolvedAddress {
   address: string;
   family: 4 | 6;

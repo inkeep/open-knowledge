@@ -1,21 +1,6 @@
 /**
- * Unit tests for the server-authoritative observer bridge (server-observers.ts).
- *
- * Tests cover:
- *   - Settlement-based dispatch on `afterAllTransactions` (precedent #13(b))
- *   - Baseline-refresh semantics for Path A / Path B / paired-write / self-sync
- *   - Path A vs Path B dispatch
- *   - Origin-guard truth table
- *   - No infinite loop on self-origin
- *   - Agent paired-write early-exit
- *   - Paired-write short-circuit symmetry across Observer A + Observer B
- *   - Frontmatter sync (Observer B → Y.Map, Observer A reads Y.Map)
- *   - Cleanup detaches observers and the settlement handler
- *   - Observer B error-recovery branches
- *
- * Uses a synthetic Y.Doc (no Hocuspocus). Observer dispatch happens
- * synchronously after each `doc.transact()` drain via the new
- * `afterAllTransactions` settlement listener — tests assert post-transact
+ * Unit tests for the server-authoritative observer bridge over a synthetic Y.Doc. Dispatch is
+ * settlement-based on `afterAllTransactions` (precedent #13(b)), so tests assert post-transact
  * state directly with no scheduler flushing.
  */
 

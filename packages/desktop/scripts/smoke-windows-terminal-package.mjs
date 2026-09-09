@@ -78,9 +78,6 @@ export function runWindowsPackageTerminalSmoke({
 
   const smokeRoot = mkdtempSync(join(tmpdir(), 'ok-packaged-win-pty-'));
   const logPath = join(smokeRoot, 'openknowledge.log');
-  // This headless ABI probe pins ComSpec/cmd for deterministic shell-family
-  // coverage because discovery varies across Windows runners. The required
-  // real-PTY harness separately covers the PowerShell structured-launch path.
   const { projectDir, userDataDir } = seedWindowsPtySmokeProject(smokeRoot, shellPath);
   const logFd = openSync(logPath, 'w');
   let app = null;
@@ -116,9 +113,7 @@ export function runWindowsPackageTerminalSmoke({
     }
     try {
       closeSync(logFd);
-    } catch {
-      // The failure path closes the descriptor before printing the log.
-    }
+    } catch {}
     try {
       rmSync(smokeRoot, { recursive: true, force: true });
     } catch (error) {

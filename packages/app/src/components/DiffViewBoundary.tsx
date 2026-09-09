@@ -1,26 +1,6 @@
 /**
- * DiffViewBoundary — peer of the editor branch inside each `<Activity>`
- * slot of EditorActivityPool. Mounted when the active doc's
- * `lifecycle.status === 'conflict'`. Sibling to (NOT a replacement of) the
- * editor `DocumentBoundary` mount; the hybrid render tree per
+ * Sibling to (NOT a replacement of) the editor `DocumentBoundary` mount; the hybrid render tree per
  * precedent #18(b) stays intact.
- *
- * Responsibilities:
- *   1. Provider-sync gating is inherited from the outer `DocumentBoundary`
- *      wrap (the conditional swap happens INSIDE that boundary's children),
- *      so Suspense / error scopes compose unchanged.
- *   2. Fetch `GET /api/sync/conflict-content?file=<path>&source=ytext` for
- *      `ours` + `theirs`. The server's `?source=ytext` branch prefers the
- *      live Y.Text snapshot for `ours` (preserves pre-conflict unflushed
- *      edits) and falls back to git-index (`git show :2:`) when Y.Text
- *      contains conflict markers — which happens on editor reopen because
- *      the file watcher seeds Y.Text with the disk's marker bytes.
- *      `theirs` always comes from `git show :3:`.
- *   3. Render `<ConflictView ours theirs base onResolve />` for both-modified
- *      conflicts. ConflictView owns a Pierre UnresolvedFile instance and
- *      calls onResolve with the resolved content when all hunks are accepted.
- *   4. Emit `editor-area-swap-to-diffview` / `editor-area-swap-from-diffview`
- *      structured log events on mount / unmount.
  */
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { Trans, useLingui } from '@lingui/react/macro';

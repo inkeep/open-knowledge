@@ -65,11 +65,6 @@ describe('readSmokeResult', () => {
   });
 });
 
-/**
- * Build a fake child-process that exits synchronously with configured
- * exit code + stderr. The `spawn` deps-injection lets us drive the driver
- * without an actual Electron binary.
- */
 function fakeSpawn({ exitCode = 0, stderr = '', delayMs = 0 } = {}) {
   return () => {
     const child = new EventEmitter();
@@ -132,7 +127,6 @@ describe('runDriver (full orchestration)', () => {
   test('exit 2: timeout kills child + surfaces stderr tail', async () => {
     const deps = fakeDeps({
       spawn: fakeSpawn({ exitCode: null, delayMs: 10 }),
-      // Short injected timeout
       timeoutMs: 5,
     });
     const code = await runDriver(['node', 'script', '/tmp/app.app'], deps);
@@ -149,9 +143,6 @@ describe('runDriver (full orchestration)', () => {
     const code = await runDriver(['node', 'script', '/tmp/app.app'], deps);
     expect(code).toBe(3);
     const errOut = deps.messages.stderr.join('');
-    // Exit-3 stderr must name BOTH shapes collapsed into this branch —
-    // "exited before the smoke finished" (pre-smoke crash) and "output write
-    // failed" (smoke ran but writeSmokeResult threw).
     expect(errOut).toContain('exited before the smoke finished');
     expect(errOut).toContain('output write failed');
     expect(errOut).toContain('dying early');
@@ -167,7 +158,6 @@ describe('runDriver (full orchestration)', () => {
   test('cleanup runs on every exit path (rm called for outDir)', async () => {
     const deps = fakeDeps();
     await runDriver(['node', 'script', '/tmp/app.app'], deps);
-    // outDir cleanup always runs
     expect(deps.rm).toHaveBeenCalled();
   });
 
@@ -207,11 +197,8 @@ describe('runDriver (full orchestration)', () => {
     };
     const deps = fakeDeps({ process: proc });
     await runDriver(['node', 'script', '/tmp/app.app'], deps);
-    // Both signals registered at run entry
     expect(registered.map((r) => r.sig).sort()).toEqual(['SIGINT', 'SIGTERM']);
-    // Both removed on finally — no listener-count leak across repeated runs
     expect(removed.map((r) => r.sig).sort()).toEqual(['SIGINT', 'SIGTERM']);
-    // Same handler refs registered + removed (correctness of cleanup)
     for (const reg of registered) {
       const match = removed.find((r) => r.sig === reg.sig && r.cb === reg.cb);
       expect(match).toBeDefined();
@@ -231,18 +218,15 @@ describe('runDriver (full orchestration)', () => {
     let runCommandCalls = 0;
     const runCommand = vi.fn(async (cmd) => {
       runCommandCalls += 1;
-      // Simulate .dmg path so resolvedApp.cleanup has work to do (detach)
-      if (cmd === 'hdiutil' && runCommandCalls === 1) return; // attach
-      if (cmd === 'hdiutil' && runCommandCalls === 2) return; // detach (normal finally)
+      if (cmd === 'hdiutil' && runCommandCalls === 1) return;
+      if (cmd === 'hdiutil' && runCommandCalls === 2) return;
     });
     const rm = vi.fn(async () => {});
     const deps = fakeDeps({
       process: proc,
       runCommand,
       rm,
-      // Inject a spawn that never exits so we can fire SIGINT before normal finally
       spawn: () => {
-        // Fire SIGINT synchronously after spawn "starts"
         globalThis.setImmediate(() => sigintHandler?.());
         return {
           on: () => {},
@@ -251,24 +235,17 @@ describe('runDriver (full orchestration)', () => {
           stdout: { on: () => {} },
         };
       },
-      // Keep the run from timing out normally — test controls termination via SIGINT.
       timeoutMs: 60_000,
     });
-    // Don't await — runDriver's promise will never resolve because we're
-    // simulating signal-driven exit. Fire SIGINT via setImmediate above.
     const runPromise = runDriver(['node', 'script', '/tmp/foo.dmg'], deps);
-    // Let the event loop drain so the setImmediate + signal cleanup runs
     await setImmediate();
     await setImmediate();
     await setImmediate();
 
     expect(exits).toEqual([130]);
     expect(rm).toHaveBeenCalled();
-    // Cleanup message surfaced
     expect(deps.messages.stderr.join('')).toContain('received SIGINT');
 
-    // Prevent the dangling runPromise from causing an unhandled rejection —
-    // we deliberately short-circuited runDriver before it could resolve.
     runPromise.catch(() => {});
   });
 
@@ -318,7 +295,7 @@ describe('runDriver (full orchestration)', () => {
       spawn: () => {
         globalThis.setImmediate(() => {
           sigintHandler?.();
-          sigintHandler?.(); // second fire — guarded by signalHandled
+          sigintHandler?.();
         });
         return {
           on: () => {},
@@ -332,7 +309,7 @@ describe('runDriver (full orchestration)', () => {
     const runPromise = runDriver(['node', 'script', '/tmp/app.app'], deps);
     await setImmediate();
     await setImmediate();
-    expect(exits).toEqual([130]); // single exit despite two signal fires
+    expect(exits).toEqual([130]);
     runPromise.catch(() => {});
   });
 });

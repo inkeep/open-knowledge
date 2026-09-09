@@ -594,7 +594,10 @@ export {
   WikiLink,
   type WikiLinkAttrs,
 } from './extensions/wiki-link.ts';
-// schema-add-only per precedent #9, so the export commits to additive
+/**
+ * The re-exported attrs are schema-add-only per precedent #9, so this public import path
+ * commits to additive evolution only.
+ */
 export {
   WikiLinkEmbed,
   type WikiLinkEmbedAttrs,

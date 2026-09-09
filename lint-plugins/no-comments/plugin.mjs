@@ -1,7 +1,12 @@
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DOCS_URL_BASE } from './allowlist.mjs';
-import { analyzeSource, describeViolation, loadPrecedentNumbers } from './index.mjs';
+import {
+  analyzeSource,
+  describeViolation,
+  diagnosePrecedentRegistry,
+  loadPrecedentRegistry,
+} from './index.mjs';
 import { isInScope, normalizeRelativePath } from './scope.mjs';
 
 export const PLUGIN_NAME = 'no-comments';
@@ -38,14 +43,25 @@ export const noCommentsRule = {
     const relPath = relativePathFor(context);
     if (options.scope !== 'all' && !isInScope(relPath)) return {};
 
-    const precedentNumbers = loadPrecedentNumbers(REPO_ROOT);
+    const registryDiagnosis = diagnosePrecedentRegistry(() => loadPrecedentRegistry(REPO_ROOT));
+    if (registryDiagnosis.status !== 'ok') {
+      return {
+        Program() {
+          context.report({
+            node: { range: [0, 0] },
+            message: `${registryDiagnosis.message} No comment in this file was judged.`,
+          });
+        },
+      };
+    }
+    const precedentRegistry = registryDiagnosis.registry;
 
     return {
       Program() {
         const { violations } = analyzeSource({
           source: context.sourceCode.text,
           relPath,
-          precedentNumbers,
+          precedentRegistry,
         });
         for (const violation of violations) {
           context.report({

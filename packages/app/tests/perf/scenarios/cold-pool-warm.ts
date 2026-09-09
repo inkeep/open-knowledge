@@ -1,45 +1,7 @@
 /**
- * Cold-pool-warm reproduction — target the specific state where the big-doc
- * is provider-pool-resident but Activity-evicted, so revisiting it forces
- * a fresh TipTap mount without the provider/Y.Doc re-sync.
- *
- * Rationale: the ~9.7s single-main-thread-task cost was measured on this
- * state, not a fresh cold-load. A fresh cold-load ALSO pays Y.Doc sync cost
- * (instrumentation has measured it at 1.7-2.3s).
- * "Cold-pool-warm" isolates the TipTap+PM+React cost from the Y.Doc sync.
- *
- * Scenario flow:
- *   1. Cold-load README (small, 5 KB) — warms ProviderPool for README.
- *   2. Navigate to BIG_DOC (large) — warms pool for BIG_DOC, mounts Activity
- *      entry for BIG_DOC.
- *   3. Navigate to 3 OTHER docs (to force Activity eviction of BIG_DOC via
- *      ACTIVITY_MOUNT_LIMIT=3). BIG_DOC's provider stays pool-resident.
- *   4. Navigate BACK to BIG_DOC — measure time until PM content visible.
- *
- * The measured boundary is step 4. BIG_DOC's provider is still pool-resident
- * (ytext already hydrated), so the measurement is:
- *   [useState lazy init (new Editor → new EditorView → _forceRerender → docView)
- *    → React commit → EditorContent.init (createNodeViews) → portal reconcile →
- *    browser layout/paint]
- *
- * No Y.Doc sync on this path. Any difference vs `cold-load-big-doc` is the
- * sync cost. The monkey-patched `ok/cold/*` marks decompose the TipTap/PM/React
- * cost within this window.
- *
- * Regression-gate invocation (canonical):
- *   OK_PERF_BIG_DOC=perf-fixtures/medium-doc bun run perf:profile --scenario=cold-pool-warm
- *
- * perf-fixtures/medium-doc is the designated reference doc (≈176 MarkView portals, fits
- * the ≤200-view target band). Baseline: 541 ms. Target:
- * < 300 ms. Depends on doc-markers.ts entry for perf-fixtures/medium-doc — without it the
- * scenario falls through to a content-length heuristic that races against
- * still-Activity-mounted previous docs and produces pmLen numbers matching
- * the wrong editor.
- *
  * Default (BIG_DOC=perf-fixtures/big-doc) is a 768-view stress case used for attribution
- * measurements and precedent #27 validation — informative but outside the
- * regression-gate target scope. Use it for "how bad was the worst case" and
- * the perf-fixtures/medium-doc invocation for "does the current code still hit the gate."
+ * measurements and precedent #27 validation — informative but outside the regression-gate target
+ * scope.
  */
 
 import { markerFor } from '../lib/doc-markers.ts';

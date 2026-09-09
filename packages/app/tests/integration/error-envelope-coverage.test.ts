@@ -1,23 +1,3 @@
-/**
- * Error-envelope coverage meta-test — fail-on-any-occurrence mode.
- *
- * Mirrors the precedent #20 / `attribution-sweep-coverage.test.ts` style:
- * static source scan over `api-extension.ts` plus every lifted handler source
- * (`skills-sh-handlers.ts`, `http/*-routes.ts` — see `HANDLER_SOURCES`),
- * enforcing that
- *
- *   1. Every handler emits errors via `errorResponse(...)` and never via an
- *      inline `json(res, NNN, { ok: false, ... })` envelope.
- *   2. No handler emits an inline `json(res, NNN, { ok: true, ... })` success
- *      wrapper either (the `ok: true` wrapper is dropped from success bodies).
- *   3. No handler emits a bare `json(res, 2xx, ...)` success body — every
- *      success emit must flow through `successResponse(...)` so the
- *      schema-vs-server drift class is closed structurally at the wire
- *      boundary regardless of fixture coverage.
- *
- * Failure mode: file:line + handler name + the offending pattern.
- */
-
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';

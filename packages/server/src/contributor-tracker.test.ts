@@ -55,7 +55,7 @@ describe('recordContributor', () => {
   });
 });
 
-describe('formatContributors / formatContributorsFrom', () => {
+describe('formatContributorsFrom', () => {
   test('returns empty string when no contributors', () => {
     expect(formatContributorsForTest()).toBe('');
   });

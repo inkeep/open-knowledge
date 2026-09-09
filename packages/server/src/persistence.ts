@@ -138,16 +138,9 @@ export class DocumentOpenSizeLimitError extends Error {
 }
 
 /**
- * Derive a WriterIdentity from a Hocuspocus transaction origin.
- *
- * Called from onStoreDocument to determine which writer triggered the store.
- * Handles the three origin shapes Hocuspocus surfaces:
- *   - local  + context.session_id  → per-session agent writer
- *   - local  + context.origin      → classified service writer
- *   - connection + principalId     → human-browser principal writer
- *
- * precedent #1 — origins are LocalTransactionOrigin object refs, not strings.
- * Exported for unit-testing the dispatch table without spinning up a server.
+ * Derives a `WriterIdentity` from a Hocuspocus transaction origin, handling the three origin
+ * shapes it surfaces. Origins are `LocalTransactionOrigin` object refs, not strings
+ * (precedent #1). Exported so the dispatch table is unit-testable without a server.
  */
 export function resolveWriterFromOrigin(
   origin: unknown,
@@ -687,31 +680,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   /**
-   * Re-derive XmlFragment from `parse(ytext.body)` after the persistence
-   * sanity check detected divergence. Under the Y.Text-is-truth contract
-   * (precedent #38) Y.Text holds the user's intended source-form bytes;
-   * fragment must catch up so future edits start from a consistent base.
-   *
-   * Synchronous: parse + structural diff + transact all run before the
-   * caller's next statement. The work is bounded by doc size (parseWithFallback
-   * is O(N), updateYFragment is O(N)), and the caller (storeDocumentNow)
-   * already accepts that cost — the alternative (microtask deferral) would
-   * leave fragment stale until the microtask drains, opening a window where
-   * another transaction could merge against the stale fragment.
-   *
-   * The reconciliation transacts under `OBSERVER_SYNC_ORIGIN`. Both
-   * Observer A and Observer B self-skip on this origin (their callbacks
-   * read `transaction.origin === OBSERVER_SYNC_ORIGIN` and `return`),
-   * so this nested transact does NOT cascade through the dispatch
-   * settlement — it's an Observer-B-style write of the fragment side.
-   * The OBSERVER_SYNC_ORIGIN's `skipStoreHooks: true` also prevents this
-   * helper from re-triggering `onStoreDocument`, avoiding a feedback loop.
-   *
-   * The reconciliation is best-effort: a `parseWithFallback` failure (already
-   * returns paragraph fallback rather than throwing) means fragment will
-   * have the fallback content, which still preserves Observer A's baseline
-   * tracking. Any throw deeper down logs but does not propagate — the disk
-   * write that triggered this reconciliation is what matters for durability.
+   * Under the Y.Text-is-truth contract (precedent #38) Y.Text holds the user's intended source-form
+   * bytes; fragment must catch up so future edits start from a consistent base.
    */
   function canonicalizeForEphemeralBaseline(rawBytes: string, documentName: string): string | null {
     try {

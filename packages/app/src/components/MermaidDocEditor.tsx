@@ -1,23 +1,7 @@
 /**
- * Editor for a standalone Mermaid doc (`.mmd` / `.mermaid`). These are real
- * Y.Text('source')-only CRDT docs (the markdown bridge is gated off server-side
- * — see `isMermaidDoc`), so both panes bind to the same `Y.Text` and stay in
- * sync live:
- *
- *  - Diagram (wysiwyg) mode → the editor's `<MermaidView>` with an `editBinding`
- *    that splices click-to-edit label changes back into `Y.Text` — exact parity
- *    with codefenced ` ```mermaid ` editing.
- *  - Source mode → an editable CodeMirror bound to the same `Y.Text` via
- *    `yCollab`, with real Mermaid syntax highlighting (`codemirror-lang-mermaid`,
- *    already in the editor bundle) on the shared `propEditorHighlight` style.
- *
- * Driven by the global `isSourceMode` (the toolbar's wysiwyg/source toggle):
- * for a diagram doc, "wysiwyg" == the rendered, editable diagram — consistent
- * with the app's rendered-vs-raw mental model, so no bespoke toggle is needed.
- *
- * Mounted by `EditorActivityPool` inside the doc's `DocumentBoundary` (peer to
- * the conflict `DiffViewBoundary` branch), so `provider` is sync-gated and the
- * precedent #18(b) hybrid render tree is preserved.
+ * Mounted by `EditorActivityPool` inside the doc's `DocumentBoundary` (peer to the conflict
+ * `DiffViewBoundary` branch), so `provider` is sync-gated and the precedent #18(b) hybrid render
+ * tree is preserved.
  */
 
 import { syntaxHighlighting } from '@codemirror/language';

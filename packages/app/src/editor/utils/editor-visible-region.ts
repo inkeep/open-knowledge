@@ -30,39 +30,9 @@ interface EditorSizeOptions {
 }
 
 /**
- * Floating-UI clipping options that keep selection-anchored menus inside the
- * editor's *visible* content region, not just inside the viewport.
- *
- * `.editor-doc-scroll` clips the document, but the region where a selection
- * actually reads as visible is smaller than the container's box: the
- * EditorToolbar overlays the container's top exclusion zone, and the Ask AI
- * bottom composer (stacked above the conflict-resolution footer when one is
- * up) floats over the container's bottom edge. None of these are clipping
- * ancestors, so a body-appended `position: fixed` bubble menu keeps tracking
- * a selection that has scrolled behind them — sliding over the composer card
- * and the status footer below the container.
- *
- * Pass the result to `flip()` so placement decisions stay inside the visible
- * region, to `hide()` (default strategy `referenceHidden`) so the menu
- * disappears once the selection itself is fully occluded — matching what the
- * user can see rather than what the DOM clips — and to
- * `deriveEditorShiftOptions` below, which converts this description of the
- * region into the clamp that keeps a surface inside it. A boundary handed to
- * `flip()`/`hide()` alone detects the overflow and then declines to correct
- * it, so the producers are consumed together — and where the surface can be
- * wider than the pane, with `deriveEditorSizeOptions` as well, since the
- * clamp has nowhere to put a surface that does not fit.
- *
- * Floating UI is the canonical positioning primitive for selection-anchored
- * overlays (precedent #35), and this module owns the visible-region half of
- * that contract for any surface anchored inside the editor's scrollable
- * content. It lives under `editor/utils/` rather than beside any one consumer
- * because comments, menus, suggestions, and lint surfaces all read it.
- *
- * Shaped as a floating-ui derivable (re-evaluated on every `computePosition`
- * pass) because the composer publishes a live height — its card grows with
- * the draft and collapses to nothing — and the scroll container can be
- * remounted across document switches.
+ * Floating-UI clipping options that keep selection-anchored menus inside the editor's visible
+ * content region rather than the viewport, since the toolbar and composer overlay the container
+ * without clipping it. Owns the visible-region half of precedent #35.
  */
 export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions {
   return () => {

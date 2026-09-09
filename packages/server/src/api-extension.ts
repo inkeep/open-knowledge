@@ -590,15 +590,8 @@ export const ROLLBACK_ORIGIN = {
 } as const satisfies PairedWriteOrigin;
 
 /**
- * Managed-rename origin — typed `PairedWriteOrigin`.
- *
- * Exported so the bridge-invariant watcher can enforce by identity (precedent #1)
- * and so server observers can resolve `context.paired` without importing the
- * object transitively.
- *
- * `paired: true` — the caller atomically writes BOTH XmlFragment (via
- * `updateYFragment`) and Y.Text (via `applyFastDiff`) inside one transact
- * block. `satisfies PairedWriteOrigin` is the compile-time gate.
+ * Exported so the bridge-invariant watcher can enforce by identity (precedent #1) and so server
+ * observers can resolve `context.paired` without importing the object transitively.
  */
 export const MANAGED_RENAME_ORIGIN = {
   source: 'local' as const,
@@ -1973,7 +1966,11 @@ export function createApiExtension(
     };
   }
 
-  // (precedent #55): a doc the watcher would refuse to index must not slip into
+  /**
+   * Content-scope exclusion for a docName, mirroring the file-watcher's markdown admission
+   * gate: a doc the watcher would refuse to index must not slip into the admitted set by
+   * another door (precedent #55).
+   */
   function isDocNameContentExcluded(docName: string): boolean {
     if (!contentFilter) return false;
     const relPath = docNameToRelativePath(docName);
@@ -2150,7 +2147,10 @@ export function createApiExtension(
     };
   }
 
-  // Mirrors the watcher's admission gate (precedent #55): a content-scope-excluded
+  /**
+   * Mirrors the watcher's admission gate (precedent #55): a content-scope-excluded doc must
+   * NOT be registered, exactly as the watcher would skip it.
+   */
   function registerWrittenDocInFileIndex(docName: string, content: string): void {
     if (isDocNameContentExcluded(docName)) return;
     mutateFileIndex?.({
@@ -3177,14 +3177,8 @@ export function createApiExtension(
   }
 
   /**
-   * Canonical identity boundary (precedent #24) — every mutating POST handler calls this
-   * before any Y.Doc mutation. Resolves request body → {agentId, agentName, colorSeed, clientName}.
-   * The meta-test in attribution-sweep-coverage.test.ts asserts all handlers call this at entry.
-   *
-   * Body parsing + sanitization is shared with `extractActorIdentity` via
-   * `parseAgentBodyFields` in `agent-id.ts`. This wrapper adds the write-handler
-   * default — absent agentId becomes `'claude-1'` so attribution always lands on
-   * a stable broadcaster key (matches `getSession()` for presence bar color).
+   * Canonical identity boundary (precedent #24) — every mutating POST handler calls this before any
+   * Y.Doc mutation.
    */
   function extractAgentIdentity(body: Record<string, unknown>): {
     rawAgentId: string | undefined;
@@ -3433,7 +3427,7 @@ export function createApiExtension(
         if (rawDocName === null) return;
         const docName = resolveAlias(rawDocName);
 
-        // (precedent #24). Body-shape errors emitted by `withValidation` are
+        // Identity extraction precedes every semantic error emission below (precedent #24).
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
@@ -4233,7 +4227,10 @@ export function createApiExtension(
                 }
 
                 if (result.nextFenced !== currentFenced) {
-                  // primitive (precedent #38, bridge-intake.ts) so paired-
+                  /**
+                   * Routed through the sanctioned `composeAndWriteRawBody` primitive
+                   * (precedent #38) so paired-write semantics survive.
+                   */
                   const needsFenceSeparator =
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
                   const newFull = composeWithDerivedFrontmatter(
@@ -4496,7 +4493,11 @@ export function createApiExtension(
             clientName,
           );
           session.dc.document.transact(() => {
-            // precedent #38). Searching `serialize(fragment)` would compute
+            /**
+             * Read current authoritative state from Y.Text, the user's intended source-form bytes
+             * (Y.Text-is-truth, precedent #38); `serialize(fragment)` would compute offsets against
+             * canonical bytes instead.
+             */
             const ytextSnapshot = session.dc.document.getText('source').toString();
             const { frontmatter: currentFm, body: currentBody } = stripFrontmatter(ytextSnapshot);
             const currentFull = prependFrontmatter(currentFm, currentBody);
@@ -5338,7 +5339,10 @@ export function createApiExtension(
           return;
         }
 
-        // (precedent #38 — Y.Text-is-truth) which performs the full ytext
+        /**
+         * Rollback routes through the `replaceRawBody` sibling primitive (precedent #38,
+         * Y.Text-is-truth), which overwrites ytext first and derives the fragment after.
+         */
         const rollbackEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
           : undefined;
@@ -6958,7 +6962,11 @@ export function createApiExtension(
 
         if (checkSkillDocConflictGate(docName, 'skill-put', res)) return;
 
-        // CRDT write (precedent #24 / #38): route the full SKILL.md through the
+        /**
+         * CRDT write (precedent #24 / #38): the full SKILL.md goes through the doc's
+         * `Y.Text('source')` via the sanctioned paired-write primitive under the per-session
+         * frozen origin.
+         */
         const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
           body as unknown as Record<string, unknown>,
         );
@@ -8082,7 +8090,10 @@ export function createApiExtension(
         let created: boolean;
 
         if (routedThroughContent) {
-          // primitive (precedent #24 / #38), same branch as the SKILL.md body.
+          /**
+           * A project `.md` reference routes through the sanctioned paired-write primitive
+           * (precedent #24 / #38), the same branch as the SKILL.md body.
+           */
           const refDocName = `${skillDirRel}/${rel.replace(/\.mdx?$/i, '')}`;
           if (checkSkillDocConflictGate(refDocName, 'skill-file-put', res)) return;
           created = !existsSync(resolve(skillDirAbs, rel));
@@ -8446,7 +8457,11 @@ export function createApiExtension(
   ): Promise<string | undefined> {
     const shadow = shadowRef?.current;
     if (!shadow || !writerId) return undefined;
-    // (`refs/wip/<branch>/<writerId>`, precedent #25). `commitOkArtifactWrite` has
+    /**
+     * The shadow repo has no `HEAD`/`main`: writes land on per-writer WIP refs
+     * (`refs/wip/<branch>/<writerId>`, precedent #25), so capture the actor's WIP ref rather
+     * than `rev-parse HEAD`.
+     */
     try {
       const sg = shadowGit(shadow);
       const readMine = async (): Promise<string | undefined> => {

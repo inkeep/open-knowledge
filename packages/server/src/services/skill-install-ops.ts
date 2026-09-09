@@ -233,7 +233,6 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         try {
           const raw = readFileSync(skillMdPath, 'utf-8');
           const { fenced, body: skillBody } = detectFmRegion(raw);
-          // presence-exempt: no CRDT write, no agent identity
           const renamed = applyPatchToFm(fenced, { name: toName });
           if (renamed.ok) {
             tracedWriteFileSync(skillMdPath, `${renamed.nextFenced}${skillBody}`);

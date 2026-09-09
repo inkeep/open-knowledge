@@ -1495,15 +1495,6 @@ function computePackEntryCounts(pack: StarterPack): StarterPackEntryCounts {
   return { files, folders };
 }
 
-/** @deprecated Use `STARTER_PACKS['knowledge-base'].folders` directly. */
-export const STARTER_FOLDERS: readonly StarterFolder[] = KNOWLEDGE_BASE_FOLDERS;
-
-/** @deprecated Use `STARTER_PACKS['knowledge-base'].templates` directly. */
-export const STARTER_TEMPLATES: Readonly<Record<string, string>> = KNOWLEDGE_BASE_TEMPLATES;
-
-/** @deprecated Use `STARTER_PACKS['knowledge-base'].rootFiles?.['log.md']` directly. */
-export const LOG_MD_TEMPLATE = KNOWLEDGE_BASE_LOG_MD;
-
 export const STARTER_FOLDER_FRONTMATTER_FILENAME = 'frontmatter.yml';
 
 export function buildStarterFolderFrontmatterYaml(folder: StarterFolder): string {

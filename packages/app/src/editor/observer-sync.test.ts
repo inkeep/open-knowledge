@@ -1,9 +1,7 @@
 /**
- * Observer sync tests — shimmer prevention.
- *
- * Cross-CRDT sync tests (Observer A writing Y.Text, Observer B writing XmlFragment)
- * live in server-observers.test.ts and C1-C10 integration tests (server-authoritative
- * architecture, precedent #14). This file covers client-side shimmer prevention only.
+ * Cross-CRDT sync tests (Observer A writing Y.Text, Observer B writing XmlFragment) live in
+ * server-observers.test.ts and C1-C10 integration tests (server-authoritative architecture,
+ * precedent #14).
  */
 
 import { setTimeout as wait } from 'node:timers/promises';

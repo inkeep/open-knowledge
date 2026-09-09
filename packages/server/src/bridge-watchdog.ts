@@ -1,43 +1,7 @@
 /**
- * Server-side bridge invariant watchdog.
- *
- * Y.Text-is-truth contract assertion site: after Observer B Phase 1 derives
- * fragment from `parse(ytext)`, the watchdog asserts that the post-write
- * bridge invariant holds:
- *
- *   normalizeBridge(ytext.toString())
- *     === normalizeBridge(prependFrontmatter(fm, mdManager.serialize(fragment)))
- *
- * Outside the `normalizeBridge` tolerance set, the watchdog fires:
- *   - dev (`NODE_ENV=test` or `OK_BRIDGE_THROW_ON_VIOLATION=1`):
- *     throws `BridgeInvariantViolationError` so integration tests + fuzz
- *     runs surface the regression loudly.
- *   - prod: emits a structured `bridge-invariant-violation` console.warn
- *     event (machine-readable JSON) + increments
- *     `bridgeInvariantViolations`. Rate-limited per (site, doc) tuple so
- *     a single buggy doc cannot drown the signal.
- *
- * Lives in its own module because precedent #13(b) bans wall-clock
- * SCHEDULING (`setTimeout`, `setInterval`) in `server-observers.ts` —
- * see `bridge-no-wallclock.test.ts` for the enforced gate's `FORBIDDEN`
- * regex array. The rate-limiter needs `Date.now()` for window comparison;
- * co-locating it here keeps timer machinery isolated even though the
- * precedent gate doesn't cover `Date.now()` directly (server-observers.ts
- * itself uses `new Date().toISOString()` for the timestamp field of its
- * own structured-log events).
- *
- * Telemetry payload is bounded-cardinality and content-redacted by default:
- * site, docName-or-null, the tolerance-class label (`'untracked'` for
- * unknown classes — the comparator stack tolerates known byte classes plus
- * the parse-equivalence fallback, so a violation past ALL of them is by
- * definition untracked), and FNV-1a digests of the
- * ytext + fragment snapshots for cross-event correlation. The truncated
- * unifiedDiff is included as `diff` ONLY when `OK_TELEMETRY_VERBOSE=1`
- * (mirrors the sibling `bridge-merge-content-loss` opt-in pattern). Full
- * snapshots travel only on the thrown error for dev triage; never logged.
- *
- * @see packages/core/src/bridge/normalize.ts (tolerance set)
- * @see packages/core/src/bridge/bridge-invariant.ts (error type)
+ * Lives in its own module because precedent #13(b) bans wall-clock SCHEDULING (`setTimeout`,
+ * `setInterval`) in `server-observers.ts` — see `bridge-no-wallclock.test.ts` for the enforced
+ * gate's `FORBIDDEN` regex array.
  */
 
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
@@ -241,20 +205,9 @@ interface AssertBridgeInvariantOpts {
   nowMs?: number;
   suppressDevThrow?: boolean;
   /**
-   * Parse-equivalence fallback (`isParseEquivalentBridge`). When the inputs
-   * diverge beyond every `normalizeBridge` byte class, canonicalize the
-   * ytext body through the caller's own parse→serialize pipeline and accept
-   * the pair when the canonical forms match — the fragment then IS
-   * `parse(ytext)` (precedent #38), so a resting serializer canonicalization
-   * (CommonMark lazy continuations: an unindented wrapped list line, a
-   * paragraph glued under a list, a `> `-less blockquote continuation) is a
-   * tolerated equivalence, not a violation. Reported through the
-   * `bridge-tolerance-applied` channel as `parse-equivalence`.
-   *
-   * Callers MUST bind the same parse options the doc's fragment derivation
-   * uses (embed resolution, source path) — a mismatched pipeline degrades
-   * safely toward alerting, never masking. Omitting the callback preserves
-   * the strict normalize-only behavior.
+   * Parse-equivalence fallback: when inputs diverge beyond every `normalizeBridge` byte class,
+   * canonicalize the ytext body through the caller's own parse-serialize pipeline and accept a
+   * match, since the fragment then IS `parse(ytext)` (precedent #38). Bind the doc's own options.
    */
   canonicalizeBody?: (body: string) => string;
 }

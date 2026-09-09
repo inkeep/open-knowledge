@@ -1,23 +1,7 @@
 /**
- * C12: Multi-client nested frontmatter convergence + bridge invariant at depth.
- *
- * Validates that two clients editing nested frontmatter (objects, arrays-of-
- * objects) converge under the server-authoritative observer bridge, with the
- * precedent #38 invariant
- *
- *   normalizeBridge(ytext) === normalizeBridge(prependFrontmatter(fm, serialize(fragment)))
- *
- * holding at arbitrary nesting depth. Panel-side
- * edits go through `bindFrontmatterDoc.patchPath` (LOCAL path-addressed,
- * single-leaf), which writes a byte-range replace of the fenced FM region in
- * `Y.Text('source')` under FORM_WRITE_ORIGIN. The body bytes are untouched,
- * so server Observer B (Y.Text → XmlFragment) is a no-op for pure FM edits;
- * the invariant still holds because Y.Text's FM region encodes the new fm
- * and `prependFrontmatter(extractFm(ytext), serialize(fragment))` recomposes
- * to the same bytes.
- *
- * Per-test docName isolation via createTestClients(port, { count }) default.
- * Client lifecycle in try/finally (not afterEach).
+ * C12: two clients editing nested frontmatter converge under the server-authoritative observer
+ * bridge, with precedent #38's invariant holding at arbitrary nesting depth. Panel edits write a
+ * byte-range replace of the fenced FM region under FORM_WRITE_ORIGIN, leaving the body untouched.
  */
 
 import { setTimeout as wait } from 'node:timers/promises';

@@ -29,10 +29,9 @@ import { ProfilerBoundary } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
 /**
- * Debounce window for Y.Doc update → page-headings invalidation. Matches the
- * `TYPING_DEFER_MS` convention from precedent #11 — a 300 ms trailing-edge
- * window coalesces bursts of keystrokes into a single fetch while still
- * updating the outline fast enough to feel live.
+ * Matches the `TYPING_DEFER_MS` convention from precedent #11 — a 300 ms trailing-edge window
+ * coalesces bursts of keystrokes into a single fetch while still updating the outline fast enough
+ * to feel live.
  */
 const OUTLINE_INVALIDATE_DEBOUNCE_MS = 300;
 

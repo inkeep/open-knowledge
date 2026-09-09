@@ -11,23 +11,9 @@ export type HandoffTarget =
   | 'hermes';
 
 /**
- * Data carried from the UI to the URL builder. Minimal by construction: only
- * path + prompt. The target agent grounds via the OpenKnowledge MCP server
- * (precedent #25 writer-ID taxonomy); the
- * URL never carries file content / a `file=` attach param — only a short
- * directive `prompt` and the project / folder path.
- *
- * The URL builders thread `prompt` (when non-empty) into the per-target
- * prompt query param (`q=` / `prompt=` / `text=`) regardless of scope. The
- * caller (`runHandoffDispatch`) composes the right scope-specific prompt —
- * file directive, folder directive, or project directive — and the builder
- * just encodes it. An empty `prompt` is a defensive fallback that drops the
- * query param.
- *
- * The renderer helpers `buildHandoffInput` (file scope),
- * `buildFolderHandoffInput` (folder scope), and `buildProjectScopedHandoffInput`
- * (project scope) wrap the sentinel construction so call sites never pass
- * `''` directly.
+ * The precedent #60 invariant ("agent grounds via OK MCP, not native attach") holds by construction:
+ * the payload carries only a short directive `prompt` and the project / folder path, never file
+ * content or a `file=` attach param.
  */
 export interface HandoffPayload {
   readonly target: HandoffTarget;

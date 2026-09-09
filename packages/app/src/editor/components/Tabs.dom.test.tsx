@@ -1,28 +1,7 @@
 /**
- * Tabs — DOM-walk contracts.
- *
- * Two helpers live in `Tabs.tsx`, both keyed off the same SLOT_SELECTOR walk:
- *
- *  1. `readTabSlots` — counts the Tabs's OWN direct Tab renderers, the same
- *     set the CSS active-panel reveal counts. Pinned against the regression
- *     where a recursive walk would sweep in every nested nodeview's
- *     `.react-renderer` and emit phantom strip pills (the user-visible
- *     "6 pills instead of 2" on the quickstart, whose Tab 1 nests a Callout
- *     and a multi-Step Steps).
- *  2. `findNthTabGearButton` — resolves the chrome-bar gear button at slot N
- *     so the Notion-style rename gesture (active-pill click → open Tab
- *     PropPanel) can dispatch `.click()` on it. Pins three contracts the
- *     editor relies on: `[data-jsx-gear]` is the canonical selector; slot
- *     index alignment matches `readTabSlots`'s index space (the SAME index
- *     space the strip's pills are rendered with); nested-Tabs scoping
- *     prevents inner Tabs's gears from bleeding into the outer slot set.
- *
- * jsdom substrate per precedent #43 (`bun run test:dom`). Tests build DOM
- * directly via `document.body.innerHTML` rather than rendering through RTL
- * because the helpers are pure DOM-in/values-out — no React state, no PM.
- * `cleanup` from RTL satisfies the *.dom.test.tsx → @testing-library/react
- * value-import contract (precedent #43); it is a no-op against this
- * fixture style.
+ * DOM-walk contracts for `readTabSlots` and `findNthTabGearButton`, on the jsdom tier per
+ * precedent #43; RTL's `cleanup` satisfies that tier's value-import contract and is a no-op
+ * against this fixture style.
  */
 
 import { cleanup } from '@testing-library/react';

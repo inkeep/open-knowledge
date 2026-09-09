@@ -6,8 +6,6 @@ import {
   REFUSED_LOOPBACK_ORIGIN_ALT,
 } from './refused-loopback.test-helper';
 
-// Port 1 is on the WHATWG fetch blocked-port list. It is named only here, as the
-// alternative the refused origin must NOT drift into.
 const FETCH_BLOCKED_PORT_ORIGIN = 'http://127.0.0.1:1';
 
 describe('isLoopbackHostname', () => {
@@ -36,11 +34,6 @@ describe('isLoopbackHostname', () => {
   ])('%s is not loopback', (host) => expect(isLoopbackHostname(host)).toBe(false));
 });
 
-// Only the tests that trip the guard ON PURPOSE mute it, and each of them asserts
-// the `[no-net-connect]` line was emitted. Muting block-wide would swallow an
-// UNEXPECTED console.error from the tests that are meant to stay silent, and
-// muting without asserting would leave the log line -- the enforcement mechanism
-// behind the zero-lines invariant -- as the one thing here with no coverage.
 async function blockedBy(run: () => Promise<unknown>): Promise<unknown> {
   const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
   try {

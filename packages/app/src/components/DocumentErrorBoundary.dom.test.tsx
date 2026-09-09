@@ -1,9 +1,6 @@
 /**
- * RTL mount tests for the DocumentErrorBoundary contract:
- * fallback render on throw, retry-handler invalidation. Exercises `render`
- * + `userEvent` under the jsdom substrate (precedent #43); invocation via
- * `bun run test:dom`. Throw injection follows the MaybeThrow Pattern C
- * documented in precedent #43(d).
+ * Exercises `render` + `userEvent` under the jsdom substrate (precedent #43). Throw injection
+ * follows the MaybeThrow Pattern C documented in precedent #43(d).
  */
 
 import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';

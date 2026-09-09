@@ -17,14 +17,7 @@ export const tsExpectError = 4;
 
 export const pureAnnotation = /* @__PURE__ */ Object.freeze({ a: 1 });
 
-export const magicComment = () => import(/* webpackChunkName: "editor" */ './editor.js');
-
 export const viteIgnore = (path: string) => import(/* @vite-ignore */ path);
-
-// prettier-ignore
-export const prettierIgnore = [1,2,3];
-
-export const sanctionedTag = 5;
 
 /** @deprecated use `sanctionedTag` instead */
 export const deprecated = 6;
@@ -50,9 +43,6 @@ export const upstreamPackage = 12;
 // The alignment here follows precedent #42.
 export const validPrecedent = 13;
 
-// The retracted slot still resolves: precedent #52 kept its number.
-export const retractedPrecedent = 14;
-
 // error-log-shape-ok: the message snapshot is the assertion subject here
 export const errorLogShapeOk = 15;
 
@@ -67,14 +57,6 @@ export const knipLintignore = 17;
 
 // presence-exempt: no CRDT write, no agent identity
 export const presenceExempt = 18;
-
-export const descriptionThenTags = 19;
-
-// entity-ref-preservation
-export const lineCommentTag = 20;
-
-//   list-marker-indent
-export const indentedTagLine = 21;
 
 /* STOP: a multi-line marker in block form survives whole, because the
    extractor reads the block as one comment and the marker is its first
@@ -97,26 +79,20 @@ export function noSideEffectsHashForm() {
   return 25;
 }
 
-/** @jsx h */
-export const jsxFactoryPragma = 26;
-
-/** @jsxFrag Fragment */
-export const jsxFragmentPragma = 27;
-
 /** @jsxRuntime automatic */
 export const jsxRuntimePragma = 28;
 
 /** @jsxImportSource preact */
 export const jsxImportSourcePragma = 29;
 
-export const webpackExportsMagic = () =>
-  import(/* webpackExports: ["parse"] */ './parser.js');
+export const bundlerIgnore = (path: string) => import(/* webpackIgnore: true */ path);
 
-export const webpackFetchPriorityMagic = () =>
-  import(/* webpackFetchPriority: "high" */ './urgent.js');
+export const turbopackIgnore = (path: string) => import(/* turbopackIgnore: true */ path);
 
-//# sourceMappingURL=must-not-fire.fixture.ts.map
-export const sourceMappingUrlPragma = 30;
+export const turbopackOptional = () => import(/* turbopackOptional: true */ './maybe.js');
 
-//# sourceURL=must-not-fire-evaluated.js
-export const sourceUrlPragma = 31;
+//! Bundled banner text the bundler preserves verbatim in the output.
+export const legalLineComment = 26;
+
+/*! Bundled banner in block form, preserved on the same rule. */
+export const legalBlockComment = 27;

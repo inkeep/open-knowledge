@@ -1,29 +1,5 @@
 /**
- * Precedent #13(b) enforcement — bridge observers are settlement-based,
- * never wall-clock debounce.
- *
- * Scans the two bridge observer source files at runtime:
- *   - `packages/server/src/server-observers.ts` — server-authoritative
- *     observer (`afterAllTransactions` settlement dispatch)
- *   - `packages/app/src/editor/observers.ts` — client observer shell
- *     (diagnostic parse validation)
- *
- * Forbidden patterns (any match fails CI):
- *   - `setTimeout(` / `setInterval(` — wall-clock scheduling calls
- *   - `sched.setTimeout(` / `sched.clearTimeout(` / `sched.setInterval(`
- *     — historical Scheduler-DI call sites
- *   - `new Scheduler(` / `: Scheduler` / `Scheduler<` — active Scheduler
- *     type consumption (indicates debounce machinery)
- *
- * Comments and JSDoc referencing the retired machinery are allowed — the
- * forbidden regex targets call-site forms (parenthesis-after-identifier)
- * and type-annotation forms.
- *
- * Intentional omission: no allow-list file carve-outs inside this gate.
- * If a legitimate future reason emerges (e.g., a specific sanctioned
- * setTimeout for an escape-hatch retry), document it by narrowing the
- * scanned set or gating with a structured marker — don't silently
- * allow-list individual lines. Greenfield posture.
+ * Precedent #13(b) enforcement — bridge observers are settlement-based, never wall-clock debounce.
  */
 
 import { readFileSync } from 'node:fs';

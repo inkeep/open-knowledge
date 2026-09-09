@@ -1,26 +1,7 @@
 /**
- * Single line-oriented grammar for the server's inline link recognizers:
- * `[[wiki links]]` / `![[wiki embeds]]` and `[markdown](links)` /
- * `![markdown](images)`. Consumers: `backlink-index.ts`,
- * `managed-rename-rewrite.ts`, `suggest-links.ts`, `asset-references.ts`.
- * Before consolidation each site owned a subtly different regex, so a link
- * could count for backlinks yet be missed by rename rewriting — the
- * divergence class the canonical link contract (precedent #56) exists to
- * prevent. Recognition is consolidated here; resolution stays in
- * `resolveInternalHref` / `classifyMarkdownHref` (core).
- *
- * Line-oriented: callers pre-split into lines, so the character classes
- * exclude `\n` defensively rather than relying on multiline flags.
- * cf. packages/core/src/extensions/wiki-link.ts WIKI_LINK_PATTERN — the
- * editor-side pattern (no `\n` exclusion, `^`-anchored) is a sibling grammar
- * that must stay observationally aligned with this one on shared inputs.
- *
- * Known deliberate residual: `server-observers.ts` `markdownBareText` strips
- * link syntax with a LOOSER regex (`/!?\[([^\]]*)\]\([^)]*\)/g`) that admits
- * whitespace in destinations and ignores titles/angle wrappers. That is a
- * reduction for carrier attribution, not link recognition — over-stripping
- * is acceptable there, under-stripping is not — so it intentionally does not
- * share this grammar. See the divergence pins in `link-syntax.test.ts`.
+ * Before consolidation each site owned a subtly different regex, so a link could count for
+ * backlinks yet be missed by rename rewriting — the divergence class the canonical link contract
+ * (precedent #56) exists to prevent.
  */
 
 const WIKI_BODY_SOURCE = String.raw`\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]`;

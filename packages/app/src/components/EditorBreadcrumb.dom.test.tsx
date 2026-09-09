@@ -1,14 +1,5 @@
 /**
- * RTL behavioral tests for EditorBreadcrumb.
- *
- * Pins the rendered shape the source-grep `.test.ts` companion can't
- * cheaply assert: which segments render for which paths, that the
- * separator only appears BETWEEN segments (not before the first one),
- * that root-level docs render nothing, and that the per-segment title
- * tooltip carries the full segment text for truncation reveal.
- *
- * Exercises `render` under the jsdom substrate (precedent #43); invocation
- * via `bunx turbo run test:dom`.
+ * Exercises `render` under the jsdom substrate (precedent #43).
  */
 
 import { cleanup, render, screen } from '@testing-library/react';

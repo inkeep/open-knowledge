@@ -1,37 +1,7 @@
 /**
- * JsxComponentView — overlay-based descriptor-dispatch NodeView.
- *
- * **Design principle:** Zero permanent chrome in document flow. Components
- * render exactly like production. All editor affordances are hover-revealed
- * overlays at top-right (move up/down, delete, settings gear) plus an
- * "add child" pill at the bottom edge of container descriptors.
- *
- * A persistent component-name chip was proposed but dropped — the
- * "zero permanent chrome" principle won. The
- * descriptor identity is surfaced through: (a) the rendered fumadocs
- * component's own visual style (every built-in has a distinct shape), (b)
- * the `SelectionAnnouncer` aria-live region announcing the block name on
- * selection change, (c) the `aria-label` group summary announced to AT on
- * focus.
- *
- * Three render branches:
- *   Branch 1 (Wildcard `'*'`): does NOT render a persistent chip — the
- *     NodeView immediately schedules a rAF-auto-convert into an editable
- *     `rawMdxFallback` (nested CodeMirror source editor, Precedent #28
- *     direct PM dispatch + #30 all user content visible). A transient
- *     "Unknown component: X — source editable below"
- *     placeholder flashes for at most one frame while the conversion
- *     dispatch lands.
- *   Branch 2 (Registered healthy): live React component + hover chrome
- *     (move/delete/gear→Popover PropPanel, add-child pill) + NodeViewContent.
- *   Branch 3 (Invalid-state / render error): same rAF-auto-convert into
- *     `rawMdxFallback` — the error boundary catches, logs a structured
- *     `jsx-render-failure` event, and the NodeView replaces itself with
- *     the source editor. Identical UX shape to Branch 1 by design
- *     (Precedent #28: parse failures AND render failures surface the same
- *     embedded source editor).
- *
- * Per Precedent #30: NodeViewContent is ALWAYS rendered, never display:none.
+ * Descriptor-dispatch NodeView with zero permanent chrome: unknown and render-failed descriptors
+ * auto-convert to an editable `rawMdxFallback` through direct PM dispatch (precedent #28), and
+ * NodeViewContent is always rendered rather than hidden (precedent #30).
  */
 
 import {

@@ -1,28 +1,6 @@
 /**
- * SelectionAnnouncer — `aria-live="polite"` region that announces block
- * selection changes to assistive technologies (Precedent #34).
- *
- * Renders a single visually-hidden `<div role="status" aria-live="polite">`
- * whose `textContent` updates 200ms after each selection change. Debounce
- * prevents screen-reader queue flooding during rapid keyboard navigation
- * (arrow-key bursts would otherwise queue dozens of announcements).
- *
- * Imperative textContent write (not React state): React batching has been
- * observed to swallow rapid aria-live updates — the region only re-announces
- * when the DOM text actually changes. Writing imperatively via ref gives
- * AT a clean mutation to latch onto every time.
- *
- * Message format:
- *   - ancestorChain.length === 1: "Selected: Card"
- *   - ancestorChain.length > 1:   "Selected: Step, 2 of 4 in Steps"
- *   - selection cleared after a non-empty selection: "Outside any block"
- *     (prevents AT silence on arrow-out — users would otherwise have no
- *     audible cue that they have left the prior selected block)
- *   - no selection at mount: "" (don't announce on initial load)
- *
- * The index-in-parent is derived from the PM doc at read time: we use the
- * selected wrapper's pos and its parent's childCount. This is cheap; the
- * computation runs once per debounce tick, not per render.
+ * SelectionAnnouncer — `aria-live="polite"` region that announces block selection changes to
+ * assistive technologies (Precedent #34).
  */
 
 import type { Editor } from '@tiptap/core';

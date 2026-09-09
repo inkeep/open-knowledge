@@ -1,39 +1,7 @@
 /**
- * Layer C (Tier 2): on-blur upgrade of `rawMdxFallback` → parsed node when
- * the user fixes broken MDX in the nested CodeMirror.
- *
- * Context — prior art and scope:
- *
- * Surveyed editors (Obsidian Live Preview, SilverBullet,
- * codemirror-rich-markdoc, HedgeDoc, Typora, MDXEditor, Notion, BlockNote)
- * do not have a first-class parse-error-fallback → edit-source-live →
- * auto-upgrade-when-valid flow. Closest analog: Obsidian's S3
- * live-preview pattern uses a cursor-overlap guard — cursor inside
- * widget-region = reveal source; cursor outside = render widget. Our
- * architecture collapses Obsidian's "cursor exits widget" to "nested CM
- * loses focus" because the nested CM IS the source reveal.
- *
- * Trigger: CM `focusChanged` + `!view.hasFocus` (browser blur on the
- * nested CM). Handler reads the current CM source, runs it through the
- * same parse pipeline the outer editor uses, and if the result is a
- * single non-fallback block, dispatches a PM transaction replacing the
- * `rawMdxFallback` with the parsed node.
- *
- * Two tests:
- *
- *   S21 — happy path upgrade. Seed broken tag (`<Foo>text</Bar>` →
- *         rawMdxFallback at mount). Focus nested CM. Replace source with
- *         valid MDX for a REGISTERED component (`<Callout …>`). Blur CM.
- *         Assert: PM has a `jsxComponent` with componentName "Callout",
- *         no residual `rawMdxFallback` at that position.
- *
- *   S22 — still-invalid no-churn. Seed broken tag. Focus nested CM. Type
- *         a character (still broken). Blur CM. Assert: PM still has
- *         `rawMdxFallback` — the node is NOT replaced with another
- *         rawMdxFallback (which would churn Y.XmlElement identity,
- *         break y-prosemirror Item mapping, and cascade to observers per
- *         Precedent #10). On-blur only commits when the re-parse
- *         produces a genuinely better node.
+ * Assert: PM still has `rawMdxFallback` — the node is NOT replaced with another rawMdxFallback
+ * (which would churn Y.XmlElement identity, break y-prosemirror Item mapping, and cascade to
+ * observers per Precedent #10).
  */
 
 import { randomUUID } from 'node:crypto';

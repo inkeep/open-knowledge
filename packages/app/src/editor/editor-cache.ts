@@ -1,47 +1,14 @@
 /**
- * V2 editor cache — module-level `Map<docName, Entry>` that survives React
- * unmount, SPA navigation, Activity mode flips, StrictMode double-invoke, HMR.
- *
- * Contract (precedent #27(a)):
- *
- *   mount{Tiptap,Cm}Editor({ docName, container, factory })
- *     — CACHE HIT: reparent editor.editorView.dom / view.dom into `container`,
- *       restore scrollTop + focus, set activeMountKey = docName.
- *     — CACHE MISS: factory(container) constructs a fresh editor that mounts
- *       itself into container; the returned tuple is cached.
- *     — CACHE_ENABLED=false: always calls factory, never caches (pre-V2 path).
- *
- *   park{Tiptap,Cm}Editor(entry)
- *     — detach DOM from parent, capture scrollTop, clear activeMountKey.
- *       NEVER destroys. Editor keeps running — local Y.js observers still
- *       fire, plugin state survives, only DOM painting stops.
- *     — CACHE_ENABLED=false: destroys (restores pre-V2 destroy-on-unmount
- *       semantic — the consumer's cleanup path still runs).
- *
- *   evict{Tiptap,Cm}Editor(docName)
- *     — THE ONLY PATH that calls provider.destroy() / ydoc.destroy().
- *       editor.destroy() / view.destroy() are also called on the
- *       __uncached / kill-switch park branch (see park{Tiptap,Cm}Editor).
- *       Called on LRU eviction (MAX_CACHE) or explicit tear-down.
- *
- * Why raw `editor.editorView.dom` reparent and NOT `Editor.mount()/unmount()`:
- *   @tiptap/extension-drag-handle@4.x captures the `editor` ref in a plugin
- *   closure, reads `editor.view.dom.parentElement` from the `view(view)`
- *   lifecycle callback, and hits TipTap's throwing-proxy during the
- *   re-create path (the proxy throws while the new `EditorView` is
- *   mid-construction). STOP rule: this module MUST NOT call `editor.mount()`
- *   or `editor.unmount()`.
- *
- * Why CM6 uses the symmetric pattern: `EditorView.setRoot()` is only needed
- *   for cross-Document reparent (iframe/ShadowRoot); within-Document reparent
- *   needs no API call at all — W3C DOM observers (Mutation / Resize /
- *   Intersection) survive reparent by spec.
- *
- * Emergency kill switch: flip `CACHE_ENABLED = false`,
- *   redeploy. mount() short-circuits to factory-only (no storage); park()
- *   destroys immediately. This is NOT a feature flag — no config system, no
- *   rollout percentage, no user targeting. One-line edit for fire-drill
- *   rollback during a production incident.
+ * Module-level editor cache that survives React unmount, SPA navigation, Activity mode flips,
+ * StrictMode double-invoke and HMR, per precedent #27(a): mount reparents, park detaches without
+ * destroying, and evict is the only path that destroys the provider and Y.Doc.
+ */
+
+/**
+ * STOP: this module must not call `editor.mount()` or `editor.unmount()`.
+ * `@tiptap/extension-drag-handle` captures the editor ref in a plugin closure and reads
+ * `editor.view.dom.parentElement` from its `view()` callback, which hits TipTap's throwing proxy
+ * while the replacement `EditorView` is mid-construction. Reparent `editor.editorView.dom`.
  */
 
 import type { Compartment } from '@codemirror/state';
@@ -113,14 +80,8 @@ export interface CmCacheEntry {
   ytext: Y.Text;
   provider: HocuspocusProvider;
   /**
-   * The theme `Compartment` embedded in `view` at construction. Stored on the
-   * entry — NOT held per React component — because the view is cached and
-   * reparented across Activity flips while its consuming `SourceEditor`
-   * component remounts (precedent #27(a)). A per-component compartment would
-   * not be part of the reused view's config, so a theme-change reconfigure
-   * dispatched against it is a silent no-op and the cached view keeps the
-   * theme it was built with (stale syntax highlight after a dark/light toggle
-   * on backgrounded docs). Consumers reconfigure THIS compartment.
+   * Stored on the entry — NOT held per React component — because the view is cached and reparented
+   * across Activity flips while its consuming `SourceEditor` component remounts (precedent #27(a)).
    */
   themeCompartment: Compartment;
   wordWrapCompartment: Compartment;

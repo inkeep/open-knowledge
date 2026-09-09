@@ -1,26 +1,6 @@
 /**
- * One-transaction suggestion insertion enforcement — `no-split-suggestion-dispatch`
- * oxlint rule (precedent #58).
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-split-suggestion-dispatch.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-split-suggestion-dispatch.fixture.tsx`
- *
- * The fixture pairs 3 positive cases (bare trigger-delete chain dispatch with
- * and without `.focus()`, plus the immediately-dispatching `commands.deleteRange`
- * form — all inside a `Suggestion({ ... })` config) with 4 negative cases (the
- * atomic single chain, the `.command()` boundary composition, delegation to
- * `applySlashCommandItem`, and a delete-only chain outside any Suggestion
- * config). The test asserts the rule fires exactly 3 times.
- *
- * Exact equality (`toBe(3)`) catches drift in both directions:
- *   - false-negative: a weakened pattern drops below 3 → fails
- *   - false-positive: a widened pattern fires on a negative case → above 3 → fails
- *
- * The runtime complement lives in `suggestion-atomicity.dom.test.tsx` and
- * `slash-command-atomicity.dom.test.tsx`, which drive the real surfaces through
- * a real Enter and assert exactly one doc-changing transaction — the lint rule
- * catches the bare-delete dispatch shape statically; the dom tests catch any
- * second dispatch the lint can't see (e.g. inside a delegated item).
+ * The `no-split-suggestion-dispatch` oxlint rule fixture test: one-transaction suggestion
+ * insertion per precedent #58.
  */
 
 import { spawnSync } from 'node:child_process';

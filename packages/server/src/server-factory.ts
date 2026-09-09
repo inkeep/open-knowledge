@@ -2070,7 +2070,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       const source = document.getText('source').toString();
       if (!source.includes(needle)) continue;
       try {
-        // (precedent #24). Re-render uses the same FILE_WATCHER
         document.transact(() => {
           applyDiskContentToDoc(document, source, resolveEmbed, docName);
         }, FILE_WATCHER_ORIGIN);

@@ -1,23 +1,7 @@
 /**
- * Server-hosted ACP threads — one spawned agent subprocess per thread,
- * bridged to browser/Electron clients over the `/collab/thread` WS.
- *
- * Responsibilities:
- *   - Own the agent process lifecycle (spawn → initialize → session/new →
- *     prompt turns → kill on close/shutdown/idle-reap).
- *   - Implement the client side of ACP: session/update fan-out,
- *     permission requests (policy-gated via `AcpPermissionStore`), and the
- *     `fs/*` services — the attribution path that routes agent edits of
- *     in-scope markdown through the CRDT write spine instead of raw disk.
- *   - Retain a bounded per-thread event log so a reconnecting client can
- *     replay from its last-seen seq (the WS-replay analog of the
- *     "durable truth + live push" recovery contract).
- *
- * Write attribution: markdown writes reuse `AgentSessionManager` sessions
- * keyed by a per-thread `acp-<uuid>` agent id, so every edit lands under a
- * per-session frozen paired-write origin (precedent #24) and books to the
- * `agent-*` writer namespace (precedent #25) — write-flash, activity panel,
- * and per-session undo all work exactly as MCP agent writes do.
+ * Server-hosted ACP threads: one spawned agent subprocess per thread, bridged to clients over
+ * `/collab/thread`. Markdown writes reuse `AgentSessionManager` sessions keyed by `acp-<uuid>`, so
+ * each edit lands under a per-session frozen origin (precedent #24) in the `agent-*` namespace.
  */
 
 import type { ChildProcess } from 'node:child_process';

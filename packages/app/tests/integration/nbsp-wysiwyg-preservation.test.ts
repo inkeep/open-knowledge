@@ -1,14 +1,5 @@
 /**
- * Document NBSP (U+00A0) preservation through a WYSIWYG edit.
- *
- * Agent writes land raw bytes into Y.Text verbatim (byte-sacred), so a document
- * NBSP is intact at rest. The XmlFragment is a re-parse of the body, and a WYSIWYG
- * edit triggers a server Observer A settlement that re-serializes the fragment
- * over the Y.Text region — so the NBSP must survive the full mdast<->PM
- * round-trip, not just the write. Per precedent #57, an agent-authored byte the
- * human never touched must survive that settlement. Observer A fires on any
- * fragment change, so both a SAME-block and a DIFFERENT-block edit are covered;
- * the no-edit control pins the byte-sacred write path itself.
+ * Per precedent #57, an agent-authored byte the human never touched must survive that settlement.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';

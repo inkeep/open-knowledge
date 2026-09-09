@@ -1,43 +1,13 @@
 /**
- * `openknowledge://` deep-link URL scheme — parser + runtime handler.
- *
- * Public surfaces in this module:
- *   - Pure parsers — `parseOpenKnowledgeUrl` (`open` host, document deep
- *     links), `parseShareUrl` (`share` host + `openknowledge.ai` universal
- *     links), `parseScreenUrl` (`screen` host, named-screen deep links). No
- *     Electron import at module top, so unit tests exercise them without a real
- *     Electron runtime (precedent #4 — shared computation, per-surface render).
- *   - `registerProtocolHandler(deps)` — wires `app.on('open-url', ...)` +
- *     `app.on('second-instance', ...)`, scans `process.argv` for cold-start
- *     CLI-launch delivery, and implements the VS Code queue-then-flush
- *     pattern so macOS cold-start Apple Events that fire before `whenReady`
- *     are never lost.
- *
- * **Caller contract:** `app.requestSingleInstanceLock()` MUST be acquired by
- * the caller BEFORE `registerProtocolHandler` runs. Without the lock, the
- * `second-instance` event cannot fire (Electron only dispatches it on the
- * primary when a secondary invocation relinquishes the lock), so the
- * documented "CLI launch with argv delivery" path is silently dead. The
- * current call site is `packages/desktop/src/main/index.ts`, gated on
- * `GOT_SINGLE_INSTANCE_LOCK`.
- *
- * Validation layers (URL shape: `openknowledge://open?project=<abs>&doc=<name>`):
- *   1. Reject null bytes anywhere in the raw input (`\x00`, `%00`).
- *   2. Protocol must be `openknowledge:`; host must be `open`.
- *   3. `project` + `doc` required; each URL-decoded before path checks.
- *   4. `project` must be absolute AND must not contain `..` segments after
- *      `path.normalize()` — `path.resolve` would silently flatten `../../etc/x`
- *      to `/etc/x`, so we reject ANY `..` segment in the decoded path.
- *   5. `doc` must be a relative in-project name — reject any `..` segment (so
- *      `a/../b`, `../a`, and `..` all fail) and reject Windows `\` separators.
- *      `/` IS allowed as a segment separator — nested docNames like
- *      `notes/meeting-2026` are the common MCP producer shape (see
- *      `packages/cli/src/mcp/tools/write-document.ts:31` + `preview-url.ts:183`),
- *      and the renderer round-trips them cleanly via `encodeURIComponent(doc)`
- *      + `docNameFromHash` (`packages/app/src/lib/doc-hash.ts:14`).
- *
- * URL shape is fixed by an upstream contract; this module is downstream of it —
- * changes must be made there, not here.
+ * `openknowledge://` deep-link scheme. The parsers keep no Electron import at module top, so unit
+ * tests exercise them without a real runtime (precedent #4, shared computation with per-surface
+ * rendering); `registerProtocolHandler` adds the cold-start queue-then-flush path.
+ */
+
+/**
+ * STOP: the caller must acquire `app.requestSingleInstanceLock()` before `registerProtocolHandler`
+ * runs. Without the lock Electron never dispatches `second-instance`, so the CLI-launch argv
+ * delivery path is silently dead. The call site is `packages/desktop/src/main/index.ts`.
  */
 
 import { isAbsolute, resolve } from 'node:path';

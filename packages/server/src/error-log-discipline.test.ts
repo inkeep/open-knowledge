@@ -1,30 +1,3 @@
-/**
- * Source-scan STOP rule for error-log payload discipline: error/warn logger
- * calls pass the RAW error value under the `err` key — never a
- * string-coerced copy (`err.message`, `String(err)`, `(err as
- * Error).message`, `x instanceof Error ? x.message : String(x)`). The pino
- * serializers on both the server logger (`logger.ts`) and the desktop root
- * logger (`desktop-logger.ts`) capture name/message/stack from a raw Error;
- * a pre-coerced string discards the stack, which is the difference between
- * a correlatable JSONL bundle line and a dead-end one.
- *
- * Scope mirrors the Node-side logging surface: `packages/server/src`,
- * `packages/cli/src`, and `packages/desktop/src/main` (renderer is not
- * pino-backed). `console.*` receivers are exempt — the two sanctioned
- * console.warn styles (bracket-prefix; structured JSON) are their own
- * convention and stay out of this rule's reach.
- *
- * Escape hatch: suffix the offending line (or the call line) with
- * `// error-log-shape-ok: <why>` for a site where a string copy is the
- * point (e.g. capturing a message snapshot alongside the raw err), or add
- * a FILE_ALLOWLIST entry with a structural reason for a whole surface.
- *
- * The predicate is line-window based, so it has planted-positive +
- * adjacent-negative self-tests below (an absence-checker without a planted
- * positive is a vacuous no-op — same discipline as
- * console-discipline.test.ts).
- */
-
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,38 +1,7 @@
 /**
- * PageHeader — the cover banner + page-icon surface above the editor body.
- *
- * Reads `icon` + (`banner` ?? `cover`) from the document's frontmatter
- * (Y.Text('source') YAML region) via the same `bindFrontmatterDoc` binding
- * `PropertyPanel` uses. `banner` (Obsidian convention) is preferred over
- * `cover` (Notion convention) — vaults imported from either substrate render
- * without a rename. When only one is set, that key wins.
- *
- * Vertical focal position (`banner_y` / `cover_y`, 0.0–1.0) rides on the
- * source key. A drag interaction on the cover updates the paired `_y` key —
- * commit-on-release, single CRDT write per drag.
- *
- * Renders three states (driven by which frontmatter keys resolve to
- * supported values per `page-header-utils.ts`):
- *
- *   1. **cover + icon**: full-width cover banner; icon overlays the bottom-
- *      left of the cover (Notion-style — half the icon sits on top of the
- *      cover, half hangs below into the property panel's gutter).
- *   2. **cover only**: just the banner.
- *   3. **icon only**: a small icon row above the property panel (no
- *      banner).
- *   4. **neither**: render nothing — zero layout shift for docs that
- *      don't opt in.
- *
- * Mount site: `EditorActivityPool`'s per-document column, BETWEEN
- * `DocumentBoundary` and `PropertyPanel`, so the cover/icon shares the
- * Y.Doc lifecycle of the open document AND scrolls with the editor
- * body (precedent #18(b) — keep all per-doc UI inside the boundary).
- *
- * The H1 inside the TipTap body remains the document's actual title —
- * assistive tech sees the drag slider (a real interactive control with
- * `role="slider"` + keyboard support) as the only exposed element in this
- * region; the decorative cover image and icon are unnamed `<img>` tags with
- * empty alt.
+ * Mount site: `EditorActivityPool`'s per-document column, BETWEEN `DocumentBoundary` and
+ * `PropertyPanel`, so the cover/icon shares the Y.Doc lifecycle of the open document AND scrolls
+ * with the editor body (precedent #18(b) — keep all per-doc UI inside the boundary).
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';

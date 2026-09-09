@@ -39,35 +39,6 @@ import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 
-/**
- * Apply external file content to a live Y.Doc — the throwing core of the
- * disk→CRDT bridge. Both server-factory.ts (CLI) and the dev plugin delegate here.
- *
- * Under the Y.Text-is-truth contract (precedent #38):
- *   1. Looks up the live Y.Doc by docName (no-op if missing; system + config
- *      docs short-circuit)
- *   2. Captures the prior FM region from `Y.Text('source')` for the
- *      edit-surface telemetry counter (FM lives in the YAML region of
- *      Y.Text — no Y.Map metadata cache)
- *   3. Routes through `composeAndWriteRawBody` inside
- *      `document.transact(..., FILE_WATCHER_ORIGIN)`: Y.Text receives the
- *      disk bytes verbatim via `applyFastDiff`; XmlFragment derives via
- *      `parse(body) → updateYFragment` (the post-write watchdog asserts
- *      the bridge invariant)
- *   4. Emits the FM-change telemetry counter when the captured FM
- *      differs from the disk content's FM
- *   5. Records the file-system contributor and advances reconciledBase to
- *      the raw disk bytes
- *
- * `FILE_WATCHER_ORIGIN` carries `context.paired: true` and
- * `skipStoreHooks: true` — the paired marker opts the bridge observers'
- * paired-write fast-paths in; skipStoreHooks prevents persistence feedback
- * loops.
- *
- * Throws on parse failure — callers choose their own error strategy.
- * `BridgeInvariantViolationError` re-throws past every soft-recovery layer
- * so dev/test surfaces regressions loudly.
- */
 export function applyExternalChange(
   durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,

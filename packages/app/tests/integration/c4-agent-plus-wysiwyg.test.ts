@@ -1,17 +1,3 @@
-/**
- * C4: Agent write + concurrent WYSIWYG (XmlFragment) edits.
- *
- * Validates that agent writes via the HTTP API (applyAgentMarkdownWrite under
- * AGENT_WRITE_ORIGIN) and concurrent client WYSIWYG edits both survive the
- * server-authoritative observer bridge. The server applies agent writes to
- * XmlFragment via updateYFragment and mirrors to Y.Text via applyByPrefixSuffix
- * (precedent #12). Client WYSIWYG edits propagate via CRDT sync and the server
- * observer handles cross-CRDT writes under OBSERVER_SYNC_ORIGIN.
- *
- * Per-test docName isolation via createTestClient/createTestClients.
- * Client lifecycle in try/finally (not afterEach).
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';

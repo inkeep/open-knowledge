@@ -1,41 +1,6 @@
 /**
- * In-process dispatch for MCP tool self-calls.
- *
- * The MCP tools mounted on the project server (`mcp-http.ts`) historically
- * reached server capabilities by issuing HTTP requests to their own listener
- * — a full TCP + HTTP-parse round trip to a handler living in the same
- * process. With the capability services extracted (`services/*`), the
- * handlers behind those endpoints are thin marshaling layers, so the
- * self-call can collapse to a function call: run the SAME handler against a
- * synthetic req/res pair and hand the captured wire body back to the tool.
- *
- * Byte parity is structural — the handler code that writes the HTTP
- * response writes the local response, and the tool-side normalization
- * (`normalizeResponse` in `mcp/tools/shared.ts`) consumes both transports
- * through one code path. Attribution parity is structural for the same
- * reason: identity rides the request body exactly as it does over HTTP
- * (precedent #24 — identity at entry).
- *
- * The dispatch deliberately does NOT run the `/api/*` admission pipeline
- * (`api-pipeline.ts`): request-id echo, CORS, and the loopback/workspace-Host
- * mutating gates defend the network listener. A same-process caller is
- * inside that trust boundary already — a self-call over HTTP always
- * originated from loopback and passed those gates vacuously.
- *
- * Skipping the pipeline also skips its telemetry triple: the HTTP SERVER
- * span, the `http.server.request.duration{http.route}` histogram sample,
- * and the `api.access` log line. Collapsed MCP traffic therefore leaves
- * the `/api/*`-keyed observability surfaces and shows up instead on the
- * MCP tool layer (`mcp/tool-telemetry.ts`: `mcp.tool.<name>` span +
- * `ok.mcp.tool.duration` histogram + per-tool error counting), which
- * already answers per-call latency and error rate for agent traffic.
- * Anything keyed on `http.route` for these endpoints sees browser/SDK
- * traffic only once this ships.
- *
- * Scope is allowlist-gated by the resolver the api extension supplies:
- * only endpoints whose handlers are thin over a capability service
- * (or an equally thin primitive like the derived-document-index reads)
- * resolve; everything else returns `null` and the tool falls back to HTTP.
+ * Attribution parity is structural for the same reason: identity rides the request body exactly as
+ * it does over HTTP (precedent #24 — identity at entry).
  */
 
 import { EventEmitter } from 'node:events';

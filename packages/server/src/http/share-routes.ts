@@ -289,7 +289,10 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        // precedent #55 content-scope predicate symmetry. Kind-aware: an empty
+        /**
+         * Validate the path shape before it reaches git's `<ref>:<path>` ref-spec, mirroring the
+         * sibling share handlers (precedent #55 content-scope predicate symmetry).
+         */
         if (!isValidBranchInfoPath(body.path, body.kind)) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'path is missing or malformed.', {
             handler: SHARE_TARGET_STATUS_HANDLER_TAG,

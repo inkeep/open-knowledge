@@ -1,25 +1,7 @@
 /**
- * Bridge health checks on CommonMark lazy-continuation docs.
- *
- * A doc whose source carries a lazy continuation (an unindented wrapped line
- * inside a list item, a paragraph glued to a list's last line, a blockquote
- * continuation without the `> ` prefix) parses identically to its canonical
- * form (CommonMark §5.2), but serializes differently — `serialize(parse(md))
- * !== md`, and the difference sits deliberately OUTSIDE the normalizeBridge
- * tolerance set (step 7f keeps list/blockquote continuations divergent so the
- * router's residual-merge keeps protecting the raw bytes; the step-7f
- * pins live next to normalizeBridge).
- *
- * The health checks layered on top of that router must NOT treat this
- * resting canonicalization as a broken bridge: the fragment IS
- * `parse(ytext)` (Y.Text-is-truth, precedent #38), so neither the
- * observer-b watchdog throw/warn nor the split-brain rederive may fire on
- * organic lazy-continuation input. Genuine fragment↔Y.Text divergence
- * (content one side lacks) must keep firing — pinned by the control test.
- *
- * Uses a synthetic Y.Doc (no Hocuspocus), production-order seeding
- * (paired-write intake first, observer attach second) — the same rig as
- * `server-observers.test.ts`.
+ * Bridge health checks on CommonMark lazy-continuation docs, whose resting canonicalization sits
+ * deliberately outside the `normalizeBridge` tolerance set. The fragment still IS `parse(ytext)`
+ * (precedent #38), so neither the watchdog nor the split-brain re-derive may fire on them.
  */
 
 import {

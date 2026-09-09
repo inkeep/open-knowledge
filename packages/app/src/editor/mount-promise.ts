@@ -1,73 +1,6 @@
 /**
- * mountTiptapEditorPromise — Suspense + `use(promise)` primitive that splits
- * TipTap's monolithic `new Editor({ element })` cold-mount task into
- * [yield → construct → yield → mount] so the longest synchronous task drops
- * below the perception band on PROJECT-class docs. The pre-construct yield
- * is load-bearing for sibling-subtree paint (sidebar, top bar) — without it,
- * construct()'s synchronous initProseMirrorDoc walk shares a task with the
- * entry-setup microtask and blocks paint for the whole window.
- *
- * Mirrors precedent #18(d) (`sync-promise.ts`) shape — one Suspense-async
- * substrate for "wait for one-shot lifecycle event" across the codebase, not
- * two. Module-level `Map<docName, Entry>` cache; promise identity stable
- * across renders (React Compiler-safe — module state is out of compiler
- * scope, and `use(promise)` requires the same reference across remounts /
- * StrictMode double-invoke to avoid infinite suspension).
- *
- * Differs from `sync-promise.ts` by intentional omission: no
- * `rejectMountPromise` external-injection helper. All mount-promise failures
- * originate inside its own body (construct / yield / mount / register), so
- * the test surface that sync-promise needs for ProviderPool's
- * `BridgeSetupError` injection has no equivalent here.
- *
- * Lifecycle:
- *   - `mountTiptapEditorPromise({ docName, mountId, construct, sizeStats })`
- *     - V2 cache HIT (entry already cached): returns Promise.resolve(entry)
- *       after delegating to `mountTiptapEditor` for the reparent path. No
- *       construction, no yield, no mount() call.
- *     - V2 cache MISS: runs `await scheduler.yield()` → `construct()` →
- *       `await scheduler.yield()` (native on Chromium/Electron, polyfilled
- *       via MessageChannel → requestIdleCallback → setTimeout on
- *       Safari/Firefox) → `editor.mount(transientDiv)` → registers with V2
- *       cache via `mountTiptapEditor` with a no-op factory → resolves with
- *       entry.
- *   - `invalidateMountPromise(docName)` silently tears down the entry: aborts
- *     in-flight construction so the body destroys the pre-mount editor; the
- *     promise is left orphaned (NOT settled) so React's `use()` consumers
- *     that have already unmounted (the typical cancellation path) never see
- *     a rejection. Cache-driven invalidation must be invisible — surfacing
- *     a `MountAbortError` for an LRU eviction the user never requested is
- *     wrong UX. UI-explicit cancellation routes through
- *     `getMountAbortController(docName)?.abort()` which DOES reject.
- *
- * Stalled-but-pending observability (precedent 41):
- *   - At `MOUNT_STALLED_THRESHOLD_MS` (10s default), the substrate emits
- *     `ok/mount/stalled` ONCE per entry and the promise STAYS pending.
- *     Slow IDB hydrate, network partition, hung WebSocket — none are an
- *     auto-failure signal. The substrate emits the observability mark and
- *     waits; the user (via the cancel affordance, which subscribes to
- *     the stalled mark) decides whether to abort.
- *   - `__reapStalledOnVisible(now)` re-checks every pending entry on
- *     `document.visibilitychange → 'visible'` so a tab that backgrounded
- *     past the threshold while `setTimeout` was throttled still emits the
- *     stalled mark on tab restore. Idempotent install/uninstall — the
- *     handler registers once when the cache becomes non-empty and
- *     uninstalls when the cache empties (so test-harness leak checks pass).
- *
- * Cache-entry persistence — load-bearing for two correctness properties
- * (mirrors `syncPromise` lifecycle docstring rationale):
- *   1. Rejection (from explicit `controller.abort()`) survives React
- *      re-render so use() re-throws synchronously to DocumentErrorBoundary
- *      instead of fresh warm-path-resolving on a next render.
- *   2. Resolved entry stays in cache so repeat calls return the same
- *      reference — once React has marked it `.status='fulfilled'`,
- *      subsequent use() calls short-circuit without a Suspense cycle.
- *
- * Pre-mount editors count toward `ACTIVITY_MOUNT_LIMIT` from the moment
- * `mountTiptapEditorPromise` returns the promise — the V2 cache treats the
- * factory-return point as the activity boundary, not mount-completion. This
- * keeps the concurrent-active-editor budget bounded across the construction-
- * to-mount window.
+ * Mirrors precedent #18(d) (`sync-promise.ts`) shape — one Suspense-async substrate for "wait for
+ * one-shot lifecycle event" across the codebase, not two.
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -329,17 +262,8 @@ interface MountBodyParams {
 }
 
 /**
- * Destroy a pre-mount editor with the same UndoManager-restore cleanup that
- * `editor-cache.ts` applies at park / evict (precedent #18(c) leak-cleanup).
- * Capturing the UndoManager BEFORE `editor.destroy()` is required because
- * `editor.state` is only safely readable while the editor is alive; clearing
- * `restore` AFTER destroy breaks the @tiptap/extension-collaboration closure
- * that retains the full editor graph (~30 MB per cycle on multi-MB docs).
- *
- * Idempotent on pre-mount editors per TipTap source verification. Emits a
- * telemetry mark on destroy() failure so a regression in TipTap's pre-mount-
- * destroy idempotency surfaces in traces rather than vanishing — mirrors
- * `editor-cache.ts`'s `ok/cache/evict-failed` discipline.
+ * Destroy a pre-mount editor with the same UndoManager-restore cleanup that `editor-cache.ts`
+ * applies at park / evict (precedent #18(c) leak-cleanup).
  */
 function destroyPreMountEditor(
   docName: string,

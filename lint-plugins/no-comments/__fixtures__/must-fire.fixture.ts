@@ -70,3 +70,37 @@ export const launderedDeprecatedInline = 19;
 
 // see the `@deprecated` discussion in the RFC thread
 export const launderedDeprecatedBackticked = 20;
+
+//# sourceMappingURL=must-fire.fixture.ts.map
+export const sourceMappingUrlPragma = 21;
+
+//# sourceURL=must-fire-evaluated.js
+export const sourceUrlPragma = 22;
+
+/**
+ * A JSDoc essay that narrates the export and then ends on a directive line.
+ * @lintignore union member of the exported result type; no direct importer
+ */
+export const jsdocEssayEndingOnLintignore = 23;
+
+/*
+ * A block essay in the same shape, without the JSDoc opener.
+ * @lintignore referenced by the exported verdict type; no direct importer
+ */
+export const blockEssayEndingOnLintignore = 24;
+
+// prettier-ignore
+export const prettierIgnore = 25;
+
+/** @jsx h */
+export const classicJsxFactoryPragma = 26;
+
+/** @jsxFrag Fragment */
+export const classicJsxFragmentPragma = 27;
+
+export const webpackChunkNameMagic = () => import(/* webpackChunkName: "editor" */ './editor.js');
+
+export const bundlerIgnoreWrongValue = (path: string) => import(/* webpackIgnore: false */ path);
+
+// node-coverage ignore next
+export const nodeCoverageIgnore = 28;

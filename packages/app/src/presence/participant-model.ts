@@ -10,10 +10,8 @@ export interface HumanParticipant {
 }
 
 /**
- * An agent participant — publishes presence via the `__system__` Y.Doc's
- * `agentPresence` map (never per-doc awareness; see precedent #3).
- * `presence` carries everything the bar needs: displayName, icon, color,
- * currentDoc, mode, ts.
+ * An agent participant — publishes presence via the `__system__` Y.Doc's `agentPresence` map (never
+ * per-doc awareness; see precedent #3).
  */
 export interface AgentParticipant {
   kind: 'agent';

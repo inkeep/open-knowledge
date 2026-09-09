@@ -1,29 +1,7 @@
 /**
- * Persistence for managed-artifact docs — skills (`__skill__/<scope>/<name>`).
- * The CRDT amendment makes these first-class CRDT documents that persist to
- * `.ok/`. Templates are ordinary content docs now (`<folder>/.ok/templates/<name>`,
- * hydrated by the content persistence path); the retired `__template__/…`
- * synthetic name survives here only as a load/store tombstone so a stale client
- * name never seeds a second doc or writes a literal `__template__/…` file.
- *
- * Shape: a HYBRID of the two existing persistence branches.
- *  - LOAD/STORE BODY mirrors the *document* branch (`persistence.ts`
- *    onLoadDocument), NOT the Y.Text-only config branch — managed-artifact docs
- *    are full XmlFragment+Y.Text docs (the observer bridge RUNS for them, so
- *    WYSIWYG works). Load is a paired-write under `FILE_WATCHER_ORIGIN`.
- *  - PATH RESOLUTION + atomic-write + file-lock + LKG + reconcile-on-concurrent
- *    mirror the *config* branch (`config-persistence.ts`) — these are `.ok/`
- *    files that a second OK window (or a hand/CLI edit) can race.
- *
- * Verbatim fidelity (precedent #38, Y.Text-is-truth): the store serializes the
- * body from `Y.Text('source')` — the raw source bytes — NEVER from the
- * XmlFragment (which would re-canonicalize the markdown that gets projected
- * verbatim into an agent's context). This is the single most load-bearing rule
- * in this module.
- *
- * Reconciled-base accessors are injected via ctx (not imported from
- * `persistence.ts`) to avoid a circular import — `persistence.ts` imports this
- * module for its third branch.
+ * Verbatim fidelity (precedent #38, Y.Text-is-truth): the store serializes the body from
+ * `Y.Text('source')` — the raw source bytes — NEVER from the XmlFragment (which would
+ * re-canonicalize the markdown that gets projected verbatim into an agent's context).
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -315,14 +293,7 @@ async function backupExternalSkillOnce(
   }
 }
 
-/**
- * Persist a managed-artifact doc to disk. Serializes from `Y.Text('source')`
- * (verbatim — precedent #38). File-locked + atomic; reconciles instead of
- * clobbering when another writer changed the file since our LKG.
- *
- * Entry gate: a store whose last transaction was the load/reconcile import
- * (`FILE_WATCHER_ORIGIN`) is a no-op (don't write back what we just read).
- */
+/** Serializes from `Y.Text('source')` (verbatim — precedent #38). */
 export async function storeManagedArtifactDoc(
   document: Y.Doc,
   documentName: string,

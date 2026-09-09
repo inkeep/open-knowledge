@@ -1,17 +1,6 @@
 /**
- * Clipboard interaction helpers for E2E tests.
- *
- * Dispatches synthetic `ClipboardEvent`s with an intercepted
- * `DataTransfer.setData` so the test can read the MIME map the app's copy /
- * cut handlers wrote, without depending on the real browser clipboard. The
- * programmatic approach bypasses `navigator.clipboard` permission prompts
- * and browser-specific clipboard quirks — same-machine-same-clipboard
- * pollution between concurrent Playwright workers is impossible with this
- * pattern.
- *
- * Precedent #19 (clipboard pipeline is mdast-canonical with per-view hook
- * mechanisms) is what these helpers exercise. See paste-fidelity.e2e.ts for
- * the MIME-shape assertions that rely on this.
+ * Precedent #19 (clipboard pipeline is mdast-canonical with per-view hook mechanisms) is what these
+ * helpers exercise.
  */
 
 import type { Page } from '@playwright/test';

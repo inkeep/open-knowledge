@@ -414,36 +414,7 @@ export async function assertIDBEmpty(
   }
 }
 
-/**
- * Structural quiescence gate — resolves once the doc has NO in-flight
- * transactions AND no `afterAllTransactions` listener fires for N
- * consecutive microtasks. Use instead of wall-clock `wait(ms)` when a test
- * needs to wait for a local doc's pending observer work (including the
- * settlement dispatcher's inner OBSERVER_SYNC_ORIGIN writes) to settle.
- *
- * Precedent #13(b): settlement-based, NOT wall-clock. Under the
- * server-authoritative bridge, observer work fires
- * synchronously inside `afterAllTransactions` — but some paths kick a
- * follow-up `doc.transact(..., OBSERVER_SYNC_ORIGIN)` which starts a new
- * drain. This helper waits until a short quiet window passes with no new
- * drains to catch that cascade deterministically.
- *
- * The `idleTicks` count (default 2) must be >= 2 so the first tick can
- * observe an in-flight drain and the second confirms the drain finished
- * without a follow-up. `idleTicks: 1` is INSUFFICIENT for the seed-class
- * races this helper exists to catch: Observer A's inner
- * `OBSERVER_SYNC_ORIGIN` write scheduled via `queueMicrotask` can land on
- * a later tick than the outer drain, so a single idle observation can
- * return before the cascade completes. Raise `idleTicks` for particularly
- * nested observer cascades; lower is unsafe.
- *
- * `timeoutMs` (default 2000) guards against hangs; throws a clear error
- * pointing at the doc if quiescence is never reached.
- *
- * Does NOT cover inter-doc / inter-client WebSocket propagation — for
- * multi-client convergence, combine with `assertAllConverged` or equivalent
- * polling gates.
- */
+/** Precedent #13(b): settlement-based, NOT wall-clock. */
 export async function awaitDocQuiescence(
   doc: Y.Doc,
   opts?: { timeoutMs?: number; idleTicks?: number },
@@ -491,12 +462,11 @@ export function stripTrailingWhitespace(s: string): string {
     .replace(/\n+$/, '');
 }
 
-/** Assert bridge invariant: normalized Y.Text === serialized XmlFragment,
- * with the parse-equivalence fallback for byte forms beyond every
- * normalizeBridge class whose parse matches the fragment (CommonMark lazy
- * continuations et al. — fragment ≡ parse(ytext) holds, precedent #38).
- * Normalization includes: blank-line count between blocks may normalize
- * (ProseMirror schema limitation). Collapse 3+ consecutive newlines to 2. */
+/**
+ * Assert bridge invariant: normalized Y.Text === serialized XmlFragment, with the parse-equivalence
+ * fallback for byte forms beyond every normalizeBridge class whose parse matches the fragment
+ * (CommonMark lazy continuations et al. — fragment ≡ parse(ytext) holds, precedent #38).
+ */
 export function assertBridgeInvariant(ytext: Y.Text, fragment: Y.XmlFragment): void {
   const ytextStr = ytext.toString();
   const fragMd = serializeFragment(fragment);
@@ -915,18 +885,9 @@ export interface ItemOriginProbe {
 }
 
 /**
- * Create a probe wrapping Y.UndoManager that records stack state and asserts
- * Items-remained-captured. Replaces scattered inline `new Y.UndoManager(...)`
- * in test code.
- *
- * `trackedOrigins` must contain `LocalTransactionOrigin` OBJECT references per
- * precedent #1 (AGENTS.md) — e.g., per-session `session.origin`, `ORIGIN_TREE_TO_TEXT`,
- * `ORIGIN_TEXT_TO_TREE`, `FILE_WATCHER_ORIGIN`, `ROLLBACK_ORIGIN`. `Y.UndoManager`'s
- * internal `trackedOrigins.has(tx.origin)` is identity-based for objects — a raw
- * string literal would silently fail to match the production tx.origin object.
- * Note: in multi-client server-authoritative tests, server-side writes arrive
- * at clients as remote transactions (undefined origin) — pass `session.origin`
- * from a server-side `AgentSessionManager.getSession()` call to track local writes.
+ * `trackedOrigins` must contain `LocalTransactionOrigin` OBJECT references per precedent #1
+ * (AGENTS.md) — e.g., per-session `session.origin`, `ORIGIN_TREE_TO_TEXT`, `ORIGIN_TEXT_TO_TREE`,
+ * `FILE_WATCHER_ORIGIN`, `ROLLBACK_ORIGIN`.
  */
 export function createItemOriginProbe(
   ytext: Y.Text,

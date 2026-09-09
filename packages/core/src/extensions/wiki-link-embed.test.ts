@@ -1,25 +1,7 @@
 /**
- * WikiLinkEmbed TipTap Node — renderHTML / parseHTML coverage.
- *
- * The clipboard-round-trip is the load-bearing invariant: a user copies
- * the rendered embed from one doc (DOM `<img data-wiki-embed ...>` or
- * `<a data-wiki-embed ...>`) and pastes it into another. Without
- * parseHTML matching both tag shapes at `priority: 100`, standard Image
- * / Link extensions (priority 50) would claim the node first, the
- * `sourceForm='wikiembed'` marker would be lost, and the next save
- * would serialize as plain markdown `![](...)` / `[](...)` instead of
- * `![[...]]`.
- *
- * Tests also guard the schema-add-only invariant (precedent #9): if a
- * future change narrows the parseHTML matchers or drops an attr,
- * round-trip regresses silently for every existing embed in every
- * vault. A dedicated unit test fails loud.
- *
- * Approach: introspect the PM schema that getSchema(sharedExtensions)
- * builds. `nodeType.spec.toDOM` is the compiled renderHTML (returns a
- * DOMOutputSpec tuple); `nodeType.spec.parseDOM` is the compiled
- * parseHTML (array of tag-matcher rules with getAttrs). Avoids
- * requiring a DOM runtime (Bun's test env has no `window`).
+ * Tests also guard the schema-add-only invariant (precedent #9): if a future change narrows the
+ * parseHTML matchers or drops an attr, round-trip regresses silently for every existing embed in
+ * every vault.
  */
 
 import { getSchema } from '@tiptap/core';

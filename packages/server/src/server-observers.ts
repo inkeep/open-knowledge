@@ -1,25 +1,7 @@
 /**
- * Server-authoritative observer bridge — single-writer cross-CRDT sync.
- *
- * Mirrors the client-side observer bridge's write-side logic on the server:
- *   Observer A: XmlFragment → Y.Text (Path A: applyIncrementalDiff; Path B: mergeThreeWay + applyFastDiff)
- *   Observer B: Y.Text → XmlFragment (via updateYFragment)
- *
- * Runs on the server's copy of the Y.Doc so concurrent client edits converge
- * through one writer instead of N. Client observer cross-CRDT write paths are
- * deleted (not gated) — see precedent #14.
- *
- * Dispatch model (precedent #13(b)): the
- * observers use `doc.on('afterAllTransactions', ...)` — per-drain, not
- * per-transaction, and not a wall-clock `setTimeout` debounce. One outermost
- * `doc.transact(...)` call = one drain = one settlement fire. Observer
- * callbacks set dirty flags; the settlement handler dispatches synchronous
- * sync work (A before B) and clears the flags.
- *
- * No typing-defer logic (server never types — that was client-specific UX).
- * No REMOTE_TREE_SYNC_GRACE_MS (origin guards replace the timing guard).
- * Fires on BOTH transaction.local=true (server-local) and local=false (remote).
- *
+ * Client observer cross-CRDT write paths are deleted (not gated) — see precedent #14. Dispatch
+ * model (precedent #13(b)): the observers use `doc.on('afterAllTransactions', ...)` — per-drain,
+ * not per-transaction, and not a wall-clock `setTimeout` debounce.
  */
 
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
@@ -119,16 +101,9 @@ const log = getLogger('server-observers');
 const checkpointLog = getLogger('server-observers');
 
 /**
- * Transaction origin for server observer cross-CRDT writes.
- *
- * Object reference per precedent #1 — identity-based matching in
- * Set.has / Y.UndoManager.trackedOrigins / attachBridgeInvariantWatcher
- * enforcing sets requires the exact object ref.
- *
- * skipStoreHooks: true — prevents observer → persistence → file-watcher →
- * observer feedback loop. Same pattern as
- * FILE_WATCHER_ORIGIN in external-change.ts. Verified by the
- * persistenceDiskWrites counter in `server-observer-feedback-loop.test.ts`.
+ * Transaction origin for server observer cross-CRDT writes: an object reference per precedent #1,
+ * because identity matching in `Set.has`, `trackedOrigins` and the bridge watcher's enforcing sets
+ * needs the exact ref. `skipStoreHooks` breaks the observer-persistence-watcher feedback loop.
  */
 export const OBSERVER_SYNC_ORIGIN = {
   source: 'local',
@@ -136,30 +111,7 @@ export const OBSERVER_SYNC_ORIGIN = {
   context: { origin: 'observer-sync' },
 } as const satisfies LocalTransactionOrigin;
 
-/**
- * Branded `LocalTransactionOrigin` for paired-write semantics — transactions
- * where the caller atomically writes BOTH Y.XmlFragment and Y.Text inside
- * one `doc.transact(..., ORIGIN)` block.
- *
- * Compile-time extension of precedent #1.
- * Origin literals opt in by asserting `satisfies
- * PairedWriteOrigin` at their definition site; that annotation forces the
- * literal to carry `context.paired: true` and prevents typos. See the
- * five paired origins in the repo — AGENT_WRITE_ORIGIN, FILE_WATCHER_ORIGIN,
- * ROLLBACK_ORIGIN, MANAGED_RENAME_ORIGIN, PARK_SNAPSHOT_ORIGIN
- * (server-factory.ts) — each satisfies this shape.
- *
- * Runtime remains structural (`context.paired === true`) so remote-arriving
- * transactions (where the origin object identity is reconstructed by Yjs)
- * still match; `satisfies PairedWriteOrigin` is the authoring-site gate,
- * not a runtime `instanceof` narrowing.
- *
- * Today's paired origin count: 5. When adding a 6th, the ONLY required
- * change is `satisfies PairedWriteOrigin` at the literal. No registry
- * update. No Observer A/B wiring. No `BRIDGE_ENFORCING_ORIGINS` change
- * (that set is unrelated — it enforces the bridge-invariant watcher's
- * post-transaction assertion, not paired-write short-circuit).
- */
+/** Compile-time extension of precedent #1. */
 export type PairedWriteOrigin = LocalTransactionOrigin & {
   readonly context: {
     readonly origin: string;
@@ -167,27 +119,7 @@ export type PairedWriteOrigin = LocalTransactionOrigin & {
   };
 };
 
-/**
- * Semantic match (precedent #1 extension).
- *
- * When an observer callback sees a paired-write origin, it refreshes the
- * raw Y.Text witness synchronously from the post-write state and declines to
- * set its dirty flag — the settlement handler then has no work to dispatch
- * for this drain (the paired writer already made both CRDTs consistent).
- *
- * The structural runtime check covers both locally-written origins (where the
- * object identity is the one we exported) and remote-arriving transactions
- * (where Yjs may have reconstructed the origin from the wire payload). The
- * `PairedWriteOrigin` brand above is the authoring-site compile-time gate;
- * this predicate is the read-site runtime gate. Both together close the
- * loop the regression class left open.
- *
- * Fuzz reproduction: `STRESS_FUZZ_SEED=1776325179241 bun test
- * packages/app/tests/stress/bridge-convergence.fuzz.test.ts` produces an
- * "Oracle (e) content-set violation — missing 'M3-charlie hotel echo'" failure
- * whose proximate cause is a duplicated `M0-alpha echo` line that a later
- * agent-patch `indexOf('alpha')` locks onto instead of the intended target.
- */
+/** Semantic match (precedent #1 extension). */
 export const isPairedWriteOrigin = (origin: unknown): origin is PairedWriteOrigin => {
   if (origin == null || typeof origin !== 'object') return false;
   const ctx = (origin as { context?: { paired?: boolean } }).context;
@@ -218,25 +150,12 @@ export class ProducerGuardViolationError extends Error {
 const PRODUCER_GUARD_DANGER_TYPES = new Set(['jsxComponent', 'table', 'tableCell', 'tableHeader']);
 
 /**
- * Consecutive derive-timing defers a document may accumulate before the guard
- * stops deferring and force-resolves the re-derive loudly. Drain-count based, so
- * it stays honest under the no-wall-clock rule (precedent #13(b)): the bound is
- * "how many re-derive drains have been withheld," never elapsed time. Same value
- * as the persistence layer's `QUIESCENCE_MAX_DEFER` — under sustained typing a
- * doc that keeps a keystroke un-propagated is the same shape both layers bound.
+ * Drain-count based, so it stays honest under the no-wall-clock rule (precedent #13(b)): the bound
+ * is "how many re-derive drains have been withheld," never elapsed time.
  */
 const MAX_DERIVE_TIMING_DEFERS = 8;
 
-/**
- * Backstop cap for the Y.Text→XmlFragment re-derive loop (the loud
- * tripwire). A run of this many consecutive re-derive drains that never reaches
- * a raw-byte fixed point (the two representations keep diverging) freezes the
- * B-direction re-derive loop. Drain-count based (never wall-clock,
- * precedent #13(b)). Set well above the worst measured legitimate run — a single
- * byte-emitting round per settlement episode — so a legitimate flow can never
- * trip it; the residual it guards is the un-probed echo/normalize-UNEQUAL
- * corrective-loop domain, where a trip is a true positive.
- */
+/** Drain-count based (never wall-clock, precedent #13(b)). */
 const MAX_REDERIVE_ROUNDS = 8;
 
 const MERGE_BOUNDARY_SITE = 'merge-boundary';
@@ -395,12 +314,9 @@ export interface SetupServerObserversOpts {
 }
 
 /**
- * Split-brain settlement predicate (the precedent #38 comparison): true when
- * a drain is about to settle with Y.Text and the canonical fragment
- * serialization (`md`) diverged beyond `normalizeBridge` tolerance. The
- * byte-identity short-circuit skips the O(N) normalize passes on the common
- * in-sync case. Single-sourced so both Observer A detection sites (identity
- * gate + post-merge baseline check) apply the identical predicate.
+ * Split-brain settlement predicate (the precedent #38 comparison): true when a drain is about to
+ * settle with Y.Text and the canonical fragment serialization (`md`) diverged beyond
+ * `normalizeBridge` tolerance.
  */
 function settlesSplitBrain(
   settledText: string,
@@ -479,25 +395,7 @@ export function findRaceDuplicatedSpans(
   return false;
 }
 
-/**
- * Set up server-side bidirectional observers between Y.XmlFragment and Y.Text.
- *
- * Observer A (XmlFragment → Y.Text): mirrors client Observer A's write-side
- * logic — Path A (diffLines + content-comparison gate when Y.Text in sync
- * with baseline) and Path B (DMP three-way merge when Y.Text diverged).
- *
- * Observer B (Y.Text → XmlFragment): parses Y.Text markdown, applies to
- * XmlFragment via updateYFragment. Handles frontmatter sync (Y.Text ↔ Y.Map).
- *
- * Dispatch (precedent #13(b)): Observer callbacks only flag dirty state.
- * The `afterAllTransactions` listener runs Observer A's sync work first
- * (so any Y.Text write is visible to Observer B) and then Observer B's,
- * clearing the dirty flags afterwards. One outermost `doc.transact()` call
- * produces exactly one settlement dispatch.
- *
- * Returns a cleanup function that detaches the observers and the settlement
- * handler. The settlement handler holds no timers; cleanup is O(1).
- */
+/** Dispatch (precedent #13(b)): Observer callbacks only flag dirty state. */
 export function setupServerObservers(opts: SetupServerObserversOpts): () => void {
   const { doc, xmlFragment, ytext, mdManager, schema } = opts;
 
@@ -934,15 +832,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   };
 
   /**
-   * Record a COHERENT split-brain pair after an Observer A error recovery —
-   * the recomputed canonical fragment form (`canonicalMd`) and the current
-   * raw Y.Text diverge beyond `normalizeBridge` tolerance, but both are read
-   * NOW from a consistent in-memory state, so they belong to one settlement
-   * generation. Unlike the `''` sentinel, this pair is deliberately coherent:
-   * the router must take the byte-preserving residual-merge (row 2) on the
-   * next fragment-change drain rather than a wholesale Path A rewrite, which
-   * is what protects the divergent source bytes. The same-drain Observer B
-   * re-derive the caller enqueues then rebuilds the fragment from Y.Text
+   * The same-drain Observer B re-derive the caller enqueues then rebuilds the fragment from Y.Text
    * (Y.Text-is-truth, precedent #38), so the split-brain state converges.
    */
   const recordSplitBrainRecoveryBaselines = (canonicalMd: string): void => {
@@ -1029,18 +919,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   const guardCheckpointedPreLoss = new Map<string, string>();
 
   /**
-   * Report a producer-guard content-loss in the packaged posture: a rate-limited
-   * structured event (bounded cardinality — doc.name + reason/degrade enums + a
-   * construct locator, never raw content) plus a silent checkpoint of the
-   * pre-loss source so the state stays user-recoverable. Never throws, never
-   * corrective-writes (precedent #38): the drain still persists the bytes
-   * as-computed. The guard is a second DETECTION site for the bridge-content-loss
-   * class, not a second `BridgeMergeContentLossError` recovery — it uses its own
-   * `producer-guard-loss` checkpoint kind and its own fire/suppressed counters.
-   *
-   * The log throttle and the checkpoint are independent: throttling the log must
-   * not drop the recovery anchor, so the checkpoint always attempts (deduped on
-   * the pre-loss source) even when the log is suppressed.
+   * Never throws, never corrective-writes (precedent #38): the drain still persists the bytes
+   * as-computed.
    */
   const reportProducerGuardViolation = (
     verdict: Extract<ReturnType<typeof comparePmStructural>, { equivalent: false }>,

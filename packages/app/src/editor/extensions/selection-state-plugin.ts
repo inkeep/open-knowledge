@@ -1,43 +1,6 @@
 /**
- * SelectionStatePlugin — the canonical block-selection state store (Precedent #31).
- *
- * Derives a typed {selectedBlockId, ancestorChain, selectionOrigin, isDragging}
- * state from the current PM selection + event-classified origin. One source of
- * truth for every selection-adjacent surface — NodeView `data-*` attrs,
- * aria-live announcer, selection-anchored popovers.
- *
- * Replaces three patterns formerly duplicated across the codebase:
- *   - `.is-selected` className toggled from `NodeViewProps.selected`.
- *   - Per-NodeView `$pos.node(depth)` walks to compute ancestor chains.
- *   - Ad-hoc `:has()`-based innermost-wins CSS rules.
- *
- * Read-only over the PM doc: never mutates document content. Meta-only
- * transactions ARE dispatched (see `scheduleRefresh` below) to flow
- * drag/selection signalling through PM's standard apply pipeline —
- * these carry no doc steps and leave the bridge invariant
- * unchanged.
- *
- * Origin classification is event-driven (not tx-heuristic): DOM
- * pointerdown/mousedown → 'pointer'; keydown on nav keys → 'keyboard'; a
- * transaction stamped with `SELECTION_ORIGIN_META_KEY` → 'programmatic'
- * (covers agent writes + imperative test-harness `setNodeSelection`). The
- * discipline of one typed meta key per origin category extends Precedent #1
- * (typed transaction origins).
- *
- * Drag tracking: HTML5 `dragstart` / `dragend` / `drop` on
- * `view.dom.parentElement` (the editor container — capture phase)
- * toggle `isDragging`. The CSS layer uses this to suppress the halo
- * mid-drag. `drop` is included because a cancelled drag sometimes ends
- * in a drop without a preceding dragend in current browser behavior.
- * The parentElement target is load-bearing: BlockDragHandle mounts its
- * draggable container as a sibling of view.dom — see the view() block
- * below for the bubble-vs-capture topology.
- *
- * Subscription model: the canonical React integration is
- * `useBlockSelection(editor)` (see `../hooks/use-block-selection.ts`), which
- * wires through TipTap's `transaction` + `selectionUpdate` events — the same
- * path used by BubbleMenu and SideMenu. Non-React callers read imperatively
- * via `getBlockSelection(editor)` and listen directly to TipTap events.
+ * SelectionStatePlugin — the canonical block-selection state store (Precedent #31). The discipline
+ * of one typed meta key per origin category extends Precedent #1 (typed transaction origins).
  */
 
 import { type Editor, Extension } from '@tiptap/core';
@@ -63,17 +26,10 @@ export interface BlockSelection {
   readonly rangeEncompassedBlockIds: ReadonlySet<string>;
 }
 
-/** PM transaction meta key — consumers that want to override origin
- *  classification set `tr.setMeta(SELECTION_ORIGIN_META_KEY, 'programmatic')`.
- *  The plugin's `apply` checks this before consulting the DOM-event-derived
- *  `pendingOrigin`. Used by agent writes and imperative `setNodeSelection`
- *  in the test harness.
- *
- *  Note on Precedent #1: that precedent governs Y.Doc transaction origins
- *  (typed `LocalTransactionOrigin` objects, identity-matched). PM tr-meta
- *  keys are a different surface — PM's `tr.getMeta(key)` API takes string
- *  or PluginKey instances. We use a unique namespaced string here, in line
- *  with PM convention. */
+/**
+ * Note on Precedent #1: that precedent governs Y.Doc transaction origins (typed
+ * `LocalTransactionOrigin` objects, identity-matched).
+ */
 export const SELECTION_ORIGIN_META_KEY = 'selectionStatePlugin/origin';
 
 const SELECTION_REFRESH_META_KEY = 'selectionStatePlugin/refresh';

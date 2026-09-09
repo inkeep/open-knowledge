@@ -1,24 +1,6 @@
 /**
- * A short-lived claim that a disk change about to happen was made by a person.
- *
- * `applyExternalChange` attributes everything it ingests to `FILE_SYSTEM_WRITER`
- * — correct for its usual caller, the file watcher, which sees bytes appear and
- * cannot know why. But a merge-conflict resolution is a human decision the
- * server itself performed on the user's behalf: it writes the resolved content
- * to disk through git, and the watcher then ingests it like any other external
- * edit. The Timeline row lands as "File System", crediting nobody for what is
- * arguably the highest-stakes edit the product supports.
- *
- * A handler that is about to make such a write files a claim here first; the
- * ingest consumes it and attributes the row to that writer instead. The writer
- * id is an ordinary `principal-<UUID>` from the precedent #25 taxonomy — this
- * changes who a write is credited to, never what a writer id may look like.
- *
- * Deliberately weak by design. Claims are keyed by docName, single-use, and
- * expire; anything unmatched falls back to `FILE_SYSTEM_WRITER`. A lost race
- * therefore reproduces today's behaviour, while a stale claim can never
- * outlive its window and mis-credit a later unrelated edit. Wrong-but-silent
- * is the one outcome attribution must not have.
+ * The writer id is an ordinary `principal-<UUID>` from the precedent #25 taxonomy — this changes
+ * who a write is credited to, never what a writer id may look like.
  */
 
 import { getLogger } from './logger.ts';

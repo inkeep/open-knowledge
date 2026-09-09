@@ -1,0 +1,56 @@
+{
+  "$schema": "./lint-plugins/no-comments/no-comments.config.schema.json",
+  "version": 1,
+  "families": {
+    "typescript": { "extensions": [".ts", ".tsx"], "extractor": "c-family" },
+    "typescript-multi-suffix": {
+      "extensions": [".ts", ".tsx", ".mts", ".cts"],
+      "extractor": "c-family"
+    },
+    "typescript-config": { "extensions": [".ts", ".mts", ".cts"], "extractor": "c-family" },
+    "esm-script": { "extensions": [".mjs", ".js"], "extractor": "c-family" },
+    "shell": { "extensions": [".sh"], "extractor": "hash-family" },
+    "yaml": { "extensions": [".yml", ".yaml"], "extractor": "hash-family" }
+  },
+  "units": [
+    { "id": "packages-src", "family": "typescript", "roots": ["packages/**/src"] },
+    { "id": "packages-tests", "family": "typescript", "roots": ["packages/**/tests"] },
+    { "id": "packages-esm", "family": "esm-script", "roots": ["packages"] },
+    { "id": "test-support", "family": "typescript", "roots": ["test-support"] },
+    { "id": "test-support-esm", "family": "esm-script", "roots": ["test-support"] },
+    { "id": "scripts", "family": "esm-script", "roots": ["scripts"] },
+    { "id": "github-scripts", "family": "esm-script", "roots": [".github/scripts"] },
+    { "id": "docs", "family": "typescript-multi-suffix", "roots": ["docs"] },
+    { "id": "root-configs", "family": "typescript-config", "roots": ["."] },
+    { "id": "lint-plugins", "family": "esm-script", "roots": ["lint-plugins"] },
+    { "id": "plugins", "family": "esm-script", "roots": ["plugins"] },
+    {
+      "id": "shell",
+      "family": "shell",
+      "roots": ["packages", "scripts", ".github", "lint-plugins", "plugins"],
+      "files": [".husky/pre-commit", ".husky/pre-push"]
+    }
+  ],
+  "exclude": [
+    "packages/md-conformance/**",
+    "packages/app/src/locales/**",
+    "packages/native-config/index.js",
+    "docs/.source/**",
+    "docs/.source-vitest/**",
+    "knip.config.ts",
+    "reports/**",
+    "specs/**",
+    "sandbox-recipes/**",
+    ".claude/**",
+    "**/*.private.*",
+    "**/*.fixture.{ts,tsx,mjs}",
+    "**/*.d.{ts,mts,cts}",
+    "**/__fixtures__/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/.git/**",
+    "**/coverage/**"
+  ]
+}

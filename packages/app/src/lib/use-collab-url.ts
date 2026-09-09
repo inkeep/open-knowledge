@@ -1,30 +1,6 @@
 /**
- * React hook that resolves the collab WebSocket URL from `ok ui`'s
- * `/api/config` endpoint.
- *
- * Resolution flow:
- *   1. Fetch `/api/config` on mount.
- *   2. If `collabUrl` is a string: resolved → return it.
- *   3. If `collabUrl` is null: server.lock is absent/stale → retry with
- *      bounded exponential backoff (2s → 4s → 8s → 15s cap).
- *   4. If the fetch itself 404s or network-errors: fall back to the
- *      same-origin WebSocket URL so `bun run dev` (Vite + Hocuspocus on one
- *      port) keeps working without plugin changes.
- *   5. After `TERMINAL_AFTER_MS` elapsed wall-clock with no resolution, the
- *      hook transitions to a `terminal` state: automatic retries stop, the
- *      consumer banner surfaces an actionable error + manual-retry button.
- *      A terminal retry resets the wall-clock and delay back to start.
- *
- * The terminal state exists because a silent-forever banner is itself a
- * form of ceremony — users hit-refresh, kill the tab, or file issues. The
- * zero-ceremony promise assumes silent recovery, but bounded recovery with
- * a diagnostic surface is the correct fallback for a permanently-broken
- * configuration (misconfigured proxy, crashed-and-unrespawned `ok start`).
- *
- * The poll loop is extracted as `runCollabUrlPoll` so tests can drive it
- * with fake clocks + mocked fetch — the hook is a thin React wrapper. This
- * follows precedent #13b: implicit time-coupling is a test smell,
- * so the primitive accepts `now / setTimeout / clearTimeout` as deps.
+ * This follows precedent #13b: implicit time-coupling is a test smell, so the primitive accepts
+ * `now / setTimeout / clearTimeout` as deps.
  */
 import { useEffect, useRef, useState } from 'react';
 import { type FetchApiConfigResult, fetchApiConfig } from '@/lib/api-config';

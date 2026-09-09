@@ -91,24 +91,8 @@ export async function readIncomingEntries(git: SimpleGit): Promise<GitWorktreeEn
 }
 
 /**
- * Read the working tree's status.
- *
- * `toOpenTarget` maps a project-relative path to where clicking it navigates,
- * or undefined when it navigates nowhere. Threaded in for the same reason as
- * `isSyncScoped`: the answer belongs to the server's live file index and
- * content filter, and a path this surface guessed at would render as a link
- * to a 404.
- *
- * `isSyncScoped` decides whether Open Knowledge would ever commit a given
- * project-relative path. It is threaded in rather than recomputed here so the
- * answer comes from the sync engine's own admission predicate — the same one
- * the staging walk consults (precedent #55). A UI that marked a path in-scope
- * that Push then skipped would be worse than showing nothing.
- *
- * Never throws: a repository that is unborn, mid-rebase, or not a git dir at
- * all yields an empty status rather than failing the popover. The engine's own
- * `sync-status` payload is what reports sync health; this surface is
- * supplementary detail.
+ * It is threaded in rather than recomputed here so the answer comes from the sync engine's own
+ * admission predicate — the same one the staging walk consults (precedent #55).
  */
 export async function readWorktreeStatus(
   projectDir: string,

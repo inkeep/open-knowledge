@@ -77,7 +77,8 @@
     "tsx": "^4.20.0",
     "turbo": "^2.7.0",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "yaml": "^2.8.3"
   },
   "puppeteer": {
     "skipDownload": true

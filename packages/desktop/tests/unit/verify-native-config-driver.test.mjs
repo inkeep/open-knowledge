@@ -52,7 +52,6 @@ describe('resolveBundledNativeDirInDir', () => {
 
   test('finds the loader when <dir> is itself the native dir', () => {
     const existsSyncMock = vi.fn((p) => p === '/proj/native/index.js');
-    // The first candidate '.' checks /proj/index.js (absent), then 'native'.
     expect(resolveBundledNativeDirInDir('/proj', { existsSync: existsSyncMock })).toBe(
       '/proj/native',
     );
@@ -95,7 +94,7 @@ describe('loadAndRoundTrip', () => {
   test('ok:false when a binding fn returns the wrong shape', () => {
     const fakeBinding = {
       parseTomlToJson: () => '{"probe":1}',
-      upsertMcpServer: () => ({ changed: true }), // missing text
+      upsertMcpServer: () => ({ changed: true }),
       resolveSymlinkWritePath: (p) => ({ writePath: p }),
     };
     const result = loadAndRoundTrip('/bundle/native', { requireModule: () => fakeBinding });

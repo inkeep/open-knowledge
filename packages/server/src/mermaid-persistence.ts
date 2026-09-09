@@ -1,25 +1,6 @@
 /**
- * Persistence for standalone Mermaid docs — `.mmd` / `.mermaid` files whose
- * docName RETAINS its extension (`assets/flow.mmd`). A FOURTH doc class.
- *
- * Shape: config-persistence's Y.Text-only body handling — the markdown observer
- * bridge is gated OFF for these (see `server-observer-extension.ts` /
- * `isMermaidDoc`), so the diagram source is stored VERBATIM. Routing the source
- * through the markdown pipeline (as `.md`/`.mdx` docs do) would re-canonicalize
- * it (blank-line normalization, escaping, fence promotion) and corrupt Mermaid
- * syntax. Verbatim fidelity (precedent #38, Y.Text-is-truth): the store
- * serializes from `Y.Text('source')` and never touches the XmlFragment.
- *
- * Unlike config docs (bounded `.ok/` set, schema-validated) these are arbitrary
- * user content files: no validation (any text is a valid `.mmd` — parse-failing
- * content still renders as source), and path resolution goes to the content dir.
- * A concurrent external writer (CLI / another editor) is caught by a
- * read-before-write reconcile; no file lock is taken (one server per contentDir
- * per `server.lock`, and Hocuspocus serializes `onStoreDocument` per doc).
- *
- * The path resolver is replicated here (rather than importing `safeContentPath`
- * from `persistence.ts`) to avoid a circular import — `persistence.ts` imports
- * this module for its dispatch branch.
+ * Verbatim fidelity (precedent #38, Y.Text-is-truth): the store serializes from `Y.Text('source')`
+ * and never touches the XmlFragment.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -92,14 +73,7 @@ export function loadMermaidDoc(
   ctx.lkgCache.set(documentName, raw);
 }
 
-/**
- * Persist a Mermaid doc to disk. Serializes from `Y.Text('source')` (verbatim —
- * precedent #38); atomic tmp+rename. Entry gate: a store whose last transaction
- * was the load/reconcile import (`MERMAID_SOURCE_ORIGIN`) is a no-op — belt-and-
- * suspenders alongside that origin's `skipStoreHooks: true`. Reconciles (imports
- * disk) instead of clobbering when an external writer changed the file since our
- * LKG.
- */
+/** Serializes from `Y.Text('source')` (verbatim — precedent #38); atomic tmp+rename. */
 export async function storeMermaidDoc(
   document: Y.Doc,
   documentName: string,

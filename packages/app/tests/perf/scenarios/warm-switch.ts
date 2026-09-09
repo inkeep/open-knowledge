@@ -1,23 +1,7 @@
 /**
- * Reproduction — warm switch-back to a previously-loaded small doc after
- * visiting a large doc.
- *
- * Workflow:
- *   1. Cold-load README (small, 5 KB).
- *   2. Navigate to PROJECT (large, multi-MB) — waits for PROJECT content.
- *   3. Click sidebar's README entry — measure wall-clock until README's
- *      visible ProseMirror is rendered with README-specific content.
- *
- * The user-visible symptom is "click a sidebar entry → noticeable hitch"
- * after visiting a big doc, so the scenario measures the full click→content
- * pipeline. The timing starts at the sidebar click and ends when the visible
- * editor contains README content — which is the user-perceived "switch
- * completed" moment.
- *
- * Pre-fix baseline: warmSwitchMs ≥ 500.
- * Post-fix target: warmSwitchMs < 100 AND README content continuity
- * preserved during the transition (precedent #18 G2 — verified by Playwright
- * E2E tests `docs-open.e2e.ts` which aren't re-run here, just not regressed).
+ * Post-fix target: warmSwitchMs < 100 AND README content continuity preserved during the transition
+ * (precedent #18 G2 — verified by Playwright E2E tests `docs-open.e2e.ts` which aren't re-run here,
+ * just not regressed).
  */
 
 import { markerFor } from '../lib/doc-markers.ts';

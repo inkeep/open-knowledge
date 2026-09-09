@@ -1,27 +1,4 @@
-/**
- * no-inline-tolerance-class — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-inline-tolerance-class.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-inline-tolerance-class.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Forbids a
- * public-mirrored test from writing a bridge tolerance-class catalog value
- * (`BRIDGE_TOLERANCE_CLASSES`) inline as a string literal. Importing the catalog
- * symbol into a public test is already blocked by `check-mirror-test-policy`
- * Check B (moat-import); this rule closes the complementary gap where a test
- * re-encodes a class value inline, bypassing the import check.
- *
- * Three guarantees, each its own test:
- *   1. Fires on exactly the planted positives (and on no negative) — the
- *      bidirectional `toBe(8)` count, plus the diagnostic-message contract.
- *   2. Scoped via its `RULE_SCOPES` entry to the public test surface rather than
- *      left unscoped, which would fire on the excluded clusters where the
- *      catalog legitimately lives.
- *   3. The matched fidelity classes plus the four universal text-encoding
- *      classes partition `BRIDGE_TOLERANCE_CLASSES` exactly — a class added to
- *      the catalog reddens here until it is classified into one bucket, so the
- *      guard can never silently cover a stale subset.
- */
+/** The `no-inline-tolerance-class` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

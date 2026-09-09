@@ -1,12 +1,7 @@
 /**
- * RTL mount tests for the useThemeBridge hook — `.finally(...)`
- * chain ordering and cleanup-on-unmount. Exercises the `render` API
- * surface (via `<HookProbe>` wrapper) under the jsdom substrate
- * (precedent #43); invocation via `bun run test:dom`. Pairs with the
- * verbatim user-intent contract documented in precedent #40(a).
- *
- * The DOM Vitest project keeps `isolate: true` so the module mock in the
- * sibling config-provider suite cannot replace this hook's real implementation.
+ * Exercises the `render` API surface (via `<HookProbe>` wrapper) under the jsdom substrate
+ * (precedent #43). Pairs with the verbatim user-intent contract
+ * documented in precedent #40(a).
  */
 
 import { act, cleanup, render, waitFor } from '@testing-library/react';

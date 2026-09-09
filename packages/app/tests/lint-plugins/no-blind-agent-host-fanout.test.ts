@@ -1,24 +1,4 @@
-/**
- * no-blind-agent-host-fanout — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-blind-agent-host-fanout.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-blind-agent-host-fanout.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Forbids
- * re-introducing the `npx skills … --agent '*'` shell-out that made `ok init`
- * create skill directories in every host the third-party CLI knows about,
- * including ~51 for tools the user had never installed (issue #820). OK now
- * writes the user-global bundle itself, gated on `detectUserSkillHosts`.
- *
- * Three guarantees, each its own test:
- *   1. Fires on exactly the planted positives (and on no negative) — the
- *      bidirectional `toBe(5)` count, plus the diagnostic-message contract.
- *   2. Scoped via its RULE_SCOPES entry to the packages that own the install,
- *      with tests deliberately IN scope.
- *   3. The banned npm-spec arms cover every range shape of the pinned spec the
- *      incident shipped with, so a caret/exact/latest variant can't slip past a
- *      guard written only against the tilde form.
- */
+/** The `no-blind-agent-host-fanout` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

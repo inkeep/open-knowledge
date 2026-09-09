@@ -124,11 +124,7 @@ export {
 } from './content-filter.ts';
 export { safeContentPath } from './content-path.ts';
 export {
-  // oxlint-disable-next-line typescript/no-deprecated
-  clearContributors,
   contributorCount,
-  // oxlint-disable-next-line typescript/no-deprecated
-  formatContributors,
   formatContributorsFrom,
   recordContributor,
   restoreContributors,
@@ -435,8 +431,6 @@ export {
   type FileEntry,
   formatPackRationale,
   isKnownPackId,
-  // oxlint-disable-next-line typescript/no-deprecated
-  LOG_MD_TEMPLATE,
   listStarterPacks,
   type PackId,
   planSeed,
@@ -447,12 +441,8 @@ export {
   SeedRootDirError,
   type SkipEntry,
   STARTER_FOLDER_FRONTMATTER_FILENAME,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_FOLDERS,
   STARTER_PACK_IDS,
   STARTER_PACKS,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_TEMPLATES,
   type StarterFolder,
   type StarterPack,
   type StarterPackEntryCounts,

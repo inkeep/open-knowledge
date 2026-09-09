@@ -1,32 +1,7 @@
 /**
- * markIdentityDecorationPlugin — materializes `markIdentityPlugin`'s stable IDs
- * as PM inline decorations carrying `data-mark-id="m${n}"` attributes.
- *
- * Why a separate plugin? `markIdentityPlugin` assigns IDs in `appendTransaction`
- * — which runs AFTER a mark's `renderHTML` has already emitted DOM. There is
- * no transform that lets `renderHTML` read the post-appendTransaction ID at
- * render time. PM's decoration system is the canonical escape hatch: a plugin
- * returning `Decoration.inline(from, to, attrs)` attaches `attrs` to the DOM
- * for the decorated range on every view update, bypassing the render cycle
- * that produced the mark's initial DOM.
- *
- * Pairs with:
- *   - `markIdentityPlugin` — owner of the ID assignment state
- *   - InteractionLayer — event delegation reads `data-mark-id`
- *     via `closest('[data-mark-id]')` to resolve click/hover targets
- *
- * Consumers (InternalLink, WikiLink-if-mark) register BOTH plugins:
- *
- *   addProseMirrorPlugins() {
- *     return [
- *       markIdentityPlugin({ markTypes: ['link'], onRegister, onDeregister }),
- *       markIdentityDecorationPlugin(),
- *     ];
- *   }
- *
- * precedent #9 (add-only schema): IDs live in PluginState only;
- * the schema is not mutated. Decoration attributes are a view-layer concern,
- * not schema state.
+ * Materializes `markIdentityPlugin`'s stable IDs as PM inline decorations carrying
+ * `data-mark-id`, because the IDs are assigned in `appendTransaction` after `renderHTML` has run.
+ * Precedent #9 add-only schema holds: the IDs live in PluginState, not in the schema.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';

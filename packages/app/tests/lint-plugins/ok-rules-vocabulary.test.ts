@@ -1,46 +1,6 @@
 /**
- * The `ok` rule corpus carries no vocabulary from the mechanism it replaced.
- *
- * Corpus: `CORPUS_DIRS` and `TEST_DIRS`. Read the constants, not a paraphrase.
- * The conformance property catalogs are in scope because they describe rules
- * in prose and one of them drifted. That package does not ship, so its two
- * entries are the ones in `ABSENT_ON_MIRROR`; every other entry must
- * contribute a scanned file or the corpus test reds with the directory named.
- * The exemption is gated on the PACKAGE root rather than on those leaves,
- * because a leaf that vanishes is the condition being detected.
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules), which
- * names the rule corpus this scans. Two vocabularies are banned and they come
- * from different retirements: `gritql` / `.grit` / `biome-plugins` are the
- * Biome GritQL mechanism precedent #42 was rewritten away from, and `bun run`
- * is Bun syntax retired by the earlier remove-bun migration. `biome-ignore`
- * and `biome check` are deliberately NOT banned: Biome is still a live linter
- * here alongside oxlint.
- *
- * `judgeDemotion` blanks true plugin references in two passes and tests for a
- * demotion between them. Every strip is length-preserving, because two of the
- * checks are bounded-distance patterns and deleting text would pull unrelated
- * words inside a window they were never in.
- *
- *   1. `REAL_PLUGIN_NAMES` — this repo's own plugin directories, read from
- *      disk so a third plugin needs no edit here. This one MUST run first:
- *      the names are kebab-cased, so ``no-comments plugin`` would otherwise
- *      false-fire `DEMOTED_UNAMBIGUOUS`'s kebab-identifier alternative.
- *   2. `DEMOTED_UNAMBIGUOUS` — a rule identifier next to `plugin`, optionally
- *      through an engine qualifier (`<rule> oxlint plugin`), or `plugin test`
- *      / `plugin fixture`. It runs BEFORE the remaining strips because either
- *      of them can span a demotion and delete the token this keys on. Two
- *      pinned cases assert exactly that, by running the same function with
- *      the order inverted.
- *   3. `ENGINE_PLUGINS` then `PLUGIN_AS_MODULE`, then `NEAR_RULE_VOCABULARY`
- *      on what survives. `ENGINE_PLUGINS` is a PHRASE strip rather than a
- *      line verdict: one unrelated engine token must not immunise a real
- *      demotion sitting beside it.
- *
- * `PLUGIN_AS_MODULE` holds module referents (a path, a file name, `plugin`
- * qualified by the module it names), the config key and code identifiers that
- * spell one, and `JS-plugin`, the one sanctioned category term, which about a
- * dozen corpus lines use for the rule mechanism itself.
+ * The rule corpus precedent #42 names carries no vocabulary from the retired GritQL plugin or
+ * the Bun runner; the corpus is `CORPUS_DIRS` and `TEST_DIRS`, read from the constants.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';

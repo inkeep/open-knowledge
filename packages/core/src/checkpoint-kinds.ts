@@ -273,12 +273,8 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
 }
 
 /**
- * Format the `ok-checkpoint-v1:` body line for a given kind+metadata. Produces
- * exactly one line (no trailing newline). Consumers embed it inside a full
- * commit message body as a sibling to `ok-contributors:` lines.
- *
- * Exported so `saveInMemoryCheckpoint` in the server package can share this
- * serialization rule with the parser — see precedent #4 (shared computation).
+ * Exported so `saveInMemoryCheckpoint` in the server package can share this serialization rule with
+ * the parser — see precedent #4 (shared computation).
  */
 export function formatCheckpointBodyLine(parsed: ParsedCheckpoint): string {
   const payload: {

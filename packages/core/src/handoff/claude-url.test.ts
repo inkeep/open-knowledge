@@ -34,11 +34,11 @@ test('buildClaudeUrl single-encodes literal % in projectDir (cowork)', () => {
     }),
   );
   expect(url).toContain('folder=%2FUsers%2Fwho%2FMy%20%25Project');
-  // precedent #25 invariant: never threads file content / docPath bytes.
+  // precedent #60 invariant: never threads file content / docPath bytes.
   expect(url).not.toContain('file=');
 });
 
-test('buildClaudeUrl precedent #25: docPath bytes never leak into URL (em-dash, code)', () => {
+test('buildClaudeUrl precedent #60: docPath bytes never leak into URL (em-dash, code)', () => {
   const url = buildClaudeUrl(
     { mode: 'code' },
     payload({
@@ -51,7 +51,7 @@ test('buildClaudeUrl precedent #25: docPath bytes never leak into URL (em-dash, 
   expect(url).not.toContain('%E2%80%94');
 });
 
-test('buildClaudeUrl precedent #25: docPath bytes never leak into URL (unicode, cowork)', () => {
+test('buildClaudeUrl precedent #60: docPath bytes never leak into URL (unicode, cowork)', () => {
   const url = buildClaudeUrl(
     { mode: 'cowork' },
     payload({ docPath: '/Users/who/proj/café-notes.md', prompt: 'simple prompt' }),
@@ -87,7 +87,7 @@ test('buildClaudeUrl single-encodes literal & in projectDir (cowork) — DC8.5',
   expect(url.split('&').length - 1).toBe(1);
 });
 
-test('buildClaudeUrl precedent #25: docPath bytes never leak into URL (# in docPath, code) — DC8.5', () => {
+test('buildClaudeUrl precedent #60: docPath bytes never leak into URL (# in docPath, code) — DC8.5', () => {
   const url = buildClaudeUrl(
     { mode: 'code' },
     payload({
@@ -143,7 +143,7 @@ test('buildClaudeUrl project-scoped (composeEmptySpacePrompt + empty docPath) em
   expect(url).not.toContain('file=');
 });
 
-test('INVARIANT: buildClaudeUrl threads prompt through ALL scopes; precedent #25 = no file=', () => {
+test('INVARIANT: buildClaudeUrl threads prompt through ALL scopes; precedent #60 = no file=', () => {
   const cases: ReadonlyArray<{
     projectDir: string;
     docPath: string;
@@ -180,7 +180,7 @@ test('INVARIANT: buildClaudeUrl threads prompt through ALL scopes; precedent #25
         { mode },
         { target, projectDir: c.projectDir, docPath: c.docPath, prompt: c.prompt },
       );
-      // precedent #25 invariant — no native file-attach.
+      // precedent #60 invariant — no native file-attach.
       expect(url).not.toContain('file=');
       expect(url).toContain('q=');
       expect(url).toContain('folder=');

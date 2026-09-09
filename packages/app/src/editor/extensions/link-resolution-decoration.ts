@@ -1,52 +1,7 @@
 /**
- * linkResolutionDecorationPlugin — decorates tracked link marks with caller-computed
- * attributes (typically `data-resolution-state`), refreshed whenever the module-level
- * page-list cache changes.
- *
- * Why this plugin exists
- * ----------------------
- * Plain-DOM link chips render via `renderHTML` at PM-parse time, which has no React
- * context access. The chip still needs live resolution-state classification —
- * `resolved` / `folder` / `unresolved` / `loading` / `external` — so CSS can drive
- * its visual appearance.
- *
- * Three moving pieces:
- *   1. `markIdentityPlugin` — assigns stable `m${n}` IDs in appendTransaction.
- *   2. `page-list-cache` — module-level store with pages + folderPaths sets,
- *      written by PageListProvider on every render.
- *   3. This plugin — reads `markIdentityPlugin`'s byId + page-list-cache; calls
- *      caller's `computeAttrs(markInfo, cache)`; emits one `Decoration.inline`
- *      per matching mark carrying BOTH `data-mark-id` AND any caller-computed
- *      resolution-state attrs (merged-plugin shape).
- *
- * A consumer installs #1 and #3 together. #3's refresh cadence is:
- *   - Every doc-changing transaction (PM re-runs `props.decorations` unconditionally).
- *   - Every page-list-cache write (handler dispatches a meta transaction that triggers
- *     PM to re-run decorations; the meta itself is a no-op for other plugins because
- *     it is keyed by this plugin's own PluginKey).
- *
- * Consumer pattern
- * ----------------
- *   addProseMirrorPlugins() {
- *     return [
- *       markIdentityPlugin({
- *         markTypes: ['link'],
- *         onRegister: (evt) => getInteractionLayer(editor).register(...),
- *         onDeregister: (evt) => getInteractionLayer(editor).deregister(...),
- *       }),
- *       linkResolutionDecorationPlugin({
- *         markTypes: ['link'],
- *         computeAttrs: (info, cache) => {
- *           const href = info.attrs.href as string | undefined;
- *           if (!href) return null;
- *           return { 'data-resolution-state': resolveLinkState(href, cache) };
- *         },
- *       }),
- *     ];
- *   }
- *
- * Precedent #9 (add-only schema) preserved — no mark attr added or narrowed; the
- * resolution-state lives in decoration attrs only.
+ * Decorates tracked link marks with caller-computed attributes, refreshed whenever the
+ * module-level page-list cache changes. Precedent #9's add-only schema is preserved: the
+ * resolution state lives in decoration attrs, never in a mark attr.
  */
 
 import type { Node as PmNode } from '@tiptap/pm/model';
@@ -79,26 +34,8 @@ interface LinkResolutionDecorationOptions {
 }
 
 /**
- * Pure helper — given a byId map + markTypes + cache + computeAttrs, produce the
- * DecorationSet. Exported so tests can exercise the core logic without owning a
- * full EditorState + PluginKey plumbing.
- *
- * Returns null when no decorations would be emitted (mirrors PM's convention for
- * `props.decorations` returning a cheap "nothing to render" signal).
- *
- * Merged-plugin design: every emitted decoration carries `data-mark-id`
- * ALONGSIDE caller-computed resolution-state attrs. Merging the
- * markIdentityDecorationPlugin walk into this one — instead of emitting two
- * stacked Decoration.inline per mark — halves the per-link wrapper-span
- * count.
- *
- * Null-attrs fallback: when `computeAttrs(info, cache)` returns null, the
- * merged decoration STILL emits — carrying just `data-mark-id`. The
- * mark-identity-decoration legacy behavior (every mark gets `data-mark-id`
- * regardless of resolution state) is preserved by this fallback.
- *
- * Precedent #9 add-only schema invariant preserved — no mark schema
- * attributes added; the merge stays at the decoration-attr layer.
+ * Precedent #9 add-only schema invariant preserved — no mark schema attributes added; the merge
+ * stays at the decoration-attr layer.
  */
 export function computeLinkResolutionDecorations(
   doc: PmNode,

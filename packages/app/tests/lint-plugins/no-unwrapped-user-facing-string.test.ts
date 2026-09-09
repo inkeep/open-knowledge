@@ -1,23 +1,4 @@
-/**
- * no-unwrapped-user-facing-string — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-unwrapped-user-facing-string.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). The rule makes
- * a hardcoded user-facing string a build-visible defect instead of a convention
- * a contributor has to remember.
- *
- * The fixture pairs 15 positive cases across the rule's four branches (2 toast
- * arguments, 2 JSX text nodes, 4 UI-facing attributes, 7 UI-facing object
- * properties) with 9 negative groups (`<Trans>` children direct and nested,
- * the `t` macro in child / attribute / object position, shortcut/code/path/
- * brand tokens, `<Brand> icon` marks, format-token placeholders, non-literal
- * toast arguments, unscoped property names, and TypeScript member positions).
- * Exact equality catches a weakened pattern (count drops) and a widened one (a
- * negative starts firing). The per-branch counts catch the compensating case a
- * total cannot: one branch losing a case while another gains one.
- */
+/** The `no-unwrapped-user-facing-string` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

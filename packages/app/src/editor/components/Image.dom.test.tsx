@@ -1,34 +1,4 @@
-/**
- * Tier-3 RTL behavioral tests for the Image component's loading-state contract
- * embedded images must render a loading-state placeholder that
- * reserves the layout slot until the inner <img>.load event fires, then swap to
- * the real <img>. Without this contract the rendered DOM transitions through a
- * "empty / 0×0 box → bytes arrive → reflow" sequence — the symptom the
- * reporter observed in the WYSIWYG editor.
- *
- * Invocation via `pnpm run test:dom`; jsdom substrate per precedent #43.
- * Sibling: DocumentErrorBoundary.dom.test.tsx, FileTree.selection-mirror.dom.test.tsx.
- *
- * Selector contract:
- *   - data-testid="image-loading-skeleton" — the loading-state element. Distinct
- *     from shadcn Skeleton's default data-slot="skeleton" so the Image surface
- *     stays queryable independent of any other Skeleton on the page.
- *   - data-testid="image-slot" — the layout-reserving wrapper carrying the
- *     intrinsic dimensions as inline style (style.width + style.aspectRatio).
- *     Inline `style` is the only path that resolves under jsdom AND supports
- *     dynamic numeric dimensions (Tailwind's `w-[400px]` would not resolve in
- *     jsdom's computed style and cannot be authored statically for arbitrary
- *     author-supplied widths in any case).
- *
- * Mocking discipline: react-medium-image-zoom IS mocked as a
- * pass-through wrapper. The wrap is orthogonal to the loading-state contract,
- * and the real <Zoom> attaches a ResizeObserver on mount — jsdom doesn't ship
- * ResizeObserver, so a real render throws `ReferenceError: ResizeObserver is
- * not defined` from inside RTL's act bridge before any of our assertions run.
- * The pass-through preserves the inner <img> shape (which IS under test) and
- * defeats the infrastructure noise without changing what the Image component
- * promises its callers.
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

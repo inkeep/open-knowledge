@@ -1,20 +1,4 @@
-/**
- * RTL behavioral tests for SidebarProvider's responsive partition
- * model + Per-Partition Pins store + auto-collapse focus safety.
- *
- * The companion `sidebar.test.ts` is a raw-source structural guard
- * (single-render-path, no-mobile-translate, no-sidebar_state-cookie). This
- * file mounts the provider against jsdom + RTL and asserts the runtime
- * contract those source guards can't reach:
- *
- *   1. Synchronous first-paint state from (embedded host UA × innerWidth × pin).
- *   2. matchMedia('(min-width: 1024px)') change re-resolves the partition + state.
- *   3. Auto-collapse moves focus from inside the sidebar to the toggle.
- *   4. Trigger click writes the slot for the current partition WITHOUT clearing
- *      the slot for any other partition (partition-isolated memory).
- *
- * Substrate: jsdom (precedent #43); invocation via `bunx turbo run test:dom`.
- */
+/** Substrate: jsdom (precedent #43). */
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';

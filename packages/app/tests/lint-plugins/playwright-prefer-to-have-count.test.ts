@@ -1,23 +1,4 @@
-/**
- * playwright-prefer-to-have-count — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/playwright-prefer-to-have-count.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/playwright-prefer-to-have-count.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Bans the
- * one-shot `expect(await locator.count())` snapshot read in the browser
- * e2e suites — the no-retry assertion shape behind hidden flakes — in
- * favor of the web-first auto-retrying
- * `await expect(locator).toHaveCount(n)`. Upstream precedent:
- * eslint-plugin-playwright `prefer-to-have-count`.
- *
- * The fixture pairs 3 positive cases (one-shot reads through different
- * matchers — the rule must fire) with 5 negative cases (toHaveCount,
- * expect.poll, bare count read, different awaited method, two-statement
- * read-then-assert — rule must NOT fire). Exact-equality (`toBe(3)`)
- * catches both false-negative regressions (weakened pattern drops below 3)
- * and false-positive widenings (above 3).
- */
+/** The `playwright-prefer-to-have-count` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

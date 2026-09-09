@@ -409,10 +409,9 @@ test.describe('WYSIWYG FR-specific paste behavior', () => {
 });
 
 /**
- * Paste a payload at the Source editor's (CodeMirror) DOM. The chunked
- * Y.Text insertion path (`chunkedYTextInsert`) is invoked exclusively by
- * the Source dispatcher (per precedent #19), so
- * the frame-timing test must target `.cm-content`, not `.ProseMirror`.
+ * The chunked Y.Text insertion path (`chunkedYTextInsert`) is invoked exclusively by the Source
+ * dispatcher (per precedent #19), so the frame-timing test must target `.cm-content`, not
+ * `.ProseMirror`.
  */
 async function pasteHtmlInSource(page: Page, html: string, plain: string) {
   await page.evaluate(

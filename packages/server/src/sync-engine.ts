@@ -218,14 +218,9 @@ interface MergePreparation {
 }
 
 /**
- * ContentFilter read-opts for the two staging-path consultations
- * (`gatherContentFilesSync`, `listHeadContentPaths`): admits the shareable
- * `.ok` artifact allow-list for staging and deletion tracking. Both paths
- * must consult the identical predicate — a HEAD path the head listing admits
- * but the gather walk refuses would be committed as a spurious deletion on
- * every push cycle (precedent #55). The conflict partition
- * (`isContentConflictPath` / `handleMergeConflict`) deliberately stays
- * unscoped so these artifacts keep the non-content auto-resolve class.
+ * ContentFilter read-opts for the two staging-path consultations, admitting the shareable `.ok`
+ * artifact allow-list. Both must consult the identical predicate (precedent #55): a HEAD path the
+ * listing admits but the gather walk refuses commits as a spurious deletion on every push.
  */
 const CONTENT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'content' } } as const;
 const PROJECT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'project' } } as const;
@@ -331,11 +326,9 @@ export class SyncEngine {
   private contentFilter: ContentFilter;
   private contentRoot: string;
   /**
-   * True when the project-root `.ok/` directory sits outside the contentDir
-   * walk (content.dir configured as a subfolder). The push cycle then runs a
-   * second enumeration rooted at the project root so shareable `.ok`
-   * artifacts still stage and deletion-track; gather and head listing consult
-   * this flag in lock-step (precedent #55).
+   * The push cycle then runs a second enumeration rooted at the project root so shareable `.ok`
+   * artifacts still stage and deletion-track; gather and head listing consult this flag in
+   * lock-step (precedent #55).
    */
   private rootOkOutsideContentWalk: boolean;
   private pullIntervalSeconds: number;
@@ -2726,27 +2719,8 @@ export class SyncEngine {
   }
 
   /**
-   * Stage content files into the handle's index, dropping ignored-AND-untracked
-   * paths first. Content scope is broader than git scope: the content filter
-   * admits `<folder>/.ok/templates/*.md` regardless of ignore state so templates
-   * stay visible in the editor, but a local-only-sharing project excludes `.ok/`
-   * in `.git/info/exclude`, and naming such a path in `git add` fatals with
-   * `addIgnoredFile`, wedging every push cycle. Precedent #55 (walker and
-   * `git add` agree on scope) is enforced here rather than in content admission.
-   *
-   * Tracked files are exempt from ignore rules and must keep syncing, but
-   * `git add` (Apple git 2.39.5) still refuses a named path under an ignored
-   * directory even when tracked — so paths carrying a `.ok/` segment (the only
-   * carve-out shape content admission holds above git scope) are added with
-   * `-f`. Everything else keeps the plain fail-loud `add`: if the probe and the
-   * add ever disagree (a future git version, a `.gitattributes` edge), an
-   * unexpected refusable path surfaces as an error instead of being silently
-   * force-added. On probe failure, stage unfiltered WITHOUT `-f` and let the
-   * old error surface.
-   *
-   * Call only after the caller's `read-tree` seed: against an empty index a
-   * tracked-but-ignored file reads as refusable and its HEAD entry would be
-   * committed as a deletion. Returns the staged files for deletion-set pairing.
+   * Precedent #55 (walker and `git add` agree on scope) is enforced here rather than in content
+   * admission.
    */
   private async stageContentFiles(
     handle: GitHandle,
@@ -2863,14 +2837,9 @@ export class SyncEngine {
   }
 
   /**
-   * Whether a project-relative path is inside the set this engine will commit.
-   *
-   * The staging walk, HEAD deletion tracking, and the working-tree status
-   * surface must all answer this identically — a path one admits and another
-   * refuses is precedent #55's failure mode (a HEAD path the gather walk
-   * refuses gets committed as a spurious deletion every cycle). Public because
-   * the status endpoint marks out-of-scope paths in the UI, and a second
-   * predicate for that marking would be free to drift.
+   * The staging walk, HEAD deletion tracking, and the working-tree status surface must all answer
+   * this identically — a path one admits and another refuses is precedent #55's failure mode (a
+   * HEAD path the gather walk refuses gets committed as a spurious deletion every cycle).
    */
   isSyncScopedPath(projRelPath: string): boolean {
     const absPath = join(this.projectDir, projRelPath);

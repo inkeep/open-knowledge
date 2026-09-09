@@ -1,18 +1,7 @@
 /**
- * Shared label resolver for `BlockChainEntry` consumers (SelectionAnnouncer,
- * and any future selection-consuming UI — link editor, image caption,
- * collaborator presence pin, per Precedent #31).
- *
- * Fallback ladder:
- *   1. registered descriptor's `displayName`
- *   2. registered descriptor's `name`
- *   3. entry's `componentName` (wildcard case — descriptor name/displayName
- *      are both `'*'`, useless as trail labels)
- *
- * `unregisteredSuffix: true` appends ` (unregistered)` in the wildcard case —
- * appropriate for assistive-technology announcements where AT users benefit
- * from knowing why a label is unfamiliar. Visual surfaces leave it off to
- * avoid repeated noise.
+ * Shared label resolver for `BlockChainEntry` consumers, per precedent #31: descriptor
+ * `displayName`, then `name`, then the entry's `componentName` for the wildcard case, with
+ * `unregisteredSuffix` appending ` (unregistered)` for assistive-technology surfaces.
  */
 
 import type { BlockChainEntry } from '../extensions/selection-state-plugin.ts';

@@ -1,25 +1,4 @@
-/**
- * Microcopy ellipsis convention — `microcopy-ellipsis` oxlint rule.
- *
- * Rule:  `lint-plugins/ok-rules/rules/microcopy-ellipsis.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/microcopy-ellipsis.fixture.tsx`
- *
- * The codebase reserves U+2026 (`…`) for two surfaces only:
- *   1. macOS native menu items (`packages/desktop/src/main/menu.ts`)
- *   2. Truncation indicators
- *
- * Per precedent #42. The fixture pairs 2 positive cases (JSX text + JSX
- * attribute containing `…`) with 3 negative cases (clean text, clean
- * attribute, and `…` inside a non-UI attribute that the rule must skip);
- * the test asserts the rule fires exactly 2 times.
- *
- * Exact equality (`toBe(2)`) catches drift in both directions:
- *   - false-negative: a weakened pattern drops below 2 → fails
- *   - false-positive: a widened pattern fires on a clean case → above 2 → fails
- *
- * Test shape: real input → public
- * interface (`oxlintFixtureArgs()` → `pnpm exec oxlint`) → observable outcome (diagnostic count).
- */
+/** The `microcopy-ellipsis` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

@@ -26,11 +26,8 @@ export const DerivedViewChannelSchema = z.enum([
 export type DerivedViewChannel = z.infer<typeof DerivedViewChannelSchema>;
 
 /**
- * Union of every CC1 channel identifier — the five derived-view channels
- * plus the four broadcast-shape channels (`server-info`, `branch-switched`,
- * `disk-ack`, `config-validation-rejected`). Tightening from `string` to
- * this union narrows the per-channel watermark map (`metrics.cc1LastSeq`)
- * to bounded cardinality at compile time, mirroring the cardinality
+ * Tightening from `string` to this union narrows the per-channel watermark map
+ * (`metrics.cc1LastSeq`) to bounded cardinality at compile time, mirroring the cardinality
  * discipline applied to `bridgeToleranceApplied` (precedent #38).
  */
 export type CC1Channel =

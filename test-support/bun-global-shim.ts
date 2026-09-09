@@ -1,23 +1,3 @@
-/**
- * `Bun` global facade for running bun-flavored tests under stock Node.
- *
- * Importing this module (it is the shared vitest base config's setup file)
- * installs a `globalThis.Bun` covering the Bun runtime APIs the suites touch:
- * `file`, `write`, `sleep`, `which`, `spawnSync`, `Glob`, `TOML`, `gc`, plus
- * `resolveSync`, `CryptoHasher`, and `Transpiler`. Each maps to a Node
- * equivalent.
- *
- * `Bun.serve` and async `Bun.spawn` have NO facade here: their call sites are
- * rewritten to `node:http` / `node:child_process` per file during the owning
- * package's flip, because a faithful streaming facade would hide semantic
- * differences the rewrites need to make explicit.
- *
- * Two globals get installed, not one: the `Bun` facade and a `self` alias.
- * Dependents of the first are literal `Bun.` in test files, which a grep finds.
- * Dependents of the second are import-time reads of `self` in browser-targeting
- * modules (`scheduler-polyfill` is one), which no `Bun.` search surfaces. Both
- * have to be accounted for before this module can go away.
- */
 import { spawnSync as nodeSpawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -26,19 +6,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
-// ---- Bun.Glob (hand-rolled: no glob dependency) ----
-
-/** Escape a literal character for embedding in a RegExp source. */
 function escapeRegexChar(c: string): string {
   return /[.+^${}()|[\]\\]/.test(c) ? `\\${c}` : c;
 }
 
-/**
- * Translate a glob body to a RegExp source fragment. `*` stays within a path
- * segment, `**` crosses segments, `?` is one non-separator char, `{a,b}` is
- * alternation (its branches may themselves contain globs), `[...]` is a char
- * class. Kept dependency-free so the shim adds no runtime beyond Node + Vitest.
- */
 function translateGlob(glob: string): string {
   const chars = [...glob];
   let out = '';
@@ -125,8 +96,6 @@ class BunGlobFacade {
         return results;
       }
       for (const entry of entries) {
-        // Bun.Glob defaults to `dot: false`: a segment starting with `.`
-        // (dot-dirs like `.git`/`.ok`, dotfiles) is never matched or descended.
         if (entry.name.startsWith('.')) continue;
         const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
@@ -147,8 +116,6 @@ class BunGlobFacade {
     for (const entry of this.scanSync(options)) yield entry;
   }
 }
-
-// ---- Bun.file ----
 
 function bunFile(target: string | URL) {
   const filePath = target instanceof URL ? target.pathname : target;
@@ -190,19 +157,12 @@ function bunFile(target: string | URL) {
   };
 }
 
-// ---- Bun.write ----
-
 function destinationPath(destination: string | URL | { name: string }): string {
   if (typeof destination === 'string') return destination;
   if (destination instanceof URL) return fileURLToPath(destination);
   return destination.name;
 }
 
-/**
- * Minimal `Bun.write`: writes `input` to `destination`, creating parent
- * directories (Bun does this implicitly), and resolves to the byte count.
- * Covers the string / typed-array / ArrayBuffer inputs the suites pass.
- */
 async function bunWrite(
   destination: string | URL | { name: string },
   input: string | ArrayBufferView | ArrayBuffer,
@@ -221,16 +181,12 @@ async function bunWrite(
   return bytes.byteLength;
 }
 
-// ---- Bun.sleep ----
-
 function bunSleep(ms: number | Date): Promise<void> {
   const delay = ms instanceof Date ? ms.getTime() - Date.now() : ms;
   return new Promise((resolve) => {
     setTimeout(resolve, Math.max(0, delay));
   });
 }
-
-// ---- Bun.which ----
 
 function bunWhich(command: string, options?: { PATH?: string; cwd?: string }): string | null {
   const searchPath = options?.PATH ?? process.env.PATH ?? '';
@@ -241,13 +197,10 @@ function bunWhich(command: string, options?: { PATH?: string; cwd?: string }): s
       fs.accessSync(candidate, fs.constants.X_OK);
       return candidate;
     } catch {
-      /* not executable here — keep searching PATH */
     }
   }
   return null;
 }
-
-// ---- Bun.spawnSync (via node:child_process) ----
 
 interface SpawnSyncOptions {
   cwd?: string;
@@ -269,23 +222,6 @@ function bunSpawnSync(
   });
   const stdout = result.stdout ?? Buffer.alloc(0);
   const stderr = result.stderr ?? Buffer.alloc(0);
-  // FAIL LOUD when the process never ran.
-  //
-  // `spawnSync` reports `status: null` + a populated `error` when the child
-  // could not be launched at all (ENOENT on the binary, a cwd that does not
-  // exist, EACCES). The previous `result.status ?? 0` mapped that to exit code
-  // ZERO — a process that never executed was reported as a clean success. Any
-  // assertion of the form `expect(result.exitCode).toBe(N)` then failed with the
-  // uninformative `expected +0 to be N`, and — far worse — a test asserting
-  // `exitCode === 0` would have PASSED against a command that never ran.
-  //
-  // Real-Windows-verified: `spawnSync('node', [...], {cwd: '<missing>'})` returns
-  // `{status: null, error: ENOENT}`, which is exactly how
-  // `git-preflight-spawn.test.ts` came to report 0 instead of 78.
-  //
-  // Throwing (rather than inventing a sentinel code) is the honest mapping: a
-  // launch failure is a harness bug every time, and the thrown error names the
-  // real cause instead of leaving it to be inferred from a bogus exit code.
   if (result.error) {
     throw result.error;
   }
@@ -297,8 +233,6 @@ function bunSpawnSync(
   return {
     stdout,
     stderr,
-    // Signal-killed processes legitimately have a null status; keep null rather
-    // than coercing, so `toBe(0)` cannot pass for a killed process either.
     exitCode: result.status,
     signalCode: result.signal,
     success: result.status === 0,
@@ -306,24 +240,8 @@ function bunSpawnSync(
   };
 }
 
-// ---- Bun.resolveSync ----
-
-/**
- * bun's `Bun.resolveSync` does not apply the `development` export condition,
- * but the Vitest worker runs with `--conditions development` in its execArgv,
- * so Node's `require.resolve` / `import.meta.resolve` would pick a package's
- * `development` target (e.g. micromark and mdast-util-from-markdown ship a
- * `./dev/` build under that condition). Production conditions match what bun
- * resolves to.
- */
 const PRODUCTION_CONDITIONS = ['node', 'import', 'require', 'default'];
 
-/**
- * Walk an `exports` value (string, array, or conditions object) picking the
- * first branch that matches a production condition, in the object's own key
- * order — the same first-match semantics Node uses. Returns null when nothing
- * matches (e.g. a purely `development`-gated target under production).
- */
 function selectExportsTarget(node: unknown, conditions: string[]): string | null {
   if (typeof node === 'string') return node;
   if (Array.isArray(node)) {
@@ -344,14 +262,6 @@ function selectExportsTarget(node: unknown, conditions: string[]): string | null
   return null;
 }
 
-/**
- * Codes where the CJS `require.resolve` legitimately fails but the module still
- * resolves via the ESM resolver — a package with an `import`-only exports map,
- * a directory import, an ESM target. Bun.resolveSync resolves these, so fall
- * back to `import.meta.resolve`. Any OTHER failure (a malformed package.json or
- * exports target) is a real error and surfaces rather than being papered over
- * by a fallback that could return a different resolution.
- */
 const ESM_RESOLVER_FALLBACK_CODES = new Set([
   'MODULE_NOT_FOUND',
   'ERR_PACKAGE_PATH_NOT_EXPORTED',
@@ -372,7 +282,6 @@ function bunResolveSync(specifier: string, from: string): string {
       return fileURLToPath(import.meta.resolve(specifier, pathToFileURL(fromFile).href));
     }
   };
-  // Relative/absolute specifiers never touch an exports map.
   if (specifier.startsWith('.') || specifier.startsWith('/')) return resolveAny();
 
   const resolved = resolveAny().replaceAll('\\', '/');
@@ -409,8 +318,6 @@ function bunResolveSync(specifier: string, from: string): string {
   return path.join(pkgRoot, target);
 }
 
-// ---- Bun.CryptoHasher ----
-
 class BunCryptoHasherFacade {
   #hash: ReturnType<typeof createHash>;
   constructor(algorithm: string) {
@@ -425,19 +332,6 @@ class BunCryptoHasherFacade {
   }
 }
 
-// ---- Bun.Transpiler ----
-
-/**
- * bun's `Transpiler` strips/compiles TypeScript to JavaScript and throws on a
- * syntax error. Node's `stripTypeScriptTypes` in `transform` mode is the
- * dependency-free equivalent: it compiles TS-only constructs (enums, parameter
- * properties) rather than only erasing annotations, and throws on invalid
- * syntax — the property the callers assert. Node 26 ships strip-only
- * (`transform` is rejected with ERR_INVALID_ARG_VALUE), so fall back to
- * `strip` there: annotations still erase and invalid syntax still throws;
- * only TS-only constructs — which no caller feeds in — throw instead of
- * compiling. Only the sync path the suites use is provided.
- */
 function transpileTs(code: string): string {
   try {
     return stripTypeScriptTypes(code, { mode: 'transform' });
@@ -456,8 +350,6 @@ class BunTranspilerFacade {
   }
 }
 
-// ---- assembled facade ----
-
 export const bunFacade = {
   file: bunFile,
   write: bunWrite,
@@ -474,17 +366,9 @@ export const bunFacade = {
   Transpiler: BunTranspilerFacade,
 };
 
-/**
- * Install the facade as `globalThis.Bun`, idempotently. A real `Bun` global
- * (should these ever run under bun again) wins; the `??=` never clobbers it.
- */
 export function installBunGlobal(): void {
   const g = globalThis as Record<string, unknown> & typeof globalThis;
   g.Bun ??= bunFacade as unknown as typeof globalThis.Bun;
-  // bun exposes the web `self` alias (=== globalThis) even in its non-DOM test
-  // runtime; browser-targeting app modules read it at import time. Node's
-  // node-env has no `self`, so provide the same alias. jsdom-env tiers already
-  // define `self` (their window), which the `??=` preserves.
   g.self ??= globalThis;
 }
 

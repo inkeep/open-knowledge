@@ -1,29 +1,4 @@
-/**
- * no-physical-direction-utility — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-physical-direction-utility.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). The rule keeps
- * left-to-right assumptions from hardening into the chrome while right-to-left
- * layout is deferred — the plumbing is inert without an RTL locale, but the rule
- * works every day.
- *
- * The fixture pairs 7 positive cases (plain string, multi-line `cn()`, inset,
- * arbitrary value, `auto`, a `*ClassName` prop, a prefixed negative margin) with
- * 6 negative groups (the logical forms, `inset-x-*`, the `left-1/2` centering
- * anchor, side-free spacing, a side named outside a utility, and well-formed
- * utilities sitting in attributes that are not class props). Exact equality
- * catches a weakened pattern (count drops) and a widened one (a negative starts
- * firing). The rule has a single branch, so a total alone would still pass if one
- * positive went silent while one negative began firing — the flagged-line
- * assertions below close that by naming what must and must not be reported.
- *
- * Negative group 6 exists because every other case clears the rule on its VALUE:
- * remove the name predicate that scopes the rule to class props and the fixture
- * count does not move, so nothing would hold that predicate in place. Those three
- * attributes match the value pattern and are excluded by the name alone.
- */
+/** The `no-physical-direction-utility` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

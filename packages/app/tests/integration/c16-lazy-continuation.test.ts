@@ -1,25 +1,7 @@
 /**
- * C16: CommonMark lazy-continuation docs — multi-client convergence without
- * bridge health-check churn.
- *
- * A doc whose source carries a lazy continuation (an unindented wrapped
- * line inside a list item) rests byte-divergent beyond every normalizeBridge
- * class by design; the fragment still IS `parse(ytext)` (precedent #38).
- * Multi-client coverage per the observer-bridge rule: single-client rigs
- * miss remote-peer divergence, and this changeset touches
- * `server-observers.ts`.
- *
- * Pins, through the real client → server → client collab pipeline:
- *   - a WYSIWYG edit on a resting lazy-continuation doc converges on every
- *     peer with the authored bytes preserved verbatim (no sanitize, no
- *     canonical rewrite) and no `bridge-split-brain-rederive` emission for
- *     the doc;
- *   - the harness bridge-invariant watcher's parse-equivalence fallback
- *     does NOT swallow genuine divergence — a paired-origin transaction
- *     that moves Y.Text without the fragment still throws.
- *
- * Per-test docName isolation via createTestClients(port, { count }) default.
- * Client lifecycle in try/finally (not afterEach) per R8a.
+ * A doc whose source carries a lazy continuation (an unindented wrapped line inside a list item)
+ * rests byte-divergent beyond every normalizeBridge class by design; the fragment still IS
+ * `parse(ytext)` (precedent #38).
  */
 
 import { setTimeout as wait } from 'node:timers/promises';

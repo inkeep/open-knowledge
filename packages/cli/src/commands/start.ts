@@ -880,22 +880,8 @@ interface ResolveServerReuseDeps {
 }
 
 /**
- * Spawn-or-reuse resolution: a second `ok start` that lost the server.lock
- * acquisition reads the live holder's advertisement and reports it instead of
- * failing. Returns the holder's browser-facing URL, or `null` when the lock
- * can't be resolved to a usable address (caller falls back to the error path).
- *
- * Polls through the pre-listen window (`port: 0` sentinel) so racing a
- * predecessor that is still binding reports its real address rather than
- * failing on the sentinel. URL preference order:
- *
- * 1. lock v2 `url` when the holder advertises the `ui` capability — the
- *    canonical one-URL contract (the same record Desktop attaches through);
- * 2. the server's own `url`/port — API+MCP only (a `--only server` boot), but
- *    still the right address.
- *
- * All time + IO deps injected (precedent #13b) so tests drive every branch
- * with a virtual clock and no filesystem.
+ * All time + IO deps injected (precedent #13b) so tests drive every branch with a virtual clock and
+ * no filesystem.
  */
 export async function resolveServerReuse(
   deps: ResolveServerReuseDeps,

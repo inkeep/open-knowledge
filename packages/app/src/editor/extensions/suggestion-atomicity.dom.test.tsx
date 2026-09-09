@@ -1,29 +1,6 @@
 /**
- * Generalized one-transaction pin for every non-slash `@tiptap/suggestion`
- * surface (precedent #58): tag (`#`), wiki-link (`[[`), and the Ask-AI
- * composer's `@`-mention. The slash menu has its own pin with an
- * interleaved-transaction consequence test in
- * `slash-command-atomicity.dom.test.tsx`.
- *
- * The invariant: selecting a suggestion item must land the trigger-range
- * delete and the content insert as ONE doc-changing transaction. If they land
- * as two, a transaction dispatched re-entrantly during the delete's own
- * dispatch (a plugin `appendTransaction`, a view update, or the y-prosemirror
- * binding reacting to the delete) can remap the selection onto an adjacent
- * `selectable: true` node, and the insert then REPLACES that node — silent
- * data loss.
- *
- * This is the runtime complement to the `no-split-suggestion-dispatch`
- * oxlint rule: the lint catches a bare trigger-delete dispatch statically;
- * this test drives each surface through a real Enter keydown (the production
- * `command` callbacks are closure-held inside the Suggestion plugins, so the
- * keydown path is the only way to run them) and asserts the
- * exactly-one-doc-changing-transaction oracle end to end — including any
- * second dispatch the lint cannot see.
- *
- * Corpus fetches (`/api/tags`, `/api/pages`) are stubbed at `global.fetch`;
- * every other endpoint returns a non-ok response, which each surface
- * tolerates by design (ranking context and asset lists degrade to empty).
+ * One-transaction pin for every non-slash `@tiptap/suggestion` surface (precedent #58): tag,
+ * wiki-link and the Ask-AI `@`-mention each land trigger delete and insert as one transaction.
  */
 
 import { cleanup } from '@testing-library/react';

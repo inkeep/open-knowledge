@@ -1,33 +1,6 @@
 /**
- * Deterministic bridge-race rig — one shared substrate that drives the REAL
- * `setupServerObservers` drain on a bare `Y.Doc`, so drain-race suites assert
- * against the production observer bridge (the `afterAllTransactions`
- * settlement dispatcher, both observer directions, all gates, the
- * map-driven-splice / Path-B merge write paths, and the real Observer B
- * `parseWithFallback → updateYFragment` re-derive) rather than a replica. It is
- * imported by sibling `*.test.ts` files; it is not itself a test.
- *
- * Why per-stimulus grouping. `onDispatch` fires once per drain from inside
- * `afterAllTransactions`, and a single outermost `doc.transact()` can produce
- * several drains: the observer sync writes are themselves nested transactions
- * whose own settlement dispatches fire (self-origin drains report 'none'). yjs
- * runs all of that synchronously before the outermost `transact` returns, so
- * the rig collects every drain's dispatch decision into one trace entry keyed
- * to the stimulus, and snapshots the settled Y.Text bytes once the stimulus
- * completes. A dual-CRDT stimulus therefore reads as e.g.
- * `dispatches: ['a','none','b']` with the post-drain bytes.
- *
- * Deterministic freshness. Observer A's re-derive freshness gate reads
- * `Date.now()` against the last external Y.Text change (a 2s quiescence window
- * that is not injectable). The rig fakes only `Date` (`vi.useFakeTimers({
- * toFake: ['Date'] })`, installed by the consuming test) and advances a
- * mutable clock past that window before each default stimulus, so whether a
- * drain runs freshness-safe or freshness-suppressed is scripted, not
- * wall-clock-dependent. Faking only Date keeps span timing and the settlement
- * dispatcher (which uses no wall clock, precedent #13(b)) untouched.
- *
- * The rig introduces no wall-clock scheduling of its own — it holds no timers
- * and reads the clock only through the faked `Date` the consumer installs.
+ * Faking only Date keeps span timing and the settlement dispatcher (which uses no wall clock,
+ * precedent #13(b)) untouched.
  */
 
 import { type MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';

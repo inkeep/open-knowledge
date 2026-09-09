@@ -16,12 +16,7 @@ import { resolveWithinRoot } from './path-safety.ts';
 export type ServerInstance = McpServer;
 export type ConfigOrResolver = Config | ((cwd?: string) => Promise<Config>);
 
-/**
- * The agent-identity fields every mutating route accepts for attribution
- * (precedent #24/#25). Spread into a POST body: `{ ...agentIdentityFields(id) }`.
- * Returns an empty object when no identity is bound, so anonymous writes stay
- * anonymous. Single source for the four CRUD verbs + any future write tool.
- */
+/** The agent-identity fields every mutating route accepts for attribution (precedent #24/#25). */
 export function agentIdentityFields(identity: AgentIdentity | undefined): Record<string, unknown> {
   return identity
     ? {
@@ -296,21 +291,8 @@ export function normalizeDocName(
 }
 
 /**
- * Canonicalize a server response into the `{ ok: boolean, ...payload }` shape
- * MCP-tool consumers read against. The boundary canonicalizer pattern lets
- * tool handlers stay unaware of HTTP status semantics or the RFC 9457 wire
- * shape (precedent #38).
- *
- * Server contract:
- *   - 2xx: flat success body, e.g. `{ renamed, rewrittenDocs, summary? }`
- *     with `application/json`. No `ok` wrapper.
- *   - 4xx/5xx: RFC 9457 `{ type, title, status, instance, detail?, ...extensions }`
- *     with `application/problem+json`. Extensions (e.g. `colliding`) ride
- *     alongside the canonical fields.
- *
- * Body extension members are spread onto the top level so consumers
- * automatically pick up new typed extensions (e.g. `colliding[]`) without a
- * per-tool change.
+ * The boundary canonicalizer pattern lets tool handlers stay unaware of HTTP status semantics or
+ * the RFC 9457 wire shape (precedent #38).
  */
 function normalizeResponse(
   res: { ok: boolean; status: number },

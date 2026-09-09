@@ -1,18 +1,7 @@
 /**
- * Marked inline leaf nodes survive the live server bridge.
- *
- * An inline *leaf* node — an inline node with no inline content, so ProseMirror
- * computes an empty mark set for it — can still carry a mark when it arrives
- * from parsed markdown: `**[[a]]**` yields a `wikiLink` node with `marks:
- * [strong]`. The PM ⇄ Y.XmlFragment conversion is the only hop on the write
- * path that can lose that mark, and losing it breaks precedent #38: the
- * fragment no longer derives from Y.Text, so the persistence write-back reports
- * a bridge-invariant violation and the doc re-derives its fragment on every
- * drain without ever converging.
- *
- * Assertions here read the settled server state rather than the conversion
- * functions directly, so they pin the user-visible outcome: what the editor
- * renders and what the server considers a healthy document.
+ * Marked inline leaf nodes survive the live server bridge. Losing the mark on the PM to
+ * Y.XmlFragment hop breaks precedent #38: the fragment stops deriving from Y.Text, so the
+ * write-back reports a bridge-invariant violation and the doc never converges.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';

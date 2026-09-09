@@ -1,23 +1,7 @@
 /**
- * Unit tests for the MANAGED_RENAME_ORIGIN paired-write order property.
- *
- * `applyManagedRenameMapToLoadedDocument` in api-extension.ts writes both
- * Y.Text and Y.XmlFragment inside one `doc.transact(..., MANAGED_RENAME_ORIGIN)`
- * drain. Under the Y.Text-is-truth contract (precedent #38), Y.Text is the
- * source of truth — the write order MUST be ytext-first / fragment-second so
- * that a partial failure (second write throws after the first succeeds) leaves
- * ytext in the new state and Observer B Phase 1 re-derives fragment from
- * `parse(ytext)` on the next non-paired settlement.
- *
- * Reversed order (fragment-first / ytext-second) silently reverts the rename
- * if updateYFragment succeeds and applyFastDiff then throws: fragment holds
- * the new state but ytext is stale, and Observer B's next dispatch re-derives
- * fragment from the STALE ytext, undoing the rename without any visible error.
- *
- * This file mirrors the load-bearing properties already pinned for
- * `composeAndWriteRawBody` in bridge-intake.test.ts (write-order observation +
- * partial-failure recovery), specialized to the rename call site whose write
- * sequence is open-coded inside the api-extension closure.
+ * Pins the MANAGED_RENAME_ORIGIN paired-write order: under precedent #38 the write must be
+ * ytext-first and fragment-second, so a partial failure leaves ytext new and Observer B re-derives
+ * from it. Reversed, a throw after the fragment write silently reverts the rename.
  */
 
 import { applyFastDiff, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';

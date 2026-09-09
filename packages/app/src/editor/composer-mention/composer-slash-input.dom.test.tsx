@@ -1,9 +1,6 @@
 /**
- * Tier-3 tests for the composer's `/` slash-command surface end to end through
- * `ComposerMentionInput`: host gating (no corpus prop → `/` stays inert), the
- * token decoration's recognized/unresolved states, the hint line's three-way
- * copy, live command-list updates re-resolving both, the picker's suggestion
- * lifecycle (message-start trigger, keyboard selection), and the
+ * Tier-3 coverage of the composer's `/` slash-command surface end to end: host gating, token
+ * decoration states, hint copy, live command-list updates, the picker lifecycle, and the
  * one-transaction insertion pin (precedent #58).
  */
 

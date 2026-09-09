@@ -42,7 +42,7 @@ describe('dispatchHandoff — claude-cowork', () => {
     expect(body.url).toMatch(/^claude:\/\/cowork\/new\?q=/);
     expect(body.url).toContain('folder=');
     expect(body.url).toContain('q=');
-    // precedent #25 invariant: no native file-attach.
+    // precedent #60 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
     expect(body.workspacePath).toBeUndefined();
   });
@@ -79,7 +79,7 @@ describe('dispatchHandoff — codex', () => {
     expect(body.url).toMatch(/^codex:\/\/new\?prompt=/);
     expect(body.url).toContain('path=');
     expect(body.url).toContain('prompt=');
-    // precedent #25 invariant: no native file-attach.
+    // precedent #60 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
     expect(body.workspacePath).toBeUndefined();
   });
@@ -101,7 +101,7 @@ describe('dispatchHandoff — cursor', () => {
     expect(body.url).toContain('text=');
     expect(body.url).toContain('workspace=');
     expect(body.url).toContain('mode=agent');
-    // precedent #25 invariant: no native file-attach.
+    // precedent #60 invariant: no native file-attach.
     expect(body.url).not.toContain('file=');
     expect(body.workspacePath).toBe(BASE_PAYLOAD.projectDir);
   });

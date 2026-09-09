@@ -83,18 +83,7 @@ function loadSnapshot(): SchemaSnapshot | null {
   return JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf-8')) as SchemaSnapshot;
 }
 
-/**
- * Explicit narrowings that have been authorized against precedent #9 with
- * linked spec evidence. Every entry names (a) the exact node-attribute
- * combination being narrowed and (b) the spec citation explaining why the
- * y-prosemirror schema-throw safety net is sufficient coverage. Adding a new
- * entry REQUIRES the companion spec section AND a live-fire regression test in
- * `packages/app/tests/integration/`.
- *
- * This is the NOT a loophole — it's a registry that surfaces every
- * authorized narrowing in one place so future audits can enumerate them
- * without re-reading specs.
- */
+/** Explicit narrowings that have been authorized against precedent #9 with linked spec evidence. */
 interface AllowedNarrowing {
   nodeType: string;
   kind: 'content' | 'attr-removed';

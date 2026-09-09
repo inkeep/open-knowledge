@@ -1,28 +1,5 @@
 /**
- * markIdentityPlugin — stable IDs for PM marks without touching the schema.
- *
- * Problem: PM marks have no identity across transactions — `mark.type.create(attrs)`
- * can be called afresh anywhere in the PM pipeline, and text-node splits/merges
- * on every keystroke hand back marks whose Object identity differs from before.
- * InteractionLayer needs a stable string id to key `data-mark-id`
- * chip attributes and to fire register/deregister on mark lifecycle.
- *
- * Solution: a PM plugin maintains
- * PluginState<{ byId: Map<id, MarkInfo>, counter: number }>. On every
- * `docChanged` transaction, it carries prior IDs forward via
- * `tr.mapping` and walks the new doc to produce the updated map:
- *
- *   - already-known range that remains in the doc → keep its ID
- *   - new marked span → assign `m${++counter}` fresh ID
- *   - deleted range → ID evicted (view layer fires onDeregister)
- *
- * **Schema is NOT touched** — no mark attr added, narrowed, or removed.
- * Precedent #9 add-only schema preserved (bridgeId stored in
- * PluginState rather than schema attr).
- *
- * Pattern mirrors the existing PM plugins in `heading-anchors.ts` (decoration)
- * and `wiki-link-suggestion.ts` (PluginKey). Registration callbacks wire
- * into InteractionLayer.
+ * Precedent #9 add-only schema preserved (bridgeId stored in PluginState rather than schema attr).
  */
 
 import type { Mark, Node as PmNode } from '@tiptap/pm/model';

@@ -1,12 +1,4 @@
-/**
- * Behavioral tests for the filtered-to-zero tree notice: the reset action's
- * config payload (tree-content toggles to defaults, Skills section untouched),
- * the disabled state while the project-local binding is unavailable, and the
- * rejection toast — the same write-path contract as every other sidebar
- * visibility surface.
- *
- * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

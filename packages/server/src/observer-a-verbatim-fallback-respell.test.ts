@@ -1,33 +1,6 @@
 /**
- * Observer A must not rewrite authoritative `Y.Text` with a RE-SPELLED copy of
- * a block the user never edited.
- *
- * When a nested block inside a JSX container degrades to a verbatim-bytes
- * `rawMdxFallback` — the shape the editor holds whenever a `<Step>` inside
- * `<Steps>` stops parsing under it — the container goes onto the reconstruct
- * path. `mdast-util-mdx-jsx`'s `containerFlow` exempts only `mdxJsxFlowElement`
- * children from its depth indentation, so the fallback's raw bytes came back
- * indented two spaces per JSX level while its pristine siblings stayed
- * flush-left. Observer A treats that mixed spelling as the fragment's canonical
- * bytes and writes it over the authored source.
- *
- * The drain shape is what makes it reachable. On a quiet drain the respell is
- * swallowed: `normalizeBridge` tolerates both the container-boundary blanks and
- * the child indentation, so the in-sync gate certifies and nothing is written.
- * It escapes on a DUAL drain — a fragment change landing in the same
- * transaction as a source keystroke — where the real delta denies that gate and
- * the router rewrites the whole block. That is source-mode typing while the
- * hidden-but-mounted WYSIWYG mutates the fragment, so it is the everyday shape,
- * not a corner. The write is a whole-block multi-line delta, which is how a
- * burst still in flight ends up merged against a second spelling of the same
- * span.
- *
- * The assertion is on the settled `Y.Text` because that is the authoritative
- * source persisted to disk and converged to every peer (precedent #38).
- *
- * Deterministic by construction: no wall-clock race is staged, and `NODE_ENV`
- * is the packaged posture because the producer guard throws under a test
- * runtime and would abort the very write this test exists to observe.
+ * The assertion is on the settled `Y.Text` because that is the authoritative source persisted to
+ * disk and converged to every peer (precedent #38).
  */
 
 import { sharedExtensions } from '@inkeep/open-knowledge-core';

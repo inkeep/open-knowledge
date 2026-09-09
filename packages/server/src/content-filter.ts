@@ -262,24 +262,9 @@ function isTemplateContentAncestorDir(relativePath: string): boolean {
 }
 
 /**
- * True for a FILE on the shareable `.ok` artifact allow-list:
- *   - `.ok/config.yml` and `.ok/.gitignore`, project root only
- *   - `.ok/schemas/<name>.json`, project root only, flat — `.json` matched
- *     case-insensitively like the schema enumerator's filter
- *   - `<folder>/.ok/templates/<name>.md` at any depth, root included
- *   - `<folder>/.ok/frontmatter.yml` at any depth — root included, because
- *     the project root's own folder metadata lives at `.ok/frontmatter.yml`
- *
- * Exported because the symlink guard's `.ok` write exemption must consult
- * THIS predicate on the resolved path (precedent #55: one predicate for
- * "is this in sync scope", never a parallel copy that can drift).
- *
- * The folder-scoped shapes inherit the templates family's skip-dir bound:
- * these predicates are consulted on flat full paths (head listings, raw
- * watcher events), not only via the top-down walk that prunes skip-dir roots
- * first, so a `frontmatter.yml` vendored under `node_modules/` — or inside
- * `.ok/worktrees/<wt>/…`, whose prefix contains the skip-dir `.ok` — must
- * not leak in.
+ * True for a FILE on the shareable `.ok` artifact allow-list. Exported because the symlink guard's
+ * `.ok` write exemption must consult THIS predicate on the resolved path: one predicate for
+ * whether a path is in sync scope, never a parallel copy that can drift (precedent #55).
  */
 export function isShareableOkArtifact(relativePath: string): boolean {
   const segments = relativePath.split('/');
@@ -385,21 +370,8 @@ function isSingleDocAncestorDir(relativeDir: string, singleDocRelPath: string): 
 }
 
 /**
- * Gate that keeps a descendant project's content out of the enclosing
- * project's scope.
- *
- * A directory carrying `.ok/config.yml` is its own project root, so a server
- * anchored there owns those files. Indexing them from the enclosing project as
- * well gives one file on disk two owners that reconcile only through disk
- * writes. `isProjectRoot` is the marker check, and it is also what keeps a
- * nested `.ok/` holding folder rules (`frontmatter.yml`, `templates/`) but no
- * `config.yml` admitted — folder metadata is not a project.
- *
- * Consulted by both `isExcluded` and `isDirExcluded` so a walker pruning
- * directories and a caller classifying a single path agree (precedent #55).
- *
- * Inert in single-file scope: an ephemeral single-doc filter has no enclosing
- * project, and the one admitted doc must stay admitted wherever it lives.
+ * Consulted by both `isExcluded` and `isDirExcluded` so a walker pruning directories and a caller
+ * classifying a single path agree (precedent #55).
  */
 function createDescendantProjectGate(
   projectDir: string,
@@ -445,27 +417,8 @@ function createDescendantProjectGate(
 const IGNORE_FILE_NAMES = ['.gitignore', '.okignore'] as const;
 
 /**
- * Resolve the patterns `git add` would honor *beyond* the project's
- * `.gitignore` tree: the per-clone `<git-common-dir>/info/exclude` (where
- * `ensureOkExcludedFromGit` itself writes `.ok/`), and the user's
- * `core.excludesfile` — or, when that is unset, git's documented
- * `$XDG_CONFIG_HOME/git/ignore` fallback.
- *
- * Mirroring these into `ContentFilter` keeps the sync walker and `git add`
- * agreed on scope (precedent #55). Without it, the walker can gather a
- * file `.git/info/exclude` already disqualifies, and the next push-cycle
- * `git add -- <path>` errors with `addIgnoredFile`.
- *
- * Gated on the `git rev-parse --git-common-dir` probe succeeding: when
- * `projectDir` isn't a git repo, `git add` is never called and there's no
- * symmetry to maintain — both `.git/info/exclude` AND the global
- * excludesfile are skipped, so non-git OK vaults aren't silently filtered
- * by the user's host-wide git rules.
- *
- * Returns the combined pattern list, or [] when none are reachable
- * (non-git dirs, `git` missing from PATH, files unreadable). All failures
- * are silent — the rest of the filter pipeline (project `.gitignore` +
- * `.okignore`) continues to apply.
+ * Mirroring these into `ContentFilter` keeps the sync walker and `git add` agreed on scope
+ * (precedent #55).
  */
 function loadGitExcludeSources(projectDir: string, bytesAcc: { value: number }): string[] {
   const commonDir = readGitCommonDirSync(projectDir);
@@ -647,19 +600,9 @@ type ContentFilterOrdinaryReadOpts = ContentFilterCommonReadOpts & {
 type ContentFilterSyncReadOpts = ContentFilterCommonReadOpts & {
   bypassFilters?: never;
   /**
-   * Admit the shareable `.ok` artifact allow-list (`isShareableOkArtifact`)
-   * so the sync engine can stage and deletion-track team-shareable OK state
-   * — `isExcluded` / `isDirExcluded` only; `isPathIgnored` (the asset-serve
-   * gate) keeps the absolute floor, so sync admission never makes these
-   * paths HTTP-servable. Paths the unified ignore rules reject stay refused
-   * even with the scope: the gather walk and `git add` must agree on every
-   * path (precedent #55), and a local-only project's blanket `.ok/` exclude
-   * covers exactly this set. Sync-engine staging + head-listing use only —
-   * index, sidebar, watcher-event, and conflict-partition callers must not
-   * pass it, so these artifacts never surface as documents and their merge
-   * conflicts keep the non-content auto-resolve class. Independent of
-   * `showOk`. The type contract prevents combining this capability with
-   * `bypassFilters`.
+   * Paths the unified ignore rules reject stay refused even with the scope: the gather walk and
+   * `git add` must agree on every path (precedent #55), and a local-only project's blanket `.ok/`
+   * exclude covers exactly this set.
    */
   syncScope: { pathBase: 'content' | 'project' };
 };
@@ -1205,20 +1148,9 @@ function parseIgnorePatterns(content: string): string[] {
 }
 
 /**
- * Re-anchor one nested ignore-file pattern into project-root-relative form for
- * the single flattened `ignore` matcher, preserving gitignore depth semantics.
- *
- * gitignore scoping: a bare basename (no leading or embedded slash; an optional
- * trailing `/` doesn't count) matches at ANY depth below the ignore file's
- * directory, while a pattern with a leading or embedded slash is anchored to
- * that directory. A naive `${relPrefix}/${pattern}` always injects an embedded
- * slash, which the `ignore` library reads as root-anchored — silently
- * collapsing an any-depth rule to "this exact level only." That made nested
- * `.blob-storage/` match `<dir>/.blob-storage` but miss `<dir>/agents-api/.blob-storage`,
- * so the sync walker handed `git add` a path git rejects with `addIgnoredFile`
- * (the predicate-symmetry break precedent #55 guards against). Non-anchored
- * patterns therefore get a globstar segment (`relPrefix` + slash + `**` + slash)
- * so they keep matching at any depth.
+ * Re-anchors one nested ignore-file pattern into project-root-relative form while preserving
+ * gitignore depth semantics: a naive prefix join injects an embedded slash, collapsing an
+ * any-depth rule to one level and breaking the predicate symmetry precedent #55 guards.
  */
 function prefixPattern(pattern: string, relPrefix: string): string {
   const negated = pattern.startsWith('!');

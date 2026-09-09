@@ -206,20 +206,9 @@ export const FORCE_SYNC_INTERVAL_MS = 5_000;
 const MAX_BUFFER_BYTES = readNumericOverride('MAX_BUFFER_BYTES', 1 * 1024 * 1024);
 
 /**
- * Default pool capacity. Exported so the single point of truth lives in this
- * module (the pool that owns the constraint), and so callers that construct
- * a `ProviderPool` can reference the same name rather than a magic literal.
- *
- * Coupled to `ACTIVITY_MOUNT_LIMIT = 3` (exported from `EditorActivityPool.tsx`)
- * per precedent #18(c): `MAX_POOL` bounds how many warm
- * providers we keep; `ACTIVITY_MOUNT_LIMIT` bounds how many editor subtrees
- * are Activity-mounted inside those providers. The two constraints are
- * intentionally independent — pool-resident-but-not-Activity-mounted docs
- * keep their warm provider (≈5–10 MB) for fast Suspense-gated remount
- * without paying per-editor memory or observer-CPU cost.
- *
- * Changing either constant is an ASK_FIRST boundary. If one moves,
- * audit the other for sympathetic impact.
+ * Default pool capacity, coupled to `EditorActivityPool.tsx`'s `ACTIVITY_MOUNT_LIMIT` per
+ * precedent #18(c): this bounds warm providers, that one bounds Activity-mounted editor subtrees.
+ * Moving either constant needs the other audited.
  */
 export const MAX_POOL = readNumericOverride('MAX_POOL', 10);
 

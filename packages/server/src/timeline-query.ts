@@ -133,34 +133,9 @@ function matchesAuthor(entry: TimelineEntry, authors: string[]): boolean {
 }
 
 /**
- * Filter timeline entries to those where at least one writer's
- * `OkActorEntry.docs[]` or `previous_paths[].{from,to}` matches a docName in
- * the chain (cycle-bounded for predecessor steps; unbounded for current).
- *
- * The git-log pathspec filter (`git log -- <path>`) is a coarse pre-filter
- * that catches both real modifications AND topological noise:
- *
- *   - Multi-writer fan-out: each writer's WIP ref is its own chain
- *     (precedent #25). When writer B commits anything, `buildWipTree` builds
- *     the tree from the entire `contentRoot` — so any file added by writer A
- *     since writer B's last commit appears as ADDED in writer B's commit
- *     even though the blob is identical. `git log -- <path>` returns those
- *     commits as "modifications."
- *
- *   - Backlink-rewrite side effects: when doc X is renamed, `applyRenameMap`
- *     rewrites links in every backlink source. Those sources' blobs change.
- *     `git log -- <source-path>` returns the rename commit even though the
- *     source wasn't the rename target.
- *
- * `OkActorEntry.docs[]` carries the docs the writer EXPLICITLY targeted
- * (recordContributor docName + post-rename per-doc recordContributor). It
- * does NOT include incidental backlink-rewrite or topology-only changes.
- * `previous_paths[].{from,to}` carries the rename mapping. The intersection
- * with the chain is the correct "this commit really touched the doc" check.
- *
- * Cycle bound: predecessor steps reuse the same `predecessorAncestors` set
- * computed by `filterEntriesByChain` for checkpoint filtering. Current name
- * (chain[length-1]) is unbounded.
+ * The git-log pathspec filter (`git log -- <path>`) is a coarse pre-filter that catches both real
+ * modifications AND topological noise: - Multi-writer fan-out: each writer's WIP ref is its own
+ * chain (precedent #25).
  */
 function filterEntriesByOkActorDocs(
   entries: ParsedEntry[],

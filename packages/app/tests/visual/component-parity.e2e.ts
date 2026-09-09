@@ -1,29 +1,7 @@
 /**
- * Visual regression suite — 5-pack foundation parity.
- *
- * Captures screenshots of each 5-pack component rendered in the editor and
- * compares against golden baselines. Tolerance: ≤1% pixel delta (accommodates
- * anti-aliasing/subpixel). Covers {light, dark} themes and {selected, unselected}
- * states per the renamed 5-pack VR block set.
- *
- * Coverage:
- *   VR01 — Callout across all 5 GFM types (× light/dark) + foldable variant
- *   VR-IMAGE — Image with always-on zoom (no caption)
- *   VR-VIDEO — Video with poster + HTML5 controls
- *   VR-AUDIO — Audio with native chrome
- *   VR-ACCORDION — Accordion expanded + collapsed + exclusive grouping (name attr)
- *   VR17 — mixed 5-pack document
- *   VR18 — wildcard unregistered component
- *
- *
- * Baseline management:
- *   - packages/app/tests/visual/component-parity.e2e.ts-snapshots/ stores approved baselines
- *   - First run creates baselines; subsequent runs diff
- *   - Golden-file updates require explicit: pnpm --dir packages/app run test:visual:update
- *   - Cannot silently regenerate in CI
- *
- * Isolation: per-worker fixture + per-test UUID docName — no hardcoded
- * 'test-doc' (precedent #20(a)).
+ * Visual regression suite for the 5-pack foundation, diffing each component against an approved
+ * baseline at a 1% pixel tolerance across light and dark themes and selected and unselected
+ * states. Per-worker fixture and per-test UUID docName, no hardcoded name (precedent #20(a)).
  */
 
 import { randomUUID } from 'node:crypto';

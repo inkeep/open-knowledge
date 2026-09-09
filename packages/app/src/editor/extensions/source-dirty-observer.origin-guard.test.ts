@@ -1,34 +1,7 @@
 /**
- * SourceDirtyObserver origin-guard regression test.
- *
- * Precedent #1 (typed transaction origins) exists because three shipped
- * three observer-bridge correctness bugs that all hinged on whether a CRDT
- * sync transaction was properly identified and skipped. This test drives
- * the source-dirty plugin at the PM-state level (the same surface the plugin
- * runs against in production inside a real EditorView + y-prosemirror). The
- * guard's truth table has three arms; this file owns the first two, and the
- * sibling suite `source-dirty-observer.autonomous-swap.test.ts` owns the third:
- *
- *   1. Transaction WITH `ySyncPluginKey` meta set → appendTransaction must
- *      return null. This covers every CRDT-origin path: Observer A/B,
- *      agent-write, rollback-apply, file-watcher, remote WebSocket. None
- *      of these should flip `sourceDirty` on the local view.
- *   2. Transaction with NEITHER `ySyncPluginKey` meta nor the autonomous
- *      stamp → appendTransaction must return a new tr that sets
- *      `sourceDirty: true` on mutated jsxComponent nodes ONLY. Siblings with
- *      no prop or content change must stay pristine (the reconstruction path
- *      applies per-node, so any false-positive dirty on a sibling silently
- *      corrupts unrelated content on save).
- *   3. Transaction carrying the autonomous stamp but no sync meta → must NOT
- *      mark dirty; absence of sync meta alone is not user intent. Covered by
- *      the sibling suite, not here.
- *
- * A future refactor that renames `ySyncPluginKey`, strips meta via an
- * intermediate plugin, or replaces the meta check with something else fails
- * this test before it can ship. Runs at the PM-state level rather than
- * through Hocuspocus because the guard's correctness is a per-transaction
- * property of the plugin itself — the multi-client integration harness
- * would add orders of magnitude of wall time without adding signal.
+ * Precedent #1 (typed transaction origins) exists because three shipped three observer-bridge
+ * correctness bugs that all hinged on whether a CRDT sync transaction was properly identified and
+ * skipped.
  */
 
 import { getSchema } from '@tiptap/core';

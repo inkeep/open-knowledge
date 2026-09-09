@@ -1,14 +1,23 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import type { KnipConfig } from 'knip';
 
 const fidelityOnlyAppDeps = existsSync('packages/app/tests/fidelity')
   ? []
   : ['fast-check', 'commonmark.json', 'remark-mdx', 'remark-parse'];
 
+const PREDICATE_DIR = 'lint-plugins/no-comments';
+
+const differentialOnlyRootDeps =
+  existsSync(PREDICATE_DIR) &&
+  readdirSync(PREDICATE_DIR).some((entry) => entry.includes('.private.'))
+    ? []
+    : ['yaml'];
+
 export default {
   tags: ['-lintignore'],
   ignore: ['plugins/*/skills/*/scripts/**'],
   ignoreDependencies: [
+    ...differentialOnlyRootDeps,
     'lint-staged', // not sure if it's false positive
     'husky',
     '@lingui/babel-plugin-lingui-macro',

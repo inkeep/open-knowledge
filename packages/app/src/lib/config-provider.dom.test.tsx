@@ -1,9 +1,4 @@
-/**
- * Tier-3 RTL mount tests for ConfigProvider Context propagation —
- * sibling to the structural-grep `config-provider.test.tsx`. Exercises `render` + the
- * React Context API surface under the jsdom substrate (precedent #43);
- * invocation via `bun run test:dom`.
- */
+/** Exercises `render` + the React Context API surface under the jsdom substrate (precedent #43). */
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

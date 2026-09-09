@@ -19,9 +19,6 @@ export function resolveBuildArgs({ platform, arch, release }) {
   const target = LINUX_GNU_TARGETS[arch];
   if (target == null) throw new Error(`Unsupported Linux architecture: ${arch}`);
 
-  // Linux package builds run on newer CI hosts than the distributions we
-  // support. napi-rs's pinned cross toolchain keeps the addon's glibc floor
-  // independent of the host runner.
   args.push('--target', target, '--use-napi-cross');
   return args;
 }

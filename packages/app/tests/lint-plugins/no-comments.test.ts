@@ -37,22 +37,22 @@ function runOxlint(config: string, fixture: string): Run {
 
 type Violation = { class: string; comment: { line: number; column: number } };
 type NoCommentsModule = {
-  analyzeSource: (input: { source: string; relPath: string; precedentNumbers: unknown }) => {
+  analyzeSource: (input: { source: string; relPath: string; precedentRegistry: unknown }) => {
     violations: Violation[];
   };
-  loadPrecedentNumbers: (repoRoot: string) => unknown;
+  loadPrecedentRegistry: (repoRoot: string) => unknown;
 };
 
 async function predicateViolations(fixture: string): Promise<Violation[]> {
   const moduleUrl = pathToFileURL(join(REPO_ROOT, 'lint-plugins/no-comments/index.mjs')).href;
-  const { analyzeSource, loadPrecedentNumbers } = (await import(
+  const { analyzeSource, loadPrecedentRegistry } = (await import(
     /* @vite-ignore */ moduleUrl
   )) as NoCommentsModule;
   const relPath = `${FIXTURE_DIR}/${fixture}`;
   return analyzeSource({
     source: readFileSync(join(REPO_ROOT, relPath), 'utf-8'),
     relPath,
-    precedentNumbers: loadPrecedentNumbers(REPO_ROOT),
+    precedentRegistry: loadPrecedentRegistry(REPO_ROOT),
   }).violations;
 }
 
@@ -61,6 +61,7 @@ const PARITY_FIXTURES = [
   'must-not-fire.fixture.ts',
   'jsx-text.fixture.tsx',
   'jsdoc-types.fixture.mjs',
+  'jsdoc-types.fixture.ts',
 ];
 
 const runs = new Map<string, Run>();
@@ -87,7 +88,7 @@ describe('no-comments oxlint plugin', () => {
   test('fires once per non-allowlisted comment, naming the class, the fix and the docs anchor', () => {
     const { status, diagnostics, raw } = run('must-fire.fixture.ts');
     expect(status).toBe(1);
-    expect(diagnostics).toHaveLength(21);
+    expect(diagnostics).toHaveLength(31);
 
     const classes = diagnostics.map((d) => d.class);
     expect(classes).toStrictEqual([
@@ -112,10 +113,21 @@ describe('no-comments oxlint plugin', () => {
       'prose',
       'prose',
       'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
+      'prose',
     ]);
 
     expect(diagnostics.map((d) => d.line)).toStrictEqual([
-      1, 4, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 47, 53, 56, 59, 63, 66, 69, 72,
+      1, 4, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 47, 53, 56, 59, 63, 66, 69, 72, 75, 78, 81,
+      87, 93, 96, 99, 102, 104, 106,
     ]);
 
     expect(raw).toContain(
@@ -162,20 +174,30 @@ describe('no-comments oxlint plugin', () => {
   });
 
   test('agrees with the shared predicate on every fixture, class for class and line for line', async () => {
-    let compared = 0;
+    const compared: Record<string, number> = {};
     for (const fixture of PARITY_FIXTURES) {
-      const { diagnostics } = run(fixture);
+      const { diagnostics, raw } = run(fixture);
       const violations = await predicateViolations(fixture);
+      expect(raw, fixture).toContain('"number_of_files": 1');
       expect(diagnostics.map((d) => `${d.line}:${d.column}:${d.class}`)).toStrictEqual(
         violations.map((v) => `${v.comment.line}:${v.comment.column}:${v.class}`),
       );
-      compared += violations.length;
+      compared[fixture] = violations.length;
     }
-    expect(compared).toBe(22);
+    expect(compared).toStrictEqual({
+      'must-fire.fixture.ts': 31,
+      'must-not-fire.fixture.ts': 0,
+      'jsx-text.fixture.tsx': 1,
+      'jsdoc-types.fixture.mjs': 0,
+      'jsdoc-types.fixture.ts': 3,
+    });
+  });
 
-    const admitted = run('jsdoc-types.fixture.mjs');
-    expect(admitted.raw).toContain('"number_of_files": 1');
-    expect(admitted.diagnostics).toStrictEqual([]);
+  test('the same JSDoc type block is a directive in .mjs and prose in .ts', () => {
+    expect(run('jsdoc-types.fixture.mjs').diagnostics).toStrictEqual([]);
+    expect(
+      run('jsdoc-types.fixture.ts').diagnostics.map((d) => `${d.line}:${d.class}`),
+    ).toStrictEqual(['1:prose', '4:prose', '12:prose']);
   });
 
   test('is registered in the repo oxlint config as a JS plugin with a staged severity', async () => {

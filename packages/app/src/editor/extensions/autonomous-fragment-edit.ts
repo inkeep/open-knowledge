@@ -1,24 +1,7 @@
 /**
- * Which ProseMirror transactions the user is responsible for, and when a
- * NodeView is allowed to issue one they are not.
- *
- * DISPATCH GATE. An autonomous (non-user-initiated) structural fragment rewrite
- * issued from a source-mode-hidden WYSIWYG editor races Observer B's
- * per-keystroke re-derive and double-materializes the span at the
- * Y.XmlFragment CRDT level (precedent #14: Observer B is the sole fragment
- * writer during source typing). Gate every autonomous structural dispatch on
- * the editor being the visible/authoritative surface — in source mode the
- * WYSIWYG is hidden, so its structural rewrites serve no user and only create
- * the double-write race.
- *
- * Checked at DISPATCH time (not effect entry): the mode can flip between
- * scheduling a rAF/timeout and its firing, and a stale-scheduled dispatch is
- * exactly the hazard.
- *
- * ORIGIN CLASSIFICATION. `isUserIntentOrigin` is where "did the user do this?"
- * is answered, so a consumer asking it does not carry its own copy of the
- * origin taxonomy. See that function for the canonical enumeration, and
- * `markAutonomousFragmentEdit` for what the second arm is and why it exists.
+ * Gates autonomous structural fragment dispatches on the editor being the visible surface:
+ * Observer B is the sole fragment writer during source typing (precedent #14), so a
+ * source-mode-hidden WYSIWYG rewrite double-materializes the span at the CRDT level.
  */
 import type { Editor } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';

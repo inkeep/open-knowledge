@@ -22,7 +22,7 @@ test('buildCursorUrl threads double-encoded prompt for doc-scoped as text=<dbl-e
 test('buildCursorUrl doc-scoped double-encodes prompt containing literal %', () => {
   const url = buildCursorUrl(payload({ prompt: 'a%b' }));
   expect(url).toContain('text=a%2525b');
-  // precedent #25 invariant: no native file-attach.
+  // precedent #60 invariant: no native file-attach.
   expect(url).not.toContain('file=');
 });
 
@@ -109,7 +109,7 @@ test('buildCursorUrl project-scoped double-encodes adversarial prompt (round-tri
   expect(decodeURIComponent(decodeURIComponent(text as string))).toBe(adversarialPrompt);
 });
 
-test('INVARIANT: buildCursorUrl threads double-encoded prompt through ALL scopes; precedent #25 = no file=', () => {
+test('INVARIANT: buildCursorUrl threads double-encoded prompt through ALL scopes; precedent #60 = no file=', () => {
   const cases: ReadonlyArray<{
     projectDir: string;
     docPath: string;
@@ -146,7 +146,7 @@ test('INVARIANT: buildCursorUrl threads double-encoded prompt through ALL scopes
       docPath: c.docPath,
       prompt: c.prompt,
     });
-    // precedent #25 invariant — no native file-attach.
+    // precedent #60 invariant — no native file-attach.
     expect(url).not.toContain('file=');
     expect(url).toContain('text=');
     expect(url).toContain('workspace=');

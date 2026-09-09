@@ -1,36 +1,7 @@
 /**
- * Nested list-item boundary merges for Backspace/Delete.
- *
- * StarterKit's ListKeymap sub-extension drives GFM-correct Backspace/Delete
- * in lists (see shared.ts's `listKeymap` wiring), but two of its branches
- * misfire at NESTED item boundaries — schema-independently, by upstream
- * design (@tiptap/extension-list, keymap handleBackspace/handleDelete):
- *
- * - Backspace at the start of item B whose PREVIOUS sibling item A has a
- *   nested sublist: the `previousListItemHasSubList` check skips
- *   joinItemBackward and falls through to `liftListItem` — the fallthrough
- *   meant for the FIRST item in a list — lifting B clean out into a bare
- *   paragraph with no bullet/checkbox (issue #609's orphan rows).
- * - Delete at the end of a NESTED item when the next item sits SHALLOWER:
- *   the `nextListIsHigher` branch runs `joinForward().joinBackward()`,
- *   re-nesting the next item at the wrong depth and silently dropping its
- *   `checked` attr (`- [ ] d` becomes `  - d`).
- *
- * This extension preempts EXACTLY those two configurations (all four key
- * bindings ListKeymap holds: Backspace/Delete and their Mod- variants) with
- * prosemirror-commands' joinTextblockBackward/joinTextblockForward, which
- * descend through container nodes to the adjacent textblocks and merge only
- * those — never re-parenting, never dropping the surviving item's attrs.
- * Every other configuration returns false so ListKeymap's good branches
- * (flat joins, first-item lift, undoInputRule, trailing-paragraph rejoin,
- * empty-nested-item removal) keep running unchanged.
- *
- * Registration order is load-bearing: this extension sits AFTER StarterKit
- * in sharedExtensions at the DEFAULT priority. At equal priority the
- * later-registered extension's key handler runs first, which is the whole
- * delivery mechanism — no priority escalation, so suggestion-layer plugins
- * (slash command, tag/wiki-link at the 200 band, precedent #48) keep their
- * Enter/Tab precedence untouched.
+ * At equal priority the later-registered extension's key handler runs first, which is the whole
+ * delivery mechanism — no priority escalation, so suggestion-layer plugins (slash command,
+ * tag/wiki-link at the 200 band, precedent #48) keep their Enter/Tab precedence untouched.
  */
 
 import { Extension } from '@tiptap/core';

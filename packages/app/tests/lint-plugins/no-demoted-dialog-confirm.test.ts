@@ -1,24 +1,4 @@
-/**
- * no-demoted-dialog-confirm — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-demoted-dialog-confirm.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-demoted-dialog-confirm.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Forbids a
- * dialog footer whose confirm sits on `secondary`, whose near-invisible fill
- * loses the emphasis contest with the `outline` dismiss standing beside it.
- * `ghost`, `link` and `link-muted` are flat at rest too but are not plausible
- * footer confirms; the rule's README section records why the pattern stays narrow.
- *
- * The fixture pairs 3 positive cases (the reported shape, the same inversion
- * with the dismiss wrapped in `DialogClose asChild`, and the
- * `AlertDialogFooter` sibling) with 4 negative cases (the canonical
- * variant-omitted confirm, a `destructive` confirm, a `secondary` button
- * outside any footer, and an inline-suppressed tertiary control).
- * Exact-equality (`toBe(3)`) catches both false-negative regressions (a
- * weakened pattern drops below 3) and false-positive widenings (a negative
- * starts firing, rising above 3).
- */
+/** The `no-demoted-dialog-confirm` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

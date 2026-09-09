@@ -509,13 +509,8 @@ export const SERVICE_WRITER: WriterIdentity = {
 };
 
 /**
- * Artifacts OK authors itself — today the generated root `index.md`.
- *
- * Deliberately NOT `SERVICE_WRITER`: that one is the fallback for work with no
- * contributor behind it, and precedent #25 reserves it for exactly that. A
- * generated document is an authoring action with a real author; the author just
- * is not a person. Keeping them apart is what lets a reader tell "OK wrote this
- * file" from "OK flushed something nobody claimed".
+ * Deliberately NOT `SERVICE_WRITER`: that one is the fallback for work with no contributor behind
+ * it, and precedent #25 reserves it for exactly that.
  */
 export const OK_GENERATOR_WRITER: WriterIdentity = {
   id: OK_GENERATOR_WRITER_ID,

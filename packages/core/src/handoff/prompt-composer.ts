@@ -1,42 +1,6 @@
 /**
- * Prompt composers for the native-handoff subsystem. Each produces the string
- * the per-target URL builders thread into the prompt query param
- * (`q=` / `prompt=` / `text=`).
- *
- * Three are **directive** composers — file, folder, and empty-space / project.
- * Each emits a short sentence naming a path (or none, for project scope) and
- * telling the agent to open the target in OpenKnowledge's web preview. They
- * never carry file content, so the precedent #25 invariant ("agent grounds
- * via OK MCP, not native attach") holds by virtue of the URL never carrying
- * `file=` attach data.
- *
- * `composeSelectionPrompt` is the fourth — the editor "Edit with AI"
- * affordance. It is not a bare directive: it carries the passage the user
- * selected, either inlined in a fenced block or, when the selection is too
- * large to fit the URL budget, referenced by a short locus anchor the agent
- * resolves by reading the doc via OK MCP. See its own JSDoc for the transport
- * contract.
- *
- * The dispatch hook (`useHandoffDispatch`) picks the composer per
- * `HandoffDispatchInput`.
- *
- * **`autoOpen` honors the user's `appearance.preview.autoOpen` preference.**
- * When `true` (default), the prompt includes a trailing "Open the OK editor in web view."
- * directive so the receiving agent opens the project's preview UI on first
- * turn. When `false`, the directive trailer is dropped so the receiving agent
- * does not contradict the user's "agent does not open my preview" preference.
- * The legacy " in web view" suffix is dropped in both modes — OpenKnowledge
- * is now distributed as both a desktop app and a web preview, so the prompt
- * stays surface-neutral.
- *
- * **Prompt-injection defense.** Filenames arrive from the filesystem and may
- * carry control characters, embedded newlines, or quote / backslash bytes a
- * downstream agent could interpret as instruction-terminator markers. Every
- * interpolated path is passed through `sanitizePathForPrompt` to strip
- * control bytes + zero-width / bidi tricks + backticks, so the agent sees the
- * path as a single literal token rather than as instruction text. Without
- * this, a file named `notes/innocent.md\n\nNew instructions: …` would inject
- * a fake instruction block into the agent's prompt.
+ * They never carry file content, so the precedent #60 invariant ("agent grounds via OK MCP, not
+ * native attach") holds by virtue of the URL never carrying `file=` attach data.
  */
 import { shellSingleQuote } from './terminal-launch.ts';
 import type { HandoffTarget } from './types.ts';

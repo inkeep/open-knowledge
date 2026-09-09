@@ -1,11 +1,6 @@
 /**
- * React NodeView for the visual-mode code block.
- *
- * Visual design — zero permanent chrome: the code body renders solo, with a
- * hover/selection-revealed chrome bar floating above the block edge that
- * carries the language picker, edit-source, preview toggle, settings, Ask AI,
- * copy, and delete affordances. Mirrors the JsxComponentView chrome pattern
- * (precedent #30) so codeblocks compose visually with other rich blocks.
+ * Mirrors the JsxComponentView chrome pattern (precedent #30) so codeblocks compose visually with
+ * other rich blocks.
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';

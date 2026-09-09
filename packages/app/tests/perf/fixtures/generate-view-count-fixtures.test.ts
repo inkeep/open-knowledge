@@ -1,14 +1,3 @@
-/**
- * Unit tests for the view-count fixture generator.
- *
- * These are sanity tests for the convergence loop — we don't re-validate
- * every committed bucket here (that's checked at fixture-generation time).
- * The committed fixture dirs themselves are spot-checked via the
- * `generates fixtures within ±5% of target` test below, which runs the
- * generator across a range of targets and asserts the output measure
- * matches.
- */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MarkdownManager, OK_DIR, sharedExtensions } from '@inkeep/open-knowledge-core';
@@ -70,7 +59,6 @@ describe('generateFixture — convergence', () => {
         const maxOk = Math.ceil(target * 1.05);
         expect(measured).toBeGreaterThanOrEqual(minOk);
         expect(measured).toBeLessThanOrEqual(maxOk);
-        // Sanity: convergence terminated with a real result.
         expect(result.iterations).toBeGreaterThan(0);
       }
     });
@@ -95,8 +83,6 @@ describe('generateFixture — convergence', () => {
       const linkCount = countMarkType(pm, 'link');
       const wikiCount = countNodeType(pm, 'wikiLink');
       const total = linkCount + wikiCount;
-      // Expect approximately 75/25 split; allow ±10% slack to absorb any
-      // pipeline normalization (autolink-promotion etc.).
       const linkRatio = linkCount / total;
       expect(linkRatio).toBeGreaterThanOrEqual(0.65);
       expect(linkRatio).toBeLessThanOrEqual(0.85);

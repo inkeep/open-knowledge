@@ -22,14 +22,14 @@ test('buildCodexUrl threads prompt for doc-scoped as prompt=<prompt>&path=<proje
 test('buildCodexUrl single-encodes % in projectDir', () => {
   const url = buildCodexUrl(payload({ projectDir: '/Users/who/My %Project' }));
   expect(url).toContain('path=%2FUsers%2Fwho%2FMy%20%25Project');
-  // precedent #25 invariant: no `file=` attach.
+  // precedent #60 invariant: no `file=` attach.
   expect(url).not.toContain('file=');
 });
 
-test('buildCodexUrl threads em-dash + unicode prompt safely (precedent #25: no file=)', () => {
+test('buildCodexUrl threads em-dash + unicode prompt safely (precedent #60: no file=)', () => {
   const url = buildCodexUrl(payload({ prompt: 'Read café — notes about the feature' }));
   expect(url).toContain('prompt=Read%20caf%C3%A9%20%E2%80%94%20notes%20about%20the%20feature');
-  // precedent #25 invariant: no native file-attach.
+  // precedent #60 invariant: no native file-attach.
   expect(url).not.toContain('file=');
 });
 
@@ -40,7 +40,7 @@ test('buildCodexUrl single-encodes literal & in projectDir — DC8.5', () => {
   expect(url.split('&').length - 1).toBe(1);
 });
 
-test('buildCodexUrl precedent #25: docPath bytes never thread into URL', () => {
+test('buildCodexUrl precedent #60: docPath bytes never thread into URL', () => {
   const url = buildCodexUrl(payload({ docPath: '/Users/who/proj/docs/SPECIFIC-FILE.md' }));
   expect(url).not.toContain('SPECIFIC-FILE');
   expect(url).not.toContain('file=');
@@ -64,7 +64,7 @@ test('buildCodexUrl project-scoped (composeEmptySpacePrompt) includes encoded pr
   expect(url).toBe(`codex://new?prompt=${encodeURIComponent(prompt)}&path=%2FUsers%2Fwho%2Fproj`);
 });
 
-test('INVARIANT: buildCodexUrl threads prompt through ALL scopes; precedent #25 = no file=', () => {
+test('INVARIANT: buildCodexUrl threads prompt through ALL scopes; precedent #60 = no file=', () => {
   const cases: ReadonlyArray<{
     projectDir: string;
     docPath: string;
@@ -101,7 +101,7 @@ test('INVARIANT: buildCodexUrl threads prompt through ALL scopes; precedent #25 
       docPath: c.docPath,
       prompt: c.prompt,
     });
-    // precedent #25 invariant — no native file-attach.
+    // precedent #60 invariant — no native file-attach.
     expect(url).not.toContain('file=');
     expect(url).toContain('prompt=');
     expect(url).toContain('path=');

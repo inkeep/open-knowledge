@@ -1,22 +1,4 @@
-/**
- * IPC discipline enforcement — `no-loosely-typed-webcontents-ipc` oxlint rule.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-loosely-typed-webcontents-ipc.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-loosely-typed-webcontents-ipc.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules) + precedent
- * #14 (IPC discipline). The fixture pairs 6 positive cases (one per banned
- * primitive) with 4 negative cases (adjacent methods on the same objects +
- * bare-function with the same name); the test asserts the rule fires
- * exactly 6 times.
- *
- * Exact equality (`toBe(6)`) catches drift in both directions:
- *   - false-negative: a weakened pattern drops below 6 → fails
- *   - false-positive: a widened pattern fires on a negative case → above 6 → fails
- *
- * Real input → public
- * interface (`oxlintFixtureArgs()` → `pnpm exec oxlint`) → observable outcome (diagnostic count).
- */
+/** The `no-loosely-typed-webcontents-ipc` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

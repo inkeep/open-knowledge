@@ -1,25 +1,6 @@
 /**
- * no-roundtrip-identity-oracle — oxlint rule fixture test.
- *
- * Rule:  `lint-plugins/ok-rules/rules/no-roundtrip-identity-oracle.mjs`
- * Fixture: `lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`
- *
- * Per precedent #42 (custom lint enforcement is oxlint JS-plugin rules). Forbids the
- * byte-fidelity round-trip oracle — `serialize(parse(x))` (or the
- * MarkdownManager method form) asserted equal to the same input `x` — in
- * public-mirrored tests, so a new public test can't reintroduce the engine's
- * byte-identity correctness oracle that the engine fidelity suite owns
- * privately.
- *
- * The fixture pairs 10 positive cases (the identity oracle through toBe /
- * toEqual / toStrictEqual and `===`, in both bare `serialize(parse(...))` and
- * MarkdownManager method forms) with 7 negative cases (a fixed-literal contract
- * assertion, the `normalizeBridge(a) === normalizeBridge(b)` Bridge-invariant
- * contract from precedent #38, the `!==` normalizing-construct detector, the
- * helper-wrapped and two-statement round-trip forms, and a two-different-manager
- * comparison). Exact-equality (`toBe(10)`) catches both false-negative
- * regressions (a weakened pattern drops below 10) and false-positive widenings
- * (a negative starts firing, rising above 10).
+ * The `no-roundtrip-identity-oracle` oxlint rule fixture test, per precedent #42; its negative
+ * cases include the `normalizeBridge(a) === normalizeBridge(b)` contract from precedent #38.
  */
 
 import { spawnSync } from 'node:child_process';
