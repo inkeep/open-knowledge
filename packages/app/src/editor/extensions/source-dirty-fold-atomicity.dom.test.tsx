@@ -1,4 +1,3 @@
-
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { type ObserverDispatchKind, setupServerObservers } from '@inkeep/open-knowledge-server';
 import { cleanup } from '@testing-library/react';

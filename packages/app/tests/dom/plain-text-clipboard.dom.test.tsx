@@ -1,4 +1,3 @@
-
 import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
