@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
+  assertLanded,
   expect,
   landingMarkCount,
   readSourceCaretHead,
@@ -47,9 +48,10 @@ const PADDING = `\n${Array.from(
 ).join('\n\n')}\n`;
 
 const EOL_TAIL = 'g-walker paper)';
+const EOL_TAIL_LINE = '- https://arxiv.org/abs/2409.14252 (eg-walker paper)';
 
 function docName(label: string): string {
-  return `msod-${label}-${randomUUID().slice(0, 8)}`;
+  return `msoc-${label}-${randomUUID().slice(0, 8)}`;
 }
 
 async function ordinalTable(page: Page): Promise<{ pm: string[]; source: string }> {
@@ -65,6 +67,11 @@ async function ordinalTable(page: Page): Promise<{ pm: string[]; source: string 
   });
 }
 
+function adjacentListPairs(pm: readonly string[]): number {
+  return pm.filter((kind, i) => kind.startsWith('list[') && (pm[i + 1] ?? '').startsWith('list['))
+    .length;
+}
+
 async function caretLine(page: Page): Promise<{ line: number; text: string; head: number }> {
   const head = await readSourceCaretHead(page);
   const source = await page.evaluate(
@@ -75,7 +82,7 @@ async function caretLine(page: Page): Promise<{ line: number; text: string; head
   return { line, text: source.split('\n')[line - 1] ?? '', head };
 }
 
-async function openSplitDoc(
+async function openMergedListDoc(
   page: Page,
   api: { seedDocs: (d: Array<{ name: string; markdown: string }>) => Promise<void> },
   name: string,
@@ -95,26 +102,38 @@ async function openSplitDoc(
   await page.keyboard.press('Backspace');
 
   await expect
-    .poll(async () => {
-      const { pm } = await ordinalTable(page);
-      return pm.some((k, i) => k.startsWith('list[') && (pm[i + 1] ?? '').startsWith('list['));
-    }, {})
-    .toBe(true);
-
-  await expect
     .poll(async () => (await ordinalTable(page)).source.includes('SPLITMARKER'), {
       timeout: 10_000,
-      message: 'Observer A did not propagate the deletion from the fragment into Y.Text',
+      message: 'the deletion did not reach Y.Text',
     })
     .toBe(false);
+
+  const { pm } = await ordinalTable(page);
+  expect(
+    adjacentListPairs(pm),
+    'the document held two adjacent list nodes — a projection block table can no longer spell that, so either the re-derive stopped firing or the block table adopted a doc it disagrees with',
+  ).toBe(0);
 }
 
-test('KNOWN-BUG: view-in-source jump lands one block past the target on a divergent doc; the unverified landing must not flash', async ({
+test('deleting the paragraph between two lists merges them instead of diverging the ordinals', async ({
+  page,
+  api,
+}) => {
+  const name = docName('merge');
+  await openMergedListDoc(page, api, name);
+
+  const { pm, source } = await ordinalTable(page);
+  expect(pm.filter((kind) => kind.startsWith('list[')).length).toBe(3);
+  expect(source).toContain('tailscale.com');
+  expect(source).toContain('youtube.com');
+});
+
+test('view-in-source lands on the block it was invoked from after the merge', async ({
   page,
   api,
 }) => {
   const name = docName('jump');
-  await openSplitDoc(page, api, name);
+  await openMergedListDoc(page, api, name);
 
   await selectText(page, EOL_TAIL);
   const bubble = page.getByTestId(VIEW_IN_SOURCE_BUBBLE);
@@ -124,29 +143,17 @@ test('KNOWN-BUG: view-in-source jump lands one block past the target on a diverg
   await bubble.click();
   const mark = await waitForLandingSettled(page, { since: before });
   expect(mark.kind, `jump did not land (grade ${mark.grade})`).toBe('land');
+  expect(mark.grade).toBe('exact');
 
   const landed = await caretLine(page);
-  const flashes = await page.locator(LANDING_FLASH).count();
-  console.log(
-    `landing: grade=${mark.grade} caret head=${landed.head} -> line ${landed.line}: ${JSON.stringify(landed.text)}, flash spans=${flashes}`,
-  );
+  expect(landed.text).toBe(EOL_TAIL_LINE);
 
-  expect(mark.grade).toBe('ordinal');
-
-  expect(flashes, 'an ordinal-grade landing must not paint the landing flash').toBe(0);
-
-  expect(
-    landed.text,
-    'landing moved off the known-wrong block — the mis-landing may be fixed; flip this assertion to the correct target',
-  ).toContain('competitors');
+  await expect.poll(() => page.locator(LANDING_FLASH).count()).toBeGreaterThan(0);
 });
 
-test('KNOWN-BUG: the plain mode toggle mis-anchors by one block on a divergent doc', async ({
-  page,
-  api,
-}) => {
+test('the mode toggle keeps the anchored block after the merge', async ({ page, api }) => {
   const name = docName('toggle');
-  await openSplitDoc(page, api, name, PADDING);
+  await openMergedListDoc(page, api, name, PADDING);
 
   const anchor = 'BLOCK-060';
   const residual = await scrollWysiwygBlockToTop(page, anchor);
@@ -156,39 +163,11 @@ test('KNOWN-BUG: the plain mode toggle mis-anchors by one block on a divergent d
   await toggleMode(page, 'source');
   const mark = await waitForLandingSettled(page, { since: before });
   expect(mark.kind, `toggle did not land (grade ${mark.grade})`).toBe('land');
+  expect(mark.grade).toBe('exact');
 
-  expect(mark.grade).toBe('ordinal');
-
-  const topLine = await page.evaluate(() => {
-    const scroller = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-testid="editor-scroll-container"]'),
-    ).find((el) => el.getClientRects().length > 0);
-    if (!scroller) throw new Error('no visible scroll container');
-    const content = Array.from(document.querySelectorAll<HTMLElement>('.cm-editor'))
-      .find((el) => el.getClientRects().length > 0)
-      ?.querySelector('.cm-content');
-    const handle = content as
-      | (Element & {
-          cmTile?: { root?: { view?: unknown } };
-          cmView?: { rootView?: { view?: unknown } };
-        })
-      | null;
-    const view = (handle?.cmTile?.root?.view ?? handle?.cmView?.rootView?.view) as
-      | {
-          posAtCoords: (c: { x: number; y: number }, precise: boolean) => number;
-          state: { doc: { lineAt: (p: number) => { number: number; text: string } } };
-        }
-      | undefined;
-    if (!view) throw new Error('no CodeMirror view');
-    const box = scroller.getBoundingClientRect();
-    const pos = view.posAtCoords({ x: box.left + 40, y: box.top + 56 + 4 }, false);
-    const line = view.state.doc.lineAt(pos);
-    return `L${line.number}: ${line.text}`;
+  await assertLanded(page, {
+    mode: 'source',
+    targetText: `${anchor} padding paragraph`,
+    placement: 'top',
   });
-  console.log(`toggle: grade=${mark.grade} anchored=${anchor} topmost=${JSON.stringify(topLine)}`);
-
-  expect(
-    topLine,
-    'the toggle preserved the anchored block — the mis-anchor may be fixed; flip this assertion to require the anchor',
-  ).not.toContain(anchor);
 });
