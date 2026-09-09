@@ -11,6 +11,13 @@ import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { asReportableAppVersion } from './crashed-app-version.ts';
 import {
+  classifyPreviousLiveness,
+  isFileMissingError,
+  livenessLogFields,
+  type MainThreadWatchdog,
+  type MainThreadWatchdogHandle,
+} from './main-thread-watchdog.ts';
+import {
   classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
   type MinidumpCrashKind,
@@ -103,6 +110,7 @@ export interface CrashDetectionDeps {
   now(): Date;
   currentBootSessionUuid(): string | null;
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
+  mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'start'>;
   logger: CrashLogger;
 }
 
@@ -141,12 +149,6 @@ export function startLocalCrashReporter(reporter: {
   start(options: { uploadToServer: boolean }): void;
 }): void {
   reporter.start({ uploadToServer: false });
-}
-
-function isFileMissingError(err: unknown): boolean {
-  return (
-    typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT'
-  );
 }
 
 function epochMsOrNull(iso: string | null): number | null {
@@ -224,6 +226,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
   let sentinel: SentinelState | null = null;
   let cleanQuitMarked = false;
+  let watchdog: MainThreadWatchdogHandle | null = null;
 
   type SentinelWriteContext = 'arm' | 'alive' | 'os-shutdown' | 'suspend' | 'resume';
 
@@ -495,6 +498,14 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         ? installInFlight.handoffAt
         : null;
 
+      const livenessFields = livenessLogFields(
+        classifyPreviousLiveness(
+          deps.mainThreadWatchdog.readPrevious(),
+          prevBootId,
+          epochMsOrNull(prevLastAliveAt),
+        ),
+      );
+
       const freshDumps: ClassifiedDump[] = freshMinidumpEntries().map((entry) => {
         const ownership = classifyDump(entry.path);
         return {
@@ -651,6 +662,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
           osShutdownReasons: prevOsShutdownReasons,
+          ...livenessFields,
         };
         if (reason === 'os-shutdown') {
           deps.logger.warn(
@@ -714,6 +726,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                     }
                   : {}),
                 detectingAppVersion: deps.appVersion,
+                ...livenessFields,
               },
               'previous session ended uncleanly — arming report invitation',
             );
@@ -734,12 +747,16 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         ...(bootSessionUuid !== null ? { bootSessionUuid } : {}),
       };
       writeSentinel('arm');
+      watchdog?.stop();
+      watchdog = deps.mainThreadWatchdog.start(sentinel.bootId);
 
       return armed;
     },
 
     markCleanQuit(): void {
       cleanQuitMarked = true;
+      watchdog?.stop();
+      watchdog = null;
       try {
         rmSync(deps.sentinelPath, { force: true });
       } catch (err) {
