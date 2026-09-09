@@ -11,6 +11,10 @@ import {
   type TerminalLaunchCommand,
   type WindowsShellFamily,
 } from '@inkeep/open-knowledge-core';
+import {
+  assertNeverPtyAdoptReason,
+  assertNeverPtyCreateReason,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import { useLingui } from '@lingui/react/macro';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -184,6 +188,7 @@ function TerminalSession({
 
     let cancelled = false;
     let sessionEnded = false;
+    let shellLive = false;
     let ptyId: string | null = null;
     let unsubData: (() => void) | undefined;
     let unsubExit: (() => void) | undefined;
@@ -518,9 +523,23 @@ function TerminalSession({
         if (msg.ptyId !== ptyId) return;
         sessionEnded = true;
         terminalInputEnabledRef.current = false;
-        setExitInfo({ exitCode: msg.exitCode, signal: msg.signal, error: msg.error });
+        setExitInfo(
+          msg.neverStarted
+            ? msg.hostExited === true
+              ? { phase: 'start', reason: 'host-exited' }
+              : msg.launchFailure !== undefined
+                ? { phase: 'start', reason: 'launch-unsupported' }
+                : { phase: 'start', detail: msg.error ?? '' }
+            : {
+                phase: 'exit',
+                exitCode: msg.exitCode,
+                signal: msg.signal,
+                error: msg.error,
+                ...(msg.hostExited === true ? ({ hostExited: true } as const) : {}),
+              },
+        );
         setStatus('exited');
-        onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
+        if (!msg.neverStarted) onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
       });
 
       ptyResizeThrottle = createResizeThrottle(() => {
@@ -538,6 +557,54 @@ function TerminalSession({
         ptyResizeThrottle?.request();
       });
       observer.observe(container);
+    };
+
+    const startSession = async (livePtyId: string): Promise<void> => {
+      let failure: TerminalExitInfo;
+      try {
+        const attached = await bridge.terminal.start(livePtyId);
+        if (attached.ok) {
+          shellLive = true;
+          if (cancelled) return;
+          if (attached.shellFamily !== undefined) shellFamilyRef.current = attached.shellFamily;
+          if (attached.shellNoticeReason !== undefined) {
+            applyShellNotice({
+              ptyId: livePtyId,
+              notice: 'invalid-shell-override',
+              reason: attached.shellNoticeReason,
+            });
+          }
+          if (attached.replay !== '') {
+            markFirstOutput();
+            term.write(attached.replay);
+          }
+          return;
+        }
+        if (cancelled) return;
+        console.error('[terminal] shell start refused:', attached.reason, livePtyId);
+        switch (attached.reason) {
+          case 'not-consented':
+            sessionEnded = true;
+            terminalInputEnabledRef.current = false;
+            setStatus('not-consented');
+            return;
+          case 'not-started':
+          case 'unknown-session':
+          case 'host-unavailable':
+            failure = { phase: 'start', reason: attached.reason };
+            break;
+          default:
+            assertNeverPtyAdoptReason(attached.reason);
+        }
+      } catch (err) {
+        console.error('[terminal] initial start() failed:', err);
+        failure = { phase: 'start', detail: err instanceof Error ? err.message : String(err) };
+      }
+      if (cancelled || sessionEnded || shellLive) return;
+      sessionEnded = true;
+      terminalInputEnabledRef.current = false;
+      setExitInfo(failure);
+      setStatus('exited');
     };
 
     const resolveLaunchCommand = async (
@@ -622,6 +689,7 @@ function TerminalSession({
           const replay = adopted.replay;
           const hasReplay = replay !== '';
           attachSession(adoptPtyId);
+          shellLive = true;
           if (hasReplay) {
             markFirstOutput();
             term.write(replay, markInteractive);
@@ -657,9 +725,8 @@ function TerminalSession({
         console.error('[terminal] create() failed:', err);
         if (cancelled) return;
         setExitInfo({
-          exitCode: 1,
-          signal: null,
-          error: err instanceof Error ? err.message : String(err),
+          phase: 'start',
+          detail: err instanceof Error ? err.message : String(err),
         });
         setStatus('exited');
         return;
@@ -673,11 +740,21 @@ function TerminalSession({
         return;
       }
       if (!result.ok) {
-        setStatus(result.reason === 'not-consented' ? 'not-consented' : 'no-project');
+        switch (result.reason) {
+          case 'not-consented':
+          case 'no-project':
+            setStatus(result.reason);
+            break;
+          default:
+            assertNeverPtyCreateReason(result.reason);
+        }
         return;
       }
 
+      // STOP: attachSession installs onData/onExit before start() posts the spawn (terminal-manager.ts, same tick); once start() resolves, nothing below may await before the readinessScan assignment or the shell's first output outruns the scanner.
       attachSession(result.ptyId);
+      await startSession(result.ptyId);
+      if (cancelled || sessionEnded) return;
       markInteractive();
 
       const staged = launch?.stagePaste;
@@ -735,7 +812,18 @@ function TerminalSession({
           term.focus();
         }, STAGE_PASTE_SETTLE_MS);
       }
-    })();
+    })().catch((err) => {
+      console.error('[terminal] mount sequence failed:', err);
+      if (cancelled || sessionEnded) return;
+      if (shellLive) {
+        markInteractive();
+        return;
+      }
+      sessionEnded = true;
+      terminalInputEnabledRef.current = false;
+      setExitInfo({ phase: 'start', detail: err instanceof Error ? err.message : String(err) });
+      setStatus('exited');
+    });
 
     return () => {
       cancelled = true;
@@ -825,6 +913,8 @@ function TerminalSession({
     };
   }, [bridge]);
 
+  const isSettling = status === 'starting' || (status === 'running' && !hasOutput);
+
   return (
     <div className="flex h-full w-full flex-col">
       {status === 'running' && readiness ? (
@@ -888,8 +978,13 @@ function TerminalSession({
       ) : null}
       {}
       <div className="relative min-h-0 flex-1">
-        <div ref={containerRef} data-terminal-status={status} className="h-full w-full px-1.5" />
-        {status === 'starting' || (status === 'running' && !hasOutput) ? (
+        <div
+          ref={containerRef}
+          data-terminal-status={status}
+          aria-busy={isSettling}
+          className="h-full w-full px-1.5"
+        />
+        {isSettling ? (
           <TerminalStartingNotice className="pointer-events-none absolute inset-0 z-20" />
         ) : null}
       </div>

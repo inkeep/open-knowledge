@@ -13775,6 +13775,10 @@ msgstr "سرور بغیر کسی بلٹ اِن تصدیق کے {0} کے لیے �
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "title، description، resource، اور tags کی شکلیں جب آپ انہیں استعمال کرتے ہیں۔ کسی کی ضرورت نہیں ہے؛ صرف ایک کا اعلان کرنا اس کی قسم کو پن کرتا ہے، لہذا tags کوما سے الگ کردہ سٹرنگ کے طور پر لکھا جاتا ہے۔"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "اس سیشن کا شیل کبھی شروع نہیں ہوا۔"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "مہارت کا اپنا فولڈر — وہ ماخذ جس سے دیگر مقامات نقل کرتے یا جڑتے ہیں"
@@ -13802,6 +13806,22 @@ msgstr "{label} کی ٹرمینل اور ڈیسک ٹاپ قطاریں ایک ہ�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "{label} کی ٹرمینل اور ڈیسک ٹاپ قطاریں ایک ہی ترتیب استعمال کرتی ہیں، اس لیے اسے ہٹانے سے دونوں کا رابطہ منقطع ہو جائے گا۔"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "ٹرمینل کی بیک گراؤنڈ سروس نہیں چل رہی۔"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "شیل شروع ہونے سے پہلے ہی ٹرمینل کی بیک گراؤنڈ سروس رک گئی۔"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "ٹرمینل ترتیب دیے گئے شیل میں یہ کمانڈ نہیں چلا سکتا۔"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "ٹرمینل شروع نہیں ہو سکا۔"
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14379,6 +14399,10 @@ msgstr "یہ ماخذ کئی مہارتیں سمیٹے ہوئے ہے — درآ�
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "یہ ٹیمپلیٹ کسی والد فولڈر میں رہتا ہے — اسے حذف کرنا اس کے نیچے کے ہر اُس فولڈر پر اثر ڈالتا ہے جو اپنا ورژن متعین نہیں کرتا۔"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "یہ ٹرمینل سیشن اب دستیاب نہیں ہے۔"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "فائل درست کیے جانے تک یہ تھیم استعمال نہیں کی جا سکتی۔"
@@ -14591,6 +14615,7 @@ msgstr "کوئی پرامپٹ آزمائیں"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "دوبارہ کوشش کریں"

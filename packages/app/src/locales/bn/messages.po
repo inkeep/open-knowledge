@@ -13771,6 +13771,10 @@ msgstr "সার্ভারটি কোনো অন্তর্নির্�
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "title, description, resource, এবং tags এর আকার আপনি যখন ব্যবহার করেন। কোনটির প্রয়োজন নেই; একটি ঘোষণা করলে শুধুমাত্র তার টাইপ পিন হয়, তাই tags একটি কমা-বিচ্ছিন্ন স্ট্রিং হিসাবে ফ্ল্যাগ করা হয়।"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "এই সেশনের শেল কখনও চালু করা হয়নি।"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "স্কিলের নিজের ফোল্ডার — যে উৎস থেকে অন্য জায়গাগুলো অনুলিপি করে বা লিংক করে"
@@ -13798,6 +13802,22 @@ msgstr "{label}-এর টার্মিনাল ও ডেস্কটপ স
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "{label}-এর টার্মিনাল ও ডেস্কটপ সারি একই সেটআপ ভাগ করে, তাই এটি সরালে দুটোরই সংযোগ বিচ্ছিন্ন হবে।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "টার্মিনালের ব্যাকগ্রাউন্ড সার্ভিস চলছে না।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "শেল চালু হওয়ার আগেই টার্মিনালের ব্যাকগ্রাউন্ড সার্ভিস থেমে গেছে।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "টার্মিনাল কনফিগার করা শেলে এই কমান্ড চালাতে পারে না।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "টার্মিনাল চালু করা যায়নি।"
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14375,6 +14395,10 @@ msgstr "এই উৎসে কয়েকটি স্কিল আছে — 
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "এই টেমপ্লেটটি একটি মূল ফোল্ডারে আছে — এটি মুছে ফেললে এর নিচের প্রতিটি ফোল্ডার প্রভাবিত হয় যেগুলো নিজেদের সংস্করণ ঠিক করে না।"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "এই টার্মিনাল সেশনটি আর উপলব্ধ নেই।"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "ফাইলটি ঠিক না করা পর্যন্ত এই থিম ব্যবহার করা যাবে না।"
@@ -14587,6 +14611,7 @@ msgstr "একটি প্রম্পট চেষ্টা করে দে�
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "আবার চেষ্টা করুন"

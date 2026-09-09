@@ -279,6 +279,7 @@
     "2wTb8w": ["Set it up on its own page under Plugins."],
     "2wxgft": ["Rename"],
     "2zvUIK": ["Show these comments in the Comments panel"],
+    "3-1BY2": ["This terminal session is no longer available."],
     "322lyb": ["Highlight tips, warnings, and notes."],
     "32TTpa": ["Email support about this report"],
     "34qyH5": ["Could not reach server"],
@@ -653,6 +654,7 @@
       "This report is already on its way. Its result will appear in your bug report history."
     ],
     "7Y9yTo": ["Created ", ["owner"], "/", ["name"], ", push failed."],
+    "7YJr6i": ["The shell for this session was never started."],
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -1196,6 +1198,7 @@
     "ENpRJV": ["External link previews"],
     "EO4Dt1": ["Enable ", ["file"]],
     "EOjU5V": ["Inline Math Properties"],
+    "EP-R3L": ["The terminal couldn't start."],
     "EP8mZC": ["Expose and restart"],
     "EPGePE": ["Uploaded as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
     "EPKVES": ["Update \"", ["skillName"], "\" over your edits?"],
@@ -1947,6 +1950,7 @@
     "NRSLBe": [["diffMin"], "m ago"],
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
+    "NVghPF": ["The terminal can't run this command in the configured shell."],
     "NY0p7s": ["Skipped enabling Open Knowledge tools. This thread runs without them."],
     "NYUhy5": ["Subfolder name"],
     "NYn1cR": ["Loading editor"],
@@ -3510,6 +3514,7 @@
       " session."
     ],
     "fqSfXY": ["Replace"],
+    "frREUl": ["The terminal background service stopped before the shell could start."],
     "ft-BOm": ["Report a bug…"],
     "fuJZKk": ["Search branches"],
     "fvrHin": ["Available in every project on this machine. Not shared through git."],
@@ -4359,6 +4364,7 @@
     "oCZkaG": ["Copy path"],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
+    "oLyLo6": ["The terminal background service isn't running."],
     "oP-FQW": ["Use a relative path inside the skill"],
     "oPU_4D": ["Send when the agent is free"],
     "oQA-cA": ["Full path"],

@@ -117,7 +117,6 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
           let output = '';
           let ptyId = null;
           let settled = false;
-          const pendingData = [];
           let unsubscribe = () => {{}};
           const finish = async (error) => {{
             if (settled) return;
@@ -151,10 +150,6 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             20000,
           );
           unsubscribe = bridge.terminal.onData((message) => {{
-            if (ptyId === null) {{
-              pendingData.push(message);
-              return;
-            }}
             if (message.ptyId !== ptyId) return;
             consume(message.data);
           }});
@@ -176,8 +171,10 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             return;
           }}
           ptyId = created.ptyId;
-          for (const message of pendingData) {{
-            if (message.ptyId === ptyId) consume(message.data);
+          const attached = await bridge.terminal.start(ptyId);
+          if (!attached.ok) {{
+            await finish(new Error(`PTY attach failed: ${{attached.reason}}`));
+            return;
           }}
           if (!isWindows) bridge.terminal.input(ptyId, `echo ${{marker}}\\r`);
         }});

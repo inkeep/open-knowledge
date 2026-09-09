@@ -13775,6 +13775,10 @@ msgstr "The server will accept requests for {0} with no built-in authentication.
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "The shell for this session was never started."
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "The skill's own folder — the source other locations copy or link from"
@@ -13802,6 +13806,22 @@ msgstr "The terminal and desktop rows for {label} share one setup, so changes he
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "The terminal background service isn't running."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "The terminal background service stopped before the shell could start."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "The terminal can't run this command in the configured shell."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "The terminal couldn't start."
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14379,6 +14399,10 @@ msgstr "This source bundles several skills — choose the one to import."
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "This terminal session is no longer available."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "This theme can’t be used until the file is fixed."
@@ -14591,6 +14615,7 @@ msgstr "Try a prompt"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Try again"

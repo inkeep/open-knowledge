@@ -106,6 +106,12 @@ rendering than the English carries. Settle them here rather than per-PR.
 - **knowledge base** is the user's own collection of notes. Where a native compound exists and
   reads naturally it wins over a transliteration; `ur` keeps the transliteration because the
   native compound is not in common software use.
+- **background service** is the pty-host utility process that backs a terminal. The
+  OpenKnowledge server is a different process on a different path and is never what this
+  wording refers to. The product already says *the agent service* and *the
+  OpenKnowledge server* for adjacent concepts, so this one is pinned to keep a fourth name
+  from appearing: user-facing terminal copy says *background service*, never *server*,
+  *helper process*, or *host*.
 - **Follow** is the pull-only sync mode. Korean uses 팔로우 consistently rather than mixing the
   English label with 따라오기.
 

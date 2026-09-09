@@ -13775,6 +13775,10 @@ msgstr "서버는 기본 인증 없이 {0}에 대한 요청을 허용합니다. 
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "사용할 때 title, description, resource, tags의 형태를 설정합니다. 모두 필수는 아니며, 하나를 선언하면 유형만 고정됩니다. 쉼표로 구분한 문자열로 작성한 tags는 오류로 표시됩니다."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "이 세션의 셸이 시작된 적이 없습니다."
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "스킬 자체의 폴더. 다른 위치가 복사하거나 링크하는 소스입니다"
@@ -13802,6 +13806,22 @@ msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공유하므로, 이를 제거하면 둘 다 연결이 끊깁니다."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "터미널 백그라운드 서비스가 실행되고 있지 않습니다."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "셸이 시작되기 전에 터미널 백그라운드 서비스가 중지되었습니다."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "터미널이 구성된 셸에서 이 명령을 실행할 수 없습니다."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "터미널을 시작하지 못했습니다."
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14379,6 +14399,10 @@ msgstr "이 소스에는 여러 스킬이 들어 있습니다. 가져올 항목�
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "이 템플릿은 상위 폴더에 있습니다. 삭제하면 자체 버전을 정의하지 않은 하위 폴더 모두에 영향을 줍니다."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "이 터미널 세션은 더 이상 사용할 수 없습니다."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "파일을 수정할 때까지 이 테마를 사용할 수 없습니다."
@@ -14591,6 +14615,7 @@ msgstr "프롬프트 사용"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "다시 시도"

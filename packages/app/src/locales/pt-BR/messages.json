@@ -319,6 +319,7 @@
     "2wTb8w": ["Configure na página própria dele, em Plugins."],
     "2wxgft": ["Renomear"],
     "2zvUIK": ["Mostrar estes comentários no painel de comentários"],
+    "3-1BY2": ["Esta sessão de terminal não está mais disponível."],
     "322lyb": ["Destaca dicas, avisos e notas."],
     "32TTpa": ["Escrever para o suporte sobre este relatório"],
     "34qyH5": ["Não foi possível contatar o servidor"],
@@ -785,6 +786,7 @@
       "Este relatório já está a caminho. O resultado vai aparecer no histórico de relatórios de erro."
     ],
     "7Y9yTo": [["owner"], "/", ["name"], " foi criado, mas o envio falhou."],
+    "7YJr6i": ["O shell desta sessão nunca foi iniciado."],
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -1393,6 +1395,7 @@
     "ENpRJV": ["Pré-visualização de links externos"],
     "EO4Dt1": ["Ativar ", ["file"]],
     "EOjU5V": ["Propriedades da fórmula em linha"],
+    "EP-R3L": ["O terminal não pôde iniciar."],
     "EP8mZC": ["Expor e reiniciar"],
     "EPGePE": ["Enviado como \"", ["0"], "\" — o nome \"", ["1"], "\" já estava em uso."],
     "EPKVES": ["Atualizar \"", ["skillName"], "\" por cima das suas edições?"],
@@ -2245,6 +2248,7 @@
     "NRSLBe": ["há ", ["diffMin"], " min"],
     "NSnIUP": ["Duas páginas (pares)"],
     "NUr4kz": ["Um ponto de partida reutilizável para novos documentos nesta pasta."],
+    "NVghPF": ["O terminal não pode executar este comando no shell configurado."],
     "NY0p7s": [
       "A ativação das ferramentas do Open Knowledge foi ignorada. Esta conversa funciona sem elas."
     ],
@@ -4029,6 +4033,7 @@
       "."
     ],
     "fqSfXY": ["Substituir"],
+    "frREUl": ["O serviço em segundo plano do terminal parou antes que o shell pudesse iniciar."],
     "ft-BOm": ["Relatar um erro…"],
     "fuJZKk": ["Buscar ramos"],
     "fvrHin": ["Disponível em todos os projetos deste computador. Não é compartilhado por git."],
@@ -4946,6 +4951,7 @@
     "oCZkaG": ["Copiar caminho"],
     "oJl7eO": ["Componente desconhecido: ", ["componentName"], " — código editável abaixo"],
     "oKBnk5": ["Mais requisições foram bloqueadas."],
+    "oLyLo6": ["O serviço em segundo plano do terminal não está em execução."],
     "oP-FQW": ["Use um caminho relativo dentro da habilidade"],
     "oPU_4D": ["Enviar quando o agente estiver livre"],
     "oQA-cA": ["Caminho completo"],

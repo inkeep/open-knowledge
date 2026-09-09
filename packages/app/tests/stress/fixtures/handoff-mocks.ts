@@ -474,6 +474,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           drain: () => {},
           list: async () => [],
           adopt: async () => ({ ok: true as const, replay: '' }),
+          start: async () => ({ ok: true as const, replay: '' }),
           setMeta: () => {},
           setOrder: () => {},
           getDockState: async () => ({ terminalVisible: false, agentPanelVisible: false }),

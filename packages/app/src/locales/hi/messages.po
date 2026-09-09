@@ -13771,6 +13771,10 @@ msgstr "सर्वर बिना किसी बिल्ट-इन प्�
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "जब आप title, description, resource, और tags का उपयोग करते हैं तो उनकी आकृतियाँ। किसी की भी आवश्यकता नहीं है; किसी को घोषित करने से केवल उसके प्रकार का पता चलता है, इसलिए अल्पविराम से अलग की गई स्ट्रिंग के रूप में लिखे गए tags को चिह्नित किया जाता है।"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "इस सत्र का शेल कभी शुरू नहीं हुआ।"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "स्किल का अपना फ़ोल्डर — वह स्रोत जिससे बाकी स्थान प्रति बनाते या लिंक करते हैं"
@@ -13798,6 +13802,22 @@ msgstr "{label} की टर्मिनल और डेस्कटॉप प
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "{label} की टर्मिनल और डेस्कटॉप पंक्तियाँ एक ही सेटअप साझा करती हैं, इसलिए इसे हटाने पर दोनों का कनेक्शन टूट जाएगा।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "टर्मिनल की बैकग्राउंड सेवा नहीं चल रही है।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "शेल शुरू होने से पहले ही टर्मिनल की बैकग्राउंड सेवा रुक गई।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "टर्मिनल कॉन्फ़िगर किए गए शेल में यह कमांड नहीं चला सकता।"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "टर्मिनल शुरू नहीं हो सका।"
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14375,6 +14395,10 @@ msgstr "इस स्रोत में कई स्किल हैं — �
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "यह टेम्पलेट किसी मूल फ़ोल्डर में रहता है — इसे हटाने पर उसके नीचे का हर वह फ़ोल्डर प्रभावित होता है जो अपना संस्करण तय नहीं करता।"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "यह टर्मिनल सत्र अब उपलब्ध नहीं है।"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "फ़ाइल ठीक होने तक इस थीम का उपयोग नहीं किया जा सकता।"
@@ -14587,6 +14611,7 @@ msgstr "कोई प्रॉम्प्ट आज़माएँ"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "फिर कोशिश करें"

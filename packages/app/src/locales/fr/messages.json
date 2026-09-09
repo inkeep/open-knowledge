@@ -331,6 +331,7 @@
     "2wTb8w": ["Configurez-le sur sa propre page sous Plugins."],
     "2wxgft": ["Renommer"],
     "2zvUIK": ["Afficher ces commentaires dans le panneau des commentaires"],
+    "3-1BY2": ["Cette session de terminal n'est plus disponible."],
     "322lyb": ["Mettez en avant des conseils, des avertissements et des remarques."],
     "32TTpa": ["Écrire au support à propos de ce rapport"],
     "34qyH5": ["Impossible de joindre le serveur"],
@@ -812,6 +813,7 @@
       "Ce rapport est déjà en route. Son résultat apparaîtra dans l'historique des rapports de bug."
     ],
     "7Y9yTo": [["owner"], "/", ["name"], " a été créé, mais l'envoi a échoué."],
+    "7YJr6i": ["Le shell de cette session n'a jamais démarré."],
     "7YRrJ9": [
       "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -1444,6 +1446,7 @@
     "ENpRJV": ["Aperçus de liens externes"],
     "EO4Dt1": ["Activer ", ["file"]],
     "EOjU5V": ["Propriétés de la formule en ligne"],
+    "EP-R3L": ["Le terminal n'a pas pu démarrer."],
     "EP8mZC": ["Exposer et redémarrer"],
     "EPGePE": ["Envoyé sous « ", ["0"], " » — le nom « ", ["1"], " » était déjà pris."],
     "EPKVES": ["Mettre à jour « ", ["skillName"], " » par-dessus vos modifications ?"],
@@ -2314,6 +2317,7 @@
     "NRSLBe": ["il y a ", ["diffMin"], " min"],
     "NSnIUP": ["Deux pages (paires)"],
     "NUr4kz": ["Un point de départ réutilisable pour les nouveaux documents de ce dossier."],
+    "NVghPF": ["Le terminal ne peut pas exécuter cette commande dans le shell configuré."],
     "NY0p7s": ["Activation des outils Open Knowledge ignorée. Ce fil fonctionne sans eux."],
     "NYUhy5": ["Nom du sous-dossier"],
     "NYn1cR": ["Chargement de l'éditeur"],
@@ -4149,6 +4153,9 @@
       " de confiance."
     ],
     "fqSfXY": ["Remplacer"],
+    "frREUl": [
+      "Le service d'arrière-plan du terminal s'est arrêté avant que le shell puisse démarrer."
+    ],
     "ft-BOm": ["Signaler un bug…"],
     "fuJZKk": ["Rechercher des branches"],
     "fvrHin": ["Disponible dans tous les projets de cette machine. Non partagé via git."],
@@ -5081,6 +5088,7 @@
     "oCZkaG": ["Copier le chemin"],
     "oJl7eO": ["Composant inconnu : ", ["componentName"], " — source modifiable ci-dessous"],
     "oKBnk5": ["D'autres requêtes ont été bloquées."],
+    "oLyLo6": ["Le service d'arrière-plan du terminal n'est pas en cours d'exécution."],
     "oP-FQW": ["Utilisez un chemin relatif à l'intérieur de la compétence"],
     "oPU_4D": ["Envoyer quand l’agent sera libre"],
     "oQA-cA": ["Chemin complet"],

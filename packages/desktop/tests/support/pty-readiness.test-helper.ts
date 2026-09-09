@@ -40,7 +40,8 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
         if (msg.type === 'data') data.set(msg.ptyId, (data.get(msg.ptyId) ?? '') + msg.data);
         else if (msg.type === 'exit')
           exits.set(msg.ptyId, { exitCode: msg.exitCode, signal: msg.signal });
-        else if (msg.type === 'spawn-error') errors.set(msg.ptyId, msg.message);
+        else if (msg.type === 'spawn-error')
+          errors.set(msg.ptyId, msg.message ?? msg.launchFailure);
       },
     },
     spawn: options.spawn,

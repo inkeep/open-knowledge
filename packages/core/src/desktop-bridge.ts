@@ -12,6 +12,7 @@ import type {
   TerminalCli,
   TerminalLaunchCommand,
   WindowsShellFamily,
+  WindowsShellLaunchFailureReason,
 } from './handoff/terminal-launch.ts';
 import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
 import type { LanguagePreference } from './i18n/locales.ts';
@@ -851,14 +852,30 @@ export type OkServerRestartOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'eperm' | 'other' };
 
+export type OkPtyCreateReason = 'no-project' | 'not-consented';
+
+export function assertNeverPtyCreateReason(value: never): never {
+  throw new Error(`unhandled pty create reason: ${String(value)}`);
+}
+
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
+  | { readonly ok: false; readonly reason: OkPtyCreateReason };
 
 export interface OkPtyListEntry {
   readonly ptyId: string;
   readonly customLabel: string | null;
   readonly ordinal: number | null;
+}
+
+export type OkPtyAdoptReason =
+  | 'unknown-session'
+  | 'not-started'
+  | 'not-consented'
+  | 'host-unavailable';
+
+export function assertNeverPtyAdoptReason(value: never): never {
+  throw new Error(`unhandled pty adopt reason: ${String(value)}`);
 }
 
 export type OkPtyAdoptResult =
@@ -868,19 +885,32 @@ export type OkPtyAdoptResult =
       readonly shellFamily?: WindowsShellFamily;
       readonly shellNoticeReason?: Extract<TerminalShellNoticeReason, 'unsupported-family'>;
     }
-  | { readonly ok: false; readonly reason: 'unknown-session' };
+  | {
+      readonly ok: false;
+      readonly reason: OkPtyAdoptReason;
+    };
 
 export interface OkPtyData {
   readonly ptyId: string;
   readonly data: string;
 }
 
-export interface OkPtyExit {
-  readonly ptyId: string;
-  readonly exitCode: number;
-  readonly signal: number | null;
-  readonly error?: string;
-}
+export type OkPtyExit =
+  | {
+      readonly ptyId: string;
+      readonly neverStarted: true;
+      readonly error?: string;
+      readonly hostExited?: true;
+      readonly launchFailure?: WindowsShellLaunchFailureReason;
+    }
+  | {
+      readonly ptyId: string;
+      readonly neverStarted?: false;
+      readonly exitCode: number;
+      readonly signal: number | null;
+      readonly error?: string;
+      readonly hostExited?: true;
+    };
 
 const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
   'config-unreadable',
@@ -1281,6 +1311,7 @@ export interface OkDesktopBridge {
   };
 
   terminal: {
+    // STOP: create only reserves a session; install onData/onExit before start(ptyId) posts the deferred spawn in terminal-manager.ts.
     create(opts: {
       cols: number;
       rows: number;
@@ -1292,7 +1323,8 @@ export interface OkDesktopBridge {
     kill(ptyId: string): Promise<void>;
     drain(ptyId: string, bytes: number): void;
     list(): Promise<OkPtyListEntry[]>;
-    adopt(ptyId: string): Promise<OkPtyAdoptResult>;
+    adopt(ptyId: string, opts?: { start?: boolean }): Promise<OkPtyAdoptResult>;
+    start(ptyId: string): Promise<OkPtyAdoptResult>;
     setMeta(ptyId: string, meta: { customLabel?: string | null; ordinal?: number }): void;
     setOrder(orderedPtyIds: readonly string[]): void;
     getDockState(): Promise<OkTerminalDockState>;

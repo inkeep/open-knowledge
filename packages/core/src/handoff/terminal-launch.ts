@@ -83,18 +83,50 @@ function isCmdSafeToken(value: string): boolean {
   );
 }
 
+const WINDOWS_SHELL_LAUNCH_FAILURE_VOCABULARY = [
+  'unsupported-shell',
+  'invalid-launch',
+  'unsafe-argument',
+] as const;
+
+export type WindowsShellLaunchFailureReason =
+  (typeof WINDOWS_SHELL_LAUNCH_FAILURE_VOCABULARY)[number];
+
+const WINDOWS_SHELL_LAUNCH_FAILURE_REASONS: ReadonlySet<WindowsShellLaunchFailureReason> = new Set(
+  WINDOWS_SHELL_LAUNCH_FAILURE_VOCABULARY,
+);
+
+export function isWindowsShellLaunchFailureReason(
+  value: unknown,
+): value is WindowsShellLaunchFailureReason {
+  return (
+    typeof value === 'string' &&
+    WINDOWS_SHELL_LAUNCH_FAILURE_REASONS.has(value as WindowsShellLaunchFailureReason)
+  );
+}
+
+export class WindowsShellLaunchError extends Error {
+  readonly reason: WindowsShellLaunchFailureReason;
+
+  constructor(reason: WindowsShellLaunchFailureReason) {
+    super(reason);
+    this.name = 'WindowsShellLaunchError';
+    this.reason = reason;
+  }
+}
+
 export function composeWindowsShellLaunchArgs(
   shell: string,
   launch: TerminalLaunchCommand,
 ): string[] | string {
   const family = resolveWindowsShellFamily(shell);
-  if (family === null) throw new Error('unsupported Windows terminal shell');
+  if (family === null) throw new WindowsShellLaunchError('unsupported-shell');
   if (
     launch.executable.length === 0 ||
     launch.executable.includes('\u0000') ||
     launch.args.some((arg) => arg.includes('\u0000'))
   ) {
-    throw new Error('invalid Windows terminal launch');
+    throw new WindowsShellLaunchError('invalid-launch');
   }
   if (family === 'bash') {
     return [
@@ -110,7 +142,7 @@ export function composeWindowsShellLaunchArgs(
   if (family === 'cmd' || batchTarget) {
     const tokens = [launch.executable, ...launch.args];
     if (tokens.some((token) => !isCmdSafeToken(token))) {
-      throw new Error('unsafe batch argument');
+      throw new WindowsShellLaunchError('unsafe-argument');
     }
     if (family === 'cmd') return `/K ${tokens.join(' ')}`;
   }

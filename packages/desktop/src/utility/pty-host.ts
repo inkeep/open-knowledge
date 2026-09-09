@@ -9,6 +9,8 @@ import {
   resolveWindowsShellFamily,
   type TerminalLaunchCommand,
   type WindowsShellFamily,
+  WindowsShellLaunchError,
+  type WindowsShellLaunchFailureReason,
 } from '@inkeep/open-knowledge-core';
 import { isTerminalShellNoticeReason } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
@@ -87,11 +89,19 @@ interface PtyExitMessage {
   exitCode: number | undefined;
   signal: number | null;
 }
-interface PtySpawnErrorMessage {
-  type: 'spawn-error';
-  ptyId: string;
-  message: string;
-}
+type PtySpawnErrorMessage =
+  | {
+      type: 'spawn-error';
+      ptyId: string;
+      message: string;
+      launchFailure?: undefined;
+    }
+  | {
+      type: 'spawn-error';
+      ptyId: string;
+      message?: undefined;
+      launchFailure: WindowsShellLaunchFailureReason;
+    };
 type PtyShellNoticeMessage =
   | {
       type: 'shell-notice';
@@ -696,16 +706,22 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     try {
       shellArgs = buildShellArgs(platform, shell, launchCommand);
     } catch (error) {
+      const launchFailure = error instanceof WindowsShellLaunchError ? error.reason : null;
       deps.logger?.warn({
         event: 'pty-host-launch-compose-failed',
         platform,
         rung: resolution.rung,
+        ...(launchFailure === null ? {} : { launchFailure }),
       });
-      post({
-        type: 'spawn-error',
-        ptyId,
-        message: error instanceof Error ? error.message : String(error),
-      });
+      post(
+        launchFailure === null
+          ? {
+              type: 'spawn-error',
+              ptyId,
+              message: error instanceof Error ? error.message : String(error),
+            }
+          : { type: 'spawn-error', ptyId, launchFailure },
+      );
       return;
     }
     const spawnOptions: PtySpawnOptions = {

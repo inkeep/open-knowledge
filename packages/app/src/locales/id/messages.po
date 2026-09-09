@@ -13771,6 +13771,10 @@ msgstr "Server akan menerima permintaan untuk {0} tanpa autentikasi bawaan. Siap
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "Bentuk title, description, resource, dan tags saat Anda menggunakannya. Tidak ada yang diperlukan; mendeklarasikan satu hanya menyematkan tipenya, jadi tags yang ditulis sebagai string yang dipisahkan koma akan ditandai."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "Shell untuk sesi ini tidak pernah dimulai."
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "Folder milik keterampilan itu sendiri — sumber tempat lokasi lain menyalin atau menaut"
@@ -13798,6 +13802,22 @@ msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi p
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi menghapusnya akan memutuskan keduanya."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "Layanan latar belakang terminal tidak berjalan."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "Layanan latar belakang terminal berhenti sebelum shell sempat dimulai."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "Terminal tidak dapat menjalankan perintah ini di shell yang dikonfigurasi."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "Terminal tidak dapat dimulai."
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14375,6 +14395,10 @@ msgstr "Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "Templat ini berada di folder induk — menghapusnya memengaruhi setiap folder di bawahnya yang tidak menentukan versinya sendiri."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "Sesi terminal ini sudah tidak tersedia."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "Tema ini tidak dapat digunakan sampai berkasnya diperbaiki."
@@ -14587,6 +14611,7 @@ msgstr "Coba sebuah prompt"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Coba lagi"

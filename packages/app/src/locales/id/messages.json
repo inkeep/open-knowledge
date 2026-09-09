@@ -279,6 +279,7 @@
     "2wTb8w": ["Siapkan di halamannya sendiri di bawah Plugin."],
     "2wxgft": ["Ganti nama"],
     "2zvUIK": ["Tampilkan komentar ini di panel komentar"],
+    "3-1BY2": ["Sesi terminal ini sudah tidak tersedia."],
     "322lyb": ["Menyoroti tip, peringatan, dan catatan."],
     "32TTpa": ["Kirim surel ke dukungan tentang laporan ini"],
     "34qyH5": ["Server tidak dapat dihubungi"],
@@ -668,6 +669,7 @@
     "7Voget": ["Pilih ", ["name"]],
     "7WnfoD": ["Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."],
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
+    "7YJr6i": ["Shell untuk sesi ini tidak pernah dimulai."],
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -1199,6 +1201,7 @@
     "ENpRJV": ["Pratinjau tautan eksternal"],
     "EO4Dt1": ["Aktifkan ", ["file"]],
     "EOjU5V": ["Properti Matematika Sebaris"],
+    "EP-R3L": ["Terminal tidak dapat dimulai."],
     "EP8mZC": ["Ekspos dan mulai ulang"],
     "EPGePE": ["Diunggah sebagai \"", ["0"], "\" — nama \"", ["1"], "\" sudah dipakai."],
     "EPKVES": ["Perbarui \"", ["skillName"], "\" menimpa suntingan Anda?"],
@@ -1962,6 +1965,7 @@
     "NRSLBe": [["diffMin"], " mnt lalu"],
     "NSnIUP": ["Dua halaman (genap)"],
     "NUr4kz": ["Titik awal yang bisa dipakai ulang untuk dokumen baru di folder ini."],
+    "NVghPF": ["Terminal tidak dapat menjalankan perintah ini di shell yang dikonfigurasi."],
     "NY0p7s": ["Pengaktifan alat Open Knowledge dilewati. Utas ini berjalan tanpa alat itu."],
     "NYUhy5": ["Nama subfolder"],
     "NYn1cR": ["Memuat penyunting"],
@@ -3532,6 +3536,7 @@
       " tepercaya."
     ],
     "fqSfXY": ["Ganti"],
+    "frREUl": ["Layanan latar belakang terminal berhenti sebelum shell sempat dimulai."],
     "ft-BOm": ["Laporkan bug…"],
     "fuJZKk": ["Cari cabang"],
     "fvrHin": ["Tersedia di setiap proyek pada komputer ini. Tidak dibagikan lewat git."],
@@ -4384,6 +4389,7 @@
     "oCZkaG": ["Salin jalur"],
     "oJl7eO": ["Komponen tidak dikenal: ", ["componentName"], " — sumber bisa disunting di bawah"],
     "oKBnk5": ["Lebih banyak permintaan diblokir."],
+    "oLyLo6": ["Layanan latar belakang terminal tidak berjalan."],
     "oP-FQW": ["Gunakan jalur relatif di dalam skill"],
     "oPU_4D": ["Kirim saat agen sedang senggang"],
     "oQA-cA": ["Jalur lengkap"],

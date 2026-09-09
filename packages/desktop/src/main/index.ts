@@ -3691,7 +3691,10 @@ function registerIpcHandlers() {
     newPtyId: () => randomUUID(),
     setTimer: (cb, ms) => setTimeout(cb, ms),
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-    logger: { warn: (data) => getLogger('terminal').warn(data, 'unexpected pty-host message') },
+    logger: {
+      warn: (data) => getLogger('terminal').warn(data, String(data.event ?? 'terminal-manager')),
+    },
+    canSpawnAt: (projectRoot) => isTerminalConsented(projectRoot),
     recordShellExit,
     recordTerminalSession,
     recordConcurrentSessions,
@@ -3793,11 +3796,21 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'unknown-session' };
     }
-    return terminalManager.adoptSession({
+    const outcome = terminalManager.adoptSession({
+      start: req.start,
       windowId: win.id,
       ptyId: req.ptyId,
       webContents: win.webContents,
     });
+    if (!outcome.ok) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:pty:adopt',
+        reason: outcome.reason,
+        handler: 'adoptPty',
+      });
+    }
+    return outcome;
   });
   handle('ok:pty:set-meta', async (event, req) => {
     const win = BrowserWindow.fromWebContents(event.sender);

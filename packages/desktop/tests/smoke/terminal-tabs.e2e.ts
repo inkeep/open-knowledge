@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { launchDesktopApp } from './_helpers/launch-readiness';
+import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -92,20 +92,8 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   });
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const mode = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (mode === 'editor') {
-        page = p;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor', { capMs: 25_000 });
 }
 
 async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
@@ -196,6 +184,88 @@ test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
+
+  test('first and second tabs display their initial prompt without keyboard input', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('initial-prompts');
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    const expectPrompt = async () => {
+      await expect(visibleSection(page)).toBeVisible();
+      await expect
+        .poll(async () => (await readActiveText(page)).trim(), { timeout: 25_000 })
+        .not.toBe('');
+      await expect(visibleSection(page).getByTestId('terminal-starting-notice')).toHaveCount(0);
+    };
+    await clickViewTerminalItem(app);
+    await expectPrompt();
+    await openBareTerminalTab(page, expectPrompt);
+    await expect(terminalTabs(page)).toHaveCount(2);
+  });
+
+  test('no output arrives before the explicit start, and the initial prompt survives a late one', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('delayed-attach');
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await clickViewTerminalItem(app);
+    await expect(visibleSection(page)).toBeVisible();
+    await expect
+      .poll(async () => (await readActiveText(page)).trim(), { timeout: 25_000 })
+      .not.toBe('');
+    const output = await page.evaluate(async () => {
+      const bridge = window.okDesktop;
+      if (!bridge) throw new Error('missing desktop bridge');
+      const created = await bridge.terminal.create({ cols: 80, rows: 24 });
+      if (!created.ok) throw new Error(created.reason);
+      const beforeStart: string[] = [];
+      let onData = (data: string): void => {
+        beforeStart.push(data);
+      };
+      const unsubscribe = bridge.terminal.onData((message) => {
+        if (message.ptyId !== created.ptyId || message.data.length === 0) return;
+        bridge.terminal.drain(message.ptyId, message.data.length);
+        onData(message.data);
+      });
+      let unsubscribeExit = () => {};
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const started = await new Promise<string>((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('initial prompt did not arrive')), 15_000);
+          onData = resolve;
+          unsubscribeExit = bridge.terminal.onExit((message) => {
+            if (message.ptyId === created.ptyId) {
+              reject(
+                new Error(
+                  message.error ??
+                    (message.neverStarted
+                      ? 'shell never started'
+                      : `shell exited: ${message.exitCode}`),
+                ),
+              );
+            }
+          });
+          void bridge.terminal.start(created.ptyId).then((attached) => {
+            if (!attached.ok) reject(new Error(attached.reason));
+          }, reject);
+        });
+        return { beforeStart, started };
+      } finally {
+        clearTimeout(timer);
+        unsubscribe();
+        unsubscribeExit();
+        await bridge.terminal.kill(created.ptyId);
+      }
+    });
+    expect(output.beforeStart).toEqual([]);
+    expect(output.started).not.toBe('');
+  });
+
   test('a second tab spawns its own live shell (independent sessions)', async ({
     captureStderrFor,
   }) => {

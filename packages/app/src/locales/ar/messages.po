@@ -13775,6 +13775,10 @@ msgstr "سيقبل الخادم الطلبات الموجّهة إلى {0} دو�
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "أشكال title وdescription وresource وtags عند استخدامها. لا شيء مطلوب. الإعلان عن نوع واحد فقط، لذلك يتم وضع علامة على tags المكتوب كسلسلة مفصولة بفواصل."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "لم تبدأ الصدفة الخاصة بهذه الجلسة مطلقًا."
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "مجلد المهارة نفسه — المصدر الذي تنسخ منه المواقع الأخرى أو ترتبط به"
@@ -13802,6 +13806,22 @@ msgstr "يتشارك صفّا الطرفية وسطح المكتب لـ {label} 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "يتشارك صفّا الطرفية وسطح المكتب لـ {label} إعدادًا واحدًا، لذا فإن إزالته يقطع اتصال كليهما."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "خدمة الطرفية الخلفية ليست قيد التشغيل."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "توقفت خدمة الطرفية الخلفية قبل أن تتمكن الصدفة من البدء."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "تعذّر على الطرفية تشغيل هذا الأمر في الصدفة المُهيّأة."
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "تعذّر بدء الطرفية."
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14379,6 +14399,10 @@ msgstr "يحزم هذا المصدر عدة مهارات — اختر ما تر�
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "يعيش هذا القالب في مجلد أب — حذفه يؤثر في كل مجلد تحته لا يعرّف نسخته الخاصة."
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "لم تعد جلسة الطرفية هذه متاحة."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "لا يمكن استخدام هذه السمة حتى يُصلح الملف."
@@ -14591,6 +14615,7 @@ msgstr "جرّب موجّهًا"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "أعد المحاولة"

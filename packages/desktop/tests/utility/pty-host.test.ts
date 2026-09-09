@@ -1574,14 +1574,18 @@ describe('buildShellArgs Windows launch composition', () => {
       expect.objectContaining({
         type: 'spawn-error',
         ptyId: 'p1',
-        message: expect.stringMatching(/unsafe batch argument/),
+        launchFailure: 'unsafe-argument',
       }),
+    );
+    expect(h.posted).not.toContainEqual(
+      expect.objectContaining({ type: 'spawn-error', message: expect.any(String) }),
     );
     expect(warnings).toContainEqual(
       expect.objectContaining({
         event: 'pty-host-launch-compose-failed',
         platform: 'win32',
         rung: 'override',
+        launchFailure: 'unsafe-argument',
       }),
     );
 

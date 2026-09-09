@@ -13775,6 +13775,10 @@ msgstr "服务器将在没有内置身份验证的情况下接受对 {0} 的请�
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
 msgstr "使用 title、description、resource 和 tags 时的形状。不需要；声明一个仅固定其类型，因此标记为以逗号分隔的字符串形式编写的 tags 。"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "The shell for this session was never started."
+msgstr "此会话的 shell 从未启动。"
+
 #: src/components/SkillInstallMenu.tsx
 msgid "The skill's own folder — the source other locations copy or link from"
 msgstr "技能自己的文件夹——其他位置从这里复制或链接"
@@ -13802,6 +13806,22 @@ msgstr "{label} 的终端行和桌面行共用同一套设置，因此这里的�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
 msgstr "{label} 的终端行和桌面行共用同一套设置，因此移除它会同时断开两者。"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service isn't running."
+msgstr "终端后台服务未在运行。"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal background service stopped before the shell could start."
+msgstr "终端后台服务在 shell 启动前就已停止。"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal can't run this command in the configured shell."
+msgstr "终端无法在配置的 shell 中运行此命令。"
+
+#: src/components/TerminalExitNotice.tsx
+msgid "The terminal couldn't start."
+msgstr "终端无法启动。"
 
 #: src/components/TerminalGate.tsx
 msgid "The terminal is turned off for this project. Turn it back on to run commands here."
@@ -14379,6 +14399,10 @@ msgstr "这个来源包含多个技能——请选择要导入的那一个。"
 msgid "This template lives in a parent folder — deleting it affects every folder beneath it that doesn't define its own version."
 msgstr "这个模板位于上级文件夹中——删除它会影响下面所有没有定义自己版本的文件夹。"
 
+#: src/components/TerminalExitNotice.tsx
+msgid "This terminal session is no longer available."
+msgstr "该终端会话已不可用。"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This theme can’t be used until the file is fixed."
 msgstr "修复文件后才能使用此主题。"
@@ -14591,6 +14615,7 @@ msgstr "试试一段提示词"
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SlidesToolbarControls.tsx
+#: src/components/TerminalExitNotice.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "重试"

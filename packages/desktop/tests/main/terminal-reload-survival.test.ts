@@ -7,6 +7,7 @@ import {
 } from '../../src/main/terminal-manager.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
+import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
@@ -50,6 +51,7 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
   const forked: FakeUtility[] = [];
   let idn = 0;
   const mgr = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => {
       const u = new FakeUtility();
       forked.push(u);
@@ -121,14 +123,14 @@ describe('issue #351 — the terminal manager exposes a per-window live-session 
   test('enumerates the live sessions for a window and tracks their lifecycle', () => {
     const h = makeManager();
     const wc = makeWebContents();
-    const a = h.mgr.create({
+    const a = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: wc,
       projectRoot: PROJECT,
       cols: 80,
       rows: 24,
     });
-    const b = h.mgr.create({
+    const b = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: wc,
       projectRoot: PROJECT,
@@ -151,14 +153,14 @@ describe('issue #351 — the terminal manager exposes a per-window live-session 
 
   test("a separate window's sessions are not reported for this window", () => {
     const h = makeManager();
-    const a = h.mgr.create({
+    const a = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
       cols: 80,
       rows: 24,
     });
-    h.mgr.create({
+    createStartedTerminal(h.mgr, {
       windowId: 2,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -176,7 +178,7 @@ describe('issue #351 — the terminal manager exposes a per-window live-session 
 describe('issue #351 — re-adopting a surviving session is edge-correct across the reload gap', () => {
   test('a ptyId no longer live for the window is refused with unknown-session', () => {
     const h = makeManager();
-    h.mgr.create({
+    createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -195,7 +197,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('adopting a live session succeeds and clears its stale backpressure', () => {
     const h = makeManager();
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -223,7 +225,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('adopting a live session replays its pre-reload output into the reloaded renderer', () => {
     const h = makeManager();
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -253,7 +255,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('adoption retains the resolved Windows shell family for path escaping', () => {
     const h = makeManager();
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -278,7 +280,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('adoption retains a standing unsupported-shell capability notice', () => {
     const h = makeManager();
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -317,7 +319,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
       },
     });
     const deadRenderer = makeWebContents();
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: deadRenderer,
       projectRoot: PROJECT,
@@ -347,7 +349,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('the replay buffer is capped — oldest output is trimmed, the recent tail is kept', () => {
     const h = makeManager({ replayCapBytes: 10 });
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -376,7 +378,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
   test('a host that dies between the presence check and the resume post is refused and warned', () => {
     const warns: Record<string, unknown>[] = [];
     const h = makeManager({ logger: { warn: (o) => warns.push(o) } });
-    const created = h.mgr.create({
+    const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
@@ -396,7 +398,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
       ptyId: idLive,
       webContents: makeWebContents(),
     });
-    expect(outcome).toEqual({ ok: false, reason: 'unknown-session' });
+    expect(outcome).toEqual({ ok: false, reason: 'host-unavailable' });
     expect(warns).toHaveLength(1);
     expect(warns[0]).toMatchObject({
       event: 'terminal-manager-adopt-resume-failed',
@@ -408,14 +410,14 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('a ptyId belonging to another window is refused (no cross-window adoption)', () => {
     const h = makeManager();
-    const w1 = h.mgr.create({
+    const w1 = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
       cols: 80,
       rows: 24,
     });
-    h.mgr.create({
+    createStartedTerminal(h.mgr, {
       windowId: 2,
       webContents: makeWebContents(),
       projectRoot: PROJECT,

@@ -1,5 +1,6 @@
 import {
   isWindowsShellFamily,
+  isWindowsShellLaunchFailureReason,
   type TerminalLaunchCommand,
   type WindowsShellFamily,
 } from '@inkeep/open-knowledge-core';
@@ -9,12 +10,18 @@ import {
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   OkPtyAdoptResult,
+  OkPtyCreateResult,
+  OkPtyExit,
   OkPtyListEntry,
   OkPtyNotice,
   TerminalShellNoticeReason,
 } from '../shared/bridge-contract.ts';
 import type { SendableWebContents } from '../shared/ipc-send.ts';
-import type { PtyHostIncomingMessage, PtyHostOutgoingMessage } from '../utility/pty-host.ts';
+import type {
+  PtyCreateMessage,
+  PtyHostIncomingMessage,
+  PtyHostOutgoingMessage,
+} from '../utility/pty-host.ts';
 
 export interface PtyUtilityLike {
   postMessage(message: PtyHostIncomingMessage): void;
@@ -28,12 +35,10 @@ type TimerToken = unknown;
 export interface TerminalManagerDeps {
   forkPtyHost: () => PtyUtilityLike;
   sendData: (webContents: SendableWebContents, payload: { ptyId: string; data: string }) => void;
-  sendExit: (
-    webContents: SendableWebContents,
-    payload: { ptyId: string; exitCode: number; signal: number | null; error?: string },
-  ) => void;
+  sendExit: (webContents: SendableWebContents, payload: OkPtyExit) => void;
   sendNotice?: (webContents: SendableWebContents, payload: OkPtyNotice) => void;
   newPtyId: () => string;
+  canSpawnAt: (projectRoot: string) => boolean;
   setTimer: (cb: () => void, ms: number) => TimerToken;
   clearTimer: (token: TimerToken) => void;
   coalesceMs?: number;
@@ -64,19 +69,18 @@ interface TerminalAddressedRequest {
 }
 
 interface TerminalAdoptRequest {
+  start?: boolean;
   windowId: number;
   ptyId: string;
   webContents: SendableWebContents;
 }
 
-type CreateResult =
-  | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
-
 interface SessionState {
+  pendingCreate: PtyCreateMessage | null;
   outbound: string;
   replay: string;
   flushToken: TimerToken | null;
+  staleToken: TimerToken | null;
   pendingBytes: number;
   paused: boolean;
   commandRan: boolean;
@@ -101,6 +105,7 @@ const DEFAULT_HIGH_WATER = 1024 * 1024;
 const DEFAULT_LOW_WATER = 256 * 1024;
 const DEFAULT_REPLAY_CAP = 256 * 1024;
 const DEFAULT_SHUTDOWN_MS = 2000;
+const STALE_RESERVATION_WARN_MS = 30_000;
 
 export const DEFAULT_PTY_COLS = 80;
 export const DEFAULT_PTY_ROWS = 24;
@@ -120,7 +125,7 @@ function containsCommandSubmit(data: string): boolean {
 }
 
 export interface TerminalManager {
-  create(req: TerminalCreateRequest): CreateResult;
+  create(req: TerminalCreateRequest): OkPtyCreateResult;
   input(req: TerminalAddressedRequest & { data: string }): void;
   resize(req: TerminalAddressedRequest & { cols: number; rows: number }): void;
   kill(req: TerminalAddressedRequest): void;
@@ -205,17 +210,9 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     deps.sendData(handle.webContents, { ptyId, data });
   }
 
-  function pushExit(
-    handle: PtyWindowHandle,
-    payload: {
-      ptyId: string;
-      exitCode: number | undefined;
-      signal: number | null;
-      error?: string;
-    },
-  ): void {
+  function pushExit(handle: PtyWindowHandle, payload: OkPtyExit): void {
     if (handle.webContents.isDestroyed?.()) return;
-    deps.sendExit(handle.webContents, { ...payload, exitCode: payload.exitCode ?? -1 });
+    deps.sendExit(handle.webContents, payload);
   }
 
   function pushNotice(handle: PtyWindowHandle, payload: OkPtyNotice): void {
@@ -249,10 +246,14 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     session.flushToken = deps.setTimer(() => flushTick(windowId, ptyId), coalesceMs);
   }
 
-  function clearFlush(session: SessionState): void {
+  function clearSessionTimers(session: SessionState): void {
     if (session.flushToken !== null) {
       deps.clearTimer(session.flushToken);
       session.flushToken = null;
+    }
+    if (session.staleToken !== null) {
+      deps.clearTimer(session.staleToken);
+      session.staleToken = null;
     }
   }
 
@@ -269,7 +270,10 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
           ? (raw as PtyHostOutgoingMessage)
           : null;
       case 'spawn-error':
-        return typeof m.message === 'string' ? (raw as PtyHostOutgoingMessage) : null;
+        return (typeof m.message === 'string' && m.launchFailure === undefined) ||
+          (m.message === undefined && isWindowsShellLaunchFailureReason(m.launchFailure))
+          ? (raw as PtyHostOutgoingMessage)
+          : null;
       case 'shell-notice':
         return (m.notice === 'invalid-shell-override' && isTerminalShellNoticeReason(m.reason)) ||
           (m.notice === 'shell-resolved' && isWindowsShellFamily(m.shellFamily)) ||
@@ -286,7 +290,27 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     if (!handle) return;
     const message = asHostMessage(raw);
     if (!message) {
-      deps.logger?.warn({ event: 'pty-host-unexpected-message', windowId });
+      const m = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : null;
+      const rejectedPtyId =
+        typeof m?.ptyId === 'string' && m.ptyId.length > 0 ? m.ptyId : undefined;
+      const rejectedType = typeof m?.type === 'string' ? m.type : undefined;
+      const stranded =
+        rejectedType === 'spawn-error' && rejectedPtyId !== undefined
+          ? handle.sessions.get(rejectedPtyId)
+          : undefined;
+      deps.logger?.warn({
+        event: 'pty-host-unexpected-message',
+        windowId,
+        ...(rejectedPtyId === undefined ? {} : { ptyId: rejectedPtyId }),
+        ...(rejectedType === undefined ? {} : { rawType: rejectedType }),
+        reaped: stranded !== undefined,
+      });
+      if (rejectedPtyId !== undefined && stranded !== undefined) {
+        clearSessionTimers(stranded);
+        handle.sessions.delete(rejectedPtyId);
+        pushExit(handle, { ptyId: rejectedPtyId, neverStarted: true });
+        handle.utility.postMessage({ type: 'kill', ptyId: rejectedPtyId });
+      }
       return;
     }
     const session = handle.sessions.get(message.ptyId);
@@ -303,24 +327,36 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         break;
       case 'exit': {
         const { ptyId } = message;
-        clearFlush(session);
+        clearSessionTimers(session);
         deliver(handle, ptyId, session);
         maybeRecordSession(session);
         handle.sessions.delete(ptyId);
         deps.recordShellExit?.({ crashed: false });
         pushExit(handle, {
           ptyId,
-          exitCode: message.exitCode,
+          exitCode: message.exitCode ?? -1,
           signal: message.signal,
         });
         break;
       }
       case 'spawn-error': {
         const { ptyId } = message;
-        clearFlush(session);
+        clearSessionTimers(session);
         handle.sessions.delete(ptyId);
-        deps.recordShellExit?.({ crashed: true });
-        pushExit(handle, { ptyId, exitCode: 1, signal: null, error: message.message });
+        deps.logger?.warn({
+          event: 'terminal-manager-spawn-error',
+          windowId,
+          ptyId,
+          ...(message.launchFailure === undefined
+            ? { message: message.message }
+            : { launchFailure: message.launchFailure }),
+        });
+        pushExit(
+          handle,
+          message.launchFailure === undefined
+            ? { ptyId, error: message.message, neverStarted: true }
+            : { ptyId, launchFailure: message.launchFailure, neverStarted: true },
+        );
         break;
       }
       case 'shell-notice':
@@ -355,20 +391,26 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     finishHostShutdown(handle);
     if (handles.get(windowId) !== handle) return;
     handles.delete(windowId);
+    deps.logger?.warn({
+      event: 'terminal-manager-host-exited',
+      windowId,
+      code,
+      sessions: handle.sessions.size,
+      reserved: [...handle.sessions.values()].filter((s) => s.pendingCreate !== null).length,
+    });
     for (const [ptyId, session] of handle.sessions) {
-      clearFlush(session);
+      clearSessionTimers(session);
       if (session.outbound.length > 0) {
         pushData(handle, ptyId, session.outbound);
         session.outbound = '';
       }
-      maybeRecordSession(session);
-      deps.recordShellExit?.({ crashed: true });
-      pushExit(handle, {
-        ptyId,
-        exitCode: code ?? 1,
-        signal: null,
-        error: 'terminal host exited',
-      });
+      if (session.pendingCreate !== null) {
+        pushExit(handle, { ptyId, neverStarted: true, hostExited: true });
+      } else {
+        maybeRecordSession(session);
+        deps.recordShellExit?.({ crashed: true });
+        pushExit(handle, { ptyId, exitCode: code ?? 1, signal: null, hostExited: true });
+      }
     }
     handle.sessions.clear();
   }
@@ -401,7 +443,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
   }
 
   return {
-    create(req): CreateResult {
+    create(req): OkPtyCreateResult {
       if (req.projectRoot === null) return { ok: false, reason: 'no-project' };
       const handle = ensureHandle(req);
       const ptyId = deps.newPtyId();
@@ -409,7 +451,19 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         handle.sessions.size === 0
           ? 0
           : Math.max(...[...handle.sessions.values()].map((s) => s.order)) + 1;
-      handle.sessions.set(ptyId, {
+      const session: SessionState = {
+        pendingCreate: {
+          type: 'create',
+          ptyId,
+          cwd: req.projectRoot,
+          cols: req.cols,
+          rows: req.rows,
+          ...(req.shell === undefined ? {} : { shell: req.shell }),
+          ...(req.shellInvalidReason === undefined
+            ? {}
+            : { shellInvalidReason: req.shellInvalidReason }),
+          ...(req.launchCommand === undefined ? {} : { launchCommand: req.launchCommand }),
+        },
         outbound: '',
         replay: '',
         flushToken: null,
@@ -421,34 +475,40 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         order: nextOrder,
         shellFamily: null,
         shellNoticeReason: null,
-      });
-      deps.recordConcurrentSessions?.({ count: handle.sessions.size });
-      handle.utility.postMessage({
-        type: 'create',
-        ptyId,
-        cwd: req.projectRoot,
-        cols: req.cols,
-        rows: req.rows,
-        ...(req.shell === undefined ? {} : { shell: req.shell }),
-        ...(req.shellInvalidReason === undefined
-          ? {}
-          : { shellInvalidReason: req.shellInvalidReason }),
-        ...(req.launchCommand === undefined ? {} : { launchCommand: req.launchCommand }),
-      });
+        staleToken: null,
+      };
+      session.staleToken = deps.setTimer(() => {
+        const live = handles.get(req.windowId)?.sessions.get(ptyId);
+        if (live === undefined || live.staleToken === null) return;
+        live.staleToken = null;
+        if (live.pendingCreate === null) return;
+        deps.logger?.warn({
+          event: 'terminal-manager-stale-reservation',
+          windowId: req.windowId,
+          ptyId,
+        });
+      }, STALE_RESERVATION_WARN_MS);
+      handle.sessions.set(ptyId, session);
       return { ok: true, ptyId };
     },
 
     input(req): void {
       const handle = handles.get(req.windowId);
       const session = handle?.sessions.get(req.ptyId);
-      if (!handle || !session) return;
+      if (!handle || !session || session.pendingCreate !== null) return;
       if (!session.commandRan && containsCommandSubmit(req.data)) session.commandRan = true;
       handle.utility.postMessage({ type: 'input', ptyId: req.ptyId, data: req.data });
     },
 
     resize(req): void {
       const handle = handles.get(req.windowId);
-      if (!handle?.sessions.has(req.ptyId)) return;
+      const session = handle?.sessions.get(req.ptyId);
+      if (!handle || !session) return;
+      if (session.pendingCreate !== null) {
+        session.pendingCreate.cols = req.cols;
+        session.pendingCreate.rows = req.rows;
+        return;
+      }
       handle.utility.postMessage({
         type: 'resize',
         ptyId: req.ptyId,
@@ -459,7 +519,13 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
 
     kill(req): void {
       const handle = handles.get(req.windowId);
-      if (!handle?.sessions.has(req.ptyId)) return;
+      const session = handle?.sessions.get(req.ptyId);
+      if (!handle || !session) return;
+      if (session.pendingCreate !== null) {
+        clearSessionTimers(session);
+        handle.sessions.delete(req.ptyId);
+        return;
+      }
       handle.utility.postMessage({ type: 'kill', ptyId: req.ptyId });
     },
 
@@ -478,6 +544,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const handle = handles.get(windowId);
       if (!handle) return [];
       return [...handle.sessions.entries()]
+        .filter(([, session]) => session.pendingCreate === null)
         .sort((a, b) => a[1].order - b[1].order)
         .map(([ptyId, session]) => ({
           ptyId,
@@ -512,7 +579,47 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const handle = handles.get(req.windowId);
       const session = handle?.sessions.get(req.ptyId);
       if (!handle || !session) return { ok: false, reason: 'unknown-session' };
-      clearFlush(session);
+      if (session.pendingCreate !== null) {
+        if (!req.start) {
+          deps.logger?.warn({
+            event: 'terminal-manager-adopt-unstarted-reservation',
+            windowId: req.windowId,
+            ptyId: req.ptyId,
+          });
+          return { ok: false, reason: 'not-started' };
+        }
+        const message = session.pendingCreate;
+        if (!deps.canSpawnAt(message.cwd)) {
+          clearSessionTimers(session);
+          handle.sessions.delete(req.ptyId);
+          deps.logger?.warn({
+            event: 'terminal-manager-start-refused',
+            windowId: req.windowId,
+            ptyId: req.ptyId,
+          });
+          return { ok: false, reason: 'not-consented' };
+        }
+        handle.webContents = req.webContents;
+        session.pendingCreate = null;
+        clearSessionTimers(session);
+        const liveCount = [...handle.sessions.values()].filter(
+          (live) => live.pendingCreate === null,
+        ).length;
+        // STOP: post and return in the same tick; TerminalPanel installs its readiness scanner after this reply, so an await below would let the shell's first output outrun it.
+        try {
+          handle.utility.postMessage(message);
+        } catch (err) {
+          handle.sessions.delete(req.ptyId);
+          warnPostFailed('terminal-manager-start-failed', err, {
+            windowId: req.windowId,
+            ptyId: req.ptyId,
+          });
+          return { ok: false, reason: 'host-unavailable' };
+        }
+        deps.recordConcurrentSessions?.({ count: liveCount });
+        return { ok: true, replay: '' };
+      }
+      clearSessionTimers(session);
       session.outbound = '';
       session.pendingBytes = 0;
       session.paused = false;
@@ -523,7 +630,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
           windowId: req.windowId,
           ptyId: req.ptyId,
         });
-        return { ok: false, reason: 'unknown-session' };
+        return { ok: false, reason: 'host-unavailable' };
       }
       handle.webContents = req.webContents;
       return {
@@ -539,21 +646,29 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     killForWindow(windowId): void {
       const handle = handles.get(windowId);
       if (!handle) return;
+      let reserved = 0;
       for (const session of handle.sessions.values()) {
-        clearFlush(session);
+        clearSessionTimers(session);
         maybeRecordSession(session);
+        if (session.pendingCreate !== null) reserved += 1;
       }
+      if (reserved > 0)
+        deps.logger?.warn({ event: 'terminal-manager-reaped-reservations', windowId, reserved });
       handles.delete(windowId);
       void beginHostShutdown(handle);
     },
 
     async killAll(): Promise<void> {
       const shutdowns: Promise<void>[] = [];
-      for (const handle of handles.values()) {
+      for (const [windowId, handle] of handles) {
+        let reserved = 0;
         for (const session of handle.sessions.values()) {
-          clearFlush(session);
+          clearSessionTimers(session);
           maybeRecordSession(session);
+          if (session.pendingCreate !== null) reserved += 1;
         }
+        if (reserved > 0)
+          deps.logger?.warn({ event: 'terminal-manager-reaped-reservations', windowId, reserved });
         shutdowns.push(beginHostShutdown(handle));
       }
       handles.clear();

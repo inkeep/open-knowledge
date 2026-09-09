@@ -128,6 +128,12 @@ function makeBridge(
         replay: '',
       }),
     ),
+    start: vi.fn(
+      async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
+        ok: true,
+        replay: '',
+      }),
+    ),
     onData: vi.fn((cb: (m: OkPtyData) => void) => {
       dataSubs.push(cb);
       return vi.fn(() => {});
@@ -695,7 +701,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       />,
     );
 
-    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('surv-1'));
     await act(async () => {
       await Promise.resolve();
     });
@@ -705,13 +711,8 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 
   test('a FAILED adoption (survivor gone) falls through to a plain shell — does NOT re-bake the launch', async () => {
     const { bridge, terminal } = makeBridge(WIRED);
-    terminal.adopt = vi.fn(
-      async (): Promise<{ ok: true; replay: string } | { ok: false; reason: string }> => ({
-        ok: false,
-        reason: 'unknown-session',
-      }),
-    );
-    render(
+    terminal.adopt.mockResolvedValueOnce({ ok: false, reason: 'unknown-session' });
+    const { container } = render(
       <TerminalPanel
         bridge={bridge}
         adoptPtyId="surv-gone"
@@ -719,10 +720,13 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
       />,
     );
 
-    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('surv-gone'));
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(container.querySelector('[data-terminal-status="running"]')).not.toBeNull(),
+    );
     expect(bakedLaunch(terminal.create)).toBeUndefined();
-    expect(launchInputWrites(terminal.input)).toEqual([]);
+    expect(terminal.input).not.toHaveBeenCalled();
   });
 });
 

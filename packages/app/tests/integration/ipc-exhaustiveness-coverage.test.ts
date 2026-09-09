@@ -34,6 +34,18 @@ const REGISTRY: readonly DuRegistration[] = [
     variantLabels: new Set(['invalid-path', 'not-installed', 'timeout', 'spawn-error']),
     uniqueLabels: new Set(['spawn-error', 'not-installed']),
   },
+  {
+    name: 'OkPtyAdoptReason',
+    helper: 'assertNeverPtyAdoptReason',
+    variantLabels: new Set(['unknown-session', 'not-started', 'not-consented', 'host-unavailable']),
+    uniqueLabels: new Set(['unknown-session', 'not-started', 'host-unavailable']),
+  },
+  {
+    name: 'OkPtyCreateReason',
+    helper: 'assertNeverPtyCreateReason',
+    variantLabels: new Set(['no-project', 'not-consented']),
+    uniqueLabels: new Set(['no-project']),
+  },
 ];
 
 export const IPC_EXHAUSTIVENESS_OPT_OUT_LIMIT = 2;

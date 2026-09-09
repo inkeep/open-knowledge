@@ -319,6 +319,7 @@
     "2wTb8w": ["Configúralo en su propia página, bajo Complementos."],
     "2wxgft": ["Renombrar"],
     "2zvUIK": ["Mostrar estos comentarios en el panel de comentarios"],
+    "3-1BY2": ["Esta sesión de terminal ya no está disponible."],
     "322lyb": ["Resalta consejos, advertencias y notas."],
     "32TTpa": ["Escribir a soporte sobre este informe"],
     "34qyH5": ["No se pudo contactar con el servidor"],
@@ -785,6 +786,7 @@
       "Este informe ya va en camino. Su resultado aparecerá en el historial de informes de error."
     ],
     "7Y9yTo": ["Se creó ", ["owner"], "/", ["name"], ", pero falló el envío."],
+    "7YJr6i": ["El shell de esta sesión nunca se inició."],
     "7YRrJ9": [
       "Disponible en la aplicación de escritorio de OpenKnowledge. Desde una terminal, usa<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
@@ -1415,6 +1417,7 @@
     "ENpRJV": ["Vista previa de enlaces externos"],
     "EO4Dt1": ["Activar ", ["file"]],
     "EOjU5V": ["Propiedades de la fórmula en línea"],
+    "EP-R3L": ["La terminal no pudo iniciarse."],
     "EP8mZC": ["Exponer y reiniciar"],
     "EPGePE": ["Se subió como \"", ["0"], "\": el nombre \"", ["1"], "\" ya estaba ocupado."],
     "EPKVES": ["¿Actualizar \"", ["skillName"], "\" sobre tus ediciones?"],
@@ -2271,6 +2274,7 @@
     "NRSLBe": ["hace ", ["diffMin"], " min"],
     "NSnIUP": ["Dos páginas (pares)"],
     "NUr4kz": ["Un punto de partida reutilizable para los documentos nuevos de esta carpeta."],
+    "NVghPF": ["La terminal no puede ejecutar este comando en el shell configurado."],
     "NY0p7s": [
       "Se omitió habilitar las herramientas de Open Knowledge. Este hilo funciona sin ellas."
     ],
@@ -4110,6 +4114,9 @@
       " de confianza."
     ],
     "fqSfXY": ["Reemplazar"],
+    "frREUl": [
+      "El servicio en segundo plano de la terminal se detuvo antes de que el shell pudiera iniciarse."
+    ],
     "ft-BOm": ["Informar de un error…"],
     "fuJZKk": ["Buscar ramas"],
     "fvrHin": ["Disponible en todos los proyectos de este equipo. No se comparte por git."],
@@ -5032,6 +5039,7 @@
     "oCZkaG": ["Copiar ruta"],
     "oJl7eO": ["Componente desconocido: ", ["componentName"], "; el código se puede editar abajo"],
     "oKBnk5": ["Se bloquearon más solicitudes."],
+    "oLyLo6": ["El servicio en segundo plano de la terminal no está en ejecución."],
     "oP-FQW": ["Usa una ruta relativa dentro de la habilidad"],
     "oPU_4D": ["Enviar cuando el agente esté libre"],
     "oQA-cA": ["Ruta completa"],

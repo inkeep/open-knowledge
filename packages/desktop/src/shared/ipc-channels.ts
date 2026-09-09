@@ -702,7 +702,7 @@ export interface RequestChannels {
     result: OkPtyListEntry[];
   };
   'ok:pty:adopt': {
-    args: [req: { ptyId: string }];
+    args: [req: { ptyId: string; start?: boolean }];
     result: OkPtyAdoptResult;
   };
   'ok:pty:set-meta': {

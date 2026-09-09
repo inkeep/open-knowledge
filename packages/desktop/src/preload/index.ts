@@ -787,7 +787,8 @@ const bridge: OkDesktopBridge = {
       invoke('ok:pty:drain', { ptyId, bytes }).catch(() => {});
     },
     list: () => invoke('ok:pty:list'),
-    adopt: (ptyId) => invoke('ok:pty:adopt', { ptyId }),
+    adopt: (ptyId, opts) => invoke('ok:pty:adopt', { ptyId, ...opts }),
+    start: (ptyId) => invoke('ok:pty:adopt', { ptyId, start: true }),
     setMeta: (ptyId, meta) => {
       invoke('ok:pty:set-meta', { ptyId, ...meta }).catch(() => {});
     },

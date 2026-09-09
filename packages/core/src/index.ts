@@ -719,6 +719,7 @@ export {
   type IpcChannelReason,
   type IpcChannelWithUrn,
   isWindowsShellFamily,
+  isWindowsShellLaunchFailureReason,
   type LintFixPromptInput,
   launchWithoutSupportFile,
   lookupUrnInRegistry,
@@ -744,6 +745,8 @@ export {
   type UrnIpcLookup,
   WINDOWS_SHELL_FAMILIES,
   type WindowsShellFamily,
+  WindowsShellLaunchError,
+  type WindowsShellLaunchFailureReason,
   withSkillPointer,
 } from './handoff/index.ts';
 export { asBcp47Tag, type Bcp47Tag, toBcp47Tags } from './i18n/bcp47.ts';
