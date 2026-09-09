@@ -127,6 +127,7 @@
       "!**/test-results",
       "!**/test-results-packaged",
       "!**/playwright-report",
+      "!**/playwright-report-json",
       "!**/next-env.d.ts",
       "!.claude",
       // .agents/skills, .codex/skills under public/open-knowledge/

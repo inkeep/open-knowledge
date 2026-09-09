@@ -84,7 +84,12 @@ export default defineConfig({
       // Playwright artifacts get the same treatment: a test run writing
       // playwright-report/index.html force-reloads every connected dev window
       // (including a live OK Desktop renderer), which can land blank.
-      ignored: ['**/content/**', '**/playwright-report/**', '**/test-results/**'],
+      ignored: [
+        '**/content/**',
+        '**/playwright-report/**',
+        '**/playwright-report-json/**',
+        '**/test-results/**',
+      ],
     },
   },
   build: {

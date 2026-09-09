@@ -119,7 +119,16 @@ export default defineConfig({
   // left to Playwright's shared-server default — see LOGICAL_CPUS_PER_WORKER.
   fullyParallel: true,
   workers: isCI ? 4 : resolveWorkerCount(availableParallelism()),
-  reporter: [['html', { open: 'never' }], ['list'], ...(isCI ? [['github'] as const] : [])],
+  reporter: [
+    ['html', { open: 'never' }],
+    ['list'],
+    ...(isCI
+      ? [
+          ['github'] as const,
+          ['json', { outputFile: 'playwright-report-json/results.json' }] as const,
+        ]
+      : []),
+  ],
   use: {
     // `baseURL` is populated by the worker-scoped fixture in
     // `tests/stress/_helpers/fixtures.ts`. Leaving it unset here so the
