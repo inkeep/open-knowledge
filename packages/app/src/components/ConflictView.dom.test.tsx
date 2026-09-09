@@ -5,6 +5,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import axe from 'axe-core';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { documentScrollports } from '@/editor/document-scrollports';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -545,5 +546,25 @@ describe('ConflictView — word-level highlighting inside conflicts', () => {
 
   test('is off while the base section is shown', async () => {
     expect(await spanCount(2, true)).toBe(0);
+  });
+});
+
+describe('ConflictView scroll compensation', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  test('the conflict scroller is enumerated by the Ask AI composer scroll compensator', async () => {
+    await renderConflictView();
+
+    const scroller = document.querySelector('.conflict-view');
+    expect(scroller).not.toBeNull();
+    expect(
+      documentScrollports(),
+      'the composer re-clamps the scrollports `documentScrollports` returns, and it finds this ' +
+        'one by class name alone. Renaming the wrapper here drops a live inset surface from that ' +
+        'set, burying the last hunks and their inline Accept/Reject controls under the card with ' +
+        'every other test still green',
+    ).toContain(scroller);
   });
 });

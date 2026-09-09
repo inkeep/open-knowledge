@@ -2,6 +2,7 @@ import type { EditorView } from '@codemirror/view';
 import type { Editor } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
 import {
+  editingSurfaceFor,
   getSelectionStats,
   publishSelectionStats,
   selectionStatsFromSource,
@@ -137,5 +138,22 @@ describe('selectionStatsFromSource', () => {
       ]),
     );
     expect(stats?.words).toBe(2);
+  });
+});
+
+describe('editingSurfaceFor derives the editing surface from the document', () => {
+  test.each([
+    ['notes/example', 'wysiwyg', 'wysiwyg'],
+    ['notes/example', 'source', 'source'],
+    ['notes/example.md', 'wysiwyg', 'wysiwyg'],
+    ['notes/example.ts', 'wysiwyg', 'source'],
+    ['notes/example.ts', 'source', 'source'],
+    ['notes/data.json', 'wysiwyg', 'source'],
+    ['diagram.mmd', 'wysiwyg', 'wysiwyg'],
+    ['diagram.mmd', 'source', 'source'],
+    [null, 'wysiwyg', 'wysiwyg'],
+    [null, 'source', 'source'],
+  ] as const)('%s under the %s toggle edits on the %s surface', (docName, mode, expected) => {
+    expect(editingSurfaceFor(docName, mode)).toBe(expected);
   });
 });

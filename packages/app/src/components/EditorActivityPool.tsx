@@ -23,6 +23,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Spinner } from '@/components/ui/spinner';
 import { type PoolEntrySnapshot, useDocumentContext } from '@/editor/DocumentContext';
+import { DOCUMENT_SCROLL_HOST_CLASS } from '@/editor/document-scrollports';
 import { peekRenameSnapshot, setActivityMountList } from '@/editor/editor-cache';
 import { isSystemDoc } from '@/editor/is-system-doc';
 import { clearMountId, getMountId, setMountId } from '@/editor/mount-id-registry';
@@ -637,7 +638,7 @@ export function ScrollPreservingContainer({
       ref={ref}
       data-testid="editor-scroll-container"
       className={cn(
-        'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',
+        `${DOCUMENT_SCROLL_HOST_CLASS} subtle-scrollbar h-full overflow-y-auto`,
         isNoteWindow() || !hasToolbar ? 'pt-0 scroll-pt-0' : 'pt-14 scroll-pt-14',
       )}
       style={{ overflowAnchor: 'auto' }}

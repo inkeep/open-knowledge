@@ -51,6 +51,7 @@ import {
 import { FindReplaceController } from '@/editor/find-replace/FindReplaceController';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { mountPromiseHasResolved } from '@/editor/mount-promise';
+import { editingSurfaceFor } from '@/editor/selection-stats';
 import { syncPromiseHasResolved } from '@/editor/sync-promise';
 import {
   partitionFrontmatterProblems,
@@ -304,10 +305,8 @@ function EditorAreaInner({
   } = useDocumentContext();
   const { openDocumentTransition } = useDocumentTransition();
   const stats = useDocumentStats(activeProvider, activeDocName);
-  const selectionStats = useSelectionStats(
-    activeDocName,
-    editorMode === 'source' ? 'source' : 'wysiwyg',
-  );
+  const editingSurface = editingSurfaceFor(activeDocName, editorMode);
+  const selectionStats = useSelectionStats(activeDocName, editingSurface);
   const [everHadProvider, setEverHadProvider] = useState(false);
   useEffect(() => {
     if (activeProvider != null && !everHadProvider) setEverHadProvider(true);
@@ -1132,7 +1131,7 @@ function EditorAreaInner({
           {showBottomComposer ? (
             <BottomComposer
               docName={activeDocName}
-              surface={isSourceMode ? 'source' : 'wysiwyg'}
+              surface={editingSurface}
               dismissed={composerDismissed}
               onDismiss={() => setComposerDismissed(true)}
               onReopen={() => setComposerDismissed(false)}

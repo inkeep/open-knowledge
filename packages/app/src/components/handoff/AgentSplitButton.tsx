@@ -60,6 +60,7 @@ export function AgentSplitButton({
   menuLeading,
   onMenuOpenChange,
   menuAlign = 'end',
+  menuAttributes,
   triggerAriaLabel,
   testIds,
 }: {
@@ -77,6 +78,7 @@ export function AgentSplitButton({
   menuLeading?: ReactNode;
   onMenuOpenChange?: (open: boolean) => void;
   menuAlign?: 'start' | 'end';
+  menuAttributes?: Readonly<{ 'data-composer-portal'?: string }>;
   triggerAriaLabel: string;
   testIds: AgentSplitButtonTestIds;
 }) {
@@ -117,6 +119,7 @@ export function AgentSplitButton({
           align={menuAlign}
           className="max-h-80 min-w-[200px]"
           data-testid={testIds.menu}
+          {...menuAttributes}
         >
           {}
           {menuLeading ? (

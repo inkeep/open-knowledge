@@ -240,6 +240,7 @@ vi.doMock('@/comments/comment-chips', async () => {
 
 const FIRST_SUGGESTION = /Research the extinction of flightless birds/i;
 const DEFAULT_AGENT_NAME = VISIBLE_TARGETS[0]?.displayName;
+const EXPECTED_COMPOSER_POPUP_LABELS = ['composer-mention', 'composer-slash'] as const;
 
 const ALL_INSTALLED: Record<string, { installed: boolean | null }> = {
   'claude-cowork': { installed: false },
@@ -571,6 +572,22 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
 
     await waitFor(() => expect(dispatchCalls).toHaveLength(1));
     expect(dispatchCalls[0]?.target).toBe('codex');
+  });
+
+  test('the agent menu carries the marker the scroll clamp treats as composer-owned', async () => {
+    const user = userEvent.setup();
+    await renderComposer();
+
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    const menu = await screen.findByTestId('ask-ai-agent-menu');
+
+    expect(
+      menu.closest('[data-composer-portal]'),
+      'the menu is a Radix popper that renders outside the card, so the clamp cannot recognise ' +
+        'it by containment and matches this marker instead. Matching the generic ' +
+        '[data-radix-popper-content-wrapper] instead would exempt every popper in the app, so the ' +
+        "composer's own menu has to be marked at the call site",
+    ).not.toBeNull();
   });
 
   test('picking an in-app agent launches a thread and persists the choice', async () => {
@@ -1329,5 +1346,323 @@ describe('BottomComposer (queued-comments chip lifecycle)', () => {
     selectedCommentCount = 2;
     act(() => emitCommentPostedForTest());
     expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
+  });
+});
+
+describe('BottomComposer (end-of-document scroll compensation)', () => {
+  const planted: HTMLElement[] = [];
+
+  function plantScrollport(scrollTop: number): { el: HTMLElement; writes: number[] } {
+    const el = document.createElement('div');
+    el.className = 'editor-doc-scroll';
+    const writes: number[] = [];
+    let current = scrollTop;
+    Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(el, 'clientHeight', { value: 600, configurable: true });
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => current,
+      set: (next: number) => {
+        current = next;
+        writes.push(next);
+      },
+    });
+    document.body.appendChild(el);
+    planted.push(el);
+    return { el, writes };
+  }
+
+  function plantPortal(attributes: Record<string, string>): HTMLElement {
+    const portal = document.createElement('div');
+    for (const [name, value] of Object.entries(attributes)) portal.setAttribute(name, value);
+    const row = document.createElement('button');
+    row.type = 'button';
+    portal.appendChild(row);
+    document.body.appendChild(portal);
+    planted.push(portal);
+    return row;
+  }
+
+  let nowSpy: ReturnType<typeof vi.spyOn> | null = null;
+
+  const nextFrame = () =>
+    act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+
+  beforeEach(() => {
+    nowSpy = vi.spyOn(performance, 'now').mockReturnValue(0);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    nowSpy?.mockRestore();
+    nowSpy = null;
+    for (const el of planted.splice(0)) el.remove();
+  });
+
+  test('clamps only the scrollport the reader had already parked at its end', async () => {
+    const nearEnd = plantScrollport(380);
+    const midDocument = plantScrollport(100);
+
+    await renderComposer();
+    await nextFrame();
+
+    expect(
+      nearEnd.writes,
+      'a reader already at the end of the document has to be carried down as the card grows, ' +
+        'which is the whole compensation this component performs',
+    ).not.toHaveLength(0);
+    expect(
+      nearEnd.el.scrollTop,
+      'the clamp target is `scrollHeight - clientHeight`, 1000 - 600 here, and the reader started ' +
+        'at 380 — inside the 40px slack but not at the end. Writing back the position already ' +
+        'held under-clamps by the difference, which the e2e oracle tolerates up to the resting ' +
+        'clearance',
+    ).toBe(400);
+    expect(
+      midDocument.writes,
+      'a scrollport parked mid-document must be left alone. Dropping the pinned filter turns ' +
+        'every composer resize into a scroll-jack to the end of every enumerated surface',
+    ).toHaveLength(0);
+  });
+
+  test('stops clamping once the 300ms compensation budget is spent', async () => {
+    const atEnd = plantScrollport(380);
+
+    await renderComposer();
+    await nextFrame();
+    const beforeDeadline = atEnd.writes.length;
+    expect(beforeDeadline).not.toBe(0);
+
+    nowSpy?.mockReturnValue(301);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      atEnd.writes.length,
+      'without the elapsed-time exit the compensator stops being a burst that tracks one card ' +
+        'resize and becomes a permanent clamp, holding every pinned scrollport at its end for the ' +
+        'life of the mount and fighting every programmatic scroll that fires none of the four ' +
+        'cancel events — CodeMirror reveal, outline navigation, find-jump, scroll restore',
+    ).toBe(beforeDeadline);
+  });
+
+  const CANCEL_EVENTS = [
+    ['keydown', (target: HTMLElement) => fireEvent.keyDown(target, { key: 'PageUp' })],
+    ['mousedown', (target: HTMLElement) => fireEvent.mouseDown(target)],
+    ['wheel', (target: HTMLElement) => fireEvent.wheel(target, { deltaY: 64 })],
+    ['touchstart', (target: HTMLElement) => fireEvent.touchStart(target)],
+  ] as const;
+
+  test.each(CANCEL_EVENTS)(
+    'a %s outside the card cancels the clamp, one inside it does not',
+    async (eventName, fire) => {
+      const atEnd = plantScrollport(400);
+
+      await renderComposer();
+      await nextFrame();
+      const beforeInside = atEnd.writes.length;
+      expect(beforeInside).not.toBe(0);
+
+      fire(getInput());
+      await nextFrame();
+      expect(
+        atEnd.writes.length,
+        `driving the composer is what grows the card, so a ${eventName} inside it must not stop ` +
+          'the clamp that tracks the growth',
+      ).toBeGreaterThan(beforeInside);
+
+      const beforeOutside = atEnd.writes.length;
+      fire(document.body);
+      await nextFrame();
+      await nextFrame();
+      expect(
+        atEnd.writes.length,
+        `a ${eventName} outside the card is the reader taking over the scroll, so without it in ` +
+          'the cancel set the clamp fights them for the rest of its 300ms budget',
+      ).toBe(beforeOutside);
+    },
+  );
+
+  test.each(CANCEL_EVENTS)(
+    'a %s in a composer-owned portal keeps the clamp, the same event in a document popup cancels it',
+    async (eventName, fire) => {
+      const atEnd = plantScrollport(400);
+      const composerPortalRow = plantPortal({
+        'data-radix-popper-content-wrapper': '',
+        'data-composer-portal': '',
+      });
+      const documentPopupRow = plantPortal({ 'data-suggestion-popup': 'tag-suggestion' });
+
+      await renderComposer();
+      await nextFrame();
+      const beforePortal = atEnd.writes.length;
+      expect(beforePortal).not.toBe(0);
+
+      fire(composerPortalRow);
+      await nextFrame();
+      expect(
+        atEnd.writes.length,
+        `the composer's own agent menu is portalled out of the card, so a ${eventName} inside it ` +
+          'is still the author driving the composer and must not stop the clamp that tracks the ' +
+          'growth that click causes',
+      ).toBeGreaterThan(beforePortal);
+
+      const beforeDocumentPopup = atEnd.writes.length;
+      fire(documentPopupRow);
+      await nextFrame();
+      await nextFrame();
+      expect(
+        atEnd.writes.length,
+        `a ${eventName} in the document body's own tag/slash/wiki-link popup is the reader ` +
+          'working in the document, not in the composer. Matching bare [data-suggestion-popup] ' +
+          'or bare [data-radix-popper-content-wrapper] exempts every popup and every Radix ' +
+          'surface in the app, so the clamp keeps forcing pinned scrollports to their end while ' +
+          'the reader interacts with something else entirely',
+      ).toBe(beforeDocumentPopup);
+    },
+  );
+
+  test('the composer portal exemption covers exactly the popups the composer owns', async () => {
+    const { COMPOSER_SUGGESTION_POPUP_LABELS } = await import('./BottomComposer');
+    expect(
+      [...COMPOSER_SUGGESTION_POPUP_LABELS].toSorted(),
+      'this list is the whole definition of which suggestion popups the clamp treats as the ' +
+        "author's own surface. Dropping a member silently reclassifies a popup the composer owns " +
+        'as a foreign surface, so picking a row in it cancels the clamp and drops the last line ' +
+        'back under the growing card. The per-label cases below also cover that direction. Each ' +
+        'row still plants its own popup, so dropping a member from production reds there too. ' +
+        'What only this equality catches is production growing past this expectation, which then ' +
+        'gets no case of its own, and this expectation shrinking below production. An edit that ' +
+        'drops a label from both lists at once is invisible to both, which is why membership ' +
+        'stays a judgment call',
+    ).toEqual([...EXPECTED_COMPOSER_POPUP_LABELS].toSorted());
+  });
+
+  test.each(EXPECTED_COMPOSER_POPUP_LABELS)(
+    'a mousedown in the %s popup keeps the clamp, because the composer owns that popup',
+    async (label) => {
+      const atEnd = plantScrollport(400);
+      const composerPopupRow = plantPortal({ 'data-suggestion-popup': label });
+
+      await renderComposer();
+      await nextFrame();
+      const before = atEnd.writes.length;
+      expect(before).not.toBe(0);
+
+      fireEvent.mouseDown(composerPopupRow);
+      await nextFrame();
+      await nextFrame();
+      expect(
+        atEnd.writes.length,
+        `the ${label} popup is the composer's own suggestion menu, portalled to the body rather ` +
+          'than nested in the card, so picking a row in it is the author driving the composer. ' +
+          'A selector fragment that no longer matches this label silently reclassifies a popup ' +
+          'the composer owns as a foreign surface and cancels the clamp on the click that grows ' +
+          'the card',
+      ).toBeGreaterThan(before);
+    },
+  );
+
+  test('a dep change mid-burst supersedes the in-flight clamp instead of stacking a second loop on it', async () => {
+    const atEnd = plantScrollport(400);
+    const { BottomComposer } = await import('./BottomComposer');
+    const { rerender } = await renderComposer();
+    await nextFrame();
+    expect(atEnd.writes.length).not.toBe(0);
+
+    rerender(<BottomComposer docName="notes" surface="wysiwyg" dismissed />);
+    await nextFrame();
+
+    const beforeSettleFrame = atEnd.writes.length;
+    await nextFrame();
+    expect(
+      atEnd.writes.length - beforeSettleFrame,
+      'React tears the old effect down before it sets the new one up, and the destructor runs a ' +
+        'settle pass for the collapsing card. If the disposal token lives inside the effect ' +
+        'callback the incoming run starts blind to that settle pass, so dismiss, reopen, a ' +
+        'markdown-mode toggle and a document switch each leave a second per-frame writer and a ' +
+        'second set of four window listeners on the same scrollport. The token has to outlive a ' +
+        'single effect run for the incoming run to supersede the outgoing one',
+    ).toBe(1);
+  });
+
+  test('unmounting supersedes the in-flight clamp instead of stacking a second loop on it', async () => {
+    const atEnd = plantScrollport(400);
+
+    const { unmount } = await renderComposer();
+    await nextFrame();
+    expect(atEnd.writes.length).not.toBe(0);
+
+    unmount();
+    await nextFrame();
+
+    const beforeSettleFrame = atEnd.writes.length;
+    await nextFrame();
+    expect(
+      atEnd.writes.length - beforeSettleFrame,
+      'the destructor runs a settle pass for the collapsing card, so it must first dispose the ' +
+        'burst it is replacing. Without a shared disposal token both loops keep writing, so every ' +
+        'unmount and every coalesced resize adds another window listener set and another writer ' +
+        'to the same scrollport',
+    ).toBe(1);
+
+    nowSpy?.mockReturnValue(301);
+    await nextFrame();
+    const afterDeadline = atEnd.writes.length;
+    await nextFrame();
+    expect(
+      atEnd.writes.length,
+      'the post-unmount settle pass is a burst like any other, so it has to stop writing at the ' +
+        'same 300ms deadline rather than owning the scrollport for the life of the page',
+    ).toBe(afterDeadline);
+  });
+
+  test('unmounting a dismissed composer releases the settle clamp instead of leaving it ownerless', async () => {
+    const atEnd = plantScrollport(400);
+    const { BottomComposer } = await import('./BottomComposer');
+    const { rerender, unmount } = await renderComposer();
+    await nextFrame();
+    rerender(<BottomComposer docName="notes" surface="wysiwyg" dismissed />);
+    await nextFrame();
+    unmount();
+    await nextFrame();
+    const afterUnmount = atEnd.writes.length;
+    await nextFrame();
+    await nextFrame();
+    expect(
+      atEnd.writes.length,
+      'the collapsed branch installs a clamp of its own, four window listeners, a per-frame ' +
+        'writer and a 400ms backstop, so unmounting out of it has to release the token. Without ' +
+        'a destructor the burst keeps pinning live document scrollports after the component is gone',
+    ).toBe(afterUnmount);
+  });
+
+  test('the 400ms backstop tears the clamp down when the elapsed-time deadline never arms', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const atEnd = plantScrollport(400);
+
+    await renderComposer();
+    await nextFrame();
+    expect(atEnd.writes.length).not.toBe(0);
+
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    const afterBackstop = atEnd.writes.length;
+    await nextFrame();
+    await nextFrame();
+    expect(
+      atEnd.writes.length,
+      'the elapsed-time deadline only arms once the clock advances, and a clock that never ' +
+        'advances is exactly the case where a frozen tab, a paused debugger or a machine that ' +
+        'stops painting leaves the burst alive. The 400ms timer is the wall-clock backstop that ' +
+        'ends it anyway, so without it the four window listeners and the per-frame writer outlive ' +
+        'the card resize they were installed for. This case holds performance.now at 0 so the ' +
+        'deadline arm cannot fire, and fakes only setTimeout and clearTimeout so that jsdom, ' +
+        'which drives requestAnimationFrame off setInterval, keeps producing real frames',
+    ).toBe(afterBackstop);
   });
 });

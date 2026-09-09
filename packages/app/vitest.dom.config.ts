@@ -2,7 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
 import { appVitestConfig } from './vitest.config';
 
-// Tier-3 DOM project: the `*.dom.test.tsx` React-runtime suite. A dedicated
+// Tier-3 DOM project: the `*.dom.test.ts?(x)` suite — `.tsx` mounts React,
+// `.ts` is the same jsdom tier for DOM-only tests. A dedicated
 // vitest project with the jsdom environment and per-file isolation, replacing
 // the invocation-scoped `bun test --isolate --preload ./tests/dom/jsdom-preload.ts`
 // chain the retired scripts/run-test-dom.sh carried. Everything else (lingui
@@ -44,7 +45,7 @@ export const appDomVitestConfig = {
     // `.tsx` mounts React; `.ts` is the same jsdom tier for DOM-only tests
     // that never render a component (shadow-root helpers, for instance).
     include: ['**/*.dom.test.ts?(x)'],
-    // The base config excludes `**/*.dom.test.tsx` so the unit tier stays
+    // The base config excludes `**/*.dom.test.ts?(x)` so the unit tier stays
     // no-DOM; this is the one project that runs them, so drop that single
     // exclusion while keeping node_modules / .spec / .e2e out.
     exclude: appVitestConfig.test.exclude.filter((pattern) => pattern !== '**/*.dom.test.ts?(x)'),

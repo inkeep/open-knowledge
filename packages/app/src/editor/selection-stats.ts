@@ -1,10 +1,19 @@
 import type { EditorView } from '@codemirror/view';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { computeSelectionStats, type DocumentStats } from '@/lib/document-stats';
+import type { EditorModeValue } from './use-editor-mode';
 
 export const SELECTION_STATS_DEBOUNCE_MS = 120;
 
 export type EditorSurface = 'wysiwyg' | 'source' | 'frontmatter';
+
+export function editingSurfaceFor(
+  docName: string | null,
+  editorMode: EditorModeValue,
+): EditorSurface {
+  return docName !== null && isEditableTextDocFile(docName) ? 'source' : editorMode;
+}
 
 const statsByDocSurface = new Map<string, DocumentStats>();
 const listeners = new Set<() => void>();

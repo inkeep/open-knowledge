@@ -22,6 +22,7 @@ import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 import { getSelectionContext, subscribeSelectionContext } from '@/editor/selection-context';
+import { editingSurfaceFor } from '@/editor/selection-stats';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
@@ -179,6 +180,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     useConfigContext();
 
   const { activeDocName, activeProvider } = useDocumentContext();
+  const editingSurface = editingSurfaceFor(activeDocName, editorMode);
 
   const autoSyncOnboardingVariant = resolveAutoSyncOnboarding({
     autoSyncOnboardingDismissed,
@@ -204,7 +206,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   function sendSelectionToTerminal(newTab: boolean, target?: 'agents'): boolean {
     if (activeDocName == null) return false;
-    const snapshot = getSelectionContext(activeDocName, editorMode);
+    const snapshot = getSelectionContext(activeDocName, editingSurface);
     const selectionMarkdown = snapshot?.markdown ?? '';
     if (selectionMarkdown.trim() === '') return false;
     const staged = `${composeTerminalSelectionPaste(activeDocName, selectionMarkdown)}\n\n`;
@@ -334,7 +336,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     let last: boolean | null = null;
     const publish = () => {
       const snapshot =
-        activeDocName === null ? null : getSelectionContext(activeDocName, editorMode);
+        activeDocName === null ? null : getSelectionContext(activeDocName, editingSurface);
       const hasEditorSelection = (snapshot?.markdown ?? '').trim() !== '';
       if (hasEditorSelection === last) return;
       last = hasEditorSelection;
@@ -343,7 +345,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     };
     publish();
     return subscribeSelectionContext(publish);
-  }, [activeDocName, editorMode]);
+  }, [activeDocName, editingSurface]);
 
   useEffect(() => {
     if (noteWindow) {

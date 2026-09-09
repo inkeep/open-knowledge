@@ -14,7 +14,7 @@ import {
   type OutlineNavDetail,
 } from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
-import { FULL_PAGE_CM_HOST_SELECTORS } from '@/globals-css.test-helper';
+import { FULL_PAGE_CM_HOST_SELECTORS } from '@/editor/document-scrollports';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';

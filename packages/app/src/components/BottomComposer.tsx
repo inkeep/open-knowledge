@@ -2,6 +2,7 @@
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
+import type { EditorView } from '@tiptap/pm/view';
 import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -38,6 +39,12 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import {
+  DOCUMENT_SCROLL_HOST_SELECTOR,
+  documentScrollports,
+  isPinnedToEnd,
+} from '@/editor/document-scrollports';
+import type { SuggestionPopupLabel } from '@/editor/extensions/suggestion-floating-ui';
 import { isScrollRestoreSuppressed } from '@/editor/scroll-restore-coordination';
 import {
   lightRenderMarkdownPreview,
@@ -47,6 +54,7 @@ import {
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
 import { useComposerAttachments } from '@/editor/use-composer-attachments';
+import { getEditorView } from '@/editor/utils/get-editor-view';
 import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
@@ -127,6 +135,28 @@ function useRotatingSuggestion(
   return { text: phrases[safeIndex] ?? '', visible };
 }
 
+const COMPOSER_PORTAL_ATTRIBUTE = 'data-composer-portal';
+const COMPOSER_PORTAL_ATTRIBUTES = { [COMPOSER_PORTAL_ATTRIBUTE]: '' } as const;
+export const COMPOSER_SUGGESTION_POPUP_LABELS = [
+  'composer-mention',
+  'composer-slash',
+] as const satisfies readonly SuggestionPopupLabel[];
+const COMPOSER_PORTAL_SELECTOR = [
+  ...COMPOSER_SUGGESTION_POPUP_LABELS.map((label) => `[data-suggestion-popup="${label}"]`),
+  `[${COMPOSER_PORTAL_ATTRIBUTE}]`,
+].join(',');
+
+function safeCaretCoords(
+  view: EditorView,
+  pos: number,
+): ReturnType<EditorView['coordsAtPos']> | null {
+  try {
+    return view.coordsAtPos(pos);
+  } catch {
+    return null;
+  }
+}
+
 export function BottomComposer({
   docName,
   surface,
@@ -164,6 +194,7 @@ export function BottomComposer({
     inputRef,
   );
   const cardRef = useRef<HTMLDivElement>(null);
+  const clampRef = useRef<(() => void) | null>(null);
 
   const [initialDraftDoc] = useState(() => getComposerDraft().doc ?? undefined);
 
@@ -186,56 +217,78 @@ export function BottomComposer({
   useEffect(() => {
     if (folderMode || docName == null) return;
     const root = document.documentElement;
+    let caretFrame: number | null = null;
     const followBottom = () => {
+      clampRef.current?.();
       if (isScrollRestoreSuppressed(docName)) return;
-      const pinned = [...document.querySelectorAll<HTMLElement>('.editor-doc-scroll')].filter(
-        (el) => {
-          const max = el.scrollHeight - el.clientHeight;
-          return max > 0 && el.scrollTop >= max - 40;
-        },
-      );
+      const pinned = documentScrollports().filter(isPinnedToEnd);
       if (pinned.length === 0) return;
       let cancelled = false;
-      const cancel = () => {
+      let frame: number | null = null;
+      let backstop: ReturnType<typeof setTimeout> | null = null;
+      const cancelIfOutsideCard = (event: Event) => {
+        const target = event.target as Node | null;
+        if (target === null) return;
+        if (cardRef.current?.contains(target)) return;
+        if (target instanceof Element && target.closest(COMPOSER_PORTAL_SELECTOR) !== null) return;
         cancelled = true;
       };
-      window.addEventListener('wheel', cancel, { passive: true });
-      window.addEventListener('touchstart', cancel, { passive: true });
+      const dispose = () => {
+        cancelled = true;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        if (backstop !== null) clearTimeout(backstop);
+        backstop = null;
+        window.removeEventListener('wheel', cancelIfOutsideCard);
+        window.removeEventListener('touchstart', cancelIfOutsideCard);
+        window.removeEventListener('mousedown', cancelIfOutsideCard);
+        window.removeEventListener('keydown', cancelIfOutsideCard);
+        if (clampRef.current === dispose) clampRef.current = null;
+      };
+      clampRef.current = dispose;
+      window.addEventListener('wheel', cancelIfOutsideCard, { passive: true });
+      window.addEventListener('touchstart', cancelIfOutsideCard, { passive: true });
+      window.addEventListener('mousedown', cancelIfOutsideCard);
+      window.addEventListener('keydown', cancelIfOutsideCard);
+      backstop = setTimeout(dispose, 400);
       const start = performance.now();
       const step = () => {
+        frame = null;
         if (isScrollRestoreSuppressed(docName)) cancelled = true;
         if (cancelled || performance.now() - start >= 300) {
-          window.removeEventListener('wheel', cancel);
-          window.removeEventListener('touchstart', cancel);
+          dispose();
           return;
         }
         for (const el of pinned) el.scrollTop = el.scrollHeight - el.clientHeight;
-        requestAnimationFrame(step);
+        frame = requestAnimationFrame(step);
       };
-      requestAnimationFrame(step);
+      frame = requestAnimationFrame(step);
     };
     const revealCaret = () => {
-      if (surface !== 'wysiwyg') return;
-      requestAnimationFrame(() => {
+      if (effectiveSurface !== 'wysiwyg') return;
+      caretFrame = requestAnimationFrame(() => {
+        caretFrame = null;
         if (isScrollRestoreSuppressed(docName)) return;
         const editor = getEditorForDoc(docName);
         const box = cardRef.current;
         if (!editor || editor.isDestroyed || !box) return;
-        try {
-          const view = editor.view;
-          const caret = view.coordsAtPos(editor.state.selection.head);
-          const overlap = caret.bottom - (box.getBoundingClientRect().top - 28);
-          if (overlap <= 0) return;
-          const scroller = view.dom.closest('.editor-doc-scroll');
-          if (scroller instanceof HTMLElement) scroller.scrollTop += overlap;
-        } catch {}
+        const view = getEditorView(editor);
+        if (!view) return;
+        const caret = safeCaretCoords(view, view.state.selection.head);
+        if (caret === null) return;
+        const overlap = caret.bottom - (box.getBoundingClientRect().top - 28);
+        if (overlap <= 0) return;
+        const scroller = view.dom.closest(DOCUMENT_SCROLL_HOST_SELECTOR);
+        if (scroller instanceof HTMLElement) scroller.scrollTop += overlap;
       });
     };
     const card = cardRef.current;
     if (dismissed || !card) {
       followBottom();
       root.style.removeProperty('--ask-composer-height');
-      return;
+      return () => {
+        clampRef.current?.();
+      };
     }
     const apply = () => {
       followBottom();
@@ -247,10 +300,12 @@ export function BottomComposer({
     observer.observe(card);
     return () => {
       observer.disconnect();
+      if (caretFrame !== null) cancelAnimationFrame(caretFrame);
+      caretFrame = null;
       followBottom();
       root.style.removeProperty('--ask-composer-height');
     };
-  }, [dismissed, surface, docName, folderMode]);
+  }, [dismissed, effectiveSurface, docName, folderMode]);
 
   const dismissedRef = useRef(dismissed);
   const onReopenRef = useRef(onReopen);
@@ -765,7 +820,7 @@ export function BottomComposer({
             </span>
             {selectionExpanded && pinnedPreview !== '' ? (
               <p
-                className="max-h-24 w-full basis-full overflow-y-auto whitespace-pre-wrap text-2xs text-muted-foreground/80 subtle-scrollbar"
+                className="max-h-24 w-full basis-full overflow-y-auto overscroll-contain whitespace-pre-wrap text-2xs text-muted-foreground/80 subtle-scrollbar"
                 data-testid="composer-selection-preview"
               >
                 {pinnedPreview}
@@ -836,7 +891,7 @@ export function BottomComposer({
             onMentionsChange={setInlineMentions}
             onSubmit={submit}
             initialDoc={initialDraftDoc}
-            className="max-h-[200px] overflow-y-auto text-base md:text-sm"
+            className="max-h-[200px] overflow-y-auto overscroll-contain text-base md:text-sm"
           />
           {}
           {isEmpty ? (
@@ -917,6 +972,7 @@ export function BottomComposer({
               )}
             </p>
           }
+          menuAttributes={COMPOSER_PORTAL_ATTRIBUTES}
           triggerAriaLabel={t`Choose agent`}
           testIds={{
             primary: 'ask-ai-send',

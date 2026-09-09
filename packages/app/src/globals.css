@@ -1121,11 +1121,19 @@
 }
 
 /* Ease the inset + composer entrance so collapsing/expanding glides instead of a
-   hard jump cut. The per-frame scroll re-clamp in BottomComposer keeps the bottom
-   pinned while the padding transition plays. `bottom` is included because the
-   composer's anchor tracks `--conflict-footer-height`, which flips between 0 and
-   the conflict footer's height when conflict mode mounts/unmounts. Reduced-motion
-   users get the instant change. */
+   hard jump cut. Only the `.editor-doc-scroll` content inset is eased. The host-route
+   inset (`[data-mermaid-doc-editor]`) steps in one frame because it pads a border box
+   that also carries the non-scrolling diagram pane, so easing it would animate the
+   diagram's viewport rather than a text inset. The conflict surface's
+   `.conflict-view diffs-container` is a content inset of the same shape as the eased
+   rule, so easing it would be structurally sound. It is left unanimated because that
+   surface has no measured geometry coverage, and an easing change there cannot be
+   verified against the re-clamp.
+   The per-frame scroll re-clamp in BottomComposer keeps the bottom pinned either
+   way. `bottom` is
+   included because the composer's anchor tracks `--conflict-footer-height`, which
+   flips between 0 and the conflict footer's height when conflict mode
+   mounts/unmounts. Reduced-motion users get the instant change. */
 @media (prefers-reduced-motion: no-preference) {
   .editor-doc-scroll :is(.ProseMirror, .cm-content) {
     transition: padding-bottom 240ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2761,10 +2769,16 @@ body[data-editor-tab-dragging] * {
    The `padding: 0` reset above ties on specificity with the shared
    `.editor-doc-scroll :is(.ProseMirror, .cm-content)` inset rule and, being
    later, zeroes it, so those surfaces' last lines would sit under the composer
-   while WYSIWYG clears. Both hosts scroll inside CodeMirror's own `.cm-scroller`
-   (each sets `height: 100%` on the editor), so the room has to come from padding
-   the CONTENT: padding the host would shrink the editor box, cutting the gutter
-   and the scrollbar off above the composer instead of running them behind it.
+   while WYSIWYG clears. `[data-text-doc-editor]` scrolls inside CodeMirror's own
+   `.cm-scroller`; `.source-editor` sits in a content-sized ancestor chain, so its
+   `height: 100%` resolves to auto and the outer `.editor-doc-scroll` is what
+   scrolls. Either way the room has to come from padding the CONTENT, for a
+   different reason per host: padding the text-doc host would shrink its own scroll
+   box, cutting the gutter and the scrollbar off above the composer instead of
+   running them behind it, and padding the source host would reserve the height a
+   second time on top of this rule (the EITHER/OR below), while still ending its
+   gutter above the card (that host paints no scrollbar of its own, since it is
+   not the scroll parent).
    `[data-mermaid-doc-editor]` takes the host route because the same wrapper also
    hosts its non-scrolling diagram pane. Its source mode knowingly ends the
    gutter and scrollbar above the composer, preserving one inset across that

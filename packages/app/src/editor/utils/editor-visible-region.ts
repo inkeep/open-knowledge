@@ -1,5 +1,6 @@
 import type { DetectOverflowOptions, MiddlewareState, ShiftOptions } from '@floating-ui/dom';
 import type { Editor } from '@tiptap/react';
+import { DOCUMENT_SCROLL_HOST_SELECTOR } from '@/editor/document-scrollports';
 import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { getEditorView } from './get-editor-view';
 
@@ -55,7 +56,7 @@ export function editorVisibleBand(editor: Editor): { top: number; bottom: number
 }
 
 function resolveRegionBoundary(editor: Editor): Element | null {
-  return getEditorView(editor)?.dom.closest('.editor-doc-scroll') ?? null;
+  return getEditorView(editor)?.dom.closest(DOCUMENT_SCROLL_HOST_SELECTOR) ?? null;
 }
 
 export const SELECTION_SURFACE_GAP_PX = 8;

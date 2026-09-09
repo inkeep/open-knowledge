@@ -4,7 +4,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { FULL_PAGE_CM_HOST_SELECTORS } from '@/globals-css.test-helper';
+import { FULL_PAGE_CM_HOST_SELECTORS } from '@/editor/document-scrollports';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
