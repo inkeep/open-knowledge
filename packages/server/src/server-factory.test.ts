@@ -30,6 +30,7 @@ import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
 import { updateGeneratedIndexGitAttributes } from './content/generated-index-git-attributes.ts';
 import { DerivedDocumentIndex } from './derived-document-index.ts';
+import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 import { classifyGitError } from './error-classification.ts';
 import { applyExternalChange } from './external-change.ts';
 import type {
@@ -52,6 +53,7 @@ import { createServer, type ServerInstance } from './server-factory.ts';
 import { releaseServerLock } from './server-lock.ts';
 import { initShadowRepo, shadowGit } from './shadow-repo.ts';
 import { TagIndex } from './tag-index.ts';
+import { contentHash } from './version-hash.ts';
 
 const watcherStartupFailures = vi.hoisted(() => ({ file: false, head: false }));
 
@@ -870,6 +872,48 @@ describe('createServer() degraded signal', () => {
       }
     } finally {
       await srv.destroy();
+    }
+  });
+
+  test('an .mdx conflict restored before any scan resolves to its .mdx file', async () => {
+    watcherStartupFailures.file = true;
+    _resetDocExtensionsForTests();
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const diskContent = 'bytes the editor tried to overwrite';
+    mkdirSync(join(testProjectDir, '.ok', LOCAL_DIR), { recursive: true });
+    writeFileSync(
+      join(testProjectDir, '.ok', LOCAL_DIR, 'stale-external-writes.json'),
+      JSON.stringify({
+        version: 1,
+        branches: {
+          main: [
+            {
+              docName: 'notes/guide',
+              acknowledgedContent: 'acknowledged',
+              displacedVersions: [],
+              staleExternalWrite: {
+                docName: 'notes/guide',
+                file: `${resolve(contentDir).slice(resolve(testProjectDir).length + 1)}/notes/guide.mdx`,
+                diskHash: contentHash(diskContent),
+                diskContent,
+                detectedAt: '2026-09-08T10:00:00.000Z',
+              },
+            },
+          ],
+        },
+      }),
+    );
+
+    const srv = createServer({ contentDir, projectDir: testProjectDir, quiet: true });
+    try {
+      await srv.ready;
+      expect(srv.degraded).toEqual(['file-watcher']);
+      expect(srv.durabilityState.getStaleExternalWrite('notes/guide')?.file).toMatch(
+        /notes\/guide\.mdx$/,
+      );
+    } finally {
+      await srv.destroy();
+      _resetDocExtensionsForTests();
     }
   });
 

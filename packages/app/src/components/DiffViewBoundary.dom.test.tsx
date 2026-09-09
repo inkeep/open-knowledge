@@ -1,3 +1,4 @@
+import { SyncResolveConflictRequestSchema } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -70,7 +71,7 @@ function strategyFetch(kind: ConflictKind, resolvePending?: Promise<unknown>) {
 
 function lastResolveBody(): { file?: string; strategy?: string } {
   const call = fetchCalls.find((c) => c.url === '/api/sync/resolve-conflict');
-  return JSON.parse(String(call?.init?.body ?? '{}'));
+  return SyncResolveConflictRequestSchema.parse(JSON.parse(String(call?.init?.body ?? '{}')));
 }
 
 describe('DiffViewBoundary (Tier-3 mount)', () => {
@@ -134,6 +135,209 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
 
     expect(screen.queryByText(/Couldn't load conflict content/i)).toBeNull();
   });
+
+  test('carries the stale-save kind from conflict content into the diff view', async () => {
+    globalThis.fetch = (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const body =
+        url === '/api/sync/conflicts'
+          ? { conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }] }
+          : {
+              file: 'foo.md',
+              base: '',
+              ours: 'Protected current version.\n',
+              theirs: 'Blocked older save.\n',
+              kind: 'both-modified',
+              conflictKind: 'stale-external-write',
+              lifecycleStatus: 'conflict',
+            };
+      return Promise.resolve(Response.json(body));
+    };
+    render(
+      <DiffViewBoundary docName="foo" provider={makeProvider('Protected current version.\n')} />,
+    );
+
+    const alert = await screen.findByRole('status');
+    expect(alert.textContent).toContain('Current is the version OpenKnowledge protected.');
+    expect(alert.textContent).toContain('Incoming is the restored version.');
+    expect(screen.queryByText(/No common ancestor/)).toBeNull();
+  });
+
+  test.each([undefined, 'git', 'future-conflict'])(
+    'diagnoses only an unrecognized conflict discriminator: %j',
+    async (conflictKind) => {
+      globalThis.fetch = (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        return Promise.resolve(
+          Response.json(
+            url === '/api/sync/conflicts'
+              ? { conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }] }
+              : {
+                  file: 'foo.md',
+                  base: 'Original content.\n',
+                  ours: 'Current content.\n',
+                  theirs: 'Incoming content.\n',
+                  kind: 'both-modified',
+                  conflictKind,
+                  lifecycleStatus: 'conflict',
+                },
+          ),
+        );
+      };
+      render(<DiffViewBoundary docName="foo" provider={makeProvider('Current content.\n')} />);
+      expect(await screen.findByRole('button', { name: /^Accept current/ })).toBeTruthy();
+      const diagnostics = consoleWarnSpy.mock.calls
+        .map(([message]) => JSON.parse(String(message)))
+        .filter((event) => event.event === 'conflict-discriminator-unrecognized');
+      expect(diagnostics).toEqual(
+        conflictKind === 'future-conflict'
+          ? [
+              {
+                event: 'conflict-discriminator-unrecognized',
+                file: 'foo.md',
+                receivedConflictKind: conflictKind,
+              },
+            ]
+          : [],
+      );
+    },
+  );
+
+  test.each([
+    {
+      conflictKind: 'stale-external-write',
+      ours: '',
+      theirs: 'Older content.\n',
+      choice: 'current',
+      strategy: 'content',
+      content: '',
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Current content.\n',
+      theirs: '',
+      choice: 'incoming',
+      strategy: 'theirs',
+      content: undefined,
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Current content.\n',
+      theirs: 'Older content.\n',
+      choice: 'current',
+      strategy: 'content',
+      content: 'Current content.\n',
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Current content.\n',
+      theirs: 'Older content.\n',
+      choice: 'incoming',
+      strategy: 'theirs',
+      content: undefined,
+    },
+    {
+      conflictKind: 'git',
+      ours: '',
+      theirs: 'Older content.\n',
+      choice: 'current',
+      strategy: 'content',
+      content: '',
+    },
+    {
+      conflictKind: 'git',
+      ours: 'Current content.\n',
+      theirs: '',
+      choice: 'incoming',
+      strategy: 'content',
+      content: '',
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: '',
+      theirs: '',
+      choice: 'current',
+      strategy: 'content',
+      content: '',
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: '',
+      theirs: '',
+      choice: 'incoming',
+      strategy: 'theirs',
+      content: undefined,
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Same content.\n',
+      theirs: 'Same content.\n',
+      choice: 'incoming',
+      strategy: 'theirs',
+      content: undefined,
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Same content.\n',
+      theirs: 'Same content.\n',
+      choice: 'current',
+      strategy: 'content',
+      content: 'Same content.\n',
+    },
+    {
+      conflictKind: 'stale-external-write',
+      ours: 'Current content.\n',
+      theirs: 'Older content.\n',
+      choice: 'both',
+      strategy: 'content',
+      content: 'Current content.\nOlder content.\n',
+    },
+  ])(
+    'resolves $conflictKind $choice via $strategy without changing selected bytes',
+    async ({ conflictKind, ours, theirs, choice, strategy, content }) => {
+      globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        fetchCalls.push({ url, init });
+        if (url === '/api/sync/conflicts') {
+          return Promise.resolve(
+            Response.json({
+              conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z', conflictKind }],
+            }),
+          );
+        }
+        if (url.startsWith('/api/sync/conflict-content')) {
+          return Promise.resolve(
+            Response.json({
+              file: 'foo.md',
+              base: conflictKind === 'stale-external-write' ? theirs : 'Original content.\n',
+              ours,
+              theirs,
+              kind: 'both-modified',
+              conflictKind,
+              lifecycleStatus: 'conflict',
+            }),
+          );
+        }
+        return Promise.resolve(Response.json({}));
+      };
+      render(<DiffViewBoundary docName="foo" provider={makeProvider(ours)} />);
+
+      const choiceButton = await screen.findByRole('button', {
+        name: new RegExp(`^Accept ${choice}`),
+      });
+      expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
+      fireEvent.click(choiceButton);
+      fireEvent.click(await screen.findByRole('button', { name: 'Apply changes' }));
+
+      await waitFor(() => {
+        expect(lastResolveBody()).toEqual({
+          file: 'foo.md',
+          strategy,
+          ...(content === undefined ? {} : { content }),
+        });
+      });
+    },
+  );
 
   test('emits editor-area-swap-to-diffview on mount and -from on unmount', async () => {
     const provider = makeProvider('seed\n');

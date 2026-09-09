@@ -3,10 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } fr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
-import { createTestServer, pollUntil, type TestServer } from './test-harness';
+import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
 
 const execFileAsync = promisify(execFile);
 
@@ -207,29 +206,15 @@ describe("POST /api/sync/resolve-conflict { strategy: 'content', content: '' }",
     await server.cleanup();
   });
 
-  test("empty content NEVER produces a 500 with the misleading 'requires content parameter' detail", async () => {
+  test('explicit empty content keeps an empty file rather than deleting it', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/sync/resolve-conflict`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ file: 'foo.md', strategy: 'content', content: '' }),
     });
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-
-    if (res.status === 500) {
-      const detail = typeof body.detail === 'string' ? body.detail : '';
-      expect(detail).not.toContain("strategy 'content' requires content parameter");
-    }
-
-    expect([200, 400]).toContain(res.status);
-
-    if (res.status === 400) {
-      const parsed = ProblemDetailsSchema.safeParse(body);
-      expect(parsed.success).toBe(true);
-      if (parsed.success) {
-        expect(parsed.data.type).toBe('urn:ok:error:invalid-request');
-      }
-    }
+    expect(res.status).toBe(200);
+    expect(readFileSync(join(server.contentDir, 'foo.md'), 'utf-8')).toBe('');
   });
 });
 
@@ -287,5 +272,39 @@ describe('both-modified conflict — backward compatibility', () => {
 
     const baseFile = readFileSync(join(server.contentDir, 'foo.md'), 'utf-8');
     expect(baseFile).toContain('<<<<<<<');
+  });
+
+  test('resolves the selected empty live Y.Text instead of the nonempty Git ours stage', async () => {
+    const client = await createTestClient(server.port, 'foo');
+    try {
+      client.doc.transact(() => client.ytext.delete(0, client.ytext.length));
+      await pollUntil(
+        () => server.instance.hocuspocus.documents.get('foo')?.getText('source').toString() === '',
+      );
+      const response = await fetch(
+        `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=foo.md&source=ytext`,
+      );
+      expect(response.status).toBe(200);
+      const sides = (await response.json()) as { ours: string; conflictKind: string };
+      expect(sides.ours).toBe('');
+      expect(sides.conflictKind).toBe('git');
+      expect((await execFileAsync('git', ['show', ':2:foo.md'], { cwd: contentDir })).stdout).toBe(
+        'ours\n',
+      );
+      const resolved = await fetch(`http://127.0.0.1:${server.port}/api/sync/resolve-conflict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: 'foo.md', strategy: 'content', content: sides.ours }),
+      });
+      expect(resolved.status).toBe(200);
+      expect(existsSync(join(contentDir, 'foo.md'))).toBe(true);
+      expect(readFileSync(join(contentDir, 'foo.md'), 'utf-8')).toBe('');
+      expect(
+        (await execFileAsync('git', ['show', 'HEAD:foo.md'], { cwd: contentDir })).stdout,
+      ).toBe('');
+      expect(client.ytext.toString()).toBe('');
+    } finally {
+      await client.cleanup();
+    }
   });
 });

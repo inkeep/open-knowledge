@@ -6,8 +6,11 @@ import {
   normalizeBridge,
   prependFrontmatter,
   stripFrontmatter,
+  toBridgeInvariantLog,
 } from '@inkeep/open-knowledge-core';
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import type * as Y from 'yjs';
+import type { PrecomputedParse } from './bridge-intake.ts';
 import {
   type BridgeDeriveLossReporter,
   DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
@@ -39,6 +42,15 @@ import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 
+export function redactedErrorSummary(err: unknown): unknown {
+  const verbose = process.env.OK_TELEMETRY_VERBOSE === '1';
+  if (err instanceof BridgeMergeContentLossError) return err.toLog({ verbose });
+  if (err instanceof BridgeInvariantViolationError) {
+    return toBridgeInvariantLog(err.violation, { verbose });
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function applyExternalChange(
   durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
@@ -47,6 +59,7 @@ export function applyExternalChange(
   resolveEmbed?: (basename: string, sourcePath: string) => string | null,
   resolveSize?: (basename: string, sourcePath: string) => number | null,
   bridgeLossReporter?: BridgeDeriveLossReporter,
+  precomputed?: PrecomputedParse,
 ): void {
   if (
     isSystemDoc(docName) ||
@@ -81,10 +94,25 @@ export function applyExternalChange(
 
   try {
     document.transact(() => {
-      applyDiskContentToDoc(document, content, resolveEmbed, docName, resolveSize, detect);
+      applyDiskContentToDoc(
+        document,
+        content,
+        resolveEmbed,
+        docName,
+        resolveSize,
+        detect,
+        precomputed,
+      );
     }, FILE_WATCHER_ORIGIN);
   } catch (err) {
-    durabilityState.setReconciledBase(docName, document.getText('source').toString());
+    try {
+      durabilityState.setReconciledBase(docName, document.getText('source').toString());
+    } catch (recoveryError) {
+      getLogger('reconcile').error(
+        { err: recoveryError, originalError: redactedErrorSummary(err), docName },
+        'Unable to persist the reconciled base after an external-change failure',
+      );
+    }
     throw err;
   }
 
@@ -146,6 +174,76 @@ export function createExternalChangeHandler(
   };
 }
 
+const STALE_EXTERNAL_WRITE_REASON = 'stale-external-write';
+
+function clearStaleExternalWriteConflict(
+  durabilityState: DocumentDurabilityState,
+  document: Y.Doc | undefined,
+  docName: string,
+): void {
+  const retained = durabilityState.getStaleExternalWrite(docName)?.retainedContent;
+  if (retained !== undefined && retained !== durabilityState.getReconciledBase(docName)) return;
+  durabilityState.clearStaleExternalWrite(docName);
+  const lifecycleMap = document?.getMap('lifecycle');
+  if (lifecycleMap?.get('reason') !== STALE_EXTERNAL_WRITE_REASON) return;
+  lifecycleMap.delete('status');
+  lifecycleMap.delete('reason');
+  lifecycleMap.delete('detectedAt');
+}
+
+export function refuseStaleExternalWrite(
+  durabilityState: DocumentDurabilityState,
+  document: Y.Doc | undefined,
+  docName: string,
+  diskContent: string,
+  retainedContent?: string,
+): boolean {
+  const currentBase = durabilityState.getReconciledBase(docName);
+  const lifecycleMap = document?.getMap('lifecycle');
+  const pending = durabilityState.getStaleExternalWrite(docName);
+  if (pending?.retainedContent !== undefined && pending.retainedContent !== currentBase) {
+    const conflict = durabilityState.recordStaleExternalWrite(
+      docName,
+      diskContent,
+      retainedContent ?? pending.retainedContent,
+    );
+    lifecycleMap?.set('status', 'conflict');
+    lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
+    lifecycleMap?.set('detectedAt', conflict.detectedAt);
+    return true;
+  }
+  if (currentBase === diskContent) {
+    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    return false;
+  }
+
+  if (durabilityState.staleExternalWriteMatches(docName, diskContent)) {
+    const conflict =
+      retainedContent === undefined
+        ? durabilityState.getStaleExternalWrite(docName)
+        : durabilityState.recordStaleExternalWrite(docName, diskContent, retainedContent);
+    lifecycleMap?.set('status', 'conflict');
+    lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
+    if (conflict) lifecycleMap?.set('detectedAt', conflict.detectedAt);
+    return true;
+  }
+
+  if (!durabilityState.isDisplacedVersion(docName, diskContent)) {
+    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    return false;
+  }
+
+  getLogger('reconcile').warn(
+    { docName, diskBytes: diskContent.length },
+    `[reconcile] refused stale external write for ${docName}; disk restores a version this server already displaced`,
+  );
+  const conflict = durabilityState.recordStaleExternalWrite(docName, diskContent, retainedContent);
+  lifecycleMap?.set('status', 'conflict');
+  lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
+  lifecycleMap?.set('detectedAt', conflict.detectedAt);
+  return true;
+}
+
 export interface ReconcileBeforeWriteResult {
   reconciled: boolean;
   baseBytes: number;
@@ -185,7 +283,13 @@ export function reconcileDiskBeforeAgentWrite(
     return NOT_RECONCILED;
 
   const document = hocuspocus.documents.get(docName);
-  if (document && isDocInConflict(document)) return NOT_RECONCILED;
+  if (
+    document &&
+    isDocInConflict(document) &&
+    document.getMap('lifecycle').get('reason') !== STALE_EXTERNAL_WRITE_REASON
+  ) {
+    return NOT_RECONCILED;
+  }
 
   const base = durabilityState.getReconciledBase(docName);
   if (base === undefined) return NOT_RECONCILED;
@@ -222,7 +326,10 @@ export function reconcileDiskBeforeAgentWrite(
   }
 
   const normalizedDisk = normalizeBridge(diskContent);
-  if (normalizedDisk === normalizeBridge(base)) return NOT_RECONCILED;
+  if (diskContent === base) {
+    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    return NOT_RECONCILED;
+  }
 
   const pendingFlushes = durabilityState.inFlightFlushCount(docName);
   if (pendingFlushes > 0) {
@@ -242,6 +349,11 @@ export function reconcileDiskBeforeAgentWrite(
   }
 
   if (!document) return NOT_RECONCILED;
+
+  if (refuseStaleExternalWrite(durabilityState, document, docName, diskContent)) {
+    return NOT_RECONCILED;
+  }
+  if (normalizedDisk === normalizeBridge(base)) return NOT_RECONCILED;
 
   const ours = serializeYDocSource(document);
 

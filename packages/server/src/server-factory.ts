@@ -40,6 +40,7 @@ import {
   resolveLocalAutoSyncMode,
   type SyncMode,
   type SyncModeChangeSource,
+  stripFrontmatter,
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -71,6 +72,7 @@ import {
   parseHocuspocusAuthToken,
 } from './auth-token-schema.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
+import type { PrecomputedParse } from './bridge-intake.ts';
 import {
   type BridgeDeriveLossReporter,
   createBridgeDeriveLossReporter,
@@ -95,6 +97,8 @@ import {
   createConflictLifecycleSeedExtension,
   entryMatchesDocName,
 } from './conflict-lifecycle-seed.ts';
+import { requireConflictResolutionContent } from './conflict-resolution-input.ts';
+import type { ResolveStrategy } from './conflict-storage.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
 import {
   type GeneratedIndexGitAttributesStatus,
@@ -112,7 +116,11 @@ import {
   planDirectoryIndexRegenerations,
   ROOT_INDEX_DOC_NAME,
 } from './content/regenerate-index.ts';
-import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import {
+  type ContentFilter,
+  createContentFilter,
+  isShareableOkArtifact,
+} from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
 import {
@@ -124,6 +132,7 @@ import {
   canonicalDocName,
   docNameToRelativePath,
   getDocExtension,
+  isRegisteredMarkdownDocName,
   stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
@@ -142,6 +151,8 @@ import {
 import {
   applyExternalChange,
   FILE_WATCHER_ORIGIN,
+  redactedErrorSummary,
+  refuseStaleExternalWrite,
   serializeYDocSource,
 } from './external-change.ts';
 import {
@@ -154,7 +165,7 @@ import {
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
-import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts';
+import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync, tracedUnlinkSync } from './fs-traced.ts';
 import { buildSyncCredentialConfig } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
@@ -260,6 +271,7 @@ import {
 import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
@@ -475,7 +487,14 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
-  const durabilityState = new DocumentDurabilityState();
+  const lockDir = getLocalDir(projectDir);
+  const durabilityState = new DocumentDurabilityState('main', {
+    persistencePath: join(lockDir, 'stale-external-writes.json'),
+    onStaleExternalWriteChange: () => signalChannel('sync-status'),
+    fileForDocName: (docName) =>
+      relative(projectDir, safeContentPath(docName, contentDir)).replaceAll('\\', '/'),
+    hasResolvedExtension: isRegisteredMarkdownDocName,
+  });
   const getActiveBranch = () => durabilityState.getActiveBranch();
   const getReconciledBase = (docName: string) => durabilityState.getReconciledBase(docName);
   const setReconciledBase = (docName: string, content: string) =>
@@ -732,8 +751,6 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const serverInstanceId = randomUUID();
 
-  const lockDir = getLocalDir(projectDir);
-
   const acpRegistry = new AcpRegistry({
     localDir: lockDir,
     log: getLogger('acp-registry'),
@@ -879,6 +896,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       | 'tags'
       | 'comments'
       | 'lint-config'
+      | 'sync-status'
       | 'local-targets',
   ): void {
     cc1Broadcaster?.signal(channel);
@@ -1966,9 +1984,84 @@ export function createServer(options: ServerOptions): ServerInstance {
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       homeDirOverride: configHomedirOverride,
       forceUnloadDocument,
+      resetDocumentDurability: deleteReconciledBase,
       ready,
       recentlyRemovedDocs,
       serializeDoc,
+      resolveStaleExternalWrite: async (
+        file: string,
+        strategy: ResolveStrategy,
+        content?: string,
+      ) => {
+        const requestedFile = file.replaceAll('\\', '/');
+        const staleConflict = durabilityState
+          .listStaleExternalWrites()
+          .find((entry) => entry.file === requestedFile);
+        if (!staleConflict) return false;
+        const { docName } = staleConflict;
+        const absolute = resolve(projectDir, staleConflict.file);
+        if (!isWithinContentDir(absolute, contentDir)) return false;
+        const target = assertRealpathWithinDir(absolute, contentDir, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
+        const document = hocuspocus.documents.get(docName);
+        const lifecycle = document?.getMap('lifecycle');
+
+        if (strategy === 'delete') {
+          if (existsSync(target)) tracedUnlinkSync(target);
+          await derivedDocumentIndex.recordDiskDelete(docName);
+          scheduleIndexRegenerationAfterRemoval(docName);
+          deleteReconciledBase(docName);
+          lifecycle?.set('status', 'deleted-upstream');
+        } else {
+          let resolved: string | null | undefined;
+          switch (strategy) {
+            case 'mine':
+              resolved =
+                serializeDoc(docName) ??
+                staleConflict.retainedContent ??
+                getReconciledBase(docName);
+              break;
+            case 'theirs':
+              resolved = staleConflict.diskContent;
+              break;
+            case 'content':
+              resolved = requireConflictResolutionContent(file, content);
+              break;
+            default: {
+              const exhaustive: never = strategy;
+              throw new Error(`[conflicts] unknown resolve strategy: ${exhaustive}`);
+            }
+          }
+          if (resolved === null || resolved === undefined) {
+            throw new Error(`Unable to resolve stale external write for ${file}`);
+          }
+          const parsedJson = mdManager.parseWithFallback(stripFrontmatter(resolved).body, {
+            resolveEmbed,
+            resolveSize,
+            sourcePath: docName,
+          });
+          schema.nodeFromJSON(parsedJson);
+          const precomputed = { rawContent: resolved, parsedJson };
+          await atomicWriteFile(target, resolved, { fs: tracedAtomicFs });
+          registerWrite(target, contentHash(resolved));
+          if (document) applyToDoc(docName, resolved, precomputed);
+          else setReconciledBase(docName, resolved);
+          await derivedDocumentIndex.recordDiskUpsert(docName, resolved);
+        }
+        if (strategy === 'mine' || strategy === 'content') {
+          durabilityState.recordDisplacedVersion(docName, staleConflict.diskContent);
+        } else {
+          durabilityState.clearDisplacedVersions(docName);
+        }
+        durabilityState.clearStaleExternalWrite(docName);
+        if (strategy !== 'delete') lifecycle?.delete('status');
+        lifecycle?.delete('reason');
+        lifecycle?.delete('detectedAt');
+        signalChannel('sync-status');
+        signalChannel('files');
+        return true;
+      },
       evictManagedArtifactLkg: (docName: string) => {
         persistence.managedArtifactCtx.lkgCache.delete(docName);
       },
@@ -2076,7 +2169,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     return serializeYDocSource(document);
   }
 
-  const applyToDoc = (docName: string, content: string): void =>
+  function applyToDoc(docName: string, content: string, precomputed?: PrecomputedParse): void {
     applyExternalChange(
       durabilityState,
       hocuspocus,
@@ -2085,7 +2178,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       resolveEmbed,
       resolveSize,
       bridgeLossReporter,
+      precomputed,
     );
+  }
 
   function clearLifecycleConflict(document: Document): void {
     if (!isDocInConflict(document)) return;
@@ -2116,7 +2211,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         }, FILE_WATCHER_ORIGIN);
       } catch (err) {
         log.error(
-          { err, docName, assetBasename },
+          { originalError: redactedErrorSummary(err), docName, assetBasename },
           `[asset-event] failed to re-render ${docName} for asset basename ${assetBasename}`,
         );
       }
@@ -2213,8 +2308,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           }
           const document = hocuspocus.documents.get(docName);
           if (!document) {
+            if (refuseStaleExternalWrite(durabilityState, undefined, docName, theirs)) {
+              return;
+            }
             await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
             return;
+          }
+
+          if (refuseStaleExternalWrite(durabilityState, document, docName, theirs)) {
+            break;
           }
 
           const base = getReconciledBase(docName) ?? '';
@@ -2323,6 +2425,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const { docName } = event;
           const document = hocuspocus.documents.get(docName);
           if (!document) {
+            deleteReconciledBase(docName);
             await derivedDocumentIndex.recordDiskDelete(docName);
             signalChannel('files');
             onUpstreamDelete(docName);

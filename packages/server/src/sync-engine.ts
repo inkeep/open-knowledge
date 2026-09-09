@@ -1973,8 +1973,8 @@ export class SyncEngine {
     const guardOpts = { allowShareableOkArtifact: isShareableOkArtifact };
     for (const { path, bytes } of writes) {
       const abs = join(this.projectDir, path);
-      assertRealpathWithinDir(abs, this.projectDir, guardOpts);
-      tracedWriteFileSync(abs, bytes);
+      const target = assertRealpathWithinDir(abs, this.projectDir, guardOpts);
+      tracedWriteFileSync(target, bytes);
     }
     for (const path of deletions) {
       const abs = join(this.projectDir, path);
@@ -2544,17 +2544,17 @@ export class SyncEngine {
     for (const item of reconciled) {
       try {
         const absolutePath = join(this.projectDir, item.path);
-        assertRealpathWithinDir(absolutePath, this.projectDir);
+        const target = assertRealpathWithinDir(absolutePath, this.projectDir);
         let existing: string | null = null;
         try {
-          existing = readFileSync(absolutePath, 'utf8');
+          existing = readFileSync(target, 'utf8');
         } catch (err) {
           log.warn(
             { err, path: item.path },
             '[sync] could not read MCP config before restoring reconciled overlay',
           );
         }
-        if (existing !== item.raw) tracedWriteFileSync(absolutePath, item.raw, 'utf8');
+        if (existing !== item.raw) tracedWriteFileSync(target, item.raw, 'utf8');
       } catch (err) {
         restored = false;
         log.warn({ err, path: item.path }, '[sync] could not restore reconciled MCP overlay');
@@ -2688,9 +2688,9 @@ export class SyncEngine {
               `${replay.mode},${replay.blobSha},${replay.path}`,
             ]);
             const absolutePath = join(this.projectDir, replay.path);
-            assertRealpathWithinDir(absolutePath, this.projectDir);
-            if (readFileSync(absolutePath, 'utf8') !== replay.raw) {
-              tracedWriteFileSync(absolutePath, replay.raw, 'utf8');
+            const target = assertRealpathWithinDir(absolutePath, this.projectDir);
+            if (readFileSync(target, 'utf8') !== replay.raw) {
+              tracedWriteFileSync(target, replay.raw, 'utf8');
             }
           }
         } catch (err) {

@@ -896,6 +896,9 @@
     "AJ7_B2": ["Buat tema baru"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
     "ALhMYW": ["Terminal"],
+    "AMU00p": [
+      "Kedua versi identik. Memilih Terima yang sekarang membuat perlindungan OpenKnowledge tetap aktif, sehingga penyimpanan versi lama berikutnya akan ditolak lagi. Memilih Terima yang masuk menonaktifkan perlindungan tersebut."
+    ],
     "AN-UPd": [
       "terminal.shell di .ok/local/config.yml harus berupa jalur Windows absolut. Shell Windows yang tersedia akan digunakan sebagai gantinya."
     ],
@@ -2813,6 +2816,9 @@
       "Server tidak bisa dimulai ulang — proses lain menguasainya. Tutup jendela OpenKnowledge lain untuk proyek ini, lalu coba lagi."
     ],
     "Xv_ijG": ["https://github.com/pemilik/repo atau pemilik/repo"],
+    "XwZiq2": [
+      "Berkas dipulihkan ke versi yang lebih lama. Yang sekarang adalah versi yang dilindungi OpenKnowledge. Yang masuk adalah versi yang dipulihkan. Pilih versi yang ingin dipertahankan, lalu terapkan perubahan Anda."
+    ],
     "XzL7x7": ["Buka kembali ", ["filePath"], " untuk melanjutkan penyuntingan."],
     "Xzy0s0": ["Hapus ", ["fullLabel"], " dari konteks"],
     "Y-Urt2": ["Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."],
@@ -4515,6 +4521,9 @@
     "q2kXMG": ["Matematika Sebaris"],
     "q3TWG7": ["Pindahkan ke Tempat Sampah"],
     "q3W2nd": ["Komentar itu tidak bisa ditambahkan: ", ["0"]],
+    "q3sP3v": [
+      "Berkas dipulihkan ke versi yang lebih lama. Buka berkas untuk memilih versi yang ingin dipertahankan."
+    ],
     "q4YJl_": ["Sesi terminal berakhir (kode keluar ", ["0"], ")."],
     "q4efaG": [["filePath"], " sudah tidak ada di skill ini"],
     "q5uZbJ": [

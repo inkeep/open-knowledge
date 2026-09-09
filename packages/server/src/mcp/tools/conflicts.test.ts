@@ -1,6 +1,9 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
+import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register } from './conflicts.ts';
@@ -24,8 +27,38 @@ type Handler = (args: {
 function capture(serverUrl: string | undefined, cwd: string): Handler {
   let handler: Handler | undefined;
   const server = {
-    registerTool(_n: string, _c: unknown, h: Handler) {
-      handler = h;
+    registerTool(_n: string, config: { outputSchema: unknown }, h: Handler) {
+      const normalized = normalizeObjectSchema(config.outputSchema);
+      if (!normalized) throw new Error('missing output schema');
+      const schema = toJsonSchemaCompat(normalized, { strictUnions: true, pipeStrategy: 'output' });
+      expect(JSON.stringify(schema)).toContain('stale-external-write');
+      expect(JSON.stringify(schema)).toContain('working-tree');
+      const validateAgainstAdvertisedSchema = new AjvJsonSchemaValidator().getValidator(schema);
+      handler = async (args) => {
+        const result = await h(args);
+        if (result.structuredContent) {
+          expect(validateAgainstAdvertisedSchema(result.structuredContent).valid).toBe(true);
+          if (args.kind === 'content') {
+            expect(
+              validateAgainstAdvertisedSchema({
+                ...result.structuredContent,
+                content: {
+                  ...(result.structuredContent.content as Record<string, unknown>),
+                  conflictKind: 'unknown',
+                },
+              }).valid,
+            ).toBe(false);
+          } else {
+            expect(
+              validateAgainstAdvertisedSchema({
+                ...result.structuredContent,
+                list: [{ file: 'a.md', detectedAt: 'now', conflictKind: 'unknown' }],
+              }).valid,
+            ).toBe(false);
+          }
+        }
+        return result;
+      };
     },
   } as unknown as ServerInstance;
   register(server, { serverUrl, config: BASE_CONFIG, resolveCwd: async () => cwd });
@@ -46,7 +79,10 @@ beforeAll(async () => {
       if (url.pathname === '/api/sync/conflicts') {
         return Response.json({
           ok: true,
-          conflicts: [{ file: 'notes/sso.md', detectedAt: 'now' }],
+          conflicts: [
+            { file: 'notes/sso.md', detectedAt: 'now', conflictKind: 'stale-external-write' },
+            { file: 'overlay.md', detectedAt: 'now', conflictKind: 'git', variant: 'working-tree' },
+          ],
         });
       }
       if (url.pathname === '/api/sync/conflict-content') {
@@ -57,6 +93,7 @@ beforeAll(async () => {
           ours: 'O',
           theirs: 'T',
           kind: 'both-modified',
+          conflictKind: 'stale-external-write',
           lifecycleStatus: 'conflict',
         });
       }
@@ -72,6 +109,10 @@ describe('conflicts — kind discriminator', () => {
     const result = await capture(baseUrl, cwd)({ kind: 'list' });
     expect(result.isError).toBeFalsy();
     expect(Array.isArray(result.structuredContent?.list)).toBe(true);
+    expect(result.structuredContent?.list).toMatchObject([
+      { conflictKind: 'stale-external-write' },
+      { conflictKind: 'git', variant: 'working-tree' },
+    ]);
     expect(result.content[0]?.text).toContain('notes/sso.md');
   });
 
@@ -80,6 +121,7 @@ describe('conflicts — kind discriminator', () => {
     expect(result.isError).toBeFalsy();
     const content = result.structuredContent?.content as { shape?: string } | undefined;
     expect(content?.shape).toBe('both-modified');
+    expect(content).toHaveProperty('conflictKind', 'stale-external-write');
     expect(content).not.toHaveProperty('kind');
     expect(result.content[0]?.text).toContain('shape: both-modified');
   });

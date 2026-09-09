@@ -211,7 +211,12 @@ import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
-import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
+import {
+  DocInConflictError,
+  isDocInConflict,
+  RESOLUTION_OPTIONS,
+  respondDocInConflict,
+} from './conflict-errors.ts';
 import {
   applySkillBundleFileDelete,
   applySkillBundleFileRename,
@@ -335,6 +340,7 @@ import {
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
+import type { ResolveStrategy } from './conflict-storage.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -1484,9 +1490,15 @@ export interface ApiExtensionOptions {
   contentFilter?: ContentFilter;
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   forceUnloadDocument?: (document: Document) => Promise<void>;
+  resetDocumentDurability?: (docName: string) => void;
   ready?: Promise<void>;
   recentlyRemovedDocs?: RecentlyRemovedDocs;
   serializeDoc?: (docName: string) => string | null;
+  resolveStaleExternalWrite?: (
+    file: string,
+    strategy: ResolveStrategy,
+    content?: string,
+  ) => Promise<boolean>;
   evictManagedArtifactLkg?: (docName: string) => void;
   semanticSearch?: SemanticSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
@@ -1595,9 +1607,11 @@ export function createApiExtension(
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
+    resetDocumentDurability,
     ready,
     recentlyRemovedDocs,
     serializeDoc,
+    resolveStaleExternalWrite,
     evictManagedArtifactLkg,
     semanticSearch,
     getSemanticSimilarityFloor,
@@ -1910,7 +1924,11 @@ export function createApiExtension(
     });
   }
 
-  type FlushOutcome = { kind: 'failure'; failure: StoreFailure } | { kind: 'divergence' } | null;
+  type FlushOutcome =
+    | { kind: 'failure'; failure: StoreFailure }
+    | { kind: 'divergence' }
+    | { kind: 'stale-external-write' }
+    | null;
 
   async function flushDiskAndDetectOutcome(docName: string): Promise<FlushOutcome> {
     const debounceId = `onStoreDocument-${docName}`;
@@ -1920,6 +1938,9 @@ export function createApiExtension(
     }
     const failure = durabilityState.takeStoreFailure(docName);
     if (failure) return { kind: 'failure', failure };
+    if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
+      return { kind: 'stale-external-write' };
+    }
     if (durabilityState.takeStoreDivergence(docName)) return { kind: 'divergence' };
     return null;
   }
@@ -1947,6 +1968,27 @@ export function createApiExtension(
       'The document changed on disk after your edit was prepared; your edit was NOT applied, to avoid overwriting the newer on-disk content. Re-read the document and retry.',
       { handler },
     );
+  }
+
+  function staleExternalWriteProblem(docName: string) {
+    return {
+      type: 'urn:ok:error:stale-external-write' as const,
+      title: 'Edit retained; disk write blocked by a stale external-write conflict.',
+      detail:
+        'An older version was restored on disk. Your edit was applied and is retained in memory and in the recovery snapshot, but its Markdown disk write was skipped. Do not repeat this edit: inspect conflicts({ kind: "content" }) for this file and resolve_conflict, then re-read the document before making further changes.',
+      file:
+        durabilityState.getStaleExternalWrite(docName)?.file ??
+        relative(projectDir ?? contentDir, safeContentPath(docName, contentDir)).replaceAll(
+          '\\',
+          '/',
+        ),
+      resolutionOptions: RESOLUTION_OPTIONS,
+    } satisfies BatchEntryError;
+  }
+
+  function respondStaleExternalWrite(res: ServerResponse, handler: string, docName: string): void {
+    const { type, title, detail, ...extensions } = staleExternalWriteProblem(docName);
+    errorResponse(res, 409, type, title, { handler, detail, extensions });
   }
 
   function buildReconcileWarning(
@@ -3533,6 +3575,10 @@ export function createApiExtension(
           respondDiskDivergence(res, 'agent-write');
           return;
         }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'agent-write', docName);
+          return;
+        }
         flushDocToDisk(docName, 'agent-write');
         onAgentWrite?.();
 
@@ -3722,6 +3768,10 @@ export function createApiExtension(
           respondDiskDivergence(res, 'agent-write-md');
           return;
         }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'agent-write-md', resolvedDocName);
+          return;
+        }
 
         flushDocToDisk(resolvedDocName, 'agent-write-md');
 
@@ -3829,7 +3879,7 @@ export function createApiExtension(
         interface BatchErrorResult {
           status: 'error';
           docName: string;
-          error: { type: BatchEntryError['type']; title: string; detail?: string };
+          error: BatchEntryError;
         }
         interface BatchWrittenResult {
           status: 'written';
@@ -4054,6 +4104,8 @@ export function createApiExtension(
                 title:
                   'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
               });
+            } else if (flushOutcome?.kind === 'stale-external-write') {
+              flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
             } else {
               flushErrors.set(p.docName, undefined);
             }
@@ -4325,6 +4377,10 @@ export function createApiExtension(
             }
             if (flushOutcome?.kind === 'divergence') {
               respondDiskDivergence(res, 'frontmatter-patch');
+              return;
+            }
+            if (flushOutcome?.kind === 'stale-external-write') {
+              respondStaleExternalWrite(res, 'frontmatter-patch', resolvedDocName);
               return;
             }
           }
@@ -4644,6 +4700,10 @@ export function createApiExtension(
           respondDiskDivergence(res, 'agent-patch');
           return;
         }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'agent-patch', docName);
+          return;
+        }
 
         flushDocToDisk(docName, 'agent-patch');
 
@@ -4827,6 +4887,10 @@ export function createApiExtension(
           }
           if (flushOutcome?.kind === 'divergence') {
             respondDiskDivergence(res, 'agent-undo');
+            return;
+          }
+          if (flushOutcome?.kind === 'stale-external-write') {
+            respondStaleExternalWrite(res, 'agent-undo', docName);
             return;
           }
           flushDocToGit(docName, 'agent-undo');
@@ -5050,6 +5114,7 @@ export function createApiExtension(
 
         const doc = hocuspocus.documents.get(docName);
         if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
+        resetDocumentDurability?.(docName);
         writeFileSync(filePath, '', 'utf-8');
         await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
 
@@ -5437,6 +5502,10 @@ export function createApiExtension(
         }
         if (flushOutcome?.kind === 'divergence') {
           respondDiskDivergence(res, 'rollback');
+          return;
+        }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'rollback', docName);
           return;
         }
 
@@ -6988,6 +7057,10 @@ export function createApiExtension(
           respondDiskDivergence(res, 'skill-put');
           return;
         }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'skill-put', docName);
+          return;
+        }
 
         if (body.scope === 'project') {
           attributeOkArtifactWrite(
@@ -8125,6 +8198,10 @@ export function createApiExtension(
           }
           if (flushOutcome?.kind === 'divergence') {
             respondDiskDivergence(res, 'skill-file-put');
+            return;
+          }
+          if (flushOutcome?.kind === 'stale-external-write') {
+            respondStaleExternalWrite(res, 'skill-file-put', refDocName);
             return;
           }
         } else {
@@ -9268,7 +9345,11 @@ export function createApiExtension(
           body.scope === 'project'
             ? `${relative(inPlaceScanBase, skillDir).split(sep).join('/')}/SKILL`
             : skillLiveDocName(body.scope, body.name);
-        await flushDiskAndDetectOutcome(liveSkillDoc);
+        const liveSkillFlush = await flushDiskAndDetectOutcome(liveSkillDoc);
+        if (liveSkillFlush?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'skill-install', liveSkillDoc);
+          return;
+        }
 
         const validity = validateSkillForInstall(skillDir, body.name, {
           allowReservedName: isInternalBundleSkillName(body.name),
@@ -10939,6 +11020,10 @@ export function createApiExtension(
             respondDiskDivergence(res, 'lint-fix');
             return;
           }
+          if (flushOutcome?.kind === 'stale-external-write') {
+            respondStaleExternalWrite(res, 'lint-fix', resolvedDocName);
+            return;
+          }
           flushDocToDisk(resolvedDocName, 'lint-fix');
 
           try {
@@ -11262,10 +11347,12 @@ export function createApiExtension(
     contentDir,
     getPrincipal,
     hocuspocus,
+    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
     serializeDoc,
+    resolveStaleExternalWrite,
   });
   const shareRoutes = createShareRoutes({
     projectDir,
@@ -11361,6 +11448,7 @@ export function createApiExtension(
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
     respondDiskDivergence,
+    respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
     renameTrackedPathInGit,

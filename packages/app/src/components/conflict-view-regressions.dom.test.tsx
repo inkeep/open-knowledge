@@ -31,12 +31,14 @@ async function mount(props: {
   ours: string;
   base: string;
   theirs: string;
+  conflictKind?: 'git' | 'stale-external-write';
   onResolve?: (content: string) => void | Promise<void>;
 }) {
   const onResolve = props.onResolve ?? vi.fn();
   render(
     <ConflictView
       fileName="notes/plan.md"
+      conflictKind={props.conflictKind}
       ours={props.ours}
       base={props.base}
       theirs={props.theirs}
@@ -46,6 +48,8 @@ async function mount(props: {
   await settle();
   return onResolve;
 }
+
+const IDENTICAL_WITH_MARKERS = 'intro\n<<<<<<< OURS\na\n=======\nb\n>>>>>>> THEIRS\ntail\n';
 
 test('a conflict the three-way merge resolves cleanly still offers Apply', async () => {
   await mount({
@@ -156,6 +160,50 @@ test('a marker-lookalike line in the content withholds every control', async () 
   expect(screen.queryByRole('button', { name: /^Accept incoming/ })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
   expect(screen.getByText(/look like conflict markers/)).toBeTruthy();
+  expect(onResolve).not.toHaveBeenCalled();
+});
+
+test('identical stale versions label their choice without a conflict index', async () => {
+  await mount({
+    conflictKind: 'stale-external-write',
+    base: '',
+    ours: 'same bytes\n',
+    theirs: 'same bytes\n',
+  });
+
+  expect(screen.getByRole('button', { name: 'Accept current' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Accept incoming' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /for conflict/ })).toBeNull();
+  expect(screen.getByText(/Both versions are identical/)).toBeTruthy();
+});
+
+test('the identical-versions banner maps each button to its protection outcome', async () => {
+  await mount({
+    conflictKind: 'stale-external-write',
+    base: '',
+    ours: 'same bytes\n',
+    theirs: 'same bytes\n',
+  });
+
+  const banner = screen.getByText(/Both versions are identical/).textContent ?? '';
+  expect(banner).toContain("Accept current leaves OpenKnowledge's protection on");
+  expect(banner).toContain('Accept incoming turns that protection off');
+});
+
+test('identical stale versions withhold the choice when the shared content misparses', async () => {
+  const onResolve = vi.fn();
+  await mount({
+    conflictKind: 'stale-external-write',
+    base: '',
+    ours: IDENTICAL_WITH_MARKERS,
+    theirs: IDENTICAL_WITH_MARKERS,
+    onResolve,
+  });
+
+  expect(screen.getByText(/look like conflict markers/)).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^Accept current/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Accept incoming/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
   expect(onResolve).not.toHaveBeenCalled();
 });
 

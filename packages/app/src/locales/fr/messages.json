@@ -1078,6 +1078,9 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "AMU00p": [
+      "Les deux versions sont identiques. Choisir Accepter l’actuel laisse la protection d’OpenKnowledge activée : un nouvel enregistrement de la version antérieure sera de nouveau refusé. Choisir Accepter l’entrant désactive cette protection."
+    ],
     "AN-UPd": [
       "terminal.shell dans .ok/local/config.yml doit être un chemin Windows absolu. Un shell Windows disponible sera utilisé à la place."
     ],
@@ -3299,6 +3302,9 @@
       "Impossible de redémarrer le serveur — un autre processus le détient. Quittez les autres fenêtres OpenKnowledge de ce projet, puis réessayez."
     ],
     "Xv_ijG": ["https://github.com/owner/repo ou owner/repo"],
+    "XwZiq2": [
+      "Le fichier a été restauré dans une version antérieure. L’actuel est la version protégée par OpenKnowledge. L’entrant est la version restaurée. Choisissez la version à conserver, puis appliquez vos modifications."
+    ],
     "XzL7x7": ["Rouvrez ", ["filePath"], " pour continuer à modifier."],
     "Xzy0s0": ["Retirer ", ["fullLabel"], " du contexte"],
     "Y-Urt2": ["Équation mathématique en bloc rendue avec KaTeX à partir d'une source LaTeX."],
@@ -5238,6 +5244,9 @@
     "q2kXMG": ["Formule en ligne"],
     "q3TWG7": ["Mettre à la corbeille"],
     "q3W2nd": ["Impossible d'ajouter ce commentaire : ", ["0"]],
+    "q3sP3v": [
+      "Le fichier a été restauré dans une version antérieure. Ouvrez-le pour choisir la version à conserver."
+    ],
     "q4YJl_": ["La session de terminal s'est terminée (code de sortie ", ["0"], ")."],
     "q4efaG": [["filePath"], " ne fait plus partie de cette compétence"],
     "q5uZbJ": [

@@ -54,6 +54,7 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:no-active-session',
   'urn:ok:error:too-many-agent-sessions',
   'urn:ok:error:disk-divergence',
+  'urn:ok:error:stale-external-write',
   'urn:ok:error:doc-in-conflict',
   'urn:ok:error:no-conflict-tracked',
   'urn:ok:error:unresolved-conflict-markers',

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import {
   type Dirent,
   existsSync,
@@ -33,6 +32,9 @@ import {
 import { toPosix } from './path-utils.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
+import { contentHash } from './version-hash.ts';
+
+export { contentHash } from './version-hash.ts';
 
 const log = getLogger('file-watcher');
 
@@ -180,10 +182,6 @@ export function evictStaleTrackerEntries(): void {
       writeTracker.set(path, fresh);
     }
   }
-}
-
-export function contentHash(content: string): string {
-  return createHash('sha256').update(content).digest('hex');
 }
 
 type WatcherDropReason =

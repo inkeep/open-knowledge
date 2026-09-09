@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
-import type { Principal } from '@inkeep/open-knowledge-core';
+import type { ConflictEntryWire, Principal } from '@inkeep/open-knowledge-core';
 import {
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
@@ -22,11 +22,13 @@ import {
 } from '../conflict-errors.ts';
 import type { ResolveStrategy } from '../conflict-storage.ts';
 import { isShareableOkArtifact } from '../content-filter.ts';
-import { stripDocExtension } from '../doc-extensions.ts';
+import type { DocumentDurabilityState } from '../document-durability-state.ts';
 import { claimExternalChange, releaseExternalChangeClaim } from '../external-change-attribution.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import { pathToDocName } from '../file-watcher.ts';
+import { SymlinkEscapeError } from '../fs-safety.ts';
 import type { PinoLogger } from '../logger.ts';
+import { containsUnresolvedConflictBlock } from '../reconciliation.ts';
 import { assertRealpathWithinDir } from '../symlink-guard.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 import { type ApiRouteGroup, type ApiRouteRecord, createApiRouteGroup } from './api-pipeline.ts';
@@ -34,10 +36,6 @@ import { errorResponse } from './error-response.ts';
 import { errnoCode } from './handler-utils.ts';
 import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
-
-function ytextHasConflictMarkers(text: string): boolean {
-  return /^<{7} /m.test(text) && /^={7}$/m.test(text) && /^>{7} /m.test(text);
-}
 
 const RESOLVE_ATTRIBUTION_WINDOW_MS = 3_000;
 
@@ -47,6 +45,7 @@ export interface SyncRouteDeps {
   /** Server-side principal resolver — the only trusted actor source (precedent #24). */
   getPrincipal: (() => Principal | null) | undefined;
   hocuspocus: Hocuspocus;
+  durabilityState: DocumentDurabilityState;
   log: PinoLogger;
   checkLocalOpSecurity: (
     req: IncomingMessage,
@@ -55,6 +54,11 @@ export interface SyncRouteDeps {
   ) => boolean;
   getSyncEngine: (() => SyncEngine | null) | undefined;
   serializeDoc: ((docName: string) => string | null) | undefined;
+  resolveStaleExternalWrite?: (
+    file: string,
+    strategy: ResolveStrategy,
+    content?: string,
+  ) => Promise<boolean>;
 }
 
 export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
@@ -63,10 +67,12 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
     contentDir,
     getPrincipal,
     hocuspocus,
+    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
     serializeDoc,
+    resolveStaleExternalWrite,
   } = deps;
 
   async function handleSyncStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -209,7 +215,18 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
     }
     try {
       const engine = getSyncEngine?.();
-      const conflicts = engine ? engine.getConflicts() : [];
+      const conflicts: ConflictEntryWire[] = engine
+        ? engine.getConflicts().map((entry) => ({ ...entry, conflictKind: 'git' as const }))
+        : [];
+      const knownFiles = new Set(conflicts.map((entry) => entry.file));
+      for (const conflict of durabilityState.listStaleExternalWrites()) {
+        if (knownFiles.has(conflict.file)) continue;
+        conflicts.push({
+          file: conflict.file,
+          detectedAt: conflict.detectedAt,
+          conflictKind: 'stale-external-write',
+        });
+      }
       successResponse(
         res,
         200,
@@ -230,13 +247,6 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
   const handleSyncResolveConflict = withValidation(
     SyncResolveConflictRequestSchema,
     async (_req, res, body) => {
-      const engine = getSyncEngine?.();
-      if (!engine) {
-        errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-          handler: 'sync-resolve-conflict',
-        });
-        return;
-      }
       const { file, strategy, content } = body;
       /**
        * `extractActorIdentity` is the mandated resolver for actor-attributed handlers
@@ -258,6 +268,31 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         );
       }
       try {
+        const engine = getSyncEngine?.();
+        const gitConflict = engine?.getConflicts().some((entry) => entry.file === file) === true;
+        if (
+          !gitConflict &&
+          (await resolveStaleExternalWrite?.(file, strategy as ResolveStrategy, content))
+        ) {
+          if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
+          successResponse(
+            res,
+            200,
+            SyncResolveConflictSuccessSchema,
+            {},
+            {
+              handler: 'sync-resolve-conflict',
+            },
+          );
+          return;
+        }
+        if (!engine) {
+          if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
+          errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
+            handler: 'sync-resolve-conflict',
+          });
+          return;
+        }
         await engine.resolveConflict(file, strategy as ResolveStrategy, content);
         successResponse(
           res,
@@ -270,6 +305,12 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         );
       } catch (e) {
         if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
+        if (e instanceof SymlinkEscapeError) {
+          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
+            handler: 'sync-resolve-conflict',
+          });
+          return;
+        }
         if (e instanceof NoConflictTrackedError) {
           errorResponse(
             res,
@@ -320,7 +361,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       preBodyGate: (req, res) => {
         if (!checkLocalOpSecurity(req, res, { handler: 'sync-resolve-conflict' })) return false;
         const engine = getSyncEngine?.();
-        if (!engine) {
+        if (!engine && !resolveStaleExternalWrite) {
           errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
             handler: 'sync-resolve-conflict',
           });
@@ -373,12 +414,14 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       });
       return;
     }
-    const trackedDocName = stripDocExtension(file);
+    const absoluteFile = resolve(projectDir, file);
+    const trackedDocName = pathToDocName(absoluteFile, contentDir);
     const loadedDoc = hocuspocus.documents.get(trackedDocName);
     const isConflictedByLifecycle = loadedDoc?.getMap('lifecycle').get('status') === 'conflict';
+    const staleConflict = durabilityState.getStaleExternalWrite(trackedDocName);
     const engine = getSyncEngine?.();
     const isTrackedByStore = engine ? engine.getConflicts().some((c) => c.file === file) : false;
-    if (!isConflictedByLifecycle && !isTrackedByStore) {
+    if (!isConflictedByLifecycle && !isTrackedByStore && staleConflict?.file !== file) {
       errorResponse(
         res,
         404,
@@ -393,6 +436,44 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
     }
     const source = url.searchParams.get('source');
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
+
+    if (staleConflict?.file === file && !isTrackedByStore) {
+      try {
+        assertRealpathWithinDir(absoluteFile, contentDir, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
+        const theirs = staleConflict.diskContent;
+        const ours =
+          serializeDoc?.(trackedDocName) ??
+          staleConflict.retainedContent ??
+          durabilityState.getReconciledBase(trackedDocName) ??
+          '';
+        successResponse(
+          res,
+          200,
+          SyncConflictContentSuccessSchema,
+          {
+            file,
+            base: theirs,
+            ours,
+            theirs,
+            kind: 'both-modified',
+            lifecycleStatus: 'conflict',
+            conflictKind: 'stale-external-write',
+          },
+          { handler: 'sync-conflict-content' },
+        );
+      } catch (e) {
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read conflict content.',
+          { handler: 'sync-conflict-content', cause: e },
+        );
+      }
+      return;
+    }
 
     const wtEntry = engine
       ?.getConflicts()
@@ -417,7 +498,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         };
         const theirs = await readBlob(wtEntry.theirsSha);
         const base = await readBlob(wtEntry.baseSha);
-        const docName = stripDocExtension(file);
+        const docName = trackedDocName;
         const loaded = hocuspocus.documents.get(docName);
         let ours = '';
         let oursPresent = false;
@@ -462,7 +543,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
           res,
           200,
           SyncConflictContentSuccessSchema,
-          { file, base, ours, theirs, kind, lifecycleStatus },
+          { file, base, ours, theirs, kind, lifecycleStatus, conflictKind: 'git' },
           { handler: 'sync-conflict-content' },
         );
       } catch (e) {
@@ -521,7 +602,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       let ours = oursResult.present ? oursResult.content : '';
       let lifecycleStatus: string | null = null;
       if (source === 'ytext') {
-        const docName = stripDocExtension(file);
+        const docName = trackedDocName;
         const loaded = hocuspocus.documents.get(docName);
         if (loaded) {
           const rawStatus = loaded.getMap('lifecycle').get('status');
@@ -529,7 +610,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
             typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
           if (kind !== 'delete-modify') {
             const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
-            if (ytextOurs !== null && !ytextHasConflictMarkers(ytextOurs)) {
+            if (ytextOurs !== null && !containsUnresolvedConflictBlock(ytextOurs)) {
               ours = ytextOurs;
             } else if (ytextOurs !== null) {
               console.warn(
@@ -552,7 +633,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         res,
         200,
         SyncConflictContentSuccessSchema,
-        { file, base, ours, theirs, kind, lifecycleStatus },
+        { file, base, ours, theirs, kind, lifecycleStatus, conflictKind: 'git' },
         { handler: 'sync-conflict-content' },
       );
     } catch (e) {

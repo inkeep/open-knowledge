@@ -1432,7 +1432,7 @@ msgstr "위"
 msgid "Accept both"
 msgstr "둘 다 적용"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept both versions for conflict {0}"
 msgstr "충돌 {0}에 두 버전 모두 적용"
@@ -1441,7 +1441,7 @@ msgstr "충돌 {0}에 두 버전 모두 적용"
 msgid "Accept current"
 msgstr "현재 항목 적용"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept current version for conflict {0}"
 msgstr "충돌 {0}에 현재 버전 적용"
@@ -1450,7 +1450,7 @@ msgstr "충돌 {0}에 현재 버전 적용"
 msgid "Accept incoming"
 msgstr "수신 항목 적용"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept incoming version for conflict {0}"
 msgstr "충돌 {0}에 수신 버전 적용"
@@ -2381,6 +2381,10 @@ msgstr "둘 다"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Both agents end up reading everything in {keep}."
 msgstr "두 에이전트 모두 결국 {keep}의 모든 항목을 읽게 됩니다."
+
+#: src/components/ConflictView.tsx
+msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+msgstr "두 버전이 동일합니다. 현재 항목 적용을 선택하면 OpenKnowledge의 보호가 켜진 상태로 유지되어 이전 버전의 또 다른 저장이 다시 거부됩니다. 수신 항목 적용을 선택하면 그 보호가 해제됩니다."
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -13643,6 +13647,14 @@ msgstr "파일이 {trashNoun}에 있습니다. 파일 감시자가 상태를 조
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
 msgstr "디스크의 파일과 에이전트가 사용하는 ID입니다."
+
+#: src/components/ConflictView.tsx
+msgid "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+msgstr "파일이 이전 버전으로 복원되었습니다. 현재 항목은 OpenKnowledge가 보호한 버전입니다. 수신 항목은 복원된 버전입니다. 유지할 버전을 선택한 다음 변경 사항을 적용하세요."
+
+#: src/components/ConflictsSection.tsx
+msgid "The file was restored to an older version. Open it to choose which version to keep."
+msgstr "파일이 이전 버전으로 복원되었습니다. 유지할 버전을 선택하려면 파일을 여세요."
 
 #: src/components/SkillProperties.tsx
 msgid "The folder on disk and the id agents use to invoke this skill."

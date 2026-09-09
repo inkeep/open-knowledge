@@ -11,7 +11,7 @@ export function assertRealpathWithinDir(
   targetAbsPath: string,
   rootDir: string,
   opts: RealpathGuardOptions = {},
-): void {
+): string {
   const resolvedRoot = resolve(rootDir);
   let canonicalRoot: string;
   try {
@@ -45,7 +45,7 @@ export function assertRealpathWithinDir(
           throw new SymlinkEscapeError('path resolves into the .git/.ok state tree');
         }
       }
-      return;
+      return resolve(canonical, ...pendingSuffix);
     } catch (err) {
       if (err instanceof SymlinkEscapeError) throw err;
       const code = (err as NodeJS.ErrnoException).code;

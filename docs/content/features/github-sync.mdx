@@ -139,6 +139,8 @@ Click the badged tab or any row in the Conflicts section to focus the conflict.
 
 You can't edit a page with conflicts until they're resolved; the same applies to agents writing over MCP.
 
+Conflicts can also happen with GitHub sync off: another app may save an older copy over an edit OpenKnowledge already saved. The diff view explains this stale-save conflict. **Current** is the protected OpenKnowledge version; **Incoming** is the older external save. Choose which to keep, then apply the resolution. Restoring an exact older version intentionally can trigger the same confirmation. Both versions remain recoverable after restarting the app.
+
 ## Work on multiple branches
 
 In the desktop app you can open several branches of the same project at once, each in its own window. Click your project name in the bottom left and pick a branch or worktree from the project switcher (open worktrees also appear in the Command Palette); **New worktree** starts a fresh branch or checks out an existing one. Opening a branch that has no worktree yet creates one on demand under `.ok/worktrees/`, kept out of `git status`, so each window runs its own editor and server without touching your main working copy.
@@ -167,4 +169,3 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Temporary problems
 
 - **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge retries automatically, slowing down progressively as described in [How often sync runs](#how-often-sync-runs). No action needed; a manual trigger from the sync indicator resets the backoff immediately if you want sync to run sooner.
-

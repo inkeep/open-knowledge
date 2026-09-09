@@ -1428,7 +1428,7 @@ msgstr "ऊपर"
 msgid "Accept both"
 msgstr "दोनों स्वीकारें"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept both versions for conflict {0}"
 msgstr "कॉन्फ़्लिक्ट {0} के लिए दोनों संस्करण स्वीकारें"
@@ -1437,7 +1437,7 @@ msgstr "कॉन्फ़्लिक्ट {0} के लिए दोनो�
 msgid "Accept current"
 msgstr "वर्तमान स्वीकारें"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept current version for conflict {0}"
 msgstr "कॉन्फ़्लिक्ट {0} के लिए मौजूदा संस्करण स्वीकारें"
@@ -1446,7 +1446,7 @@ msgstr "कॉन्फ़्लिक्ट {0} के लिए मौजू�
 msgid "Accept incoming"
 msgstr "आने वाला स्वीकारें"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept incoming version for conflict {0}"
 msgstr "कॉन्फ़्लिक्ट {0} के लिए आने वाला संस्करण स्वीकारें"
@@ -2377,6 +2377,10 @@ msgstr "दोनों"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Both agents end up reading everything in {keep}."
 msgstr "दोनों एजेंट अंत में {keep} की हर चीज़ पढ़ेंगे।"
+
+#: src/components/ConflictView.tsx
+msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+msgstr "दोनों संस्करण एक जैसे हैं। वर्तमान स्वीकारें चुनने पर OpenKnowledge की सुरक्षा चालू रहती है, इसलिए पुराने संस्करण का एक और सेव फिर से अस्वीकार कर दिया जाएगा। आने वाला स्वीकारें चुनने पर वह सुरक्षा बंद हो जाती है।"
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -13639,6 +13643,14 @@ msgstr "फ़ाइल आपके {trashNoun} में है; फ़ाइ�
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
 msgstr "डिस्क की फ़ाइल, और वह id जो एजेंट उपयोग करते हैं।"
+
+#: src/components/ConflictView.tsx
+msgid "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+msgstr "फ़ाइल को पुराने संस्करण में बहाल किया गया है। वर्तमान वह संस्करण है जिसे OpenKnowledge ने सुरक्षित रखा है। आने वाला बहाल किया गया संस्करण है। कौन सा संस्करण रखना है, यह चुनें, फिर अपने बदलाव लागू करें।"
+
+#: src/components/ConflictsSection.tsx
+msgid "The file was restored to an older version. Open it to choose which version to keep."
+msgstr "फ़ाइल को पुराने संस्करण में बहाल किया गया है। कौन सा संस्करण रखना है, यह चुनने के लिए इसे खोलें।"
 
 #: src/components/SkillProperties.tsx
 msgid "The folder on disk and the id agents use to invoke this skill."

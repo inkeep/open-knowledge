@@ -3,7 +3,9 @@
  * precedent #18(b) stays intact.
  */
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { SyncConflictContentSuccess } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
+import type { MergeConflictResolution } from '@pierre/diffs';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -26,13 +28,14 @@ interface DiffViewBoundaryProps {
   provider: HocuspocusProvider;
 }
 
-type ConflictKind = 'both-modified' | 'delete-modify' | 'modify-delete';
+type ConflictKind = SyncConflictContentSuccess['kind'];
 
 interface ConflictSides {
   base: string;
   ours: string;
   theirs: string;
   kind: ConflictKind;
+  conflictKind: SyncConflictContentSuccess['conflictKind'];
 }
 
 async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
@@ -57,7 +60,9 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
       );
       return null;
     }
-    const data = (await res.json()) as Partial<ConflictSides>;
+    const data = (await res.json()) as Partial<Omit<ConflictSides, 'conflictKind'>> & {
+      conflictKind?: unknown;
+    };
     const kind: ConflictKind =
       data.kind === 'delete-modify' ||
       data.kind === 'modify-delete' ||
@@ -73,11 +78,25 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
         }),
       );
     }
+    if (
+      data.conflictKind !== undefined &&
+      data.conflictKind !== 'git' &&
+      data.conflictKind !== 'stale-external-write'
+    ) {
+      console.warn(
+        JSON.stringify({
+          event: 'conflict-discriminator-unrecognized',
+          file,
+          receivedConflictKind: data.conflictKind,
+        }),
+      );
+    }
     return {
       base: data.base ?? '',
       ours: data.ours ?? '',
       theirs: data.theirs ?? '',
       kind,
+      conflictKind: data.conflictKind === 'stale-external-write' ? 'stale-external-write' : 'git',
     };
   } catch (err) {
     console.warn(
@@ -127,6 +146,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
       ? null
       : [
           conflictEntry.detectedAt,
+          conflictEntry.conflictKind ?? 'git',
           conflictEntry.baseSha ?? '',
           conflictEntry.oursSha ?? '',
           conflictEntry.theirsSha ?? '',
@@ -151,8 +171,10 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     };
   }, [filePath, deferFetch, conflictSignature]);
 
-  async function handleResolve(content: string) {
-    const result = await resolveConflictContent(filePath, content);
+  async function handleResolve(content: string, selection?: MergeConflictResolution) {
+    const result = await (sides?.conflictKind === 'stale-external-write' && selection === 'incoming'
+      ? resolveConflictTheirs(filePath)
+      : resolveConflictContent(filePath, content));
     if (!result.ok) {
       toast.error(t`Couldn't save the resolution for ${filePath}.`, { description: result.detail });
     }
@@ -295,6 +317,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   return (
     <ConflictView
       fileName={filePath}
+      conflictKind={sides.conflictKind}
       ours={sides.ours}
       base={sides.base}
       theirs={sides.theirs}

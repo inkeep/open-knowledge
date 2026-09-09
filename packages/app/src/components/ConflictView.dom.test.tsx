@@ -360,6 +360,133 @@ describe('ConflictView absent-stage banners — one fixture per kind', () => {
     cleanup();
   });
 
+  test('a restored base version remains an explicit incoming choice', async () => {
+    const onResolve = vi.fn();
+    render(
+      <ConflictView
+        fileName="notes/sync-engine.md"
+        conflictKind="stale-external-write"
+        ours={OUR_CONTENT}
+        base={THEIR_CONTENT}
+        theirs={THEIR_CONTENT}
+        onResolve={onResolve}
+      />,
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show original' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Accept current/ })).toBeTruthy();
+    await act(async () => {
+      screen.getByRole('button', { name: /^Accept incoming/ }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Apply changes' }).click();
+    });
+    expect(onResolve).toHaveBeenCalledWith(THEIR_CONTENT, 'incoming');
+  });
+
+  test('Git still merges non-conflicting changes against its common base', async () => {
+    const onResolve = vi.fn();
+    render(
+      <ConflictView
+        fileName="notes/sync-engine.md"
+        conflictKind="git"
+        ours={OUR_CONTENT}
+        base={THEIR_CONTENT}
+        theirs={THEIR_CONTENT}
+        onResolve={onResolve}
+      />,
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByRole('button', { name: /^Accept current/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show original' })).toBeTruthy();
+    await act(async () => {
+      screen.getByRole('button', { name: 'Apply changes' }).click();
+    });
+    expect(onResolve).toHaveBeenCalledWith(OUR_CONTENT);
+  });
+
+  test.each([
+    { ours: '', theirs: '' },
+    { ours: 'Same content.\n', theirs: 'Same content.\n' },
+    { ours: OUR_CONTENT, theirs: THEIR_CONTENT },
+  ])('stale choice intent follows undo, replacement, and redo: %j', async ({ ours, theirs }) => {
+    const onResolve = vi.fn();
+    render(
+      <ConflictView
+        fileName="notes/sync-engine.md"
+        conflictKind="stale-external-write"
+        ours={ours}
+        base={theirs}
+        theirs={theirs}
+        onResolve={onResolve}
+      />,
+    );
+    const incoming = await screen.findByRole('button', { name: /^Accept incoming/ });
+    await act(async () => {
+      incoming.click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Undo' }).click();
+    });
+    expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
+    expect(screen.getByText('Conflicts remaining: 1.')).toBeTruthy();
+    await act(async () => {
+      screen.getByRole('button', { name: /^Accept current/ }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Undo' }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Redo' }).click();
+    });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Apply changes' }).click();
+    });
+    expect(onResolve).toHaveBeenCalledWith(ours, 'current');
+  });
+
+  test.each([
+    { ours: OUR_CONTENT, base: BASE_CONTENT, theirs: THEIR_CONTENT },
+    { ours: '', base: BASE_CONTENT, theirs: THEIR_CONTENT },
+    { ours: OUR_CONTENT, base: BASE_CONTENT, theirs: '' },
+    { ours: OUR_CONTENT, base: '', theirs: THEIR_CONTENT },
+  ])(
+    'stale saves explain the versions without Git deletion or ancestor claims: %j',
+    async (sides) => {
+      render(
+        <ConflictView
+          fileName="notes/sync-engine.md"
+          conflictKind="stale-external-write"
+          {...sides}
+          onResolve={vi.fn()}
+        />,
+      );
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+
+      const alert = screen.getByRole('status');
+      expect(alert.textContent).toContain('The file was restored to an older version.');
+      expect(alert.textContent).toContain('Current is the version OpenKnowledge protected.');
+      expect(alert.textContent).toContain('Incoming is the restored version.');
+      expect(alert.textContent).toContain('Choose which version to keep, then apply your changes.');
+      expect(screen.queryByText(/This file was deleted/)).toBeNull();
+      expect(screen.queryByText(/No common ancestor/)).toBeNull();
+    },
+  );
+
+  test('Git conflicts do not show stale-save guidance', async () => {
+    await renderConflictView();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   test('delete-modify (empty ours) shows the deleted-on-current-branch banner', async () => {
     render(
       <ConflictView
@@ -417,24 +544,28 @@ describe('ConflictView axe accessibility scan', () => {
     cleanup();
   });
 
-  test('conflict surface has no detectable WCAG violations', async () => {
-    render(
-      <ConflictView
-        fileName="notes/sync-engine.md"
-        ours={OUR_CONTENT}
-        base={BASE_CONTENT}
-        theirs={THEIR_CONTENT}
-        onResolve={vi.fn()}
-      />,
-    );
-    await act(async () => {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    });
-    const results = await axe.run(document.body, {
-      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
-    });
-    expect(results.violations).toEqual([]);
-  });
+  test.each(['git', 'stale-external-write'] as const)(
+    'conflict surface has no detectable WCAG violations: %s',
+    async (conflictKind) => {
+      render(
+        <ConflictView
+          fileName="notes/sync-engine.md"
+          conflictKind={conflictKind}
+          ours={OUR_CONTENT}
+          base={BASE_CONTENT}
+          theirs={THEIR_CONTENT}
+          onResolve={vi.fn()}
+        />,
+      );
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+      const results = await axe.run(document.body, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+      });
+      expect(results.violations).toEqual([]);
+    },
+  );
 });
 
 describe('ConflictView — controls after undo', () => {

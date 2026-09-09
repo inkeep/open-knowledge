@@ -96,9 +96,15 @@ export interface FolderTemplateRouteDeps {
   scheduleOkArtifactFlush: (context: string) => void;
   flushDiskAndDetectOutcome: (
     docName: string,
-  ) => Promise<{ kind: 'failure'; failure: StoreFailure } | { kind: 'divergence' } | null>;
+  ) => Promise<
+    | { kind: 'failure'; failure: StoreFailure }
+    | { kind: 'divergence' }
+    | { kind: 'stale-external-write' }
+    | null
+  >;
   respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
   respondDiskDivergence: (res: ServerResponse, handler: string) => void;
+  respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   registerWrittenDocInFileIndex: (docName: string, content: string) => void;
   captureAndCloseDocuments: (
     docNames: string[],
@@ -138,6 +144,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
     respondDiskDivergence,
+    respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
     renameTrackedPathInGit,
@@ -507,6 +514,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }
         if (templateFlush?.kind === 'divergence') {
           respondDiskDivergence(res, 'template-put');
+          return;
+        }
+        if (templateFlush?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'template-put', templateDocName);
           return;
         }
 
@@ -1019,6 +1030,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }
         if (templateFlush?.kind === 'divergence') {
           respondDiskDivergence(res, 'template-import');
+          return;
+        }
+        if (templateFlush?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'template-import', templateDocName);
           return;
         }
 

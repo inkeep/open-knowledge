@@ -1428,7 +1428,7 @@ msgstr "Di atas"
 msgid "Accept both"
 msgstr "Terima keduanya"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept both versions for conflict {0}"
 msgstr "Terima kedua versi untuk konflik {0}"
@@ -1437,7 +1437,7 @@ msgstr "Terima kedua versi untuk konflik {0}"
 msgid "Accept current"
 msgstr "Terima yang sekarang"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept current version for conflict {0}"
 msgstr "Terima versi saat ini untuk konflik {0}"
@@ -1446,7 +1446,7 @@ msgstr "Terima versi saat ini untuk konflik {0}"
 msgid "Accept incoming"
 msgstr "Terima yang masuk"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept incoming version for conflict {0}"
 msgstr "Terima versi masuk untuk konflik {0}"
@@ -2377,6 +2377,10 @@ msgstr "Keduanya"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Both agents end up reading everything in {keep}."
 msgstr "Kedua agen akhirnya membaca semua yang ada di {keep}."
+
+#: src/components/ConflictView.tsx
+msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+msgstr "Kedua versi identik. Memilih Terima yang sekarang membuat perlindungan OpenKnowledge tetap aktif, sehingga penyimpanan versi lama berikutnya akan ditolak lagi. Memilih Terima yang masuk menonaktifkan perlindungan tersebut."
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -13639,6 +13643,14 @@ msgstr "Berkas ada di {trashNoun} Anda; pengawas berkas akan menyelaraskannya."
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
 msgstr "Berkas di disk, dan id yang dipakai agen."
+
+#: src/components/ConflictView.tsx
+msgid "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+msgstr "Berkas dipulihkan ke versi yang lebih lama. Yang sekarang adalah versi yang dilindungi OpenKnowledge. Yang masuk adalah versi yang dipulihkan. Pilih versi yang ingin dipertahankan, lalu terapkan perubahan Anda."
+
+#: src/components/ConflictsSection.tsx
+msgid "The file was restored to an older version. Open it to choose which version to keep."
+msgstr "Berkas dipulihkan ke versi yang lebih lama. Buka berkas untuk memilih versi yang ingin dipertahankan."
 
 #: src/components/SkillProperties.tsx
 msgid "The folder on disk and the id agents use to invoke this skill."

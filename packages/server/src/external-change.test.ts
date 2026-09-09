@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
 import {
   BridgeInvariantViolationError,
@@ -16,6 +19,20 @@ function getDoc(conn: Conn): Y.Doc {
   const doc = (conn as unknown as { document: Y.Doc }).document;
   if (!doc) throw new Error('DirectConnection has no document');
   return doc;
+}
+
+const SECRET_YTEXT = 'PRIVATE-NOTE-ytext-body';
+const SECRET_FRAGMENT = 'PRIVATE-NOTE-fragment-body';
+const SECRET_DIFF = 'PRIVATE-NOTE-unified-diff-body';
+
+function loggedReconcileErrorPayload(spy: {
+  mock: { calls: unknown[][] };
+}): Record<string, unknown> {
+  const call = spy.mock.calls.find(
+    (args) => typeof args[1] === 'string' && args[1].includes('reconciled base'),
+  );
+  if (!call) throw new Error('reconcile recovery failure was not logged');
+  return call[0] as Record<string, unknown>;
 }
 
 describe('applyExternalChange — throwing helper', () => {
@@ -202,6 +219,112 @@ describe('applyExternalChange — throwing helper', () => {
 
     doc.transact = originalTransact as typeof doc.transact;
     await conn.disconnect();
+  });
+
+  test('preserves the original bridge violation when recovery snapshot persistence also fails', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-external-double-failure-'));
+    const persistencePath = join(dir, 'state.json');
+    const state = new DocumentDurabilityState('main', { persistencePath });
+    const docName = 'double-failure';
+    const conn = await hp.openDirectConnection(docName);
+    const doc = getDoc(conn);
+    const originalTransact = doc.transact.bind(doc);
+    const originalError = new BridgeInvariantViolationError({
+      site: 'observer-b',
+      docName,
+      ytextSnapshot: SECRET_YTEXT,
+      fragmentMdSnapshot: SECRET_FRAGMENT,
+      unifiedDiff: SECRET_DIFF,
+      stack: undefined,
+    });
+    const errorSpy = vi.spyOn(getLogger('reconcile'), 'error');
+    try {
+      applyExternalChange(state, hp, docName, '# Original\n');
+      state.recordDisplacedVersion(docName, 'old');
+      renameSync(persistencePath, `${persistencePath}.backup`);
+      mkdirSync(persistencePath);
+      doc.transact = ((fn: () => void, origin: unknown) => {
+        originalTransact(() => {
+          fn();
+          throw originalError;
+        }, origin);
+      }) as typeof doc.transact;
+      let actualError: unknown;
+      try {
+        applyExternalChange(state, hp, docName, '# Next\n');
+      } catch (cause) {
+        actualError = cause;
+      }
+      expect(actualError).toBe(originalError);
+      expect(doc.getText('source').toString()).toBe('# Next\n');
+      expect(state.getReconciledBase(docName)).toBe('# Original\n');
+
+      const serialized = JSON.stringify(loggedReconcileErrorPayload(errorSpy));
+      for (const secret of [SECRET_YTEXT, SECRET_FRAGMENT, SECRET_DIFF]) {
+        expect(serialized).not.toContain(secret);
+      }
+      expect(serialized).toContain('bridge-invariant-violation');
+      expect(serialized).toContain('"redacted":true');
+    } finally {
+      errorSpy.mockRestore();
+      doc.transact = originalTransact as typeof doc.transact;
+      await conn.disconnect();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('redacts merge content loss and keeps ordinary failures diagnosable in the same field', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-external-redaction-'));
+    const persistencePath = join(dir, 'state.json');
+    const state = new DocumentDurabilityState('main', { persistencePath });
+    const docName = 'redaction';
+    const conn = await hp.openDirectConnection(docName);
+    const doc = getDoc(conn);
+    const originalTransact = doc.transact.bind(doc);
+    const contentLoss = new BridgeMergeContentLossError({
+      which: 'substring',
+      side: 'user',
+      baseline: SECRET_YTEXT,
+      userText: SECRET_FRAGMENT,
+      agentText: SECRET_DIFF,
+      result: '',
+      lostSubstrings: [SECRET_YTEXT],
+    });
+    const ordinary = new Error('atomic rename failed with EACCES');
+    const errorSpy = vi.spyOn(getLogger('reconcile'), 'error');
+    try {
+      applyExternalChange(state, hp, docName, '# Original\n');
+      state.recordDisplacedVersion(docName, 'old');
+      renameSync(persistencePath, `${persistencePath}.backup`);
+      mkdirSync(persistencePath);
+      let thrown: unknown = contentLoss;
+      doc.transact = ((fn: () => void, origin: unknown) => {
+        originalTransact(() => {
+          fn();
+          throw thrown;
+        }, origin);
+      }) as typeof doc.transact;
+
+      expect(() => applyExternalChange(state, hp, docName, '# Loss\n')).toThrow(contentLoss);
+      const lossPayload = JSON.stringify(loggedReconcileErrorPayload(errorSpy));
+      for (const secret of [SECRET_YTEXT, SECRET_FRAGMENT, SECRET_DIFF]) {
+        expect(lossPayload).not.toContain(secret);
+      }
+      expect(lossPayload).toContain('bridge-merge-content-loss');
+      expect(lossPayload).toContain('"redacted":true');
+
+      errorSpy.mockClear();
+      thrown = ordinary;
+      expect(() => applyExternalChange(state, hp, docName, '# Ordinary\n')).toThrow(ordinary);
+      const payload = loggedReconcileErrorPayload(errorSpy);
+      expect(payload.originalError).toBe('atomic rename failed with EACCES');
+      expect(JSON.stringify(payload.originalError)).not.toBe('{}');
+    } finally {
+      errorSpy.mockRestore();
+      doc.transact = originalTransact as typeof doc.transact;
+      await conn.disconnect();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

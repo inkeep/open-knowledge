@@ -1432,7 +1432,7 @@ msgstr "أعلى"
 msgid "Accept both"
 msgstr "قبول كليهما"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept both versions for conflict {0}"
 msgstr "قبول كلتا النسختين للتعارض {0}"
@@ -1441,7 +1441,7 @@ msgstr "قبول كلتا النسختين للتعارض {0}"
 msgid "Accept current"
 msgstr "قبول الحالي"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept current version for conflict {0}"
 msgstr "قبول النسخة الحالية للتعارض {0}"
@@ -1450,7 +1450,7 @@ msgstr "قبول النسخة الحالية للتعارض {0}"
 msgid "Accept incoming"
 msgstr "قبول الوارد"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept incoming version for conflict {0}"
 msgstr "قبول النسخة الواردة للتعارض {0}"
@@ -2381,6 +2381,10 @@ msgstr "كلاهما"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Both agents end up reading everything in {keep}."
 msgstr "سيقرأ الوكيلان في النهاية كل ما في {keep}."
+
+#: src/components/ConflictView.tsx
+msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+msgstr "النسختان متطابقتان. اختيار قبول الحالي يُبقي حماية OpenKnowledge مفعّلة، لذا سيُرفض مجددًا أي حفظ آخر للنسخة الأقدم. اختيار قبول الوارد يوقف تلك الحماية."
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -13643,6 +13647,14 @@ msgstr "الملف موجود في {trashNoun}؛ سيقوم مراقب المل�
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
 msgstr "الملف على القرص، والمعرّف الذي يستخدمه الوكلاء."
+
+#: src/components/ConflictView.tsx
+msgid "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+msgstr "تمت استعادة الملف إلى إصدار أقدم. الحالي هو الإصدار الذي حماه OpenKnowledge. الوارد هو الإصدار المستعاد. اختر الإصدار الذي تريد الاحتفاظ به، ثم طبّق تغييراتك."
+
+#: src/components/ConflictsSection.tsx
+msgid "The file was restored to an older version. Open it to choose which version to keep."
+msgstr "تمت استعادة الملف إلى إصدار أقدم. افتحه لاختيار الإصدار الذي تريد الاحتفاظ به."
 
 #: src/components/SkillProperties.tsx
 msgid "The folder on disk and the id agents use to invoke this skill."

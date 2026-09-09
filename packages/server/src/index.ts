@@ -135,7 +135,11 @@ export {
   detectClaudeDesktopPresence,
 } from './detect-claude-desktop.ts';
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
-export { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
+export {
+  DocumentDurabilityState,
+  DocumentDurabilityStateError,
+  type StoreFailure,
+} from './document-durability-state.ts';
 export {
   canonicalProjectKey,
   clearAllEmbeddingsKeys,

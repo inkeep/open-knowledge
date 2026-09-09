@@ -16,7 +16,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { idleShutdownToMs } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type BootedStartServer,
   bootStartServer,
@@ -1176,6 +1176,40 @@ describe('startCommand — --mode flag wiring', () => {
     cmd.configureOutput({ writeOut: () => {}, writeErr: () => {} });
     return cmd;
   }
+
+  test('reports a preserved corrupt recovery snapshot without an unhandled startup stack', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-start-corrupt-snapshot-'));
+    const snapshot = join(dir, '.ok', 'local', 'stale-external-writes.json');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'config.yml'), '');
+    writeFileSync(snapshot, '{protected edits, truncated');
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir);
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exit = new Error('test process exit');
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw exit;
+    });
+    const originalTitle = process.title;
+    try {
+      await expect(
+        quietCommand().parseAsync(['--mode', 'browser', '--only', 'server', '--no-open-browser'], {
+          from: 'user',
+        }),
+      ).rejects.toBe(exit);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const output = stderrSpy.mock.calls.flat().join('\n');
+      expect(output).toContain(snapshot);
+      expect(output).toContain('ok bug-report');
+      expect(output).not.toContain('    at ');
+      expect(readFileSync(snapshot, 'utf-8')).toBe('{protected edits, truncated');
+    } finally {
+      cwdSpy.mockRestore();
+      stderrSpy.mockRestore();
+      exitSpy.mockRestore();
+      process.title = originalTitle;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   test('--mode <value> rejects values outside the browser|app enum (FR13)', () => {
     const cmd = quietCommand();

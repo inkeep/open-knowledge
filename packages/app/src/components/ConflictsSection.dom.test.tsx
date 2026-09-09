@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 interface MockConflictsResult {
-  conflicts: Array<{ file: string; detectedAt: string }>;
+  conflicts: Array<{
+    file: string;
+    detectedAt: string;
+    conflictKind?: 'git' | 'stale-external-write';
+  }>;
   loading: boolean;
   error: 'network' | 'server' | null;
 }
@@ -77,6 +81,35 @@ describe('ConflictsSection', () => {
     render(<ConflictsSection />);
     fireEvent.click(screen.getByTestId('conflicts-section-row'));
     expect(window.location.hash).toBe('#/docs/page');
+  });
+
+  test('explains stale external writes without labeling Git conflicts as external edits', () => {
+    mockResult = {
+      conflicts: [
+        {
+          file: 'docs/stale.md',
+          detectedAt: '2026-05-20T10:00:00.000Z',
+          conflictKind: 'stale-external-write',
+        },
+        {
+          file: 'docs/git.md',
+          detectedAt: '2026-05-20T10:01:00.000Z',
+          conflictKind: 'git',
+        },
+      ],
+      loading: false,
+      error: null,
+    };
+
+    render(<ConflictsSection />);
+
+    const rows = screen.getAllByTestId('conflicts-section-row');
+    expect(rows[0]?.textContent).toContain(
+      'The file was restored to an older version. Open it to choose which version to keep.',
+    );
+    expect(rows[1]?.textContent).not.toContain('Another app');
+    expect(rows[0]?.getAttribute('data-conflict-kind')).toBe('stale-external-write');
+    expect(rows[1]?.getAttribute('data-conflict-kind')).toBe('git');
   });
 
   test('section has NO quick-action buttons ([Keep mine] / [Keep theirs])', () => {

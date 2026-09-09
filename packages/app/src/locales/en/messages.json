@@ -884,6 +884,9 @@
     "AJ7_B2": ["Create new theme"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
     "ALhMYW": ["Terminal"],
+    "AMU00p": [
+      "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+    ],
     "AN-UPd": [
       "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
     ],
@@ -2790,6 +2793,9 @@
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
+    "XwZiq2": [
+      "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+    ],
     "XzL7x7": ["Reopen ", ["filePath"], " to keep editing."],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
@@ -4486,6 +4492,9 @@
     "q2kXMG": ["Inline Math"],
     "q3TWG7": ["Move to Trash"],
     "q3W2nd": ["Couldn't add that comment: ", ["0"]],
+    "q3sP3v": [
+      "The file was restored to an older version. Open it to choose which version to keep."
+    ],
     "q4YJl_": ["The terminal session ended (exit code ", ["0"], ")."],
     "q4efaG": [["filePath"], " is no longer in this skill"],
     "q5uZbJ": ["Missing pages are indexed when you search. Search again for fuller results."],

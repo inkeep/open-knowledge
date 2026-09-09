@@ -342,6 +342,52 @@ describe('ConflictEntrySchema', () => {
       }).success,
     ).toBe(true);
   });
+  test('preserves both recognized conflict origins', () => {
+    for (const conflictKind of ['git', 'stale-external-write']) {
+      const entry = {
+        file: 'docs/foo.md',
+        detectedAt: '2026-04-30T10:00:00.000Z',
+        conflictKind,
+      };
+      expect(ConflictEntrySchema.parse(entry)).toEqual(entry);
+    }
+  });
+  test.each([
+    { conflictKind: 'unknown', variant: 'working-tree', degradedField: 'conflictKind' },
+    { conflictKind: 'git', variant: 'unknown', degradedField: 'variant' },
+  ])('drops unrecognized $degradedField while preserving the entry', (metadata) => {
+    const entry = {
+      file: 'docs/foo.md',
+      detectedAt: '2026-04-30T10:00:00.000Z',
+      conflictKind: metadata.conflictKind,
+      variant: metadata.variant,
+      oursSha: 'a'.repeat(40),
+      theirsSha: 'b'.repeat(40),
+      baseSha: 'c'.repeat(40),
+    };
+    expect(ConflictEntrySchema.parse(entry)).toEqual({
+      ...entry,
+      [metadata.degradedField]: undefined,
+    });
+  });
+  test('still rejects missing or empty required fields with unrecognized metadata', () => {
+    for (const invalidFields of [
+      { file: '' },
+      { file: undefined },
+      { detectedAt: '' },
+      { detectedAt: undefined },
+    ]) {
+      expect(
+        ConflictEntrySchema.safeParse({
+          file: 'docs/foo.md',
+          detectedAt: '2026-04-30T10:00:00.000Z',
+          conflictKind: 'unknown',
+          variant: 'unknown',
+          ...invalidFields,
+        }).success,
+      ).toBe(false);
+    }
+  });
   test('rejects empty file', () => {
     expect(
       ConflictEntrySchema.safeParse({ file: '', detectedAt: '2026-04-30T10:00:00.000Z' }).success,
@@ -363,9 +409,36 @@ describe('SyncConflictsSuccessSchema', () => {
   test('rejects missing conflicts field', () => {
     expect(SyncConflictsSuccessSchema.safeParse({}).success).toBe(false);
   });
+  test('keeps every conflict when one entry has unrecognized metadata', () => {
+    const known = {
+      file: 'known.md',
+      detectedAt: '2026-04-30T10:00:00.000Z',
+      conflictKind: 'git',
+      variant: 'working-tree',
+      theirsSha: 'a'.repeat(40),
+    };
+    const unknown = {
+      file: 'unknown.md',
+      detectedAt: '2026-04-30T10:01:00.000Z',
+      conflictKind: 'unknown',
+      variant: 'unknown',
+    };
+    expect(SyncConflictsSuccessSchema.parse({ conflicts: [unknown, known] })).toEqual({
+      conflicts: [{ ...unknown, conflictKind: undefined, variant: undefined }, known],
+    });
+  });
 });
 
 describe('SyncResolveConflictRequestSchema', () => {
+  test('accepts explicit empty content but rejects omitted content', () => {
+    expect(
+      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'content', content: '' })
+        .success,
+    ).toBe(true);
+    expect(
+      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'content' }).success,
+    ).toBe(false);
+  });
   test('parses {file, strategy:mine}', () => {
     expect(
       SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'mine' }).success,
@@ -451,6 +524,32 @@ describe('SyncConflictContentSuccessSchema', () => {
         lifecycleStatus: 'conflict',
       }).success,
     ).toBe(true);
+  });
+  test('parses both conflict origins and rejects an unrecognized origin on the content response', () => {
+    for (const conflictKind of ['git', 'stale-external-write']) {
+      expect(
+        SyncConflictContentSuccessSchema.safeParse({
+          file: 'a.md',
+          base: 'b',
+          ours: 'o',
+          theirs: 't',
+          kind: 'both-modified',
+          lifecycleStatus: 'conflict',
+          conflictKind,
+        }).success,
+      ).toBe(true);
+    }
+    expect(
+      SyncConflictContentSuccessSchema.safeParse({
+        file: 'a.md',
+        base: 'b',
+        ours: 'o',
+        theirs: 't',
+        kind: 'both-modified',
+        lifecycleStatus: 'conflict',
+        conflictKind: 'unknown',
+      }).success,
+    ).toBe(false);
   });
   test('rejects missing kind (always-required discriminator)', () => {
     expect(

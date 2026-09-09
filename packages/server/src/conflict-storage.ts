@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
-import { ConflictMarkersInContentError, NoConflictTrackedError } from './conflict-errors.ts';
+import { NoConflictTrackedError } from './conflict-errors.ts';
+import { requireConflictResolutionContent } from './conflict-resolution-input.ts';
 import { isShareableOkArtifact } from './content-filter.ts';
 import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
-import { containsUnresolvedConflictBlock } from './reconciliation.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 
 const log = getLogger('conflict-storage');
@@ -57,6 +57,18 @@ export class ConflictStore {
       }
       this.branch = data.branch ?? this.branch;
       this.conflicts = data.conflicts ?? [];
+      for (const entry of this.conflicts) {
+        const receivedVariant: unknown = entry.variant;
+        if (receivedVariant === undefined || receivedVariant === 'working-tree') continue;
+        log.warn(
+          {
+            event: 'conflict-discriminator-unrecognized',
+            file: entry.file,
+            receivedVariant,
+          },
+          '[conflicts] unrecognized conflict variant — the field is dropped from the conflicts list',
+        );
+      }
     } catch (e) {
       log.warn({ err: e }, '[conflicts] failed to load conflicts.json — starting empty');
       this.conflicts = [];
@@ -134,17 +146,7 @@ export class ConflictStore {
       throw new NoConflictTrackedError({ file });
     }
 
-    if (
-      strategy === 'content' &&
-      content !== undefined &&
-      containsUnresolvedConflictBlock(content)
-    ) {
-      throw new ConflictMarkersInContentError({ file });
-    }
-
-    if (strategy === 'content' && content === undefined) {
-      throw new Error(`[conflicts] strategy 'content' requires content parameter`);
-    }
+    if (strategy === 'content') requireConflictResolutionContent(file, content);
 
     if (entry.variant === 'working-tree') {
       await this.resolveWorkingTreeConflict(entry, strategy, content);
@@ -166,18 +168,16 @@ export class ConflictStore {
         break;
 
       case 'content': {
-        if (content === undefined) {
-          throw new Error(`[conflicts] strategy 'content' requires content parameter`);
-        }
+        const resolved = requireConflictResolutionContent(file, content);
         const projectRoot = resolve(this.projectDir);
         const absPath = resolve(projectRoot, file);
         if (!isWithinDir(absPath, projectRoot)) {
           throw new Error(`[conflicts] file path escapes project directory: ${file}`);
         }
-        assertRealpathWithinDir(absPath, projectRoot, {
+        const target = assertRealpathWithinDir(absPath, projectRoot, {
           allowShareableOkArtifact: isShareableOkArtifact,
         });
-        tracedWriteFileSync(absPath, content, 'utf-8');
+        tracedWriteFileSync(target, resolved, 'utf-8');
         await handle.git.raw(['add', '--', file]);
         break;
       }
@@ -252,7 +252,7 @@ export class ConflictStore {
     if (!isWithinDir(absPath, projectRoot)) {
       throw new Error(`[conflicts] file path escapes project directory: ${entry.file}`);
     }
-    assertRealpathWithinDir(absPath, projectRoot, {
+    const target = assertRealpathWithinDir(absPath, projectRoot, {
       allowShareableOkArtifact: isShareableOkArtifact,
     });
 
@@ -265,7 +265,7 @@ export class ConflictStore {
     }
 
     try {
-      await this.applyWorkingTreeStrategy(absPath, projectRoot, entry, strategy, content);
+      await this.applyWorkingTreeStrategy(absPath, target, projectRoot, entry, strategy, content);
     } catch (err) {
       if (!this.addConflict(restoreOnFailure)) {
         log.error(
@@ -279,6 +279,7 @@ export class ConflictStore {
 
   private async applyWorkingTreeStrategy(
     absPath: string,
+    target: string,
     projectRoot: string,
     entry: ConflictEntry,
     strategy: ResolveStrategy,
@@ -297,18 +298,22 @@ export class ConflictStore {
         const { createGitInstance } = await import('./git-handle.ts');
         const handle = createGitInstance(this.projectDir, { credentialConfig: [] });
         const theirsBytes = await handle.git.raw(['cat-file', 'blob', entry.theirsSha]);
-        assertRealpathWithinDir(absPath, projectRoot, {
+        const writeTarget = assertRealpathWithinDir(target, projectRoot, {
           allowShareableOkArtifact: isShareableOkArtifact,
         });
-        tracedWriteFileSync(absPath, theirsBytes, 'utf-8');
+        tracedWriteFileSync(writeTarget, theirsBytes, 'utf-8');
         break;
       }
 
       case 'content': {
-        if (content === undefined) {
-          throw new Error(`[conflicts] strategy 'content' requires content parameter`);
-        }
-        tracedWriteFileSync(absPath, content, 'utf-8');
+        const writeTarget = assertRealpathWithinDir(target, projectRoot, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
+        tracedWriteFileSync(
+          writeTarget,
+          requireConflictResolutionContent(entry.file, content),
+          'utf-8',
+        );
         break;
       }
 

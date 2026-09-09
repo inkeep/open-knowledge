@@ -736,7 +736,10 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
       process.exit(1);
     }
 
-    if (err instanceof serverModule.MissingOkConfigError) {
+    if (
+      err instanceof serverModule.MissingOkConfigError ||
+      err instanceof serverModule.DocumentDurabilityStateError
+    ) {
       console.error(error(err.message));
       process.exit(1);
     }

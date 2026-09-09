@@ -54,6 +54,7 @@ import {
 import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
+import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
@@ -1447,19 +1448,37 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           await tracedWriteFile(canonicalPath, '# NATIVE\n\nnative-divergence-injected\n', 'utf-8');
         }
 
+        let diskBeforeWrite: string | null = null;
         if (agentTriggeredStore && currentBase !== undefined) {
-          let diskNow: string | null = null;
           try {
-            if (existsSync(canonicalPath)) diskNow = readFileSync(canonicalPath, 'utf-8');
+            if (existsSync(canonicalPath)) {
+              diskBeforeWrite = readFileSync(canonicalPath, 'utf-8');
+            }
           } catch (err) {
-            diskNow = null;
+            diskBeforeWrite = null;
             log.warn(
               { err, documentName },
               '[persistence] L3 disk-read failed; divergence check skipped for this store',
             );
           }
-          if (diskNow !== null && normalizeBridge(diskNow) !== normalizeBridge(currentBase)) {
-            const diskContent = diskNow;
+          if (
+            diskBeforeWrite !== null &&
+            normalizeBridge(diskBeforeWrite) !== normalizeBridge(currentBase)
+          ) {
+            const diskContent = diskBeforeWrite;
+            if (
+              refuseStaleExternalWrite(
+                durabilityState,
+                document,
+                documentName,
+                diskContent,
+                markdown,
+              )
+            ) {
+              durabilityState.recordStaleExternalWriteFreeze(documentName);
+              persistenceDeferCounts.delete(documentName);
+              return;
+            }
             console.warn(
               JSON.stringify({
                 event: 'agent-write-content-divergence',
@@ -1557,7 +1576,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           `[persistence] Wrote ${canonicalPath} (${markdown.length} bytes)`,
         );
 
-        durabilityState.setReconciledBase(documentName, markdown);
+        durabilityState.recordSuccessfulStore(
+          documentName,
+          markdown,
+          agentTriggeredStore && currentBase !== undefined && currentBase !== markdown
+            ? (diskBeforeWrite ?? currentBase)
+            : undefined,
+        );
         docsWithSettledWrite.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
@@ -1746,6 +1771,24 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
 
           const raw = readFileSync(filePath, 'utf-8');
+          const currentBase = durabilityState.getReconciledBase(documentName);
+          const staleExternalWrite = refuseStaleExternalWrite(
+            durabilityState,
+            document,
+            documentName,
+            raw,
+          );
+          let contentToLoad = raw;
+          if (staleExternalWrite) {
+            const retainedContent =
+              durabilityState.getStaleExternalWrite(documentName)?.retainedContent ?? currentBase;
+            if (retainedContent === undefined) {
+              throw new Error(
+                `Missing acknowledged content for stale external write: ${documentName}`,
+              );
+            }
+            contentToLoad = retainedContent;
+          }
 
           const xmlFragment = document.getXmlFragment('default');
           log.info(
@@ -1757,7 +1800,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             document.transact(() => {
               applyDiskContentToDoc(
                 document,
-                raw,
+                contentToLoad,
                 options?.resolveEmbed,
                 documentName,
                 options?.resolveSize,
@@ -1781,7 +1824,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             );
           }
 
-          durabilityState.setReconciledBase(documentName, raw);
+          if (!staleExternalWrite) durabilityState.setReconciledBase(documentName, raw);
         },
       ).finally(() => {
         loadDurationHist?.record((Date.now() - started) / 1000);

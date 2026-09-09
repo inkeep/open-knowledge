@@ -1,4 +1,5 @@
 import {
+  type SyncConflictContentSuccess,
   type SynthesisedConflictRegion,
   synthesiseConflictMarkersWithRegions,
 } from '@inkeep/open-knowledge-core';
@@ -12,6 +13,7 @@ import type {
 import { UnresolvedFile } from '@pierre/diffs';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useConflictFooterHeightVar } from '@/hooks/use-conflict-footer-height';
 import { okPierreTheme } from '@/lib/pierre-theme';
@@ -20,10 +22,11 @@ import { ConflictHistory } from './conflict-history';
 
 interface ConflictViewProps {
   fileName: string;
+  conflictKind?: SyncConflictContentSuccess['conflictKind'];
   ours: string;
   base: string;
   theirs: string;
-  onResolve: (content: string) => void | Promise<void>;
+  onResolve: (content: string, selection?: MergeConflictResolution) => void | Promise<void>;
 }
 
 interface ConflictControl {
@@ -85,7 +88,14 @@ function isSnapshotAllResolved(snapshot: ConflictSnapshot): boolean {
   return fileDiff.additionLines.join('') === fileDiff.deletionLines.join('');
 }
 
-export function ConflictView({ fileName, ours, base, theirs, onResolve }: ConflictViewProps) {
+export function ConflictView({
+  fileName,
+  conflictKind = 'git',
+  ours,
+  base,
+  theirs,
+  onResolve,
+}: ConflictViewProps) {
   const { t } = useLingui();
   const containerRef = useRef<HTMLElement>(null);
   const onResolveRef = useRef(onResolve);
@@ -95,6 +105,9 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
   >(null);
   const handleUndoRef = useRef<(() => void) | null>(null);
   const handleRedoRef = useRef<(() => void) | null>(null);
+  const handleIdenticalChoiceRef = useRef<((selection: MergeConflictResolution) => void) | null>(
+    null,
+  );
   const handleApplyRef = useRef<(() => void | Promise<void>) | null>(null);
   const [controls, setControls] = useState<ConflictControl[]>([]);
   const [canUndo, setCanUndo] = useState(false);
@@ -107,6 +120,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
   const applyingRef = useRef(false);
   const [isApplying, setIsApplying] = useState(false);
   const [showBase, setShowBase] = useState(false);
+  const identicalStaleVersions = conflictKind === 'stale-external-write' && ours === theirs;
 
   useEffect(() => {
     onResolveRef.current = onResolve;
@@ -125,7 +139,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
 
     const { text: markerText, regions: writtenRegions } = synthesiseConflictMarkersWithRegions(
       ours,
-      base || null,
+      conflictKind === 'stale-external-write' ? null : base || null,
       theirs,
       {
         includeBaseSection: showBase,
@@ -140,11 +154,17 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
     let verifyParse = true;
     let parseMismatched = false;
 
-    function syncState(resolved: boolean) {
+    function syncState(snapshot: ConflictSnapshot) {
+      const resolved =
+        isSnapshotAllResolved(snapshot) &&
+        (conflictKind !== 'stale-external-write' || snapshot.selection !== undefined);
       setCanUndo(history.canUndo);
       setCanRedo(history.canRedo);
       setAllResolved(resolved);
-      const remaining = remainingConflictCount(history.current.file.contents);
+      const remaining =
+        conflictKind === 'stale-external-write' && !resolved
+          ? 1
+          : remainingConflictCount(history.current.file.contents);
       setLiveRemaining(resolved ? 'all-resolved' : remaining);
     }
 
@@ -189,7 +209,13 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
       if (!container) return;
       verifyParse = false;
       const scrollTop = container.scrollTop;
-      inst.render({ ...snapshot, forceRender: true });
+      inst.render({
+        file: snapshot.file,
+        fileDiff: snapshot.fileDiff,
+        actions: snapshot.actions,
+        markerRows: snapshot.markerRows,
+        forceRender: true,
+      });
       container.scrollTop = scrollTop;
       container.focus();
     }
@@ -221,11 +247,11 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
         return;
       }
 
-      const snapshot: ConflictSnapshot = resolved;
+      const snapshot: ConflictSnapshot = { ...resolved, selection: resolution };
       history.push(snapshot);
 
       const done = isSnapshotAllResolved(snapshot);
-      syncState(done);
+      syncState(snapshot);
       if (done) setControls([]);
 
       rerenderAndRestore(snapshot);
@@ -234,7 +260,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
     handleUndoRef.current = () => {
       const snapshot = history.undo();
       if (!snapshot) return;
-      syncState(isSnapshotAllResolved(snapshot));
+      syncState(snapshot);
       rerenderAndRestore(snapshot);
     };
 
@@ -242,13 +268,35 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
       const snapshot = history.redo();
       if (!snapshot) return;
       const done = isSnapshotAllResolved(snapshot);
-      syncState(done);
+      syncState(snapshot);
       if (done) setControls([]);
       rerenderAndRestore(snapshot);
     };
 
-    handleApplyRef.current = () =>
-      onResolveRef.current(matchTrailingNewline(history.current.file.contents, ours, theirs));
+    handleIdenticalChoiceRef.current = (selection) => {
+      if (parseMismatched) {
+        console.warn(
+          JSON.stringify({
+            event: 'conflict-action-refused-parse-mismatch',
+            'doc.name': fileName,
+            resolution: selection,
+          }),
+        );
+        setLiveRemaining('unavailable');
+        return;
+      }
+      const snapshot: ConflictSnapshot = { ...history.current, selection };
+      history.push(snapshot);
+      syncState(snapshot);
+      rerenderAndRestore(snapshot);
+    };
+
+    handleApplyRef.current = () => {
+      const content = matchTrailingNewline(history.current.file.contents, ours, theirs);
+      return conflictKind === 'stale-external-write'
+        ? onResolveRef.current(content, history.current.selection)
+        : onResolveRef.current(content);
+    };
 
     inst.render({
       file: { name: fileName, contents: markerText },
@@ -272,7 +320,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
         markerRows: initCache.markerRows,
       };
       history.reset(initial);
-      setAllResolved(isSnapshotAllResolved(initial));
+      setAllResolved(conflictKind !== 'stale-external-write' && isSnapshotAllResolved(initial));
     }
 
     return () => {
@@ -280,6 +328,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
       handleActionRef.current = null;
       handleUndoRef.current = null;
       handleRedoRef.current = null;
+      handleIdenticalChoiceRef.current = null;
       handleApplyRef.current = null;
       setControls([]);
       setCanUndo(false);
@@ -287,18 +336,33 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
       setAllResolved(false);
       setParseMismatch(false);
     };
-  }, [fileName, ours, base, theirs, showBase]);
+  }, [fileName, ours, base, theirs, showBase, conflictKind]);
 
-  const absentStageBanner = !ours
-    ? t`This file was deleted on the current branch (delete-modify conflict).`
-    : !theirs
-      ? t`This file was deleted on the incoming branch (modify-delete conflict).`
-      : !base
-        ? t`No common ancestor — both branches added this file (add/add conflict).`
-        : null;
+  const absentStageBanner =
+    conflictKind === 'stale-external-write'
+      ? null
+      : !ours
+        ? t`This file was deleted on the current branch (delete-modify conflict).`
+        : !theirs
+          ? t`This file was deleted on the incoming branch (modify-delete conflict).`
+          : !base
+            ? t`No common ancestor — both branches added this file (add/add conflict).`
+            : null;
 
   return (
     <div className="flex h-full flex-col">
+      {conflictKind === 'stale-external-write' && (
+        <div className="shrink-0 px-3 py-2">
+          <Alert role="status">
+            <AlertDescription>
+              {t`The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes.`}
+              {identicalStaleVersions
+                ? ` ${t`Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off.`}`
+                : null}
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
       {}
       {absentStageBanner && (
         <p role="status" className="shrink-0 border-b px-3 py-2 text-xs text-muted-foreground">
@@ -339,7 +403,7 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
         >
           {t`Redo`}
         </Button>
-        {base ? (
+        {base && conflictKind !== 'stale-external-write' ? (
           <Button
             type="button"
             size="xs"
@@ -354,6 +418,13 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
           </Button>
         ) : null}
       </div>
+      {identicalStaleVersions && !parseMismatch && !allResolved && (
+        <div className="shrink-0 px-3 py-2">
+          <ConflictActions
+            onSelect={(selection) => handleIdenticalChoiceRef.current?.(selection)}
+          />
+        </div>
+      )}
       <section
         ref={containerRef}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — Chromium doesn't make overflow:auto elements focusable without tabIndex, and axe's scrollable-region-focusable requires the stop. Same pattern as SyncStatusBadge's scroll container.
@@ -389,39 +460,65 @@ export function ConflictView({ fileName, ours, base, theirs, onResolve }: Confli
       {!parseMismatch &&
         controls.map((control) =>
           createPortal(
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                aria-label={t`Accept current version for conflict ${control.conflict.conflictIndex + 1}`}
-                onClick={() => handleActionRef.current?.(control.conflict, 'current')}
-              >
-                {t`Accept current`}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                aria-label={t`Accept incoming version for conflict ${control.conflict.conflictIndex + 1}`}
-                onClick={() => handleActionRef.current?.(control.conflict, 'incoming')}
-              >
-                {t`Accept incoming`}
-              </Button>
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                aria-label={t`Accept both versions for conflict ${control.conflict.conflictIndex + 1}`}
-                onClick={() => handleActionRef.current?.(control.conflict, 'both')}
-              >
-                {t`Accept both`}
-              </Button>
-            </div>,
+            <ConflictActions
+              conflictIndex={control.conflict.conflictIndex}
+              onSelect={(selection) => handleActionRef.current?.(control.conflict, selection)}
+            />,
             control.host,
             control.key,
           ),
         )}
+    </div>
+  );
+}
+
+function ConflictActions({
+  conflictIndex,
+  onSelect,
+}: {
+  conflictIndex?: number;
+  onSelect: (selection: MergeConflictResolution) => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        aria-label={
+          conflictIndex === undefined
+            ? undefined
+            : t`Accept current version for conflict ${conflictIndex + 1}`
+        }
+        onClick={() => onSelect('current')}
+      >
+        {t`Accept current`}
+      </Button>
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        aria-label={
+          conflictIndex === undefined
+            ? undefined
+            : t`Accept incoming version for conflict ${conflictIndex + 1}`
+        }
+        onClick={() => onSelect('incoming')}
+      >
+        {t`Accept incoming`}
+      </Button>
+      {conflictIndex !== undefined && (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          aria-label={t`Accept both versions for conflict ${conflictIndex + 1}`}
+          onClick={() => onSelect('both')}
+        >
+          {t`Accept both`}
+        </Button>
+      )}
     </div>
   );
 }

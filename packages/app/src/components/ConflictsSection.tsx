@@ -67,12 +67,23 @@ export function ConflictsSection() {
               size="sm"
               data-testid="conflicts-section-row"
               data-file={entry.file}
+              data-conflict-kind={entry.conflictKind}
               title={entry.file}
-              className="h-7 w-full justify-start gap-1.5 px-2 font-normal text-[13px] text-amber-800 hover:bg-amber-100/60 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/30 dark:hover:text-amber-200"
+              className="h-auto min-h-7 w-full items-start justify-start gap-1.5 px-2 py-1.5 font-normal text-[13px] text-amber-800 hover:bg-amber-100/60 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/30 dark:hover:text-amber-200"
               onClick={() => navigateToConflictedDoc(entry.file)}
             >
-              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{entry.file}</span>
+              <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 text-start">
+                <span className="block truncate">{entry.file}</span>
+                {entry.conflictKind === 'stale-external-write' ? (
+                  <span className="block text-pretty text-[11px] leading-4 text-amber-700/80 dark:text-amber-400/80">
+                    <Trans>
+                      The file was restored to an older version. Open it to choose which version to
+                      keep.
+                    </Trans>
+                  </span>
+                ) : null}
+              </span>
             </Button>
           </li>
         ))}

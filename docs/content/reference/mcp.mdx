@@ -35,8 +35,8 @@ To point an MCP client at this server, locally or over a tunnel from another mac
 | `import` | Acquire a skill from a full skills.sh skill-page URL (`https://www.skills.sh/<owner>/<repo>/<skill>`, or `https://www.skills.sh/site/<hostname>/<skill>` for a website catalog), `owner/repo[/subpath]`, a git URL, or a local / `file://` path into the vendor-neutral `.agents/skills/<name>/` hub as versioned content — live immediately, with cross-harness projection via `install`. Pass the required `add` array with at least one install location (an editor id, `agents`, or a custom root path). Use `skill` to choose one skill from a multi-skill source or a `skills({ query })` result. Records provenance in `.ok/skills-lock.json`; a name collision lands under `<name>-imported`; scripts are imported as content and never executed |
 | `checkpoint` | Save a project-wide version snapshot — a single restore point. Returns its `version` |
 | `restore_version` | Restore one `document` or `skill` to a historical `version` (the SHA from `history` or `checkpoint`) |
-| `conflicts` | Read GitHub-sync merge conflicts. `kind: "list"` enumerates tracked conflicts; `kind: "content"` returns one file's base / ours / theirs stages |
-| `resolve_conflict` | Write a chosen resolution (`mine` / `theirs` / `content` / `delete`) and commit |
+| `conflicts` | Read tracked conflicts (`conflictKind: "git"` or `"stale-external-write"`). `kind: "list"` enumerates them, including `variant: "working-tree"` for Git working-tree overlays; `kind: "content"` returns one file's base / ours / theirs versions |
+| `resolve_conflict` | Apply a chosen resolution (`mine` / `theirs` / `content` / `delete`). Git-index resolution stages files and commits after the final tracked conflict clears; local stale-save and working-tree overlay resolutions create no resolution commit |
 
 ## Output shape mirrors the input
 
@@ -64,16 +64,20 @@ Cap is 80 characters. Avoid secrets and PII; summaries persist to git history.
 
 ## Conflict-aware writes
 
-Every mutating tool (`write`, `edit`, `delete`, `move`, `restore_version`, and agent undo) refuses to mutate a doc whose GitHub-sync state is `conflict`.
+Every mutating tool (`write`, `edit`, `delete`, `move`, `restore_version`, and agent undo) refuses to mutate a doc whose lifecycle status is `conflict`, returning `urn:ok:error:doc-in-conflict` (409). This includes local stale-external-write conflicts with GitHub sync disabled.
 
-To recover, call `conflicts({ kind: "content", file })` to inspect the merge stages, then `resolve_conflict` with one of:
+To recover, call `conflicts({ kind: "list" })` to identify the `conflictKind` and any `variant: "working-tree"`, then `conflicts({ kind: "content", file })` to inspect both versions. The content response's `conflictKind: "git"` covers both Git-index conflicts and working-tree overlays; inspect the list entry to distinguish them. Call `resolve_conflict` with one of:
 
-- `mine`: resolve to your committed version (stage 2 — runs `git checkout --ours <file>` then `git add`).
-- `theirs`: resolve to their committed version (stage 3 — runs `git checkout --theirs <file>` then `git add`).
-- `content`: write the exact bytes you supply (for example, a merged result you composed by reading both stages).
-- `delete`: `git rm` the file (for delete-vs-modify shapes where one stage is missing).
+- `mine`: for Git-index conflicts, restore your committed version (stage 2); for working-tree overlays, keep the working-tree file; for stale external writes, keep the protected collaborative version, recovered from the local snapshot when needed.
+- `theirs`: for Git-index conflicts, restore their committed version (stage 3); for working-tree overlays, restore the pinned incoming blob; for stale external writes, accept the recorded older file version, including an intentional revert.
+- `content`: write the exact bytes you supply (for example, a merged result you composed by reading both stages). An explicit empty string keeps an empty file; omitting `content` is invalid. Use `delete` only to remove the file.
+- `delete`: remove the document (`git rm` for Git-index conflicts).
 
-To detect conflict state proactively without waiting for a 409, call `conflicts({ kind: "list" })`; each entry is `{ file, detectedAt, … }`. `conflicts({ kind: "content" })` adds the doc's `lifecycleStatus` alongside the merge stages.
+Git-index resolution stages the file and creates a merge commit after the final tracked conflict clears. Local stale-save and working-tree overlay resolutions create no resolution commit. A failed resolution remains tracked for retry; the disk, collaborative state, and index update are not one atomic transaction.
+
+A write that detects a stale file during its final disk flush returns the distinct `urn:ok:error:stale-external-write` (409): the edit reached collaborative state and the recovery snapshot, but the disk write was skipped. Resolve and re-read before retrying to avoid duplicating an already-applied append.
+
+To detect conflict state proactively without waiting for a 409, call `conflicts({ kind: "list" })`; each entry is `{ file, detectedAt, conflictKind, … }`. `conflicts({ kind: "content" })` adds the doc's `lifecycleStatus` alongside its versions.
 
 ## Preview links
 

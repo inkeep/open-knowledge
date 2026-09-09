@@ -77,6 +77,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:no-active-session',
   'urn:ok:error:too-many-agent-sessions',
   'urn:ok:error:disk-divergence',
+  'urn:ok:error:stale-external-write',
   'urn:ok:error:doc-not-found',
   'urn:ok:error:doc-already-exists',
   'urn:ok:error:doc-not-open',

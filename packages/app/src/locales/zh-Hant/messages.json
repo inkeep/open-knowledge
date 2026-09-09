@@ -785,6 +785,9 @@
     "AJ7_B2": ["建立新主題"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
     "ALhMYW": ["終端機"],
+    "AMU00p": [
+      "兩個版本完全相同。選擇「採用目前」會讓 OpenKnowledge 的保護保持開啟，因此再次儲存較舊的版本仍會被拒絕。選擇「採用傳入」會關閉該保護。"
+    ],
     "AN-UPd": [
       ".ok/local/config.yml 中的 terminal.shell 必須是 Windows 絕對路徑，將改用可用的 Windows shell。"
     ],
@@ -2470,6 +2473,9 @@
       "無法重新啟動伺服器——它被另一個處理程序佔用。請關閉這個專案的其他 OpenKnowledge 視窗，然後再試一次。"
     ],
     "Xv_ijG": ["https://github.com/owner/repo 或 owner/repo"],
+    "XwZiq2": [
+      "檔案已還原為較舊的版本。目前版本是 OpenKnowledge 保護的版本。傳入版本是還原的版本。請選擇要保留的版本，然後套用變更。"
+    ],
     "XzL7x7": ["重新開啟 ", ["filePath"], " 以繼續編輯。"],
     "Xzy0s0": ["把 ", ["fullLabel"], " 從脈絡中移除"],
     "Y-Urt2": ["由 LaTeX 原始碼經 KaTeX 顯示的獨立數學公式。"],
@@ -3951,6 +3957,7 @@
     "q2kXMG": ["行內公式"],
     "q3TWG7": ["移到垃圾桶"],
     "q3W2nd": ["無法加上那則註解：", ["0"]],
+    "q3sP3v": ["檔案已還原為較舊的版本。開啟它以選擇要保留的版本。"],
     "q4YJl_": ["終端機工作階段已結束（結束代碼 ", ["0"], "）。"],
     "q4efaG": [["filePath"], " 已不在此技能中"],
     "q5uZbJ": ["尚未建立索引的頁面會在搜尋時建立索引。再次搜尋可取得更完整的結果。"],

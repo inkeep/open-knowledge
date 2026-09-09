@@ -1432,7 +1432,7 @@ msgstr "上方"
 msgid "Accept both"
 msgstr "两者都采用"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept both versions for conflict {0}"
 msgstr "对冲突 {0} 同时采用两个版本"
@@ -1441,7 +1441,7 @@ msgstr "对冲突 {0} 同时采用两个版本"
 msgid "Accept current"
 msgstr "采用当前"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept current version for conflict {0}"
 msgstr "对冲突 {0} 采用当前版本"
@@ -1450,7 +1450,7 @@ msgstr "对冲突 {0} 采用当前版本"
 msgid "Accept incoming"
 msgstr "采用传入"
 
-#. placeholder {0}: control.conflict.conflictIndex + 1
+#. placeholder {0}: conflictIndex + 1
 #: src/components/ConflictView.tsx
 msgid "Accept incoming version for conflict {0}"
 msgstr "对冲突 {0} 采用传入版本"
@@ -2381,6 +2381,10 @@ msgstr "两者"
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Both agents end up reading everything in {keep}."
 msgstr "两个智能体最终都会读取 {keep} 中的全部内容。"
+
+#: src/components/ConflictView.tsx
+msgid "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
+msgstr "两个版本完全相同。选择“采用当前”会让 OpenKnowledge 的保护保持开启，因此再次保存较旧的版本仍会被拒绝。选择“采用传入”会关闭该保护。"
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -13643,6 +13647,14 @@ msgstr "文件已在你的{trashNoun}中；文件监视器将进行同步。"
 #: src/components/TemplateForm.tsx
 msgid "The file on disk, and the id agents use."
 msgstr "磁盘上的文件，以及智能体使用的 id。"
+
+#: src/components/ConflictView.tsx
+msgid "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
+msgstr "文件已恢复为较旧的版本。当前版本是 OpenKnowledge 保护的版本。传入版本是恢复的版本。请选择要保留的版本，然后应用更改。"
+
+#: src/components/ConflictsSection.tsx
+msgid "The file was restored to an older version. Open it to choose which version to keep."
+msgstr "文件已恢复为较旧的版本。打开它以选择要保留的版本。"
 
 #: src/components/SkillProperties.tsx
 msgid "The folder on disk and the id agents use to invoke this skill."

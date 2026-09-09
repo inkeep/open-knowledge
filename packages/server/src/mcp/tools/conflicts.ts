@@ -1,9 +1,9 @@
+import { ConflictEntrySchema } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
-  looseObjectArray,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
   resolveProjectServerContext,
@@ -12,10 +12,12 @@ import {
 } from './shared.ts';
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Read GitHub-sync merge conflicts. Dispatches on `kind`:',
+  '[Requires: Hocuspocus server] Read Git merge conflicts and local stale external-write conflicts. Dispatches on `kind`:',
   '',
-  '- `kind: "list"` — enumerate every doc currently tracked in a merge-conflict state. Returns `{ list: [{ file, detectedAt, ... }] }` (empty when none). The entry point to the resolve flow.',
-  '- `kind: "content"` — fetch the three merge stages for one `file`. Returns `{ content: { file, base, ours, theirs, shape, lifecycleStatus } }`. `ours` reflects the live Y.Text (what the human sees) when the doc is loaded server-side.',
+  '- `kind: "list"` — enumerate every tracked conflict. Returns `{ list: [{ file, detectedAt, conflictKind, ... }] }` (empty when none). The entry point to the resolve flow.',
+  '- `kind: "content"` — fetch the versions for one `file`. Returns `{ content: { file, base, ours, theirs, shape, conflictKind, lifecycleStatus } }`. `ours` reflects the live Y.Text (what the human sees) when the doc is loaded server-side.',
+  '- `conflictKind: "git"` uses Git versions. `conflictKind: "stale-external-write"` means a known older disk version was refused: `base` is the last reconciled version, `ours` is the protected live or recovered version, and `theirs` is the rejected disk version. Resolving this local conflict does not create a Git commit.',
+  '- A Git list entry with `variant: "working-tree"` is a local overlay conflict: resolution changes the working tree without a resolution commit. Other Git entries use index stages and commit only when the last conflict clears. The content response does not distinguish these two Git variants; inspect the list entry.',
   '',
   '**Parameters:**',
   '- `kind` — `list` | `content`.',
@@ -49,12 +51,16 @@ export function register(server: ServerInstance, deps: ConflictsDeps): void {
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },
       outputSchema: outputSchemaWithText({
-        list: looseObjectArray
+        list: z
+          .array(ConflictEntrySchema)
           .optional()
-          .describe('`kind: "list"` — every tracked conflict (`{ file, detectedAt, ... }`).'),
+          .describe('`kind: "list"` — every tracked conflict, including its conflictKind.'),
         content: z
           .object({
             file: z.string().describe('The conflicted file.'),
+            conflictKind: z
+              .enum(['git', 'stale-external-write'])
+              .describe('Git merge or local stale disk-write conflict.'),
             base: z.string().describe('Merge-base stage content.'),
             ours: z.string().describe('Our stage (live Y.Text when loaded server-side).'),
             theirs: z.string().describe('Their stage content.'),
@@ -102,10 +108,12 @@ export function register(server: ServerInstance, deps: ConflictsDeps): void {
           rec.kind === 'delete-modify' || rec.kind === 'modify-delete' ? rec.kind : 'both-modified';
         const lifecycleStatus =
           typeof rec.lifecycleStatus === 'string' ? rec.lifecycleStatus : null;
+        const conflictKind =
+          rec.conflictKind === 'stale-external-write' ? 'stale-external-write' : 'git';
         const lifecycleSuffix = lifecycleStatus ? ` (lifecycle: ${lifecycleStatus})` : '';
         const text = `Conflict stages for ${file} (shape: ${shape})${lifecycleSuffix}:\n--- base ---\n${base}\n--- ours ---\n${ours}\n--- theirs ---\n${theirs}`;
         return textPlusStructured(text, {
-          content: { file, base, ours, theirs, shape, lifecycleStatus },
+          content: { file, base, ours, theirs, shape, conflictKind, lifecycleStatus },
         });
       }
 

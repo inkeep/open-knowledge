@@ -16,6 +16,7 @@ export type MapDrivenSpliceMemoSkipReason =
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
+  staleExternalWriteRefused: number;
   batchCount: number;
   upstreamImportCount: number;
   persistenceStoreRemovedDocCount: number;
@@ -118,6 +119,7 @@ export interface ReconciliationMetrics {
 const counters: ReconciliationMetrics = {
   reconcileCount: 0,
   conflictCount: 0,
+  staleExternalWriteRefused: 0,
   batchCount: 0,
   upstreamImportCount: 0,
   persistenceStoreRemovedDocCount: 0,
@@ -213,6 +215,10 @@ export function incrementReconcile(): void {
 
 export function incrementConflict(): void {
   counters.conflictCount++;
+}
+
+export function incrementStaleExternalWriteRefused(): void {
+  counters.staleExternalWriteRefused++;
 }
 
 export function incrementBatch(): void {
@@ -580,6 +586,7 @@ export function getMetrics(): ReconciliationMetrics {
 export function resetMetrics(): void {
   counters.reconcileCount = 0;
   counters.conflictCount = 0;
+  counters.staleExternalWriteRefused = 0;
   counters.batchCount = 0;
   counters.upstreamImportCount = 0;
   counters.persistenceStoreRemovedDocCount = 0;

@@ -15,6 +15,7 @@ import {
   incrementPark,
   incrementReconcile,
   incrementRescueBuffer,
+  incrementStaleExternalWriteRefused,
   incrementUpstreamImport,
   resetMetrics,
 } from './metrics';
@@ -68,6 +69,18 @@ describe('reconciliation metrics', () => {
     expect(m.rescueBufferCount).toBe(1);
     expect(m.branchSwitchCount).toBe(1);
     expect(m.parkCount).toBe(2);
+  });
+
+  test('stale-write refusal does not count as a merge conflict or content loss', () => {
+    resetMetrics();
+    incrementStaleExternalWriteRefused();
+    const metrics = getMetrics();
+    expect(metrics.staleExternalWriteRefused).toBe(1);
+    expect(metrics.conflictCount).toBe(0);
+    expect(metrics.persistenceDivergenceRealign).toBe(0);
+    expect(metrics.persistenceDivergenceRealignCheckpointCreated).toBe(0);
+    resetMetrics();
+    expect(getMetrics().staleExternalWriteRefused).toBe(0);
   });
 
   test('map-driven splice counters: applied increments and fallback is keyed by reason', () => {
