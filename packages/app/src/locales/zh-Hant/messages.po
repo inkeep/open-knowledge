@@ -501,6 +501,14 @@ msgstr "{0} 年前"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel}（衝突）"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}}"
+msgstr "{addingCount, plural, other {已新增 #}}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{addingCount, plural, other {已新增 #}} · {removingCount, plural, other {已移除 #}}"
+
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.claude-desktop.per-tool-approval"
@@ -576,10 +584,6 @@ msgstr "{boldName} 屬於 <0>{0}</0> 外掛{pluginVersion}，為唯讀。{boldHa
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} 位於本專案之外的 <0>{source}</0>，在此執行的智慧體無法載入它。請將其複製進來以便編輯。"
-
-#: src/components/settings/AgentConnectionDialogs.tsx
-msgid "{changeCount, plural, one {# change} other {# changes}}"
-msgstr "{changeCount, plural, one {# 項變更} other {# 項變更}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -978,6 +982,10 @@ msgstr "{propertyCount, plural, other {# 項屬性}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} 屬性"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{removingCount, plural, other {已移除 #}}"
 
 #: src/components/settings/SyncSection.tsx
 msgid "{seconds} seconds"
@@ -11046,6 +11054,18 @@ msgstr "已把「{0}」從其他所有位置移除——它的來源資料夾仍
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "已把「{projectName}」從最近的專案中移除。它的資料夾已經不存在了。"
 
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "將為 {0} 和 {1} 移除。 {addingCount, plural, other {已新增 #}} · {removingCount, plural, other {已移除 #}}"
+
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "將為 {0} 和 {1} 移除。 {removingCount, plural, other {已移除 #}}"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "正在移除"
@@ -13685,8 +13705,8 @@ msgid "The template's filename (without `.md`)."
 msgstr "範本的檔案名稱（不含 `.md`）。"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
-msgstr "{label} 的終端行與桌面行共用同一套設定，因此連接其中一個會同時連接兩者。"
+msgid "The terminal and desktop rows for {label} share one setup, so changes here apply to both."
+msgstr "{label} 的終端行與桌面行共用同一套設定，因此這裡的變更會同時套用到兩者。"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
@@ -13917,6 +13937,11 @@ msgstr "無法完成設定，因為它所需的 MCP 伺服器項目未寫入。"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "這會刪除下方列出的 MCP 伺服器項目和技能檔案。在重新新增之前，智慧代理將無法存取你的文件。"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This disconnects {0} from OpenKnowledge."
+msgstr "這會中斷 {0} 與 OpenKnowledge 的連接。"
 
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"

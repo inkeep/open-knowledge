@@ -19,9 +19,6 @@ import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
-  Plural: ({ value, one, other }: { value: number; one: string; other: string }) => (
-    <>{(value === 1 ? one : other).replace('#', String(value))}</>
-  ),
   Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useLingui: () => ({
     i18n: { locale: 'en' },
@@ -112,6 +109,10 @@ function OpenUntilClosed({
 }) {
   const [open, setOpen] = useState(true);
   return renderDialog(open, setOpen);
+}
+
+function tallyText(dialog: HTMLElement): string {
+  return dialog.querySelector('[aria-live="polite"]')?.textContent ?? '';
 }
 
 async function renderConfigureDialog(
@@ -224,7 +225,7 @@ describe('AgentConnectionDialogs', () => {
       expect(checkbox.getAttribute('data-state')).toBe('checked');
       expect((checkbox as HTMLButtonElement).disabled).toBe(false);
     }
-    expect(within(dialog).getByText('4 changes')).toBeTruthy();
+    expect(within(dialog).getByText('4 added')).toBeTruthy();
   });
 
   test('Finish setup mirrors probed state and submits only the changed satisfier', async () => {
@@ -345,15 +346,293 @@ describe('AgentConnectionDialogs', () => {
     await renderConfigureDialog(apply, 'claude');
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('checkbox', { name: 'Project MCP server' }));
-    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
 
-    expect((await within(dialog).findByRole('status')).textContent).toContain('shared with');
+    expect(await within(dialog).findByText(/shared with/)).toBeTruthy();
     expect(within(dialog).queryByText(/Something went wrong/)).toBeNull();
+
+    expect(tallyText(dialog)).toBe('Removes it for Claude and GitHub Copilot. 1 removed');
 
     await user.click(within(dialog).getByRole('button', { name: 'Remove for both' }));
     expect(batches[1]?.some((i) => i.satisfierId === copilotMcp && i.desired === 'absent')).toBe(
       true,
     );
+  });
+
+  test('a refusal with no peer to widen onto does not promise a removal the button cannot do', async () => {
+    const claudeMcp = satisfierId('claude', 'mcp', 'project');
+    const snapshot = snapshotWith(diskSatisfierIds('claude'));
+    const refused: ApplyAgentConnectionsResult = {
+      ok: false,
+      report: {
+        actions: [],
+        conflicts: [
+          {
+            kind: 'unresolved-shared-copy',
+            satisfierIds: [claudeMcp],
+            agentIds: ['claude', 'copilot'],
+          },
+        ],
+        withheld: [claudeMcp],
+      },
+      snapshot,
+    };
+    const apply = vi.fn(async (intents: readonly ApplyIntent[]) =>
+      intents.length === 0 ? result(snapshot) : refused,
+    );
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(apply, 'claude');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project MCP server' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+    await within(dialog).findByText(/shared with/);
+    expect(tallyText(dialog)).not.toContain('Removes it for');
+    expect(within(dialog).queryByRole('button', { name: 'Remove for both' })).toBeNull();
+    expect(
+      (within(dialog).getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  test('a blocked refusal on a full disconnect does not claim the disconnect will happen', async () => {
+    const claudeMcp = satisfierId('claude', 'mcp', 'project');
+    const snapshot = snapshotWith(diskSatisfierIds('claude'));
+    const refused: ApplyAgentConnectionsResult = {
+      ok: false,
+      report: {
+        actions: [],
+        conflicts: [
+          {
+            kind: 'unresolved-shared-copy',
+            satisfierIds: [claudeMcp],
+            agentIds: ['claude', 'copilot'],
+          },
+        ],
+        withheld: [claudeMcp],
+      },
+      snapshot,
+    };
+    const apply = vi.fn(async (intents: readonly ApplyIntent[]) =>
+      intents.length === 0 ? result(snapshot) : refused,
+    );
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(apply, 'claude');
+    const dialog = await screen.findByRole('dialog');
+    for (const name of [
+      'Project MCP server',
+      'Project skill',
+      'Global MCP server',
+      'OpenKnowledge discovery skill',
+    ]) {
+      await user.click(within(dialog).getByRole('checkbox', { name }));
+    }
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+    await within(dialog).findByText(/shared with/);
+    expect(tallyText(dialog)).not.toContain('This disconnects');
+    expect(tallyText(dialog)).toBe('4 removed');
+  });
+
+  test('a mixed draft refused on its removal still says what it would add', async () => {
+    const claudeMcp = satisfierId('claude', 'mcp', 'project');
+    const copilotMcp = satisfierId('copilot', 'mcp', 'project');
+    const discovery = satisfierId('claude', 'skill', 'user');
+    const snapshot = snapshotWith([
+      ...diskSatisfierIds('claude').filter((id) => id !== discovery),
+      copilotMcp,
+    ]);
+    const refused: ApplyAgentConnectionsResult = {
+      ok: false,
+      report: {
+        actions: [],
+        conflicts: [
+          {
+            kind: 'unresolved-shared-copy',
+            satisfierIds: [claudeMcp, copilotMcp],
+            agentIds: ['claude', 'copilot'],
+          },
+        ],
+        withheld: [claudeMcp, discovery],
+      },
+      snapshot,
+    };
+    const apply = vi.fn(async (intents: readonly ApplyIntent[]) =>
+      intents.length === 0 ? result(snapshot) : refused,
+    );
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(apply, 'claude');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project MCP server' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'OpenKnowledge discovery skill' }),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+
+    await within(dialog).findByText(/shared with/);
+    expect(tallyText(dialog)).toBe('Removes it for Claude and GitHub Copilot. 1 added · 2 removed');
+  });
+
+  test('a draft that turns a row off counts it as a removal, not a change', async () => {
+    const snapshot = snapshotWith(diskSatisfierIds('cursor'));
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(async () => result(snapshot), 'cursor');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+
+    expect(tallyText(dialog)).toBe('1 removed');
+    expect(
+      within(dialog).getByRole('button', { name: 'Remove' }).getAttribute('data-variant'),
+    ).toBe('destructive');
+  });
+
+  test('turning every row off reads as a disconnect, not a save', async () => {
+    const snapshot = snapshotWith(diskSatisfierIds('cursor'));
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(async () => result(snapshot), 'cursor');
+    const dialog = await screen.findByRole('dialog');
+    for (const name of [
+      'Project MCP server',
+      'Project skill',
+      'Global MCP server',
+      'OpenKnowledge discovery skill',
+    ]) {
+      await user.click(within(dialog).getByRole('checkbox', { name }));
+    }
+
+    expect(tallyText(dialog)).toBe('This disconnects Cursor from OpenKnowledge.');
+    expect(
+      within(dialog).getByRole('button', { name: 'Remove' }).getAttribute('data-variant'),
+    ).toBe('destructive');
+    expect(within(dialog).queryByRole('button', { name: 'Save changes' })).toBeNull();
+  });
+
+  test('a draft that both adds and removes stays a save, and says both', async () => {
+    const snapshot = snapshotWith(
+      diskSatisfierIds('cursor').filter((id) => id !== satisfierId('cursor', 'skill', 'user')),
+    );
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(async () => result(snapshot), 'cursor');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+    await user.click(
+      within(dialog).getByRole('checkbox', { name: 'OpenKnowledge discovery skill' }),
+    );
+
+    expect(tallyText(dialog)).toBe('1 added · 1 removed');
+    expect(
+      within(dialog).getByRole('button', { name: 'Save changes' }).getAttribute('data-variant'),
+    ).toBe('destructive');
+    expect(within(dialog).getByRole('button', { name: 'Save changes' })).toBeTruthy();
+    expect(dialog.textContent).not.toContain('This disconnects');
+  });
+
+  test('the paired note holds through every draft shape while the footer tracks them', async () => {
+    const note = 'share one setup, so changes here apply to both';
+    const snapshot = snapshotWith(diskSatisfierIds('claude'));
+    const user = userEvent.setup();
+
+    await renderConfigureDialog(async () => result(snapshot), 'claude', true);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain(note);
+
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+    expect(dialog.textContent).toContain(note);
+    expect(tallyText(dialog)).toBe('1 removed');
+    expect(dialog.textContent).not.toContain('disconnects');
+
+    for (const name of [
+      'Project MCP server',
+      'Global MCP server',
+      'OpenKnowledge discovery skill',
+    ]) {
+      await user.click(within(dialog).getByRole('checkbox', { name }));
+    }
+    expect(dialog.textContent).toContain(note);
+    expect(tallyText(dialog)).toBe('This disconnects Claude from OpenKnowledge.');
+  });
+
+  test('a draft that has fully landed disables the button rather than leaving it enabled beside an empty tally', async () => {
+    const projectSkill = satisfierId('cursor', 'skill', 'project');
+    const before = snapshotWith(diskSatisfierIds('cursor'));
+    const after = snapshotWith(diskSatisfierIds('cursor').filter((id) => id !== projectSkill));
+    const connectionFor = (snapshot: HostSnapshot) =>
+      connectionsFromSnapshot(snapshot).find((c) => c.id === 'cursor') ?? null;
+    const user = userEvent.setup();
+
+    const view = render(
+      <TooltipProvider>
+        <ConfigureConnectionDialog
+          connection={connectionFor(before)}
+          open
+          onOpenChange={() => {}}
+          onSave={async () => result(after, false)}
+        />
+      </TooltipProvider>,
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+    expect(tallyText(dialog)).toBe('1 removed');
+
+    view.rerender(
+      <TooltipProvider>
+        <ConfigureConnectionDialog
+          connection={connectionFor(after)}
+          open
+          onOpenChange={() => {}}
+          onSave={async () => result(after, false)}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(tallyText(dialog)).toBe('');
+    expect(
+      (within(dialog).getByRole('button', { name: 'Save changes' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  test('a partly-applied batch does not turn the tally into a phantom addition', async () => {
+    const projectMcp = satisfierId('cursor', 'mcp', 'project');
+    const before = snapshotWith(diskSatisfierIds('cursor'));
+    const after = snapshotWith(diskSatisfierIds('cursor').filter((id) => id !== projectMcp));
+    const connectionFor = (snapshot: HostSnapshot) =>
+      connectionsFromSnapshot(snapshot).find((c) => c.id === 'cursor') ?? null;
+    const user = userEvent.setup();
+
+    const view = render(
+      <TooltipProvider>
+        <ConfigureConnectionDialog
+          connection={connectionFor(before)}
+          open
+          onOpenChange={() => {}}
+          onSave={async () => result(after, false)}
+        />
+      </TooltipProvider>,
+    );
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project MCP server' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Project skill' }));
+    expect(tallyText(dialog)).toBe('2 removed');
+
+    view.rerender(
+      <TooltipProvider>
+        <ConfigureConnectionDialog
+          connection={connectionFor(after)}
+          open
+          onOpenChange={() => {}}
+          onSave={async () => result(after, false)}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(tallyText(dialog)).toBe('1 removed');
+    expect(within(dialog).queryByRole('button', { name: 'Save changes' })).toBeNull();
   });
 
   test('each blocked reason says its own thing', async () => {
@@ -870,7 +1149,7 @@ describe('a failed save names its reason', () => {
     await renderConfigureDialog(apply, 'claude');
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('checkbox', { name: 'Project MCP server' }));
-    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
     const text = (await within(dialog).findByRole('alert')).textContent ?? '';
     expect(text).toContain(
       'Project skill needs Project MCP server. Turn both off, or keep both on.',

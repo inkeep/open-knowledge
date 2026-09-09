@@ -130,11 +130,36 @@
     ],
     "0eHrMb": ["No se pudo completar la eliminación"],
     "0g7rCZ": ["Se duplicó en \"", ["0"], "\""],
+    "0hAvVd": [
+      "Lo quita para ",
+      ["0"],
+      " y ",
+      ["1"],
+      ". ",
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " añadido"], "many": ["#", " añadidos"], "other": ["#", " añadidos"] }
+      ],
+      " · ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " eliminado"], "many": ["#", " eliminados"], "other": ["#", " eliminados"] }
+      ]
+    ],
     "0jD-Gn": [
       "Una base de conocimiento de equipo, una wiki personal, documentación de proyecto..."
     ],
     "0kTAXe": ["Abrir el origen: ", ["mirrorSrc"]],
     "0m4Snh": ["Habilidades reasignadas"],
+    "0niWj3": [
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " eliminado"], "many": ["#", " eliminados"], "other": ["#", " eliminados"] }
+      ]
+    ],
     "0pLDSn": ["Barra de herramientas de Habilidades"],
     "0pZmTP": ["No se puede compartir esta ruta."],
     "0qyKG6": ["Sincronizado desde el disco"],
@@ -677,6 +702,19 @@
       "Redacta una especificación técnica para mi proyecto. Empieza con una visión general y añade después páginas enlazadas entre sí para la arquitectura, los módulos clave y las preguntas abiertas, todas enlazadas desde un índice de especificaciones."
     ],
     "6s7LXO": ["Atención"],
+    "6tQC_t": [
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " añadido"], "many": ["#", " añadidos"], "other": ["#", " añadidos"] }
+      ],
+      " · ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " eliminado"], "many": ["#", " eliminados"], "other": ["#", " eliminados"] }
+      ]
+    ],
     "6u9LvN": [
       [
         "days",
@@ -700,6 +738,11 @@
     "72xhRD": ["Modo de vista del diagrama"],
     "74-bX-": ["Una cita destacada resalta sobre el texto que la rodea."],
     "74C2zx": ["Editar el esquema ", ["file"]],
+    "74Mikl": [
+      "Las filas de terminal y de escritorio de ",
+      ["label"],
+      " comparten una misma configuración, así que los cambios que hagas aquí se aplican a ambas."
+    ],
     "74eHt-": ["No hay ningún archivo ni carpeta seleccionados"],
     "75Y1dk": [
       "Tira horizontal de pastillas con el panel activo debajo; haz clic en una pastilla para cambiar de panel."
@@ -1164,6 +1207,7 @@
     "CB7c0Z": ["Guardar el mensaje en cola"],
     "CBT70t": ["No se pudo eliminar el archivo: ", ["0"]],
     "CCTop_": ["Recientes"],
+    "CCngW8": ["Esto desconecta ", ["0"], " de OpenKnowledge."],
     "CD8lBW": ["Ordenando…"],
     "CFnavk": [
       "Este proyecto no es un repositorio de git, así que los worktrees no están disponibles."
@@ -2361,11 +2405,6 @@
     "P6gXB-": ["Reemplazar ", ["keyName"]],
     "P6lAT3": ["Carpeta de destino: ", ["linkTitle"], ". Haz clic para abrir la vista general."],
     "P8AnMN": ["Buscando Slidev"],
-    "P9rQN2": [
-      "Las filas de terminal y de escritorio de ",
-      ["label"],
-      " comparten una misma configuración, así que conectar una conecta ambas."
-    ],
     "PB4upl": ["Buscar la coincidencia anterior"],
     "PBQwGb": [
       "Busca archivos, comandos, proyectos y acciones de traspaso a la IA. El atajo K añade un enlace en su lugar cuando hay texto seleccionado en el editor visual; el atajo P siempre abre la paleta de comandos."
@@ -5726,13 +5765,6 @@
     "vy_VIN": [
       "Seguido en git: las actualizaciones llegan por tu repositorio (pull o CI), no por actualización automática"
     ],
-    "vyjTYE": [
-      [
-        "changeCount",
-        "plural",
-        { "one": ["#", " cambio"], "many": ["#", " cambios"], "other": ["#", " cambios"] }
-      ]
-    ],
     "w0YVAE": ["Mostrar los nodos de habilidades"],
     "w3tVpc": [
       "Todavía no hay enlaces. Añade enlaces wiki o enlaces markdown para construir un grafo."
@@ -5861,6 +5893,13 @@
     "xHGM4U": ["Ocultar la vista previa del HTML"],
     "xK291b": ["Dos páginas (impares)"],
     "xKDsGS": ["Ir a la línea ", ["0"], " de ", ["1"]],
+    "xKcXG6": [
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " añadido"], "many": ["#", " añadidos"], "other": ["#", " añadidos"] }
+      ]
+    ],
     "xMsnTe": ["Enviar y continuar"],
     "xNyj3h": ["Reinstalar para Claude Chat y Cowork"],
     "xOTzt5": ["ahora mismo"],
@@ -5986,6 +6025,18 @@
     "ymWJLd": ["Mostrar ", ["0"], " más"],
     "ynIa4S": ["Elemento de lista del editor visual"],
     "ypw6My": ["Mostrando los ", ["0"], " encabezados principales; sigue escribiendo para acotar"],
+    "yqr502": [
+      "Lo quita para ",
+      ["0"],
+      " y ",
+      ["1"],
+      ". ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " eliminado"], "many": ["#", " eliminados"], "other": ["#", " eliminados"] }
+      ]
+    ],
     "ysxgu8": ["proyecto"],
     "yutJKi": ["Lista de comprobación con casillas."],
     "yvG-l1": ["Abrir el panel de análisis del código"],

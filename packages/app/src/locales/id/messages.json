@@ -114,9 +114,20 @@
     ],
     "0eHrMb": ["Penghapusan tidak dapat diselesaikan"],
     "0g7rCZ": ["Digandakan menjadi \"", ["0"], "\""],
+    "0hAvVd": [
+      "Menghapusnya untuk ",
+      ["0"],
+      " dan ",
+      ["1"],
+      ". ",
+      ["addingCount", "plural", { "other": ["#", " ditambahkan"] }],
+      " · ",
+      ["removingCount", "plural", { "other": ["#", " dihapus"] }]
+    ],
     "0jD-Gn": ["Basis pengetahuan tim, wiki pribadi, dokumentasi proyek..."],
     "0kTAXe": ["Buka sumber: ", ["mirrorSrc"]],
     "0m4Snh": ["Keterampilan dialihkan"],
+    "0niWj3": [["removingCount", "plural", { "other": ["#", " dihapus"] }]],
     "0pLDSn": ["Bilah alat Keterampilan"],
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
     "0qyKG6": ["Tersinkron dari disk"],
@@ -594,6 +605,11 @@
       "Susun spesifikasi teknis untuk proyek saya. Mulai dengan ikhtisar, lalu tambahkan halaman yang saling tertaut untuk arsitekturnya, modul-modul utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah indeks spesifikasi."
     ],
     "6s7LXO": ["Perhatian"],
+    "6tQC_t": [
+      ["addingCount", "plural", { "other": ["#", " ditambahkan"] }],
+      " · ",
+      ["removingCount", "plural", { "other": ["#", " dihapus"] }]
+    ],
     "6u9LvN": [["days", "plural", { "other": ["#", " hari lalu"] }]],
     "6ur2Mk": ["Bantu agen Anda menemukan dan menggunakan OpenKnowledge di proyek mana pun."],
     "6vEr3W": ["Tujuan tautan"],
@@ -607,6 +623,11 @@
     "72xhRD": ["Mode tampilan diagram"],
     "74-bX-": ["Kutipan sorot menonjol dari teks di sekitarnya."],
     "74C2zx": ["Sunting skema ", ["file"]],
+    "74Mikl": [
+      "Baris terminal dan desktop untuk ",
+      ["label"],
+      " berbagi satu pengaturan, jadi perubahan di sini berlaku untuk keduanya."
+    ],
     "74eHt-": ["Tidak ada berkas atau folder yang dipilih"],
     "75Y1dk": [
       "Deretan pil mendatar + panel aktif di bawahnya; klik sebuah pil untuk berganti panel."
@@ -989,6 +1010,7 @@
     "CB7c0Z": ["Simpan pesan dalam antrean"],
     "CBT70t": ["Tidak dapat menghapus berkas: ", ["0"]],
     "CCTop_": ["Terbaru"],
+    "CCngW8": ["Ini memutuskan koneksi ", ["0"], " dari OpenKnowledge."],
     "CD8lBW": ["Merapikan…"],
     "CFnavk": ["Proyek ini bukan repositori git, jadi worktree tidak tersedia."],
     "CGj3gX": ["galat penguraian"],
@@ -2072,11 +2094,6 @@
     "P6gXB-": ["Ganti ", ["keyName"]],
     "P6lAT3": ["Folder tujuan: ", ["linkTitle"], ". Klik untuk membuka ikhtisarnya."],
     "P8AnMN": ["Mencari Slidev"],
-    "P9rQN2": [
-      "Baris terminal dan desktop untuk ",
-      ["label"],
-      " berbagi satu pengaturan, jadi menghubungkan salah satu menghubungkan keduanya."
-    ],
     "PB4upl": ["Cari kecocokan sebelumnya"],
     "PBQwGb": [
       "Cari berkas, perintah, proyek, dan tindakan serah terima AI. Kombinasi K justru menambahkan tautan bila ada teks terpilih di penyunting visual; kombinasi P selalu membuka palet perintah."
@@ -4994,9 +5011,6 @@
     "vy_VIN": [
       "Dilacak di git — pembaruan mengalir lewat repo Anda (pull atau CI), bukan pembaruan otomatis"
     ],
-    "vyjTYE": [
-      ["changeCount", "plural", { "one": ["#", " perubahan"], "other": ["#", " perubahan"] }]
-    ],
     "w0YVAE": ["Tampilkan simpul keterampilan"],
     "w3tVpc": [
       "Belum ada tautan. Tambahkan tautan wiki atau tautan markdown untuk membangun sebuah graf."
@@ -5113,6 +5127,7 @@
     "xHGM4U": ["Sembunyikan pratinjau HTML"],
     "xK291b": ["Dua halaman (ganjil)"],
     "xKDsGS": ["Ke baris ", ["0"], " di ", ["1"]],
+    "xKcXG6": [["addingCount", "plural", { "other": ["#", " ditambahkan"] }]],
     "xMsnTe": ["Kirim & lanjutkan"],
     "xNyj3h": ["Pasang ulang untuk Claude Chat & Cowork"],
     "xOTzt5": ["baru saja"],
@@ -5222,6 +5237,14 @@
     "ymWJLd": ["Tampilkan ", ["0"], " lagi"],
     "ynIa4S": ["Item daftar penyunting visual"],
     "ypw6My": ["Menampilkan ", ["0"], " judul teratas — terus ketik untuk mempersempit"],
+    "yqr502": [
+      "Menghapusnya untuk ",
+      ["0"],
+      " dan ",
+      ["1"],
+      ". ",
+      ["removingCount", "plural", { "other": ["#", " dihapus"] }]
+    ],
     "ysxgu8": ["proyek"],
     "yutJKi": ["Daftar periksa dengan kotak centang."],
     "yvG-l1": ["Buka panel lint sumber"],

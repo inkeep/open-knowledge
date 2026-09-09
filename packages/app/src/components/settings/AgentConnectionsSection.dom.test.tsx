@@ -1195,7 +1195,7 @@ describe('AgentConnectionsSection — missing skill and paired rows', () => {
     );
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/connecting either connects both/i)).toBeTruthy();
+    expect(within(dialog).getByText(/changes here apply to both/i)).toBeTruthy();
   });
 
   test('switching on a CLI that only lacks its skill opens no dialog', async () => {
@@ -1241,7 +1241,7 @@ describe('AgentConnectionsSection — missing skill and paired rows', () => {
     await user.click(within(row).getByRole('button', { name: /^Add MCP & skill\b/ }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/connecting either connects both/i)).toBeTruthy();
+    expect(within(dialog).getByText(/changes here apply to both/i)).toBeTruthy();
   });
 
   test('connecting one row shows the paired row connected too', async () => {

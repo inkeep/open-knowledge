@@ -13,7 +13,8 @@ import {
   type SatisfierId,
   type SurfaceState,
 } from '@inkeep/open-knowledge-core';
-import { Plural, Trans, useLingui } from '@lingui/react/macro';
+import { plural } from '@lingui/core/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, Info, Monitor, Sparkles, TriangleAlert, X } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
@@ -176,10 +177,6 @@ function defaultPartsForConnection(connection: AgentConnection): ConnectionParts
 
 export function installedCount(parts: ConnectionParts): number {
   return Object.values(parts).filter(Boolean).length;
-}
-
-function partsEqual(left: ConnectionParts, right: ConnectionParts): boolean {
-  return CONNECTION_PARTS.every((part) => left[part] === right[part]);
 }
 
 export function hasConfigurableCell(connection: AgentConnection): boolean {
@@ -669,13 +666,20 @@ function SkillSuggestion() {
   );
 }
 
-function PairedRowsNote({ label, action }: { label: string; action: 'connect' | 'remove' }) {
+function PairedRowsNote({ label }: { label: string }) {
   const { t } = useLingui();
   return (
     <p className="text-sm text-muted-foreground">
-      {action === 'remove'
-        ? t`The terminal and desktop rows for ${label} share one setup, so removing it disconnects both.`
-        : t`The terminal and desktop rows for ${label} share one setup, so connecting either connects both.`}
+      {t`The terminal and desktop rows for ${label} share one setup, so changes here apply to both.`}
+    </p>
+  );
+}
+
+function PairedRemovalNote({ label }: { label: string }) {
+  const { t } = useLingui();
+  return (
+    <p className="text-sm text-muted-foreground">
+      {t`The terminal and desktop rows for ${label} share one setup, so removing it disconnects both.`}
     </p>
   );
 }
@@ -700,9 +704,6 @@ export function ConfigureConnectionDialog({
   const [draft, setDraft] = useState<ConnectionParts>(() =>
     connection === null ? EMPTY_PARTS : defaultPartsForConnection(connection),
   );
-  const [baseline] = useState<ConnectionParts>(() =>
-    connection === null ? EMPTY_PARTS : partsForConnection(connection),
-  );
   const [saving, setSaving] = useState(false);
   const [saveFailure, setSaveFailure] = useState<ApplyAgentConnectionsResult | null>(null);
   const [sharedChoice, setSharedChoice] = useState<SharedRemovalChoice | null>(null);
@@ -718,14 +719,40 @@ export function ConfigureConnectionDialog({
     setSharedChoice(null);
   }
 
-  const changed = !partsEqual(draft, baseline);
-  const changeCount = CONNECTION_PARTS.filter(
-    (part) => connection?.cells[part] !== undefined && draft[part] !== baseline[part],
-  ).length;
   const suggestSkill =
     connection !== null && !draft.projectSkill && canChangePart(connection, 'projectSkill');
   const projectParts = connection === null ? [] : presentParts(connection, 'project');
   const machineParts = connection === null ? [] : presentParts(connection, 'machine');
+  const removingCount = CONNECTION_PARTS.filter(
+    (part) => connection?.cells[part]?.checked === true && !draft[part],
+  ).length;
+  const addingCount = CONNECTION_PARTS.filter(
+    (part) =>
+      connection?.cells[part] !== undefined && draft[part] && !connection.cells[part]?.checked,
+  ).length;
+  const tally =
+    addingCount > 0 && removingCount > 0
+      ? t`${plural(addingCount, { one: '# added', other: '# added' })} · ${plural(removingCount, { one: '# removed', other: '# removed' })}`
+      : addingCount > 0
+        ? plural(addingCount, { one: '# added', other: '# added' })
+        : removingCount > 0
+          ? plural(removingCount, { one: '# removed', other: '# removed' })
+          : null;
+  const removingOnly = removingCount > 0 && addingCount === 0;
+  const disconnecting = removingOnly && CONNECTION_PARTS.every((part) => !draft[part]);
+  const widenable = sharedChoice !== null && sharedChoice.peerSatisfierIds.length > 0;
+  const footerNote =
+    connection === null
+      ? null
+      : sharedChoice !== null
+        ? widenable
+          ? addingCount > 0
+            ? t`Removes it for ${connection.label} and ${sharedChoice.peers}. ${plural(addingCount, { one: '# added', other: '# added' })} · ${plural(removingCount, { one: '# removed', other: '# removed' })}`
+            : t`Removes it for ${connection.label} and ${sharedChoice.peers}. ${plural(removingCount, { one: '# removed', other: '# removed' })}`
+          : tally
+        : disconnecting
+          ? t`This disconnects ${connection.label} from OpenKnowledge.`
+          : tally;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !saving && onOpenChange(nextOpen)}>
@@ -747,9 +774,7 @@ export function ConfigureConnectionDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-6">
-          {paired && connection ? (
-            <PairedRowsNote label={connection.label} action="connect" />
-          ) : null}
+          {paired && connection ? <PairedRowsNote label={connection.label} /> : null}
           {projectParts.length > 0 ? (
             <FieldSet className="gap-5">
               <FieldLegend className="flex items-center gap-2 font-mono data-[variant=legend]:text-xs uppercase tracking-wide text-muted-foreground">
@@ -783,10 +808,13 @@ export function ConfigureConnectionDialog({
           ) : null}
         </DialogBody>
         <DialogFooter className="items-center">
-          <p className="me-auto text-xs text-muted-foreground" aria-live="polite">
-            {changeCount > 0 ? (
-              <Plural value={changeCount} one="# change" other="# changes" />
-            ) : null}
+          <p
+            role="status"
+            className="me-auto text-xs text-muted-foreground"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {footerNote}
           </p>
           <Button
             variant="outline"
@@ -797,13 +825,10 @@ export function ConfigureConnectionDialog({
             <Trans>Cancel</Trans>
           </Button>
           <Button
-            variant={overwriting ? 'destructive' : 'default'}
+            variant={overwriting || removingCount > 0 ? 'destructive' : 'default'}
             className="font-mono uppercase"
             disabled={
-              !changed ||
-              changeCount === 0 ||
-              saving ||
-              (sharedChoice !== null && sharedChoice.peerSatisfierIds.length === 0)
+              saving || (sharedChoice === null ? addingCount + removingCount === 0 : !widenable)
             }
             onClick={() => {
               setSaving(true);
@@ -835,10 +860,12 @@ export function ConfigureConnectionDialog({
           >
             {saving ? (
               <Trans>Saving</Trans>
-            ) : sharedChoice !== null ? (
+            ) : widenable ? (
               <Trans>Remove for both</Trans>
             ) : overwriting ? (
               <Trans>Replace and save</Trans>
+            ) : removingOnly ? (
+              <Trans>Remove</Trans>
             ) : (
               <Trans>Save changes</Trans>
             )}
@@ -1069,9 +1096,7 @@ export function RemoveConnectionDialog({
             <RemovalGroup scope="project" rows={rows.filter((row) => row.scope === 'project')} />
             <RemovalGroup scope="machine" rows={rows.filter((row) => row.scope === 'machine')} />
           </div>
-          {paired && connection ? (
-            <PairedRowsNote label={connection.label} action="remove" />
-          ) : null}
+          {paired && connection ? <PairedRemovalNote label={connection.label} /> : null}
           <p className="text-sm text-muted-foreground">
             <Trans>Your documents are not touched.</Trans>
           </p>

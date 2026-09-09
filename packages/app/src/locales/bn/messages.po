@@ -501,6 +501,14 @@ msgstr "{0} বছর আগে"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (দ্বন্দ্ব)"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}}"
+msgstr "{addingCount, plural, one {# যোগ করা হয়েছে} other {# যোগ করা হয়েছে}}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{addingCount, plural, one {# যোগ করা হয়েছে} other {# যোগ করা হয়েছে}} · {removingCount, plural, one {# সরানো হয়েছে} other {# সরানো হয়েছে}}"
+
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.claude-desktop.per-tool-approval"
@@ -576,10 +584,6 @@ msgstr "{boldName} <0>{0}</0> প্লাগইন{pluginVersion}-এর অং
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} এই প্রকল্পের বাইরে, <0>{source}</0>-এ রয়েছে — এখানে চলা এজেন্টরা এটি লোড করতে পারে না। সম্পাদনা করতে এটি এখানে কপি করুন।"
-
-#: src/components/settings/AgentConnectionDialogs.tsx
-msgid "{changeCount, plural, one {# change} other {# changes}}"
-msgstr "{changeCount, plural, one {#টি পরিবর্তন} other {#টি পরিবর্তন}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -978,6 +982,10 @@ msgstr "{propertyCount, plural, one {# প্রপার্টি} other {# প
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} প্রপার্টি"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{removingCount, plural, one {# সরানো হয়েছে} other {# সরানো হয়েছে}}"
 
 #: src/components/settings/SyncSection.tsx
 msgid "{seconds} seconds"
@@ -11042,6 +11050,18 @@ msgstr "\"{0}\"-কে অন্য প্রতিটি জায়গা থ
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\"-কে সাম্প্রতিক প্রকল্প থেকে সরানো হয়েছে। এর ফোল্ডারটি আর নেই।"
 
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "এটি {0} এবং {1} উভয়ের জন্যই সরিয়ে দেয়। {addingCount, plural, one {# যোগ করা হয়েছে} other {# যোগ করা হয়েছে}} · {removingCount, plural, one {# সরানো হয়েছে} other {# সরানো হয়েছে}}"
+
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "এটি {0} এবং {1} উভয়ের জন্যই সরিয়ে দেয়। {removingCount, plural, one {# সরানো হয়েছে} other {# সরানো হয়েছে}}"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "সরানো হচ্ছে"
@@ -13681,8 +13701,8 @@ msgid "The template's filename (without `.md`)."
 msgstr "টেমপ্লেটের ফাইলের নাম (`.md` ছাড়া)।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
-msgstr "{label}-এর টার্মিনাল ও ডেস্কটপ সারি একই সেটআপ ভাগ করে, তাই যেকোনো একটি যুক্ত করলে দুটোই যুক্ত হয়।"
+msgid "The terminal and desktop rows for {label} share one setup, so changes here apply to both."
+msgstr "{label}-এর টার্মিনাল ও ডেস্কটপ সারি একই সেটআপ ভাগ করে, তাই এখানে করা পরিবর্তন দুটোতেই প্রযোজ্য।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
@@ -13913,6 +13933,11 @@ msgstr "এটি সেট আপ করা যায়নি কারণ এ
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "এটি নিচে তালিকাভুক্ত MCP সার্ভার এন্ট্রি ও স্কিল ফাইল মুছে দেয়। আবার যোগ না করা পর্যন্ত এজেন্ট আপনার নথিতে প্রবেশাধিকার হারাবে।"
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This disconnects {0} from OpenKnowledge."
+msgstr "এটি {0}-এর OpenKnowledge সংযোগ বিচ্ছিন্ন করে দেবে।"
 
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"

@@ -132,11 +132,36 @@
     ],
     "0eHrMb": ["Impossible de terminer la suppression"],
     "0g7rCZ": ["Dupliqué sous « ", ["0"], " »"],
+    "0hAvVd": [
+      "Le retire pour ",
+      ["0"],
+      " et ",
+      ["1"],
+      ". ",
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " ajouté"], "many": ["#", " ajoutés"], "other": ["#", " ajoutés"] }
+      ],
+      " · ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " supprimé"], "many": ["#", " supprimés"], "other": ["#", " supprimés"] }
+      ]
+    ],
     "0jD-Gn": [
       "Une base de connaissances d'équipe, un wiki personnel, la documentation d'un projet…"
     ],
     "0kTAXe": ["Source : ", ["mirrorSrc"]],
     "0m4Snh": ["Compétences réaffectées"],
+    "0niWj3": [
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " supprimé"], "many": ["#", " supprimés"], "other": ["#", " supprimés"] }
+      ]
+    ],
     "0pLDSn": ["Barre d'outils Compétences"],
     "0pZmTP": ["Impossible de partager ce chemin."],
     "0qyKG6": ["Synchronisé depuis le disque"],
@@ -700,6 +725,19 @@
       "Rédige une spécification technique pour mon projet. Commence par une synthèse, puis ajoute des pages liées entre elles pour l'architecture, les modules clés et les questions ouvertes, toutes reliées depuis un index des spécifications."
     ],
     "6s7LXO": ["À noter"],
+    "6tQC_t": [
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " ajouté"], "many": ["#", " ajoutés"], "other": ["#", " ajoutés"] }
+      ],
+      " · ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " supprimé"], "many": ["#", " supprimés"], "other": ["#", " supprimés"] }
+      ]
+    ],
     "6u9LvN": [
       [
         "days",
@@ -727,6 +765,11 @@
     "72xhRD": ["Mode d'affichage du diagramme"],
     "74-bX-": ["Une citation mise en exergue se détache du texte qui l'entoure."],
     "74C2zx": ["Modifier le schéma ", ["file"]],
+    "74Mikl": [
+      "Les lignes terminal et bureau de ",
+      ["label"],
+      " partagent une même configuration, donc les modifications faites ici s'appliquent aux deux."
+    ],
     "74eHt-": ["Aucun fichier ni dossier sélectionné"],
     "75Y1dk": [
       "Bande horizontale de pastilles + panneau actif en dessous ; cliquez sur une pastille pour changer de panneau."
@@ -1191,6 +1234,7 @@
     "CB7c0Z": ["Enregistrer le message en file d'attente"],
     "CBT70t": ["Impossible de supprimer le fichier : ", ["0"]],
     "CCTop_": ["Récents"],
+    "CCngW8": ["Cela déconnecte ", ["0"], " d'OpenKnowledge."],
     "CD8lBW": ["Rangement…"],
     "CFnavk": ["Ce projet n'est pas un dépôt git, les worktrees ne sont donc pas disponibles."],
     "CGj3gX": ["erreur d'analyse"],
@@ -2396,11 +2440,6 @@
     "P6gXB-": ["Remplacer ", ["keyName"]],
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
     "P8AnMN": ["Recherche de Slidev"],
-    "P9rQN2": [
-      "Les lignes terminal et bureau de ",
-      ["label"],
-      " partagent une même configuration, donc en connecter une les connecte toutes les deux."
-    ],
     "PB4upl": ["Occurrence précédente"],
     "PBQwGb": [
       "Recherchez des fichiers, des commandes, des projets et des actions de transfert vers l'IA. Le raccourci K ajoute un lien à la place lorsque du texte est sélectionné dans l'éditeur visuel ; le raccourci P ouvre toujours la palette de commandes."
@@ -5804,17 +5843,6 @@
     "vy_VIN": [
       "Suivi dans git — les mises à jour arrivent via votre dépôt (pull ou CI), pas par mise à jour automatique"
     ],
-    "vyjTYE": [
-      [
-        "changeCount",
-        "plural",
-        {
-          "one": ["#", " modification"],
-          "many": ["#", " modifications"],
-          "other": ["#", " modifications"]
-        }
-      ]
-    ],
     "w0YVAE": ["Afficher les nœuds de compétences"],
     "w3tVpc": [
       "Pas encore de liens. Ajoutez des liens wiki ou markdown pour construire un graphe."
@@ -5939,6 +5967,13 @@
     "xHGM4U": ["Masquer l'aperçu HTML"],
     "xK291b": ["Deux pages (impaires)"],
     "xKDsGS": ["Aller à la ligne ", ["0"], " dans ", ["1"]],
+    "xKcXG6": [
+      [
+        "addingCount",
+        "plural",
+        { "one": ["#", " ajouté"], "many": ["#", " ajoutés"], "other": ["#", " ajoutés"] }
+      ]
+    ],
     "xMsnTe": ["Envoyer et continuer"],
     "xNyj3h": ["Réinstaller pour Claude Chat et Cowork"],
     "xOTzt5": ["à l'instant"],
@@ -6071,6 +6106,18 @@
       "Affichage des ",
       ["0"],
       " titres les plus pertinents — continuez à saisir pour affiner"
+    ],
+    "yqr502": [
+      "Le retire pour ",
+      ["0"],
+      " et ",
+      ["1"],
+      ". ",
+      [
+        "removingCount",
+        "plural",
+        { "one": ["#", " supprimé"], "many": ["#", " supprimés"], "other": ["#", " supprimés"] }
+      ]
     ],
     "ysxgu8": ["projet"],
     "yutJKi": ["Liste avec cases à cocher."],

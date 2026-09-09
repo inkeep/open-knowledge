@@ -501,6 +501,14 @@ msgstr ""
 msgid "{accessibleLabel} (conflict)"
 msgstr ""
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}}"
+msgstr ""
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr ""
+
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.claude-desktop.per-tool-approval"
@@ -575,10 +583,6 @@ msgstr ""
 
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
-msgstr ""
-
-#: src/components/settings/AgentConnectionDialogs.tsx
-msgid "{changeCount, plural, one {# change} other {# changes}}"
 msgstr ""
 
 #: src/components/EditorFooter.tsx
@@ -977,6 +981,10 @@ msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
+msgstr ""
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{removingCount, plural, one {# removed} other {# removed}}"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
@@ -11042,6 +11050,18 @@ msgstr ""
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr ""
 
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr ""
+
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {removingCount, plural, one {# removed} other {# removed}}"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr ""
@@ -13681,7 +13701,7 @@ msgid "The template's filename (without `.md`)."
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
+msgid "The terminal and desktop rows for {label} share one setup, so changes here apply to both."
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -13912,6 +13932,11 @@ msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
+msgstr ""
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This disconnects {0} from OpenKnowledge."
 msgstr ""
 
 #: src/components/PanelScopeHeader.tsx

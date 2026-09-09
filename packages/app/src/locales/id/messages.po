@@ -501,6 +501,14 @@ msgstr "{0} thn lalu"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (konflik)"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}}"
+msgstr "{addingCount, plural, other {# ditambahkan}}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{addingCount, plural, other {# ditambahkan}} · {removingCount, plural, other {# dihapus}}"
+
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.claude-desktop.per-tool-approval"
@@ -576,10 +584,6 @@ msgstr "{boldName} adalah bagian dari plugin <0>{0}</0>{pluginVersion} — hanya
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName} berada di luar proyek ini, di <0>{source}</0> — agen yang berjalan di sini tidak dapat memuatnya. Salin ke sini untuk mengeditnya."
-
-#: src/components/settings/AgentConnectionDialogs.tsx
-msgid "{changeCount, plural, one {# change} other {# changes}}"
-msgstr "{changeCount, plural, one {# perubahan} other {# perubahan}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -978,6 +982,10 @@ msgstr "{propertyCount, plural, other {# properti}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "Properti {propPanelDescriptorLabel}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{removingCount, plural, other {# dihapus}}"
 
 #: src/components/settings/SyncSection.tsx
 msgid "{seconds} seconds"
@@ -11042,6 +11050,18 @@ msgstr "\"{0}\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."
 
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "Menghapusnya untuk {0} dan {1}. {addingCount, plural, other {# ditambahkan}} · {removingCount, plural, other {# dihapus}}"
+
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "Menghapusnya untuk {0} dan {1}. {removingCount, plural, other {# dihapus}}"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "Menghapus"
@@ -13681,8 +13701,8 @@ msgid "The template's filename (without `.md`)."
 msgstr "Nama berkas templatnya (tanpa `.md`)."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
-msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi menghubungkan salah satu menghubungkan keduanya."
+msgid "The terminal and desktop rows for {label} share one setup, so changes here apply to both."
+msgstr "Baris terminal dan desktop untuk {label} berbagi satu pengaturan, jadi perubahan di sini berlaku untuk keduanya."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
@@ -13913,6 +13933,11 @@ msgstr "Ini tidak dapat disiapkan karena entri server MCP yang diperlukan tidak 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "Tindakan ini menghapus entri server MCP dan file keterampilan yang tercantum di bawah. Agen akan kehilangan akses ke dokumen Anda sampai Anda menambahkannya lagi."
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This disconnects {0} from OpenKnowledge."
+msgstr "Ini memutuskan koneksi {0} dari OpenKnowledge."
 
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"

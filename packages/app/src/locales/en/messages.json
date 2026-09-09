@@ -114,9 +114,22 @@
     ],
     "0eHrMb": ["Could not complete delete"],
     "0g7rCZ": ["Duplicated to \"", ["0"], "\""],
+    "0hAvVd": [
+      "Removes it for ",
+      ["0"],
+      " and ",
+      ["1"],
+      ". ",
+      ["addingCount", "plural", { "one": ["#", " added"], "other": ["#", " added"] }],
+      " · ",
+      ["removingCount", "plural", { "one": ["#", " removed"], "other": ["#", " removed"] }]
+    ],
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
     "0m4Snh": ["Skills reassigned"],
+    "0niWj3": [
+      ["removingCount", "plural", { "one": ["#", " removed"], "other": ["#", " removed"] }]
+    ],
     "0pLDSn": ["Skills toolbar"],
     "0pZmTP": ["Can't share this path."],
     "0qyKG6": ["Synced from disk"],
@@ -577,6 +590,11 @@
       "Draft a technical spec for my project. Start with an overview, then add cross-linked pages for the architecture, the key modules, and the open questions, all linked from a specs index."
     ],
     "6s7LXO": ["Heads up"],
+    "6tQC_t": [
+      ["addingCount", "plural", { "one": ["#", " added"], "other": ["#", " added"] }],
+      " · ",
+      ["removingCount", "plural", { "one": ["#", " removed"], "other": ["#", " removed"] }]
+    ],
     "6u9LvN": [["days", "plural", { "one": ["#", " day ago"], "other": ["#", " days ago"] }]],
     "6ur2Mk": ["Help your agents discover and use OpenKnowledge in any project."],
     "6vEr3W": ["Link target"],
@@ -590,6 +608,11 @@
     "72xhRD": ["Diagram view mode"],
     "74-bX-": ["A pull quote stands out from the surrounding text."],
     "74C2zx": ["Edit schema ", ["file"]],
+    "74Mikl": [
+      "The terminal and desktop rows for ",
+      ["label"],
+      " share one setup, so changes here apply to both."
+    ],
     "74eHt-": ["No file or folder selected"],
     "75Y1dk": ["Horizontal pill strip + active panel below; click a pill to switch panels."],
     "76gPWk": ["Got it"],
@@ -989,6 +1012,7 @@
     "CB7c0Z": ["Save queued message"],
     "CBT70t": ["Couldn't delete file: ", ["0"]],
     "CCTop_": ["Recent"],
+    "CCngW8": ["This disconnects ", ["0"], " from OpenKnowledge."],
     "CD8lBW": ["Tidying up…"],
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CGj3gX": ["parse error"],
@@ -2053,11 +2077,6 @@
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
     "P8AnMN": ["Checking for Slidev"],
-    "P9rQN2": [
-      "The terminal and desktop rows for ",
-      ["label"],
-      " share one setup, so connecting either connects both."
-    ],
     "PB4upl": ["Find previous match"],
     "PBQwGb": [
       "Search files, commands, projects, and AI handoff actions. The K chord adds a link instead when text is selected in the visual editor; the P chord always opens the palette."
@@ -4987,7 +5006,6 @@
     "vvWZnu": ["Diff unavailable"],
     "vwV-kH": ["Fixing files stopped unexpectedly."],
     "vy_VIN": ["Tracked in git — updates flow through your repo (pull or CI), not auto-update"],
-    "vyjTYE": [["changeCount", "plural", { "one": ["#", " change"], "other": ["#", " changes"] }]],
     "w0YVAE": ["Show skill nodes"],
     "w3tVpc": ["No links yet. Add wiki links or markdown links to build a graph."],
     "w3vFfL": ["Hide Files"],
@@ -5108,6 +5126,7 @@
     "xHGM4U": ["Hide HTML preview"],
     "xK291b": ["Two-page (odd)"],
     "xKDsGS": ["Go to line ", ["0"], " in ", ["1"]],
+    "xKcXG6": [["addingCount", "plural", { "one": ["#", " added"], "other": ["#", " added"] }]],
     "xMsnTe": ["Send & continue"],
     "xNyj3h": ["Reinstall for Claude Chat & Cowork"],
     "xOTzt5": ["just now"],
@@ -5221,6 +5240,14 @@
     "ymWJLd": ["Show ", ["0"], " more"],
     "ynIa4S": ["Visual editor list item"],
     "ypw6My": ["Showing top ", ["0"], " headings — keep typing to narrow"],
+    "yqr502": [
+      "Removes it for ",
+      ["0"],
+      " and ",
+      ["1"],
+      ". ",
+      ["removingCount", "plural", { "one": ["#", " removed"], "other": ["#", " removed"] }]
+    ],
     "ysxgu8": ["project"],
     "yutJKi": ["Checklist with checkboxes."],
     "yvG-l1": ["Open source lint panel"],

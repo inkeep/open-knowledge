@@ -501,6 +501,14 @@ msgstr "{0}년 전"
 msgid "{accessibleLabel} (conflict)"
 msgstr "{accessibleLabel} (충돌)"
 
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}}"
+msgstr "{addingCount, plural, other {# 추가됨}}"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{addingCount, plural, other {# 추가됨}} · {removingCount, plural, other {# 제거됨}}"
+
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.claude-desktop.per-tool-approval"
@@ -576,10 +584,6 @@ msgstr "{boldName}은 <0>{0}</0> 플러그인의 일부입니다{pluginVersion}.
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} lives outside this project, at <0>{source}</0> — agents running here can't load it. Copy it in to edit."
 msgstr "{boldName}은 이 프로젝트 외부의 <0>{source}</0>에 있습니다. 여기에서 실행되는 에이전트는 불러올 수 없으므로 편집하려면 복사하세요."
-
-#: src/components/settings/AgentConnectionDialogs.tsx
-msgid "{changeCount, plural, one {# change} other {# changes}}"
-msgstr "{changeCount, plural, one {#개 변경} other {#개 변경}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{chars, plural, one {char} other {chars}}"
@@ -978,6 +982,10 @@ msgstr "{propertyCount, plural, other {속성 #개}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} 속성"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "{removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{removingCount, plural, other {# 제거됨}}"
 
 #: src/components/settings/SyncSection.tsx
 msgid "{seconds} seconds"
@@ -11046,6 +11054,18 @@ msgstr "다른 모든 위치에서 \"{0}\"을 제거했습니다. 소스 폴더�
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "최근 프로젝트에서 \"{projectName}\"을 제거했습니다. 폴더가 더 이상 존재하지 않습니다."
 
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {addingCount, plural, one {# added} other {# added}} · {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{0}과(와) {1}에서 제거됩니다. {addingCount, plural, other {# 추가됨}} · {removingCount, plural, other {# 제거됨}}"
+
+#. placeholder {0}: connection.label
+#. placeholder {1}: sharedChoice.peers
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Removes it for {0} and {1}. {removingCount, plural, one {# removed} other {# removed}}"
+msgstr "{0}과(와) {1}에서 제거됩니다. {removingCount, plural, other {# 제거됨}}"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
 msgstr "제거 중"
@@ -13685,8 +13705,8 @@ msgid "The template's filename (without `.md`)."
 msgstr "템플릿 파일 이름입니다(`.md` 제외)."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
-msgid "The terminal and desktop rows for {label} share one setup, so connecting either connects both."
-msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공유하므로, 하나를 연결하면 둘 다 연결됩니다."
+msgid "The terminal and desktop rows for {label} share one setup, so changes here apply to both."
+msgstr "{label}의 터미널 행과 데스크톱 행은 하나의 설정을 공유하므로, 여기서 변경한 내용은 둘 다에 적용됩니다."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "The terminal and desktop rows for {label} share one setup, so removing it disconnects both."
@@ -13917,6 +13937,11 @@ msgstr "필요한 MCP 서버 항목이 기록되지 않아 설정할 수 없었�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
 msgstr "아래 나열된 MCP 서버 항목과 스킬 파일을 삭제합니다. 다시 추가할 때까지 에이전트가 문서에 접근할 수 없습니다."
+
+#. placeholder {0}: connection.label
+#: src/components/settings/AgentConnectionDialogs.tsx
+msgid "This disconnects {0} from OpenKnowledge."
+msgstr "{0}의 OpenKnowledge 연결이 해제됩니다."
 
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
