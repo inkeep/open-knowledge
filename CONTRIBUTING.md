@@ -77,6 +77,10 @@ First-time contributors are asked to sign our [Contributor License Agreement](./
 
 A maintainer will review your PR; if you don't hear back within a few business days, a friendly nudge on the thread is welcome. Accepted changes land on `main` with your authorship preserved (your PR may show as closed rather than merged).
 
+## Acknowledgements
+
+Thanks to [KGESH](https://github.com/KGESH) for contributing the embedding request limits and timeout controls in Search settings ([#1357](https://github.com/inkeep/open-knowledge/pull/1357)). This acknowledgement restores credit for the contribution shipped in [a07a2fb](https://github.com/inkeep/open-knowledge/commit/a07a2fbdf4616c9e6c7a132458e888a94498a630), whose GitHub co-author attribution was missing.
+
 ## License
 
 By contributing, you agree that your work is licensed under the [GNU General Public License v3.0 or later](./LICENSE) (`GPL-3.0-or-later`), the same license as OpenKnowledge.
