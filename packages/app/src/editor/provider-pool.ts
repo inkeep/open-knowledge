@@ -1215,8 +1215,22 @@ export class ProviderPool {
 
     const staleClaimAtReplayInstall = this.recoveryMismatchStaleClaim;
     const runReplay = async (): Promise<void> => {
-      if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
+      if (entry.kind !== 'active' || this.entries.get(docName) !== entry) {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-entry-stale',
+          ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+          reason: 'entry-replaced-before-replay',
+          pendingBuffer: this.bufferedUpdates.has(docName) ? 'present' : 'absent',
+        });
+        return;
+      }
       const branch = this.normalizedObservedBranch();
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-buffer-replay-begin',
+        ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+        bufferedCount: this.bufferedUpdates.size,
+        hasBufferForDoc: this.bufferedUpdates.has(docName) ? 'yes' : 'no',
+      });
 
       let source: { delta: Uint8Array; fullState: Uint8Array | null; base: string | null };
       let tokenBranch = branch;
@@ -1224,7 +1238,7 @@ export class ProviderPool {
       const buffered = this.bufferedUpdates.get(docName);
       if (buffered !== undefined) {
         if (buffered.branch !== branch) {
-          this.discardBufferedUpdate(docName);
+          this.discardBufferedUpdate(docName, 'branch-mismatch-at-replay');
           this.emitStructuredClientRecoveryEvent({
             event: 'ok-buffer-replay-branch-mismatch',
             ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
@@ -1243,7 +1257,14 @@ export class ProviderPool {
             docName,
             namespace: this.storageNamespace,
           });
-          if (durable === null) return;
+          if (durable === null) {
+            this.emitStructuredClientRecoveryEvent({
+              event: 'ok-buffer-replay-outbox-empty',
+              ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+              reason: 'no-buffer-and-no-outbox-entry',
+            });
+            return;
+          }
           source = {
             delta: durable.delta,
             fullState: durable.fullState,
@@ -1296,12 +1317,16 @@ export class ProviderPool {
       }
 
       try {
-        if (
+        const contentReplayed =
           source.fullState !== null &&
-          this.replayBufferedContent(docName, provider, source.fullState, source.base)
-        ) {
-          return;
-        }
+          this.replayBufferedContent(docName, provider, source.fullState, source.base);
+        if (contentReplayed) return;
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-content-skipped',
+          ...this.recoveryTelemetryBase(docName, staleClaimAtReplayInstall),
+          reason: source.fullState === null ? 'no-full-state-captured' : 'content-replay-refused',
+          replayByteLength: source.delta.byteLength,
+        });
         Y.applyUpdate(provider.document, source.delta, TAB_REPLAY_ORIGIN);
         this.emitStructuredClientBreadcrumb({
           event: 'ok-pool-buffer-replay-delta-applied',
@@ -1640,7 +1665,14 @@ export class ProviderPool {
         });
         return false;
       }
-      if (ytextClean) return true;
+      if (ytextClean) {
+        this.emitStructuredClientRecoveryEvent({
+          event: 'ok-buffer-replay-content-noop',
+          ...this.recoveryTelemetryBase(docName),
+          reason: 'buffered-state-already-matches-server',
+        });
+        return true;
+      }
       const ours = oursYtext;
       const surface = 'ytext';
       if (ours !== theirs) {
@@ -1721,7 +1753,7 @@ export class ProviderPool {
     this.destroyEntry(entry);
     this._entries.delete(docName);
     this.lruOrder = this.lruOrder.filter((n) => n !== docName);
-    this.discardBufferedUpdate(docName);
+    this.discardBufferedUpdate(docName, 'pool-close');
 
     if (this.activeDocName === docName) {
       this.activeDocName = null;
@@ -1810,13 +1842,22 @@ export class ProviderPool {
 
   clearBufferedUpdates(): void {
     for (const docName of Array.from(this.bufferedUpdates.keys())) {
-      this.discardBufferedUpdate(docName);
+      this.discardBufferedUpdate(docName, 'clear-buffered-updates');
     }
   }
 
-  private discardBufferedUpdate(docName: string): void {
+  private discardBufferedUpdate(docName: string, via: string): void {
     const buffered = this.bufferedUpdates.get(docName);
     this.bufferedUpdates.delete(docName);
+    if (buffered !== undefined) {
+      this.emitStructuredClientRecoveryEvent({
+        event: 'ok-buffer-replay-discarded',
+        ...this.recoveryTelemetryBase(docName),
+        via,
+        durable: buffered.durable ? 'yes' : 'no',
+        replayByteLength: buffered.delta.byteLength,
+      });
+    }
     if (buffered === undefined || !buffered.durable) return;
     void consumeReplayOutboxEntry({
       branch: buffered.branch,
