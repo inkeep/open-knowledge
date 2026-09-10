@@ -10,12 +10,13 @@
  * delivery path is silently dead. The call site is `packages/desktop/src/main/index.ts`.
  */
 
-import { isAbsolute, resolve } from 'node:path';
+import { extname, isAbsolute, resolve } from 'node:path';
 import { parseGitHubShareUrl } from '@inkeep/open-knowledge';
 import {
   type CandidateSelection,
   decodeShareUrl,
   InvalidShareUrlError,
+  SUPPORTED_DOC_EXTENSIONS,
   UnsupportedShareVersionError,
 } from '@inkeep/open-knowledge-core';
 import type {
@@ -257,26 +258,17 @@ export function parseOpenKnowledgeUrl(input: string): ParsedOpenKnowledgeUrl | n
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'open') return null;
 
-  const rawProject = parsed.searchParams.get('project');
+  const project = parsed.searchParams.get('project');
   const rawDoc = parsed.searchParams.get('doc');
   const rawFolder = parsed.searchParams.get('folder');
-  if (!rawProject) return null;
+  if (!project) return null;
   if ((rawDoc == null) === (rawFolder == null)) return null;
   const kind: 'doc' | 'folder' = rawDoc != null ? 'doc' : 'folder';
-  const rawTarget = (rawDoc ?? rawFolder) as string;
-
-  let project: string;
-  let doc: string;
-  try {
-    project = decodeURIComponent(rawProject);
-    doc = decodeURIComponent(rawTarget);
-  } catch {
-    return null;
-  }
+  const doc = (rawDoc ?? rawFolder) as string;
 
   if (project.includes('\x00') || doc.includes('\x00')) return null;
 
-  if (project.length === 0 || doc.length === 0) return null;
+  if (doc.length === 0) return null;
 
   if (!isAbsolute(project)) return null;
   if (project.split(/[/\\]/).includes('..')) return null;
@@ -311,18 +303,10 @@ export function parseOpenKnowledgeFileUrl(input: string): ParsedOpenKnowledgeFil
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'open') return null;
 
-  const rawFile = parsed.searchParams.get('file');
-  if (!rawFile) return null;
-
-  let file: string;
-  try {
-    file = decodeURIComponent(rawFile);
-  } catch {
-    return null;
-  }
+  const file = parsed.searchParams.get('file');
+  if (!file) return null;
 
   if (file.includes('\x00')) return null;
-  if (file.length === 0) return null;
 
   if (!isAbsolute(file)) return null;
   if (file.split(/[/\\]/).includes('..')) return null;
@@ -355,15 +339,8 @@ export function parseScreenUrl(input: string): ParsedScreenUrl | null {
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'screen') return null;
 
-  const rawName = parsed.searchParams.get('name');
-  if (!rawName) return null;
-
-  let name: string;
-  try {
-    name = decodeURIComponent(rawName);
-  } catch {
-    return null;
-  }
+  const name = parsed.searchParams.get('name');
+  if (!name) return null;
   if (!isScreenTarget(name)) return null;
 
   return { host: 'screen', name };
@@ -891,20 +868,39 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     enqueueOrRoute(webpageURL);
   });
 
-  deps.app.on('second-instance', (_event, argv) => {
+  const ingestArgv = (argv: readonly string[]): void => {
+    let urlArguments = 0;
+    let fileArguments = 0;
+    let unencodableArguments = 0;
     for (const arg of argv) {
-      if (typeof arg === 'string' && arg.startsWith('openknowledge://')) {
+      if (arg.startsWith('openknowledge://')) {
+        urlArguments += 1;
         enqueueOrRoute(arg);
+      } else if (
+        platform === 'win32' &&
+        deps.app.isPackaged &&
+        isAbsolute(arg) &&
+        (SUPPORTED_DOC_EXTENSIONS as readonly string[]).includes(extname(arg).toLowerCase())
+      ) {
+        if (!arg.isWellFormed()) {
+          unencodableArguments += 1;
+          continue;
+        }
+        fileArguments += 1;
+        enqueueOrRoute(`openknowledge://open?file=${encodeURIComponent(arg)}`);
       }
     }
+    deps.log?.info?.(
+      { argvLength: argv.length, urlArguments, fileArguments, unencodableArguments },
+      '[receive] action=argv-scan',
+    );
+  };
+
+  deps.app.on('second-instance', (_event, argv) => {
+    ingestArgv(argv);
   });
 
-  const initialArgv = deps.getInitialArgv ? deps.getInitialArgv() : [];
-  for (const arg of initialArgv) {
-    if (typeof arg === 'string' && arg.startsWith('openknowledge://')) {
-      enqueueOrRoute(arg);
-    }
-  }
+  ingestArgv(deps.getInitialArgv?.() ?? []);
 
   void deps.app.whenReady().then(() => {
     if (platform === 'darwin') {

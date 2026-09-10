@@ -378,6 +378,7 @@ import {
   checkAndRepairProjectMcpOnProjectOpen,
   type ProjectMcpReclaimCliSurface,
 } from './project-mcp-reclaim.ts';
+import { createProjectSessionHandlers } from './project-session.ts';
 import { readHeadBranch as readHeadBranchImpl } from './read-head-branch.ts';
 import {
   applyReducedTransparency,
@@ -424,10 +425,8 @@ import {
   addRecentFile,
   addRecentProject,
   annotateMissing,
-  emptyProjectSessionState,
   emptyState,
   evaluateSchemaCompatibility,
-  getProjectSessionState,
   getTerminalDockState,
   MAX_SUPPORTED_SCHEMA_VERSION,
   normalizeTerminalRestartSnapshot,
@@ -439,7 +438,6 @@ import {
   saveAppStateToDir,
   setLastUsedProjectParent,
   setNoteWindowBounds,
-  setProjectSessionState,
   setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
@@ -4668,21 +4666,24 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:get-session-state', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !wm) return emptyProjectSessionState();
-    const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
-    if (!ctx) return emptyProjectSessionState();
-    return getProjectSessionState(appState, ctx.projectPath);
+  const projectSessionHandlers = createProjectSessionHandlers({
+    resolveContext: (sender: WebContents) => {
+      const win = BrowserWindow.fromWebContents(sender);
+      return win && wm
+        ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)
+        : undefined;
+    },
+    getState: () => appState,
+    saveState: (state) => {
+      appState = state;
+      saveAppState(appState);
+    },
   });
 
+  handle('ok:project:get-session-state', async (event) => projectSessionHandlers.get(event.sender));
+
   handle('ok:project:set-session-state', async (event, state) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !wm) return undefined;
-    const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
-    if (!ctx) return undefined;
-    appState = setProjectSessionState(appState, ctx.projectPath, state);
-    saveAppState(appState);
+    projectSessionHandlers.set(event.sender, state);
     return undefined;
   });
 

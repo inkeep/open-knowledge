@@ -18,6 +18,8 @@ When the file is inside an existing OpenKnowledge project, this opens that proje
 
 It opens in the desktop app when it's installed, and falls back to your browser otherwise (press Ctrl-C in the terminal to end a browser session). Single-file sessions show just the file and the editor — no sidebar, tabs, or project switcher. Discover it any time with `ok --help`.
 
+On Windows, you can also open `.md` and `.mdx` files from Explorer with **Open With → OpenKnowledge**, or double-click them when OpenKnowledge is their default app. With the desktop app installed, these actions open a project or a standalone file using the same rules as `ok <file>`; see [Windows file associations and changing the default app](/docs/reference/what-open-knowledge-writes#installing-and-launching-the-app).
+
 ## Document body
 
 Open any doc from the sidebar. The body renders as WYSIWYG markdown with familiar conventions: bold / italic / headings / lists / tables / code fences / links / images. Toggle to source mode from the editor controls or with `Cmd+Option+M` to edit the raw markdown directly; both views are bound to the same CRDT document, so they stay in sync across users and AI agents. Switching modes keeps your place — the block you were looking at stays in view either way.

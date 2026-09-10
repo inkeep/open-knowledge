@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import { encodeShareUrl } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import fixture from '../../../../test-support/fixtures/share-url-v1-v2.json';
@@ -5,7 +7,12 @@ import {
   frozenV1CustomSchemeOutcome,
   frozenV1DecodeShareToken,
 } from '../../../../test-support/share/frozen-v1-share-reader.test-helper.ts';
-import { parseOpenKnowledgeUrl, parseScreenUrl, parseShareUrl } from './url-scheme.ts';
+import {
+  parseOpenKnowledgeFileUrl,
+  parseOpenKnowledgeUrl,
+  parseScreenUrl,
+  parseShareUrl,
+} from './url-scheme.ts';
 
 describe('frozen pre-v2 reader compatibility oracle', () => {
   test.each(fixture.customSchemeCases)('$id keeps its documented old-app outcome', (entry) => {
@@ -141,6 +148,23 @@ describe('parseOpenKnowledgeUrl — required params', () => {
 });
 
 describe('parseOpenKnowledgeUrl — null-byte defense', () => {
+  test.each([9, 10, 13])('rejects NUL escapes normalized across ASCII %i', (codePoint) => {
+    const splitNulEscape = `%${String.fromCharCode(codePoint)}00`;
+    const project = encodeURIComponent(resolve(tmpdir(), 'safe-project'));
+    const file = encodeURIComponent(resolve(tmpdir(), 'safe-file'));
+    for (const kind of ['doc', 'folder']) {
+      expect(
+        parseOpenKnowledgeUrl(`openknowledge://open?project=${project}&${kind}=x${splitNulEscape}`),
+      ).toBeNull();
+    }
+    expect(
+      parseOpenKnowledgeUrl(`openknowledge://open?project=${project}${splitNulEscape}&doc=x.md`),
+    ).toBeNull();
+    expect(
+      parseOpenKnowledgeFileUrl(`openknowledge://open?file=${file}${splitNulEscape}.md`),
+    ).toBeNull();
+  });
+
   test('rejects literal null byte in raw input', () => {
     expect(parseOpenKnowledgeUrl('openknowledge://open?project=/abs\x00&doc=x.md')).toBeNull();
   });
@@ -153,15 +177,27 @@ describe('parseOpenKnowledgeUrl — null-byte defense', () => {
     expect(parseOpenKnowledgeUrl('openknowledge://open?project=/abs&doc=x%00.md')).toBeNull();
   });
 
-  test('rejects double-encoded %2500 in project (layered null-byte smuggle)', () => {
+  test('rejects encoded NUL inside an otherwise absolute project', () => {
     expect(
-      parseOpenKnowledgeUrl('openknowledge://open?project=%2500/safe/proj&doc=x.md'),
+      parseOpenKnowledgeUrl('openknowledge://open?project=/abs/safe%00/proj&doc=x.md'),
     ).toBeNull();
   });
 
-  test('rejects double-encoded %2500 in doc (layered null-byte smuggle)', () => {
-    expect(parseOpenKnowledgeUrl('openknowledge://open?project=/abs&doc=x%2500.md')).toBeNull();
+  test('rejects encoded NUL in folder', () => {
+    expect(parseOpenKnowledgeUrl('openknowledge://open?project=/abs&folder=x%00')).toBeNull();
   });
+});
+
+describe.each(['doc', 'folder'] as const)('single-encoded %s links', (kind) => {
+  test.each(['100% complete', 'literal%20name', 'literal%00name', '日本語 café'])(
+    'preserves project and target names containing %s',
+    (name) => {
+      const project = resolve(tmpdir(), 'open-knowledge-links', name);
+      const target = `notes/${name}`;
+      const url = `openknowledge://open?project=${encodeURIComponent(project)}&${kind}=${encodeURIComponent(target)}`;
+      expect(parseOpenKnowledgeUrl(url)).toEqual({ host: 'open', project, kind, doc: target });
+    },
+  );
 });
 
 describe('parseOpenKnowledgeUrl — path-traversal defense', () => {
@@ -607,6 +643,10 @@ describe('parseScreenUrl', () => {
       host: 'screen',
       name: 'install-claude',
     });
+  });
+
+  test('does not reinterpret a literal escape as a screen name', () => {
+    expect(parseScreenUrl('openknowledge://screen?name=install%252Dclaude')).toBeNull();
   });
 
   test('returns null for an unknown screen name', () => {
