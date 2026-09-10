@@ -115,6 +115,7 @@
       ") dans ",
       ["targetLabel"]
     ],
+    "0cGsQh": ["Éléments inclus"],
     "0cspe_": ["Supprimer la ligne"],
     "0dslv8": [
       ["0"],
@@ -176,6 +177,7 @@
     ],
     "0t0bbC": ["Impossible d'enregistrer la préférence de synchronisation : ", ["detail"]],
     "0uTHCg": ["Démarrez un nouveau projet OpenKnowledge."],
+    "0wkh7o": ["Journaux OpenKnowledge, y compris l’activité de plusieurs projets."],
     "0wswKc": ["Filet horizontal qui sépare les sections."],
     "0x9smA": ["Cette page ne se trouve plus à ce chemin."],
     "0xnQ_X": ["Les mises à jour arrivent"],
@@ -278,12 +280,9 @@
     "2Ce6hp": ["Déplacées"],
     "2D1x3Y": ["Appliquer et redémarrer le serveur du projet"],
     "2FYpfJ": ["Plus"],
-    "2FnYUD": [
-      "Informations sur l'application et le système, journaux récents de l'application et journaux du serveur de projet : l'essentiel dont nous avons besoin pour reproduire le problème."
-    ],
     "2G-56b": ["Échec de la mise à jour des règles markdownlint"],
     "2GT3Hf": ["Global"],
-    "2H43L8": ["Les secrets comme les clés API et les jetons sont masqués automatiquement."],
+    "2H5Zhu": ["Rien ne quitte votre ordinateur avant la vérification et l’envoi du rapport."],
     "2IYGkU": [
       "Ce document a des modifications non poussées. Les destinataires verront la dernière version poussée."
     ],
@@ -1125,6 +1124,7 @@
       ["0"],
       " — lecture seule ; ouvrez-le pour en modifier une copie"
     ],
+    "AkJx1j": ["Agrandir la capture d’écran"],
     "Al8HPP": ["Accepter la version actuelle pour le conflit ", ["0"]],
     "Am78jY": ["Faites glisser ", ["keyName"], " pour réorganiser"],
     "ApNWRQ": ["Supprimer OpenKnowledge de ", ["0"], " ?"],
@@ -1251,6 +1251,9 @@
     "CFnavk": ["Ce projet n'est pas un dépôt git, les worktrees ne sont donc pas disponibles."],
     "CGj3gX": ["erreur d'analyse"],
     "CHfFN_": ["Retirer OpenKnowledge de ", ["0"]],
+    "CJ59QJ": [
+      "Les détails de l’erreur, y compris le nom du document lorsqu’il est disponible, sont inclus dans le rapport."
+    ],
     "CJpuc1": [
       "Démarre un rapport de bug avec une capture d'écran de ce qui est affiché à cet instant."
     ],
@@ -1339,6 +1342,7 @@
     ],
     "DEWDbv": ["Afficher le diagramme"],
     "DF1MtZ": ["Chargement du conflit pour ", ["filePath"]],
+    "DFQ2Sj": ["Adresse e-mail pour le suivi"],
     "DFfRbX": ["État de la synchronisation : ", ["syncStateLabel"], " — identité git non définie"],
     "DId6MT": ["Pages du projet sans arête sortante dans le graphe."],
     "DJd000": ["Active l'onglet précédent de l'éditeur."],
@@ -1388,6 +1392,9 @@
     "DmkTrb": ["Impossible de créer ce thème. Réessayez."],
     "Dnn2XG": ["Automatique"],
     "DpjYd6": ["Aller au texte ancré"],
+    "DqyItq": [
+      "Journaux OpenKnowledge de plusieurs projets. Aucun projet n’est ouvert ; les journaux du serveur de projet ne sont donc pas inclus."
+    ],
     "DsDwR-": [
       [
         "0",
@@ -1692,9 +1699,6 @@
     "GUqTzn": ["Étude concurrentielle"],
     "GW9ZdV": ["Choisir des dossiers"],
     "GXf9hG": ["Clonage de ", ["repoName"], "…"],
-    "GZzDqc": [
-      "Les détails de l'erreur que vous venez de rencontrer sont inclus. Les secrets comme les clés API et les jetons sont masqués automatiquement."
-    ],
     "G_686w": ["Liste de tâches"],
     "G_hVTP": ["Activer les thèmes"],
     "G_mWXb": ["Filtrer les langages"],
@@ -1932,6 +1936,7 @@
     "JOcPqH": ["Récupérer un dépôt distant sur cette machine."],
     "JOhCT9": ["Pousser inclut"],
     "JWsZlx": ["Ouvrez un projet pour le modifier."],
+    "JYj5R2": ["Parcourir les fichiers"],
     "JZ8cO6": ["Clair, sombre, ou suivre le système."],
     "J_jZ5z": [
       "Chaque outil IA lit les compétences depuis son propre dossier. Pointez un dossier vers un autre et les deux outils verront les mêmes compétences : ajoutez une compétence une seule fois au lieu de la copier dans chaque outil."
@@ -2457,9 +2462,6 @@
     "P0HC30": ["Ce ", ["targetNoun"], " a été déplacé vers <0>", ["0"], "</0>. L'ouvrir là-bas ?"],
     "P3NS4G": ["Erreur de syntaxe du motif (ligne ", ["lineNumber"], ") : ", ["message"]],
     "P3hnm0": ["Fichier trop volumineux pour être ouvert"],
-    "P441h8": [
-      "Dites-nous ce qui s'est mal passé et nous rassemblerons les journaux. Rien ne quitte votre ordinateur avant que vous l'ayez examiné."
-    ],
     "P47EWZ": ["Impossible de mettre à jour les paramètres de la barre latérale"],
     "P6gXB-": ["Remplacer ", ["keyName"]],
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
@@ -2484,9 +2486,6 @@
     "PMyJ9C": ["Pas encore de session de modification"],
     "PPFQ3o": ["« ", ["0"], " » installé dans ", ["1"]],
     "PQCdtv": ["« ", ["docName"], " » n'existe pas."],
-    "PR0_fn": [
-      "Ajoutez jusqu'à 3 captures ou photos de votre choix : une boîte de dialogue système, un autre écran, ou une photo prise au téléphone d'un blocage. Elles ne sont pas masquées, alors laissez de côté tout ce qui ne doit pas être partagé."
-    ],
     "PR9FSv": ["Va au résultat de recherche suivant dans l'éditeur visuel."],
     "PRgIJh": ["Impossible de mettre à jour ", ["subRoot"], " : ", ["0"]],
     "PRnH8G": ["sur ", ["0"]],
@@ -3249,6 +3248,7 @@
       "Aucune compétence trouvée à cette source. L'importation en indiquera la raison si vous continuez."
     ],
     "XgsZ2F": ["Copier le code ", ["code"]],
+    "XhVmAh": ["Agrandir"],
     "Xhm7gG": ["Suggestions de ressources"],
     "Xisk4u": ["Modifié ", ["editedAgo"]],
     "XjqA8x": ["Active ou désactive le motif ", ["0"], "/**"],
@@ -3284,6 +3284,7 @@
     "Xl-UUg": ["guides/install ou https://example.com"],
     "XmJfZT": ["nom"],
     "XnlF3W": ["Ajoute la sélection source correspondante suivante."],
+    "XoMG7W": ["Les images ne sont pas expurgées."],
     "XopE_I": ["Échec de l'analyse de la réponse d'erreur des rétroliens (HTTP ", ["status"], ")"],
     "Xp7Kq4": ["Une autre opération de synchronisation est en cours. Réessayez dans un instant."],
     "Xp94R1": ["Réessayer une dernière fois"],
@@ -3416,6 +3417,7 @@
     "Z5h97D": [
       "Masquez des fichiers et des dossiers de votre base de connaissances. Les éléments masqués n'apparaissent ni dans l'arborescence, ni dans la recherche, ni dans les outils IA. <0>En savoir plus sur les motifs</0>."
     ],
+    "Z5q-I8": ["Peut inclure des noms de documents non masqués."],
     "Z67Zlj": [
       "Voici ce que ce pack ajoute à votre projet. Rien n'est écrit tant que vous n'avez pas créé le projet."
     ],
@@ -3433,6 +3435,7 @@
     "Z8lGw6": ["Partager"],
     "Z8nach": ["Échec de l'envoi : ", ["0"]],
     "ZBF9fn": ["Gérer les dossiers de compétences"],
+    "ZBZEkP": ["Capture prise avant cette boîte de dialogue, avec le pointeur marqué."],
     "ZBt4rI": ["Instruction pour l'IA"],
     "ZBxvV3": ["Nouveau terminal"],
     "ZDOq9A": ["Ce que vous partagez est envoyé à l'équipe OpenKnowledge."],
@@ -3469,9 +3472,6 @@
     "Zhe80e": ["Restaurer à la modification ", ["burstNumber"], " de ", ["docName"]],
     "ZhhOwV": ["Citation"],
     "ZjtgI-": ["Palette de commandes"],
-    "ZoOlzR": [
-      "Informations sur l'application et le système, et journaux récents de l'application. Aucun projet n'est ouvert, donc les journaux de projet ne sont pas inclus."
-    ],
     "Zon_qG": ["Source du miroir <0>", ["label"], "</0>"],
     "ZptNUh": ["Afficher ", ["hidden"], " de plus"],
     "Zs3d0w": [
@@ -4397,6 +4397,7 @@
     "haHgQj": ["Chemin relatif copié"],
     "habOU_": ["Échec de la mise à jour du réglage d'approbation automatique — ", ["detail"]],
     "hadECI": [["0"], " doit être remplacé"],
+    "hcBdO4": ["Jusqu’à 3 captures d’écran ou photos"],
     "he3ygx": ["Copier"],
     "heV8si": [
       "Cela supprime définitivement ",
@@ -4739,6 +4740,9 @@
     "kmKqZg": ["Groupes"],
     "kmPvKZ": ["Le serveur a renvoyé une réponse de mise à jour mal formée."],
     "knjOzA": ["Valeur de l'étiquette"],
+    "ko-CKk": [
+      "Les secrets connus sont masqués, mais d’autres informations sensibles peuvent subsister. Vérifiez le ZIP avant l’envoi."
+    ],
     "ko386X": ["Un document est en conflit — résolvez-le pour le garder à jour."],
     "kolRU1": ["Voulez-vous plutôt le supprimer définitivement ?"],
     "koo58J": ["Envoyer une compétence"],
@@ -4990,6 +4994,7 @@
     "mxY24F": [
       "Duplique l'élément de l'arborescence ayant le focus lorsque le focus est dans la barre latérale Fichiers."
     ],
+    "mx_oWI": ["Nous aide à rechercher la cause."],
     "n11Jj7": ["Installe la compétence de projet OpenKnowledge pour cet agent."],
     "n2XqGH": ["volet de l’éditeur"],
     "n2lRue": ["Validez ou remisez vos modifications pour changer :"],
@@ -5020,6 +5025,7 @@
     "nP-KFo": ["Nouvelle discussion ", ["0"]],
     "nTM8ab": ["Donnez-lui un nom avant de modifier ses couleurs."],
     "nTwL53": ["Ouvrez un document pour partager son URL."],
+    "nVGRwu": ["Déposer des images ici"],
     "nWMRxa": ["Détacher"],
     "nWS2gQ": ["Publié par ", ["publisher"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],
@@ -5031,6 +5037,7 @@
     "nc-ipN": [
       "La modification des champs n'est possible que pour les fichiers de schéma associés dans le plugin Schémas de frontmatter"
     ],
+    "nczGih": ["Capture prise avant cette boîte de dialogue."],
     "ndwmea": ["indisponible sur cette plateforme"],
     "neRy3o": ["Scinder l'élément de liste"],
     "nem6R7": ["dépasse le budget de tokens ", ["budgetLabel"]],
@@ -5180,9 +5187,6 @@
     "pMPnZv": [["deleted"], " compétences supprimées"],
     "pOo4Aa": ["Texte brut"],
     "pPiV8s": ["Activer Auto (Tirer et Pousser)"],
-    "pRq670": [
-      "Une image de l'application juste avant que vous n'ouvriez ceci, avec un repère indiquant où se trouvait votre pointeur. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
-    ],
     "pSimwP": ["Nouveau nom pour la version ", ["editor"]],
     "pTPqMK": ["Bascule un bloc de code délimité."],
     "pTyA_t": ["étiquettes"],
@@ -5284,6 +5288,7 @@
         { "one": ["#", " onglet"], "many": ["#", " onglets"], "other": ["#", " onglets"] }
       ]
     ],
+    "qApCYm": ["Non expurgée. Vérifiez l’image avant de la partager."],
     "qAx7xG": ["Dossier fixe dans la racine du contenu"],
     "qBi_YG": ["Installer OpenKnowledge dans vos outils d'IA"],
     "qC7PwZ": ["Échec de la suppression du champ"],
@@ -5735,7 +5740,6 @@
       "Impossible de redémarrer le serveur — il s'exécute sous un autre compte. Redémarrez votre ordinateur pour le libérer, puis rouvrez ce projet."
     ],
     "uUCrBv": ["lien symbolique"],
-    "uV3EYs": ["Vos images"],
     "uVbUP8": ["Paramètres…"],
     "uVhq9B": ["Installe la compétence de découverte OpenKnowledge pour cet agent."],
     "uX85yl": [
@@ -5924,6 +5928,7 @@
     "w61W3L": ["Retirer ", ["0"]],
     "w6sBjd": ["Les paramètres du terminal ne sont pas encore chargés — réessayez dans un instant"],
     "w6sT-y": ["Suivre les modifications de l'agent"],
+    "w7IPNE": ["Aucune image ajoutée."],
     "w7LRoP": ["Studio de compétences"],
     "w7SsvI": ["Ce dossier n'est pas encore un projet OpenKnowledge. L'initialiser et l'ouvrir ?"],
     "w7bnEb": ["Créez une compétence personnelle, disponible dans tous les projets."],
@@ -6077,6 +6082,7 @@
     "xrVr_k": ["Impossible de créer la compétence : ", ["0"]],
     "xsZhu-": ["Numéro de page"],
     "xtJgSe": ["Cette source regroupe plusieurs compétences — choisissez celle à importer."],
+    "xvv5gL": ["Aperçu de la capture d’écran"],
     "xxRpzT": ["Slidev trouvé sur votre système."],
     "xzAmL_": ["Approuvé automatiquement"],
     "xzktOa": ["Modifier le lien wiki"],
@@ -6201,9 +6207,6 @@
     "yz7wBu": ["Fermer"],
     "yzF66j": ["Lien"],
     "yzGPkm": ["Développer le graphe"],
-    "yzYE4B": [
-      "Une image de l'application juste avant que vous n'ouvriez ceci. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
-    ],
     "z-lawV": ["worktree"],
     "z0a2EA": [
       "Diagramme issu d'une source Mermaid — organigramme, séquence, classes, états, ER, Gantt, camembert."

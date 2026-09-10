@@ -1347,14 +1347,6 @@ msgstr "스킬 내부 경로입니다. 모든 폴더를 사용할 수 있습니�
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "개인 색상 테마 선택기입니다. 프로젝트와 공유되지 않으며, 켜면 사이드바의 플러그인 아래에 나타납니다."
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "앱을 열기 직전의 모습이며, 포인터가 있던 위치에 표시가 그려집니다. 비공개 처리되지 않았으므로 미리보기를 확인하고 공유하면 안 되는 내용이 있으면 선택을 해제하세요."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "앱을 열기 직전의 모습입니다. 비공개 처리되지 않았으므로 미리보기를 확인하고 공유하면 안 되는 내용이 있으면 선택을 해제하세요."
-
 #: src/components/empty-state/CreatePromptComposer.tsx
 msgid "A PR reviewer, a release-notes writer, a deploy checklist..."
 msgstr "PR 리뷰어, 릴리스 노트 작성자, 배포 체크리스트…"
@@ -1673,10 +1665,6 @@ msgstr "{gitignorePath}에 추가"
 msgid "Add to Dictionary"
 msgstr "사전에 추가"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-msgstr "시스템 대화 상자, 다른 모니터, 멈춘 화면을 찍은 휴대폰 사진처럼 직접 찍은 스크린샷이나 사진을 최대 3장까지 추가하세요. 비공개 처리되지 않으므로 공유하면 안 되는 내용은 넣지 마세요."
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "값 추가"
@@ -1965,14 +1953,6 @@ msgstr "추가할 내용이 있나요? (선택 사항)"
 msgid "API key set"
 msgstr "API 키 설정됨"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
-msgstr "앱 및 시스템 정보와 최근 앱 로그입니다. 열린 프로젝트가 없으므로 프로젝트 로그는 포함되지 않습니다."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-msgstr "앱 및 시스템 정보, 최근 앱 로그, 프로젝트 서버 로그입니다. 문제를 재현하는 데 필요한 핵심 정보입니다."
-
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "변경 사항의 추가 전용 로그입니다."
@@ -2146,6 +2126,7 @@ msgid "Attach a file"
 msgstr "파일 첨부"
 
 #: src/components/ImageAttachments.tsx
+#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "이미지 첨부"
 
@@ -2463,6 +2444,10 @@ msgstr "끊어진 링크"
 msgid "Browse"
 msgstr "찾아보기"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Browse files"
+msgstr "파일 찾아보기"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "폴더 찾아보기"
@@ -2619,6 +2604,14 @@ msgstr "해결되지 않은 충돌이 있는 파일은 삭제할 수 없습니�
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "업로드할 수 없습니다. 열린 문서가 없습니다"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog, with the pointer marked."
+msgstr "이 대화 상자가 열리기 전에 캡처되었으며 포인터가 표시되어 있습니다."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog."
+msgstr "이 대화 상자가 열리기 전에 캡처되었습니다."
 
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Change"
@@ -4831,10 +4824,6 @@ msgstr "상세 진단"
 msgid "Details"
 msgstr "세부 정보"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-msgstr "방금 발생한 오류에 대한 자세한 진단이 포함됩니다. API 키와 토큰 같은 시크릿은 자동으로 비공개 처리됩니다."
-
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
@@ -5123,6 +5112,10 @@ msgstr "항목 {0}을 드래그하여 순서 변경"
 msgid "Drop a file to attach"
 msgstr "첨부할 파일 드롭"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Drop images here"
+msgstr "여기에 이미지 놓기"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTargetMenuItems.tsx
@@ -5352,6 +5345,10 @@ msgstr "이메일"
 msgid "Email address"
 msgstr "이메일 주소"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Email for followups"
+msgstr "후속 연락용 이메일"
+
 #: src/components/BugReportHistory.tsx
 msgid "Email support about this report"
 msgstr "이 보고서에 대해 지원팀에 이메일 보내기"
@@ -5539,6 +5536,14 @@ msgstr "엔드포인트"
 msgid "Eng specs"
 msgstr "엔지니어링 사양"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge"
+msgstr "확대"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge screenshot"
+msgstr "스크린샷 확대"
+
 #: src/components/CommandPalette.tsx
 msgid "Enter"
 msgstr "Enter"
@@ -5603,6 +5608,10 @@ msgstr "터널이 제공하는 공개 오리진을 입력하세요. 예: https:/
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "오류"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Error details, including the document name when available, are included in the report."
+msgstr "보고서에는 오류 세부 정보와 사용 가능한 경우 문서 이름이 포함됩니다."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
@@ -6713,6 +6722,10 @@ msgstr "에이전트가 어떤 프로젝트에서든 OpenKnowledge를 찾아 사
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "코딩 에이전트가 OKF 문서 유형을 선택하고 출처를 보존하며 지원되지 않는 메타데이터를 만들지 않도록 돕습니다."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Helps us investigate the cause."
+msgstr "원인을 조사하는 데 도움이 됩니다."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
 msgstr "이 팩이 프로젝트에 추가하는 항목입니다. 프로젝트를 만들기 전까지는 아무것도 기록되지 않습니다."
@@ -7052,6 +7065,10 @@ msgstr "이미지 대상 \"{shown}\"을 프로젝트 로컬 파일로 확인할 
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "이미지 대상 \"{shown}\"이 존재하는 파일로 확인되지 않습니다."
+
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Images aren't redacted."
+msgstr "이미지는 민감 정보가 가려지지 않습니다."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Images from anywhere · non-image files must be in the workspace"
@@ -7660,6 +7677,10 @@ msgstr "편집기와 워크스페이스에서 사용할 수 있는 키보드 단
 msgid "Kill Terminal"
 msgstr "터미널 종료"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+msgstr "알려진 비밀 정보는 제거되지만 다른 민감 정보가 남아 있을 수 있습니다. 보내기 전에 ZIP을 검토하세요."
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Label <0>(optional display text)</0>"
 msgstr "레이블 <0>(선택적 표시 텍스트)</0>"
@@ -8180,6 +8201,10 @@ msgstr "에이전트 최대 실행 수 도달"
 #: src/components/settings/SearchSection.tsx
 msgid "Maximum text chunks per indexing request"
 msgstr "인덱싱 요청당 최대 텍스트 청크 수"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "May include unredacted document names."
+msgstr "가려지지 않은 문서 이름이 포함될 수 있습니다."
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -8948,6 +8973,10 @@ msgstr "아직 허브 페이지가 없습니다. 페이지에 들어오는 그�
 msgid "No icons match."
 msgstr "일치하는 아이콘이 없습니다."
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "No images added."
+msgstr "추가된 이미지가 없습니다."
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "들어오는 링크 없음"
@@ -9214,6 +9243,10 @@ msgstr "아직 이 프로젝트에 설치되지 않았습니다."
 msgid "Not now"
 msgstr "나중에"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Not redacted. Check the image before sharing."
+msgstr "민감 정보가 가려지지 않았습니다. 공유하기 전에 이미지를 확인하세요."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "<0>{endpointHost}</0> 같은 localhost 엔드포인트에는 필요하지 않습니다. 대부분의 로컬 서버는 키를 무시합니다. 필요할 때만 추가합니다."
@@ -9231,6 +9264,10 @@ msgstr "없음 ({0}로는 문서와 일치하지 않음)"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "없음 ({0}로는 유효한 패턴이 아님)"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Nothing leaves your computer until you review and send the report."
+msgstr "보고서를 검토하고 보내기 전에는 어떤 정보도 컴퓨터 밖으로 전송되지 않습니다."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Nothing moves until you ask — pull and push from the sync menu."
@@ -9862,6 +9899,14 @@ msgstr "OpenKnowledge가 이 파일을 안전하게 파싱할 수 없어 파일�
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
 msgstr "OpenKnowledge에서 설치된 스킬 목록 확인"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+msgstr "여러 프로젝트의 OpenKnowledge 로그입니다. 열린 프로젝트가 없으므로 프로젝트 서버 로그는 포함되지 않습니다."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs, including activity across projects."
+msgstr "여러 프로젝트의 활동을 포함한 OpenKnowledge 로그입니다."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge looked at the link graph"
@@ -10895,6 +10940,7 @@ msgstr "최근 프로젝트"
 msgid "Recently opened"
 msgstr "최근 열기"
 
+#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Recommended"
 msgstr "권장"
@@ -11819,6 +11865,10 @@ msgstr "범위: "
 msgid "Screenshot"
 msgstr "스크린샷"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot preview"
+msgstr "스크린샷 미리 보기"
+
 #: src/components/ui/message-scroller.tsx
 msgid "Scroll to end"
 msgstr "끝으로 스크롤"
@@ -11964,10 +12014,6 @@ msgstr "문서 검색 중"
 #: src/editor/slash-command/items.tsx
 msgid "Second item"
 msgstr "두 번째 항목"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically."
-msgstr "API 키와 토큰 같은 시크릿은 자동으로 비공개 처리됩니다."
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -13384,10 +13430,6 @@ msgstr "진행 상황을 알려 주세요"
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"
 msgstr "더 알려 주세요 (선택 사항)"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-msgstr "무슨 문제가 있었는지 알려 주시면 로그를 수집합니다. 검토하기 전에는 아무것도 컴퓨터 밖으로 전송되지 않습니다."
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -14914,6 +14956,10 @@ msgstr "제목 없는 보고서"
 msgid "Untracked"
 msgstr "추적 안 됨"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Up to 3 screenshots or photos"
+msgstr "스크린샷 또는 사진 최대 3개"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "최신 상태"
@@ -15399,6 +15445,10 @@ msgstr "무엇을 만들까요?"
 msgid "What you share is sent to the OpenKnowledge team."
 msgstr "공유하신 내용은 OpenKnowledge 팀에 전송됩니다."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "What's included"
+msgstr "포함되는 항목"
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "새로운 기능"
@@ -15740,10 +15790,6 @@ msgstr "GitHub 세션이 만료되었습니다. 푸시 권한을 확인하려면
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "GitHub 토큰에 필요한 범위가 없습니다. 다시 로그인하세요."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your images"
-msgstr "내 이미지"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

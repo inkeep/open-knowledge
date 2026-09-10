@@ -1347,14 +1347,6 @@ msgstr "技能内部的一个路径——任何文件夹都可以（例如 refer
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "个人配色主题选择器——不与你的项目共享。开启后会出现在侧边栏的「插件」下。"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "你打开这个界面之前的应用截图，上面有一个标记显示指针当时的位置。它没有做隐去处理，请查看预览；如果有不该分享的内容，请取消勾选。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "你打开这个界面之前的应用截图。它没有做隐去处理，请查看预览；如果有不该分享的内容，请取消勾选。"
-
 #: src/components/empty-state/CreatePromptComposer.tsx
 msgid "A PR reviewer, a release-notes writer, a deploy checklist..."
 msgstr "一位 PR 评审者、一位发布说明撰稿人、一份部署检查清单……"
@@ -1673,10 +1665,6 @@ msgstr "添加到 {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "添加到词典"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-msgstr "最多可添加 3 张你自己的截图或照片，比如系统对话框、另一台显示器，或者用手机拍下的卡顿画面。它们不会做隐去处理，所以请不要放入不该分享的内容。"
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "添加值"
@@ -1965,14 +1953,6 @@ msgstr "还有什么想补充的吗？（可选）"
 msgid "API key set"
 msgstr "API 密钥已设置"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
-msgstr "应用与系统信息，以及最近的应用日志。当前没有打开的项目，因此不包含项目日志。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-msgstr "应用与系统信息、最近的应用日志和项目服务器日志：复现问题所需的基本材料。"
-
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "记录改动内容的只追加日志。"
@@ -2146,6 +2126,7 @@ msgid "Attach a file"
 msgstr "附加文件"
 
 #: src/components/ImageAttachments.tsx
+#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "附加图片"
 
@@ -2463,6 +2444,10 @@ msgstr "失效链接"
 msgid "Browse"
 msgstr "浏览"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Browse files"
+msgstr "浏览文件"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "浏览文件夹"
@@ -2619,6 +2604,14 @@ msgstr "无法删除存在未解决冲突的文件"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "无法上传：当前没有打开的文档"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog, with the pointer marked."
+msgstr "在此对话框打开前截取，已标记指针位置。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog."
+msgstr "在此对话框打开前截取。"
 
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Change"
@@ -4831,10 +4824,6 @@ msgstr "详细诊断信息"
 msgid "Details"
 msgstr "详情"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-msgstr "其中包含你刚遇到的错误的详细信息。API 密钥、令牌等机密内容会自动隐去。"
-
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
@@ -5123,6 +5112,10 @@ msgstr "拖动项目 {0} 以重新排序"
 msgid "Drop a file to attach"
 msgstr "拖放文件以附加"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Drop images here"
+msgstr "将图片拖放到此处"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTargetMenuItems.tsx
@@ -5352,6 +5345,10 @@ msgstr "电子邮件"
 msgid "Email address"
 msgstr "邮箱地址"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Email for followups"
+msgstr "用于后续联系的邮箱"
+
 #: src/components/BugReportHistory.tsx
 msgid "Email support about this report"
 msgstr "就此报告发送邮件给支持团队"
@@ -5539,6 +5536,14 @@ msgstr "端点"
 msgid "Eng specs"
 msgstr "工程规格"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge"
+msgstr "放大"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge screenshot"
+msgstr "放大屏幕截图"
+
 #: src/components/CommandPalette.tsx
 msgid "Enter"
 msgstr "Enter"
@@ -5603,6 +5608,10 @@ msgstr "输入你的隧道所服务的公开来源，例如 https://notes.exampl
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "错误"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Error details, including the document name when available, are included in the report."
+msgstr "报告包含错误详情，以及文档名称（如有）。"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
@@ -6713,6 +6722,10 @@ msgstr "帮助你的智能体在任意项目中发现并使用 OpenKnowledge。"
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "帮助编码代理选择 OKF 文档类型、保留来源并避免发明不受支持的元数据。"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Helps us investigate the cause."
+msgstr "帮助我们调查原因。"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
 msgstr "以下是此入门包将添加到你的项目中的内容。在你创建项目之前，不会写入任何内容。"
@@ -7052,6 +7065,10 @@ msgstr "无法将图片目标“{shown}”解析为项目本地文件。"
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "图片目标“{shown}”未指向现有文件。"
+
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Images aren't redacted."
+msgstr "图片不会进行脱敏处理。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Images from anywhere · non-image files must be in the workspace"
@@ -7660,6 +7677,10 @@ msgstr "编辑器和工作区中可用的键盘快捷键。"
 msgid "Kill Terminal"
 msgstr "强制结束终端"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+msgstr "已清除已知类型的机密信息，但仍可能包含其他敏感信息。发送前请检查 ZIP 文件。"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Label <0>(optional display text)</0>"
 msgstr "标签 <0>（可选的显示文本）</0>"
@@ -8180,6 +8201,10 @@ msgstr "运行中的智能体已达上限"
 #: src/components/settings/SearchSection.tsx
 msgid "Maximum text chunks per indexing request"
 msgstr "每次索引请求的最大文本块数"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "May include unredacted document names."
+msgstr "可能包含未经脱敏的文档名称。"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -8948,6 +8973,10 @@ msgstr "还没有中枢页面。当页面积累起入链后，中枢页就会出
 msgid "No icons match."
 msgstr "没有匹配的图标。"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "No images added."
+msgstr "未添加任何图片。"
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "无入链"
@@ -9214,6 +9243,10 @@ msgstr "尚未安装到此项目。"
 msgid "Not now"
 msgstr "暂时不用"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Not redacted. Check the image before sharing."
+msgstr "未经脱敏。分享前请检查图片。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "对于 <0>{endpointHost}</0> 这样的本地端点不是必需的——大多数本地服务器会忽略它。只有你的服务器需要时才添加。"
@@ -9231,6 +9264,10 @@ msgstr "无（{0} 无法匹配任何文档）"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "无（{0} 不是有效的模式）"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Nothing leaves your computer until you review and send the report."
+msgstr "在您检查并发送报告之前，任何信息都不会离开您的计算机。"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Nothing moves until you ask — pull and push from the sync menu."
@@ -9862,6 +9899,14 @@ msgstr "OpenKnowledge 未修改此文件，因为无法安全地解析它。请�
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
 msgstr "OpenKnowledge 列出了已安装的技能"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+msgstr "跨项目的 OpenKnowledge 日志。当前未打开任何项目，因此不包含项目服务器日志。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs, including activity across projects."
+msgstr "OpenKnowledge 日志，包括跨项目的活动。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge looked at the link graph"
@@ -10895,6 +10940,7 @@ msgstr "最近的项目"
 msgid "Recently opened"
 msgstr "最近打开"
 
+#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Recommended"
 msgstr "推荐"
@@ -11819,6 +11865,10 @@ msgstr "范围： "
 msgid "Screenshot"
 msgstr "截图"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot preview"
+msgstr "屏幕截图预览"
+
 #: src/components/ui/message-scroller.tsx
 msgid "Scroll to end"
 msgstr "滚动到末尾"
@@ -11964,10 +12014,6 @@ msgstr "正在搜索文档"
 #: src/editor/slash-command/items.tsx
 msgid "Second item"
 msgstr "第二项"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically."
-msgstr "API 密钥、令牌等机密内容会自动隐去。"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -13384,10 +13430,6 @@ msgstr "告诉我们进展如何"
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"
 msgstr "再多说一些（可选）"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-msgstr "告诉我们出了什么问题，我们会收集日志。在你查看之前，不会有任何内容离开你的电脑。"
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -14914,6 +14956,10 @@ msgstr "未命名报告"
 msgid "Untracked"
 msgstr "未跟踪"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Up to 3 screenshots or photos"
+msgstr "最多 3 张屏幕截图或照片"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "已是最新"
@@ -15399,6 +15445,10 @@ msgstr "你想创建什么？"
 msgid "What you share is sent to the OpenKnowledge team."
 msgstr "你分享的内容会发送给 OpenKnowledge 团队。"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "What's included"
+msgstr "包含的内容"
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "新功能"
@@ -15740,10 +15790,6 @@ msgstr "你的 GitHub 会话已过期——请重新登录以验证推送权限�
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "你的 GitHub 令牌缺少必需的权限范围。请尝试重新登录。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your images"
-msgstr "你的图片"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

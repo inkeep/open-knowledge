@@ -629,7 +629,7 @@ Current production suppressions:
 
 | rule | line-level | file-level (backlog) |
 | - | - | - |
-| `no-physical-direction-utility` | 2 | 78 |
+| `no-physical-direction-utility` | 4 | 73 |
 | `no-loosely-typed-webcontents-ipc` | 31 | 0 |
 | `no-raw-html-interactive-element` | 0 | 20 |
 | `no-unportaled-editor-content` | 7 | 0 |
@@ -638,7 +638,7 @@ Current production suppressions:
 | `no-unwrapped-user-facing-string` | 1 | 0 |
 | `no-hand-rolled-spinner` | 1 | 0 |
 
-Every other rule has zero. The two file-level columns are the visible migration backlogs: 78 files awaiting the logical-property pass, 20 awaiting shadcn migration.
+Every other rule has zero. The file-level counts above are the visible migration backlogs for the logical-property pass and shadcn migration.
 
 **Where an inline suppression can and cannot sit.** A suppression comment needs a line of its own directly above the reported span, which is a property of the *formatting* rather than of the rule. On a JSX attribute that means the attribute must already be on its own line. A `{/* oxlint-disable-next-line */}` child covers the element that follows it, not a text node that starts after that element.
 

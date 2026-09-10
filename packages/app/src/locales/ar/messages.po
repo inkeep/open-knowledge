@@ -1347,14 +1347,6 @@ msgstr "مسار داخل المهارة — أي مجلد يصلح (مثل refe
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "منتقي سمة ألوان شخصي — غير مشترك مع مشروعك. عند تفعيله يظهر ضمن «الإضافات» في الشريط الجانبي."
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "صورة للتطبيق من قبل فتحك هذا مباشرةً، مع علامة تُبيّن موضع المؤشر. لم يجرِ إخفاء محتواها، لذا تحقق من المعاينة وألغِ تحديدها إن كان فيها ما لا ينبغي مشاركته."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "صورة للتطبيق من قبل فتحك هذا مباشرةً. لم يجرِ إخفاء محتواها، لذا تحقق من المعاينة وألغِ تحديدها إن كان فيها ما لا ينبغي مشاركته."
-
 #: src/components/empty-state/CreatePromptComposer.tsx
 msgid "A PR reviewer, a release-notes writer, a deploy checklist..."
 msgstr "مراجع لطلبات السحب، كاتب ملاحظات إصدار، قائمة تحقق للنشر..."
@@ -1673,10 +1665,6 @@ msgstr "إضافة إلى {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "إضافة إلى القاموس"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-msgstr "أضِف حتى 3 لقطات شاشة أو صور من عندك، مثل مربع حوار في النظام، أو شاشة أخرى، أو صورة بالهاتف لتوقف التطبيق. لا يجري إخفاء محتواها، لذا استبعِد كل ما لا ينبغي مشاركته."
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "إضافة قيمة"
@@ -1965,14 +1953,6 @@ msgstr "هل تودّ إضافة شيء؟ (اختياري)"
 msgid "API key set"
 msgstr "تم ضبط مفتاح API"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
-msgstr "معلومات التطبيق والنظام وسجلات التطبيق الأخيرة. لا يوجد مشروع مفتوح، لذا لم تُدرج سجلات المشروع."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-msgstr "معلومات التطبيق والنظام، وسجلات التطبيق الأخيرة، وسجلات خادم المشروع: الأساسيات التي نحتاجها لإعادة إنتاج المشكلة."
-
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "سجل للإلحاق فقط بما تغيّر."
@@ -2146,6 +2126,7 @@ msgid "Attach a file"
 msgstr "إرفاق ملف"
 
 #: src/components/ImageAttachments.tsx
+#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "إرفاق صور"
 
@@ -2463,6 +2444,10 @@ msgstr "رابط معطل"
 msgid "Browse"
 msgstr "استعراض"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Browse files"
+msgstr "تصفح الملفات"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "استعراض مجلد"
@@ -2619,6 +2604,14 @@ msgstr "لا يمكن حذف ملفات لم تُحَل تعارضاتها"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "تعذّر الرفع: لا يوجد مستند مفتوح"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog, with the pointer marked."
+msgstr "التُقطت قبل فتح مربع الحوار هذا، مع تحديد موضع المؤشر."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog."
+msgstr "التُقطت قبل فتح مربع الحوار هذا."
 
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Change"
@@ -4831,10 +4824,6 @@ msgstr "تشخيصات مفصّلة"
 msgid "Details"
 msgstr "التفاصيل"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-msgstr "تفاصيل الخطأ الذي واجهته للتو مُدرجة. تُخفى الأسرار كمفاتيح API والرموز تلقائيًا."
-
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
@@ -5123,6 +5112,10 @@ msgstr "اسحب العنصر {0} لإعادة الترتيب"
 msgid "Drop a file to attach"
 msgstr "أفلت ملفًا لإرفاقه"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Drop images here"
+msgstr "أفلت الصور هنا"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTargetMenuItems.tsx
@@ -5352,6 +5345,10 @@ msgstr "البريد الإلكتروني"
 msgid "Email address"
 msgstr "عنوان البريد الإلكتروني"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Email for followups"
+msgstr "البريد الإلكتروني للمتابعة"
+
 #: src/components/BugReportHistory.tsx
 msgid "Email support about this report"
 msgstr "مراسلة الدعم بشأن هذا التقرير"
@@ -5539,6 +5536,14 @@ msgstr "نقطة النهاية"
 msgid "Eng specs"
 msgstr "مواصفات هندسية"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge"
+msgstr "تكبير"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge screenshot"
+msgstr "تكبير لقطة الشاشة"
+
 #: src/components/CommandPalette.tsx
 msgid "Enter"
 msgstr "إدخال"
@@ -5603,6 +5608,10 @@ msgstr "أدخل الأصل العام الذي يخدمه النفق الخاص
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "خطأ"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Error details, including the document name when available, are included in the report."
+msgstr "يتضمن التقرير تفاصيل الخطأ، بما في ذلك اسم المستند عند توفره."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
@@ -6713,6 +6722,10 @@ msgstr "ساعد وكلاءك على اكتشاف OpenKnowledge واستخدام
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "يساعد وكلاء الترميز في اختيار أنواع المستندات OKF والحفاظ على المصدر وتجنب اختراع بيانات تعريف غير مدعومة."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Helps us investigate the cause."
+msgstr "يساعدنا في التحقق من السبب."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
 msgstr "إليك ما تضيفه هذه الحزمة إلى مشروعك. لا يُكتب أي شيء حتى تنشئ المشروع."
@@ -7052,6 +7065,10 @@ msgstr "تعذّر تحويل هدف الصورة \"{shown}\" إلى ملف مح
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "هدف الصورة \"{shown}\" لا يشير إلى ملف موجود."
+
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Images aren't redacted."
+msgstr "لا تُحجب المعلومات الحساسة في الصور."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Images from anywhere · non-image files must be in the workspace"
@@ -7660,6 +7677,10 @@ msgstr "اختصارات لوحة المفاتيح المتاحة في المح�
 msgid "Kill Terminal"
 msgstr "إنهاء الطرفية"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+msgstr "تُزال الأسرار المعروفة، لكن قد تبقى معلومات حساسة أخرى. راجع ملف ZIP قبل الإرسال."
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Label <0>(optional display text)</0>"
 msgstr "التسمية <0>(نص عرض اختياري)</0>"
@@ -8180,6 +8201,10 @@ msgstr "يعمل الحد الأقصى من الوكلاء بالفعل"
 #: src/components/settings/SearchSection.tsx
 msgid "Maximum text chunks per indexing request"
 msgstr "الحد الأقصى لقطع النص لكل طلب فهرسة"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "May include unredacted document names."
+msgstr "قد يتضمن أسماء مستندات غير محجوبة."
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -8948,6 +8973,10 @@ msgstr "لا توجد صفحات محورية بعد. تظهر المحاور ع
 msgid "No icons match."
 msgstr "لا توجد أيقونات مطابقة."
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "No images added."
+msgstr "لم تتم إضافة أي صور."
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "لا روابط واردة"
@@ -9214,6 +9243,10 @@ msgstr "لم تُثبَّت في هذا المشروع بعد."
 msgid "Not now"
 msgstr "ليس الآن"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Not redacted. Check the image before sharing."
+msgstr "لم تُحجب المعلومات الحساسة. تحقق من الصورة قبل مشاركتها."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "غير مطلوب لنقطة نهاية محلية مثل <0>{endpointHost}</0> — تتجاهله معظم الخوادم المحلية. أضفه فقط إن كان خادمك يحتاجه."
@@ -9231,6 +9264,10 @@ msgstr "لا شيء ({0} لا يمكن أن يطابق مستندًا)"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "لا شيء ({0} ليس نمطًا صالحًا)"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Nothing leaves your computer until you review and send the report."
+msgstr "لا يغادر أي شيء جهازك حتى تراجع التقرير وترسله."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Nothing moves until you ask — pull and push from the sync menu."
@@ -9862,6 +9899,14 @@ msgstr "لم يغيّر OpenKnowledge هذا الملف لأنه لم يتمكن
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
 msgstr "عرض OpenKnowledge المهارات المثبّتة"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+msgstr "سجلات OpenKnowledge عبر المشاريع. لا يوجد مشروع مفتوح، لذا لا تُضمَّن سجلات خادم المشروع."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs, including activity across projects."
+msgstr "سجلات OpenKnowledge، بما في ذلك النشاط عبر المشاريع."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge looked at the link graph"
@@ -10895,6 +10940,7 @@ msgstr "مشروع حديث"
 msgid "Recently opened"
 msgstr "فُتح مؤخرًا"
 
+#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Recommended"
 msgstr "موصى به"
@@ -11819,6 +11865,10 @@ msgstr "النطاق: "
 msgid "Screenshot"
 msgstr "لقطة الشاشة"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot preview"
+msgstr "معاينة لقطة الشاشة"
+
 #: src/components/ui/message-scroller.tsx
 msgid "Scroll to end"
 msgstr "التمرير إلى النهاية"
@@ -11964,10 +12014,6 @@ msgstr "يجري البحث في المستندات"
 #: src/editor/slash-command/items.tsx
 msgid "Second item"
 msgstr "العنصر الثاني"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically."
-msgstr "تُخفى الأسرار كمفاتيح API والرموز تلقائيًا."
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -13384,10 +13430,6 @@ msgstr "أخبرنا كيف تسير الأمور"
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"
 msgstr "أخبرنا المزيد (اختياري)"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-msgstr "أخبرنا بما حدث من خطأ وسنجمع السجلات. لا يغادر أي شيء جهازك حتى تراجعه."
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -14914,6 +14956,10 @@ msgstr "تقرير بلا عنوان"
 msgid "Untracked"
 msgstr "غير متتبَّع"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Up to 3 screenshots or photos"
+msgstr "حتى 3 لقطات شاشة أو صور"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "محدَّث"
@@ -15399,6 +15445,10 @@ msgstr "ماذا تود أن تنشئ؟"
 msgid "What you share is sent to the OpenKnowledge team."
 msgstr "ما تشاركه يُرسل إلى فريق OpenKnowledge."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "What's included"
+msgstr "ما الذي يتم تضمينه"
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "ما الجديد"
@@ -15740,10 +15790,6 @@ msgstr "انتهت صلاحية جلسة GitHub لديك — سجّل الدخو
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "ينقص رمز GitHub لديك نطاقات مطلوبة. حاول تسجيل الدخول مرة أخرى."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your images"
-msgstr "صورك"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

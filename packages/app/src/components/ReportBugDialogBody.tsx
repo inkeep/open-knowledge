@@ -1,5 +1,3 @@
-// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
-
 import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportScreenshot,
@@ -11,17 +9,21 @@ import {
   isBugReportAttachmentEntry,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { AlertCircleIcon, ArchiveIcon, ShieldIcon, TriangleAlertIcon } from 'lucide-react';
+import {
+  AlertCircleIcon,
+  ArchiveIcon,
+  ChevronRightIcon,
+  ExpandIcon,
+  ShieldIcon,
+  TriangleAlertIcon,
+} from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { BugReportPreviousReports } from '@/components/BugReportHistory';
-import {
-  ImageAttachmentList,
-  ImageAttachmentPicker,
-  useImageAttachmentProblemMessage,
-} from '@/components/ImageAttachments';
+import { ImageAttachmentList } from '@/components/ImageAttachments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogBody,
@@ -30,6 +32,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
@@ -38,9 +41,10 @@ import { useContactEmail } from '@/hooks/use-contact-email';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { formatBundleSize, zipBasename } from '@/lib/bug-report-support';
 import { commitContactEmail } from '@/lib/contact-email-store';
-import { imageAttachmentsProblem, isImageAttachmentType } from '@/lib/image-attachments';
+import { isImageAttachmentType } from '@/lib/image-attachments';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { isValidContactEmail } from '@/lib/validate-email';
+import { ReportBugImageDropzone } from './ReportBugImageDropzone';
 
 export interface ReportBugCrashContext {
   source: string;
@@ -188,14 +192,9 @@ function ReportBugDialog({
   const dumpHintId = useId();
   const screenshotId = useId();
   const screenshotHintId = useId();
-  const attachmentsId = useId();
-  const attachmentsHintId = useId();
   const shareEmailId = useId();
   const emailId = useId();
   const emailErrorId = useId();
-  const whatToIncludeId = useId();
-  const attachmentProblemMessage = useImageAttachmentProblemMessage();
-  const attachmentsError = attachmentProblemMessage(imageAttachmentsProblem(attachments));
 
   const rememberedEmail = useContactEmail().email;
 
@@ -236,7 +235,6 @@ function ReportBugDialog({
       return;
     }
     setEmailError(null);
-    if (attachmentsError !== null) return;
     const seq = ++opSeqRef.current;
     setPhase({ step: 'compose', creating: true, createError: null });
     const attachmentInputs = await toAttachmentInputs(attachments);
@@ -288,23 +286,21 @@ function ReportBugDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="gap-2 sm:max-w-[46.25rem]">
         {phase.step === 'compose' && (
           <>
-            <DialogHeader>
+            {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
+            <DialogHeader className="gap-2 pr-6">
               <DialogTitle>
                 <Trans>Report a bug</Trans>
               </DialogTitle>
               {crashInvite === undefined && (
                 <DialogDescription>
-                  <Trans>
-                    Tell us what went wrong and we'll gather the logs. Nothing leaves your computer
-                    until you've reviewed it.
-                  </Trans>
+                  <Trans>Nothing leaves your computer until you review and send the report.</Trans>
                 </DialogDescription>
               )}
             </DialogHeader>
-            <DialogBody className="flex flex-col gap-5">
+            <DialogBody className="flex flex-auto flex-col gap-2 pb-2 [&>*]:shrink-0">
               {crashInvite !== undefined && (
                 <div className="flex items-start gap-2.5 rounded-md border border-chart-3/35 bg-chart-3/10 px-3 py-2.5 text-sm">
                   <TriangleAlertIcon
@@ -347,6 +343,14 @@ function ReportBugDialog({
                   </div>
                 </div>
               )}
+              {crashContext !== undefined && (
+                <p className="text-xs text-muted-foreground">
+                  <Trans>
+                    Error details, including the document name when available, are included in the
+                    report.
+                  </Trans>
+                </p>
+              )}
               <div className="flex flex-col gap-2">
                 <label htmlFor={noteId} className="text-sm font-medium">
                   {crashInvite !== undefined ? (
@@ -367,33 +371,92 @@ function ReportBugDialog({
                       ? t`e.g. Switching projects while a sync was running`
                       : t`e.g. The editor froze after I pasted a large table`
                   }
-                  rows={3}
-                  className="resize-none"
+                  rows={2}
+                  className="min-h-16 resize-none"
                   disabled={phase.creating}
                 />
               </div>
-              {}
-              {/* biome-ignore lint/a11y/useSemanticElements: role="group" + aria-labelledby groups the checkboxes under the heading without <fieldset>/<legend>'s layout-reset and legend-flow quirks. */}
-              <div role="group" aria-labelledby={whatToIncludeId} className="flex flex-col gap-3.5">
-                <div className="flex flex-col gap-1.5">
-                  <p id={whatToIncludeId} className="text-sm font-medium">
-                    <Trans>What to include</Trans>
-                  </p>
-                  {}
-                  {crashInvite === undefined && !crashDumpAvailable && (
-                    <p className="text-1sm text-muted-foreground">
-                      {crashContext !== undefined ? (
-                        <Trans>
-                          Details about the error you just hit are included. Secrets like API keys
-                          and tokens are redacted automatically.
-                        </Trans>
+              <div
+                className={
+                  screenshot !== null ? 'grid gap-4 sm:grid-cols-[1.35fr_1fr]' : 'grid gap-4'
+                }
+              >
+                {screenshot !== null && (
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <Checkbox
+                        id={screenshotId}
+                        checked={includeScreenshot}
+                        onCheckedChange={(value) => setIncludeScreenshot(value === true)}
+                        aria-describedby={screenshotHintId}
+                        disabled={phase.creating}
+                      />
+                      <label htmlFor={screenshotId} className="text-sm font-medium">
+                        <Trans>Screenshot</Trans>
+                      </label>
+                    </div>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="relative block h-auto w-full overflow-hidden rounded-md bg-muted/40 p-0"
+                          aria-label={t`Enlarge screenshot`}
+                        >
+                          <img
+                            src={screenshot.dataUrl}
+                            alt={t`Preview of the screenshot`}
+                            className={`h-44 w-full object-contain ${includeScreenshot ? '' : 'opacity-40'}`}
+                          />
+                          <span className="absolute end-2 top-2 flex items-center gap-1 rounded bg-popover/90 px-2 py-1 text-xs">
+                            <ExpandIcon className="size-3" aria-hidden="true" />
+                            <Trans>Enlarge</Trans>
+                          </span>
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-5xl">
+                        {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
+                        <DialogHeader className="pr-6">
+                          <DialogTitle>
+                            <Trans>Screenshot preview</Trans>
+                          </DialogTitle>
+                          <DialogDescription>
+                            <Trans>Not redacted. Check the image before sharing.</Trans>
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogBody>
+                          <img
+                            src={screenshot.dataUrl}
+                            alt={t`Preview of the screenshot`}
+                            className="max-h-[70dvh] w-full object-contain"
+                          />
+                        </DialogBody>
+                      </DialogContent>
+                    </Dialog>
+                    <p id={screenshotHintId} className="text-xs text-muted-foreground">
+                      {pointerMarked ? (
+                        <Trans>Captured before this dialog, with the pointer marked.</Trans>
                       ) : (
-                        <Trans>Secrets like API keys and tokens are redacted automatically.</Trans>
-                      )}
+                        <Trans>Captured before this dialog.</Trans>
+                      )}{' '}
+                      <Trans>Not redacted. Check the image before sharing.</Trans>
                     </p>
-                  )}
+                  </div>
+                )}
+                <div
+                  className={`flex min-w-0 flex-col gap-2 ${screenshot !== null ? 'sm:pt-7' : ''}`}
+                >
+                  <ReportBugImageDropzone
+                    files={attachments}
+                    onChange={setAttachments}
+                    disabled={phase.creating}
+                  />
+                  <ImageAttachmentList files={attachments} onChange={setAttachments} />
                 </div>
-                {}
+              </div>
+              <fieldset className="grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-[1fr_1.25fr]">
+                <legend className="sr-only">
+                  <Trans>What to include</Trans>
+                </legend>
                 <div className="flex items-start gap-2.5">
                   <Checkbox
                     id={logsId}
@@ -405,7 +468,7 @@ function ReportBugDialog({
                   <div className="flex flex-col gap-0.5">
                     <label
                       htmlFor={logsId}
-                      className="flex items-center gap-2 text-sm font-medium text-foreground"
+                      className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground"
                     >
                       <Trans>Logs & system info</Trans>
                       <Badge variant="primary" className="text-2xs">
@@ -415,14 +478,11 @@ function ReportBugDialog({
                     <p id={logsHintId} className="text-1sm text-muted-foreground">
                       {systemWide ? (
                         <Trans>
-                          App & system info and recent app logs. No project is open, so project logs
-                          aren't included.
+                          OpenKnowledge logs across projects. No project is open, so project server
+                          logs are not included.
                         </Trans>
                       ) : (
-                        <Trans>
-                          App & system info, recent app logs, and project server logs: the
-                          essentials we need to reproduce the issue.
-                        </Trans>
+                        <Trans>OpenKnowledge logs, including activity across projects.</Trans>
                       )}
                     </p>
                   </div>
@@ -437,133 +497,90 @@ function ReportBugDialog({
                     className="mt-0.5"
                   />
                   <div className="flex flex-col gap-0.5">
-                    <label htmlFor={detailedId} className="text-sm font-medium">
-                      <Trans>Detailed diagnostics</Trans>
-                    </label>
-                    <p id={detailedHintId} className="text-1sm text-muted-foreground">
-                      <Trans>
-                        Adds telemetry, server state, and runtime info when available. Credentials
-                        are always removed; document names, if included, appear in cleartext (not
-                        redacted).
-                      </Trans>{' '}
-                      {isMacOS && (
-                        <Trans>
-                          It also adds the crash reports macOS recorded for OpenKnowledge and its
-                          helper processes, never another app's report, though ours do name the
-                          processes they were running alongside. Each one carries machine details
-                          macOS puts in every report: your account uid, the Mac model, and the name
-                          of the process that launched the app. On a managed machine, that launching
-                          process can be internal tooling. The identifiers that would link the bug
-                          reports you file to each other are replaced first, so a collected report
-                          is not byte-identical to the one macOS wrote.
-                        </Trans>
-                      )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label htmlFor={detailedId} className="text-sm font-medium">
+                        <Trans>Detailed diagnostics</Trans>
+                      </label>
+                      <Badge variant="primary" className="text-2xs">
+                        <Trans>Recommended</Trans>
+                      </Badge>
+                    </div>
+                    <p className="text-1sm text-muted-foreground">
+                      <Trans>Helps us investigate the cause.</Trans>
                     </p>
+                    <p id={detailedHintId} className="text-1sm text-muted-foreground">
+                      <Trans>May include unredacted document names.</Trans>
+                    </p>
+                    <Collapsible>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="group -ms-2 h-7 justify-start px-2 text-1sm font-normal"
+                        >
+                          <ChevronRightIcon
+                            className="size-3.5 group-data-[state=open]:rotate-90"
+                            aria-hidden="true"
+                          />
+                          <Trans>What's included</Trans>
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="rounded-md bg-muted/50 p-3 text-1sm text-muted-foreground">
+                          <Trans>
+                            Adds telemetry, server state, and runtime info when available.
+                            Credentials are always removed; document names, if included, appear in
+                            cleartext (not redacted).
+                          </Trans>{' '}
+                          {isMacOS && (
+                            <Trans>
+                              It also adds the crash reports macOS recorded for OpenKnowledge and
+                              its helper processes, never another app's report, though ours do name
+                              the processes they were running alongside. Each one carries machine
+                              details macOS puts in every report: your account uid, the Mac model,
+                              and the name of the process that launched the app. On a managed
+                              machine, that launching process can be internal tooling. The
+                              identifiers that would link the bug reports you file to each other are
+                              replaced first, so a collected report is not byte-identical to the one
+                              macOS wrote.
+                            </Trans>
+                          )}
+                        </p>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </div>
                 </div>
-                {screenshot !== null && (
-                  <div className="flex items-start gap-2.5">
-                    <Checkbox
-                      id={screenshotId}
-                      checked={includeScreenshot}
-                      onCheckedChange={(value) => setIncludeScreenshot(value === true)}
-                      aria-describedby={screenshotHintId}
-                      disabled={phase.creating}
-                      className="mt-0.5"
-                    />
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <label htmlFor={screenshotId} className="text-sm font-medium">
-                        <Trans>Screenshot</Trans>
-                      </label>
-                      <p id={screenshotHintId} className="text-1sm text-muted-foreground">
-                        {pointerMarked ? (
-                          <Trans>
-                            A picture of the app from just before you opened this, with a marker
-                            showing where your pointer was. It isn't redacted, so check the preview
-                            and uncheck it if anything shouldn't be shared.
-                          </Trans>
-                        ) : (
-                          <Trans>
-                            A picture of the app from just before you opened this. It isn't
-                            redacted, so check the preview and uncheck it if anything shouldn't be
-                            shared.
-                          </Trans>
-                        )}
-                      </p>
-                      {}
-                      <div className="mt-2 overflow-hidden rounded-md border bg-muted/40">
-                        <img
-                          src={screenshot.dataUrl}
-                          alt={t`Preview of the screenshot`}
-                          className={`block max-h-44 w-full object-contain transition-opacity motion-reduce:transition-none ${
-                            includeScreenshot ? 'opacity-100' : 'opacity-40'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {}
-                {/* biome-ignore lint/a11y/useSemanticElements: role="group" + aria-labelledby matches the sibling checkbox rows above without <fieldset>/<legend>'s layout-reset quirks. */}
-                <div
-                  role="group"
-                  aria-labelledby={attachmentsId}
-                  aria-describedby={attachmentsHintId}
-                  className="flex items-start gap-2.5"
-                >
-                  <div className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <p id={attachmentsId} className="text-sm font-medium">
-                      <Trans>Your images</Trans>
-                    </p>
-                    <p id={attachmentsHintId} className="text-1sm text-muted-foreground">
+              </fieldset>
+              {crashDumpAvailable && (
+                <div className="flex items-start gap-2.5">
+                  <Checkbox
+                    id={dumpId}
+                    checked={includeDump}
+                    onCheckedChange={(value) => setIncludeDump(value === true)}
+                    aria-describedby={dumpHintId}
+                    disabled={phase.creating}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col gap-0.5">
+                    <label htmlFor={dumpId} className="text-sm font-medium">
+                      <Trans>Crash dump</Trans>
+                    </label>
+                    <p id={dumpHintId} className="text-1sm text-muted-foreground">
                       <Trans>
-                        Add up to 3 screenshots or photos of your own, like a system dialog, another
-                        monitor, or a phone photo of a hang. They aren't redacted, so leave out
-                        anything that shouldn't be shared.
+                        A memory snapshot from the crash, and the artifact that helps us most. It
+                        can contain document content and can't be redacted, so uncheck it if you'd
+                        rather not share it.
                       </Trans>
                     </p>
-                    <div className="mt-1.5 flex flex-col gap-2">
-                      <div className="flex">
-                        <ImageAttachmentPicker
-                          files={attachments}
-                          onChange={setAttachments}
-                          disabled={phase.creating}
-                        />
-                      </div>
-                      <ImageAttachmentList
-                        files={attachments}
-                        onChange={setAttachments}
-                        error={attachmentsError}
-                      />
-                    </div>
                   </div>
                 </div>
-                {crashDumpAvailable && (
-                  <div className="flex items-start gap-2.5">
-                    <Checkbox
-                      id={dumpId}
-                      checked={includeDump}
-                      onCheckedChange={(value) => setIncludeDump(value === true)}
-                      aria-describedby={dumpHintId}
-                      disabled={phase.creating}
-                      className="mt-0.5"
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <label htmlFor={dumpId} className="text-sm font-medium">
-                        <Trans>Crash dump</Trans>
-                      </label>
-                      <p id={dumpHintId} className="text-1sm text-muted-foreground">
-                        <Trans>
-                          A memory snapshot from the crash, and the artifact that helps us most. It
-                          can contain document content and can't be redacted, so uncheck it if you'd
-                          rather not share it.
-                        </Trans>
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                <Trans>
+                  Known secrets are scrubbed, but other sensitive information may remain. Review the
+                  ZIP before sending.
+                </Trans>
+              </p>
               {}
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2.5">
@@ -584,6 +601,7 @@ function ReportBugDialog({
                   <div className="flex flex-col gap-1.5">
                     <Input
                       id={emailId}
+                      aria-label={t`Email for followups`}
                       type="email"
                       value={email}
                       onChange={(e) => {

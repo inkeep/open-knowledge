@@ -1343,14 +1343,6 @@ msgstr "স্কিলের ভেতরের একটি পথ — যে�
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "একটি ব্যক্তিগত রঙ-থিম নির্বাচক — আপনার প্রকল্পের সঙ্গে ভাগ করা হয় না। চালু থাকলে এটি সাইডবারে Plugins-এর নিচে দেখা যায়।"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "আপনি এটি খোলার ঠিক আগের অ্যাপের একটি ছবি, সঙ্গে আপনার পয়েন্টার কোথায় ছিল তা দেখানো একটি চিহ্ন। এ থেকে গোপন তথ্য সরানো হয় না, তাই প্রাকদর্শন দেখে নিন এবং কিছু ভাগ করা উচিত না হলে এটি অচিহ্নিত করে দিন।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "আপনি এটি খোলার ঠিক আগের অ্যাপের একটি ছবি। এ থেকে গোপন তথ্য সরানো হয় না, তাই প্রাকদর্শন দেখে নিন এবং কিছু ভাগ করা উচিত না হলে এটি অচিহ্নিত করে দিন।"
-
 #: src/components/empty-state/CreatePromptComposer.tsx
 msgid "A PR reviewer, a release-notes writer, a deploy checklist..."
 msgstr "একজন PR পর্যালোচক, একজন রিলিজ-নোট লেখক, একটি মোতায়েন চেকলিস্ট…"
@@ -1669,10 +1661,6 @@ msgstr "{gitignorePath}-এ যোগ করুন"
 msgid "Add to Dictionary"
 msgstr "অভিধানে যোগ করুন"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-msgstr "নিজের সর্বোচ্চ ৩টি স্ক্রিনশট বা ছবি যোগ করুন, যেমন কোনো সিস্টেম ডায়ালগ, অন্য একটি মনিটর, বা অ্যাপ আটকে যাওয়ার সময় ফোনে তোলা ছবি। এগুলো থেকে গোপন তথ্য সরানো হয় না, তাই ভাগ করা উচিত নয় এমন কিছু রাখবেন না।"
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "মান যোগ করুন"
@@ -1961,14 +1949,6 @@ msgstr "আর কিছু যোগ করতে চান? (ঐচ্ছি�
 msgid "API key set"
 msgstr "API কী নির্ধারিত"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
-msgstr "অ্যাপ ও সিস্টেমের তথ্য এবং সাম্প্রতিক অ্যাপ লগ। কোনো প্রকল্প খোলা নেই, তাই প্রকল্পের লগ অন্তর্ভুক্ত নয়।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-msgstr "অ্যাপ ও সিস্টেমের তথ্য, সাম্প্রতিক অ্যাপ লগ এবং প্রকল্পের সার্ভার লগ: সমস্যাটি পুনরায় ঘটাতে আমাদের যা যা দরকার।"
-
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "কী বদলেছে তার শুধু-যোগ-হওয়া লগ।"
@@ -2142,6 +2122,7 @@ msgid "Attach a file"
 msgstr "একটি ফাইল সংযুক্ত করুন"
 
 #: src/components/ImageAttachments.tsx
+#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "ছবি সংযুক্ত করুন"
 
@@ -2459,6 +2440,10 @@ msgstr "ভাঙা লিংক"
 msgid "Browse"
 msgstr "ব্রাউজ করুন"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Browse files"
+msgstr "ফাইল বেছে নিন"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "ফোল্ডার ব্রাউজ করুন"
@@ -2615,6 +2600,14 @@ msgstr "যেসব ফাইলের দ্বন্দ্ব এখনও �
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "আপলোড করা যাচ্ছে না: কোনো নথি খোলা নেই"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog, with the pointer marked."
+msgstr "এই ডায়ালগের আগে নেওয়া, পয়েন্টার চিহ্নিত আছে।"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog."
+msgstr "এই ডায়ালগের আগে নেওয়া।"
 
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Change"
@@ -4827,10 +4820,6 @@ msgstr "বিস্তারিত নির্ণয়"
 msgid "Details"
 msgstr "বিস্তারিত"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-msgstr "আপনি এইমাত্র যে ত্রুটিতে পড়েছেন তার বিবরণ অন্তর্ভুক্ত। API কী ও টোকেনের মতো গোপন তথ্য নিজে থেকেই সরিয়ে ফেলা হয়।"
-
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
@@ -5119,6 +5108,10 @@ msgstr "ক্রম বদলাতে আইটেম {0} টেনে আন�
 msgid "Drop a file to attach"
 msgstr "সংযুক্ত করতে একটি ফাইল ফেলুন"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Drop images here"
+msgstr "এখানে ছবি ছেড়ে দিন"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTargetMenuItems.tsx
@@ -5348,6 +5341,10 @@ msgstr "ইমেইল"
 msgid "Email address"
 msgstr "ইমেইল ঠিকানা"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Email for followups"
+msgstr "পরবর্তী যোগাযোগের ইমেইল"
+
 #: src/components/BugReportHistory.tsx
 msgid "Email support about this report"
 msgstr "এই রিপোর্ট সম্পর্কে সাপোর্টে ইমেইল করুন"
@@ -5535,6 +5532,14 @@ msgstr "এন্ডপয়েন্ট"
 msgid "Eng specs"
 msgstr "ইঞ্জিনিয়ারিং স্পেক"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge"
+msgstr "বড় করুন"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge screenshot"
+msgstr "স্ক্রিনশট বড় করুন"
+
 #: src/components/CommandPalette.tsx
 msgid "Enter"
 msgstr "Enter"
@@ -5599,6 +5604,10 @@ msgstr "আপনার টানেল যে পাবলিক অরিজ�
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "ত্রুটি"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Error details, including the document name when available, are included in the report."
+msgstr "রিপোর্টে ত্রুটির বিবরণ এবং পাওয়া গেলে নথির নাম অন্তর্ভুক্ত থাকে।"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
@@ -6709,6 +6718,10 @@ msgstr "আপনার এজেন্টকে যেকোনো প্রক
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "কোডিং এজেন্টদের OKF নথির ধরন বেছে নিতে, মূল স্থান সংরক্ষণ করতে এবং অসমর্থিত মেটাডেটা উদ্ভাবন এড়াতে সাহায্য করে।"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Helps us investigate the cause."
+msgstr "কারণ খুঁজতে আমাদের সাহায্য করে।"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
 msgstr "এই প্যাকটি আপনার প্রকল্পে যা যোগ করে তা এখানে দেওয়া হলো। আপনি প্রকল্প তৈরি না করা পর্যন্ত কিছুই লেখা হয় না।"
@@ -7048,6 +7061,10 @@ msgstr "ছবির লক্ষ্য \"{shown}\"-কে প্রকল্প
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "ছবির লক্ষ্য \"{shown}\" কোনো বিদ্যমান ফাইলকে নির্দেশ করে না।"
+
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Images aren't redacted."
+msgstr "ছবির সংবেদনশীল তথ্য আড়াল করা হয় না।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Images from anywhere · non-image files must be in the workspace"
@@ -7656,6 +7673,10 @@ msgstr "সম্পাদক ও ওয়ার্কস্পেসে যে
 msgid "Kill Terminal"
 msgstr "টার্মিনাল বন্ধ করুন"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+msgstr "পরিচিত গোপন তথ্য সরানো হয়, তবে অন্য সংবেদনশীল তথ্য থেকে যেতে পারে। পাঠানোর আগে ZIP পরীক্ষা করুন।"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Label <0>(optional display text)</0>"
 msgstr "লেবেল <0>(ঐচ্ছিক প্রদর্শিত লেখা)</0>"
@@ -8176,6 +8197,10 @@ msgstr "সর্বোচ্চসংখ্যক এজেন্ট আগে 
 #: src/components/settings/SearchSection.tsx
 msgid "Maximum text chunks per indexing request"
 msgstr "প্রতি ইনডেক্সিং অনুরোধে সর্বাধিক টেক্সট খণ্ড"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "May include unredacted document names."
+msgstr "আড়াল না করা নথির নাম অন্তর্ভুক্ত থাকতে পারে।"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -8944,6 +8969,10 @@ msgstr "এখনও কোনো হাব পাতা নেই। পাত�
 msgid "No icons match."
 msgstr "কোনো আইকন মেলেনি।"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "No images added."
+msgstr "কোনো ছবি যোগ করা হয়নি।"
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "কোনো আগত নেই"
@@ -9210,6 +9239,10 @@ msgstr "এই প্রকল্পে এখনো ইনস্টল হয�
 msgid "Not now"
 msgstr "এখন নয়"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Not redacted. Check the image before sharing."
+msgstr "সংবেদনশীল তথ্য আড়াল করা হয়নি। শেয়ার করার আগে ছবিটি পরীক্ষা করুন।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "<0>{endpointHost}</0>-এর মতো localhost এন্ডপয়েন্টের জন্য দরকার নেই — বেশিরভাগ স্থানীয় সার্ভার এটি উপেক্ষা করে। আপনার সার্ভারের দরকার হলেই কেবল একটি যোগ করুন।"
@@ -9227,6 +9260,10 @@ msgstr "কিছুই নয় ({0} কোনো নথির সঙ্গে
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "কিছুই নয় ({0} একটি বৈধ প্যাটার্ন নয়)"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Nothing leaves your computer until you review and send the report."
+msgstr "রিপোর্ট পরীক্ষা করে না পাঠানো পর্যন্ত কম্পিউটার থেকে কিছুই বাইরে যায় না।"
 
 #: src/components/settings/SyncSection.tsx
 msgid "Nothing moves until you ask — pull and push from the sync menu."
@@ -9858,6 +9895,14 @@ msgstr "OpenKnowledge এই ফাইলটি পরিবর্তন কর�
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
 msgstr "OpenKnowledge ইনস্টল করা স্কিলগুলির তালিকা দেখিয়েছে"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+msgstr "বিভিন্ন প্রজেক্টের OpenKnowledge লগ। কোনো প্রজেক্ট খোলা নেই, তাই প্রজেক্ট সার্ভারের লগ অন্তর্ভুক্ত নেই।"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs, including activity across projects."
+msgstr "OpenKnowledge লগ, যাতে বিভিন্ন প্রজেক্টের কার্যকলাপ অন্তর্ভুক্ত থাকে।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge looked at the link graph"
@@ -10891,6 +10936,7 @@ msgstr "সাম্প্রতিক প্রকল্প"
 msgid "Recently opened"
 msgstr "সম্প্রতি খোলা"
 
+#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Recommended"
 msgstr "প্রস্তাবিত"
@@ -11815,6 +11861,10 @@ msgstr "পরিসর: "
 msgid "Screenshot"
 msgstr "স্ক্রিনশট"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot preview"
+msgstr "স্ক্রিনশট প্রিভিউ"
+
 #: src/components/ui/message-scroller.tsx
 msgid "Scroll to end"
 msgstr "শেষে স্ক্রল করুন"
@@ -11960,10 +12010,6 @@ msgstr "নথি খোঁজা হচ্ছে"
 #: src/editor/slash-command/items.tsx
 msgid "Second item"
 msgstr "দ্বিতীয় আইটেম"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically."
-msgstr "API কী ও টোকেনের মতো গোপন তথ্য নিজে থেকেই সরিয়ে ফেলা হয়।"
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -13380,10 +13426,6 @@ msgstr "কেমন চলছে আমাদের জানান"
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"
 msgstr "আরও বলুন (ঐচ্ছিক)"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-msgstr "কী ভুল হয়েছে আমাদের জানান, আমরা লগ সংগ্রহ করব। আপনি পর্যালোচনা না করা পর্যন্ত কিছুই আপনার কম্পিউটার থেকে বাইরে যায় না।"
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -14910,6 +14952,10 @@ msgstr "শিরোনামহীন রিপোর্ট"
 msgid "Untracked"
 msgstr "ট্র্যাক করা হয়নি"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Up to 3 screenshots or photos"
+msgstr "সর্বোচ্চ ৩টি স্ক্রিনশট বা ছবি"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "হালনাগাদ"
@@ -15395,6 +15441,10 @@ msgstr "আপনি কী তৈরি করতে চান?"
 msgid "What you share is sent to the OpenKnowledge team."
 msgstr "আপনি যা ভাগ করেন তা OpenKnowledge দলের কাছে পাঠানো হয়।"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "What's included"
+msgstr "যা অন্তর্ভুক্ত থাকে"
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "নতুন কী আছে"
@@ -15736,10 +15786,6 @@ msgstr "আপনার GitHub সেশনের মেয়াদ শেষ �
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "আপনার GitHub টোকেনে আবশ্যক স্কোপ নেই। আবার সাইন ইন করে দেখুন।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your images"
-msgstr "আপনার ছবি"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

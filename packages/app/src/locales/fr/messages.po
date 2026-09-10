@@ -1347,14 +1347,6 @@ msgstr "Un chemin à l'intérieur de la compétence — n'importe quel dossier c
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "Un sélecteur de thème de couleurs personnel — non partagé avec votre projet. Une fois activé, il apparaît sous Plugins dans la barre latérale."
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "Une image de l'application juste avant que vous n'ouvriez ceci, avec un repère indiquant où se trouvait votre pointeur. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-msgstr "Une image de l'application juste avant que vous n'ouvriez ceci. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
-
 #: src/components/empty-state/CreatePromptComposer.tsx
 msgid "A PR reviewer, a release-notes writer, a deploy checklist..."
 msgstr "Un relecteur de PR, un rédacteur de notes de version, une checklist de déploiement…"
@@ -1673,10 +1665,6 @@ msgstr "Ajouter à {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Ajouter au dictionnaire"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-msgstr "Ajoutez jusqu'à 3 captures ou photos de votre choix : une boîte de dialogue système, un autre écran, ou une photo prise au téléphone d'un blocage. Elles ne sont pas masquées, alors laissez de côté tout ce qui ne doit pas être partagé."
-
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Ajouter une valeur"
@@ -1965,14 +1953,6 @@ msgstr "Vous souhaitez ajouter quelque chose ? (facultatif)"
 msgid "API key set"
 msgstr "Clé API définie"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info and recent app logs. No project is open, so project logs aren't included."
-msgstr "Informations sur l'application et le système, et journaux récents de l'application. Aucun projet n'est ouvert, donc les journaux de projet ne sont pas inclus."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-msgstr "Informations sur l'application et le système, journaux récents de l'application et journaux du serveur de projet : l'essentiel dont nous avons besoin pour reproduire le problème."
-
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "Journal en ajout seul de ce qui a changé."
@@ -2146,6 +2126,7 @@ msgid "Attach a file"
 msgstr "Joindre un fichier"
 
 #: src/components/ImageAttachments.tsx
+#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "Joindre des images"
 
@@ -2463,6 +2444,10 @@ msgstr "Lien cassé"
 msgid "Browse"
 msgstr "Parcourir"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Browse files"
+msgstr "Parcourir les fichiers"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "Parcourir le dossier"
@@ -2619,6 +2604,14 @@ msgstr "Impossible de supprimer des fichiers dont les conflits ne sont pas réso
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "Envoi impossible : aucun document n'est ouvert"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog, with the pointer marked."
+msgstr "Capture prise avant cette boîte de dialogue, avec le pointeur marqué."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Captured before this dialog."
+msgstr "Capture prise avant cette boîte de dialogue."
 
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Change"
@@ -4831,10 +4824,6 @@ msgstr "Diagnostics détaillés"
 msgid "Details"
 msgstr "Détails"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-msgstr "Les détails de l'erreur que vous venez de rencontrer sont inclus. Les secrets comme les clés API et les jetons sont masqués automatiquement."
-
 #. placeholder {0}: d.sourceHarnesses.map((h) => skillHostRootDir(h, scope)).join(', ')
 #: src/components/SkillsTree.tsx
 msgid "Detected in {0}"
@@ -5123,6 +5112,10 @@ msgstr "Faites glisser l'élément {0} pour réorganiser"
 msgid "Drop a file to attach"
 msgstr "Déposez un fichier pour le joindre"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Drop images here"
+msgstr "Déposer des images ici"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileTargetMenuItems.tsx
@@ -5352,6 +5345,10 @@ msgstr "E-mail"
 msgid "Email address"
 msgstr "Adresse e-mail"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Email for followups"
+msgstr "Adresse e-mail pour le suivi"
+
 #: src/components/BugReportHistory.tsx
 msgid "Email support about this report"
 msgstr "Écrire au support à propos de ce rapport"
@@ -5539,6 +5536,14 @@ msgstr "Point de terminaison"
 msgid "Eng specs"
 msgstr "Spécifications techniques"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge"
+msgstr "Agrandir"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Enlarge screenshot"
+msgstr "Agrandir la capture d’écran"
+
 #: src/components/CommandPalette.tsx
 msgid "Enter"
 msgstr "Entrée"
@@ -5603,6 +5608,10 @@ msgstr "Saisissez l'origine publique servie par votre tunnel, par exemple https:
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
 msgstr "Erreur"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Error details, including the document name when available, are included in the report."
+msgstr "Les détails de l’erreur, y compris le nom du document lorsqu’il est disponible, sont inclus dans le rapport."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "Error:"
@@ -6713,6 +6722,10 @@ msgstr "Aidez vos agents à découvrir et utiliser OpenKnowledge dans n'importe 
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Aide les agents de codage à choisir les types de documents OKF, à préserver la provenance et à éviter d'inventer des métadonnées non prises en charge."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Helps us investigate the cause."
+msgstr "Nous aide à rechercher la cause."
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
 msgstr "Voici ce que ce pack ajoute à votre projet. Rien n'est écrit tant que vous n'avez pas créé le projet."
@@ -7052,6 +7065,10 @@ msgstr "La cible de l’image « {shown} » n’a pas pu être résolue en tan
 #: src/editor/localized-validation-message.ts
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "La cible de l’image « {shown} » ne correspond à aucun fichier existant."
+
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Images aren't redacted."
+msgstr "Les images ne sont pas expurgées."
 
 #: src/components/acp/ThreadView.tsx
 msgid "Images from anywhere · non-image files must be in the workspace"
@@ -7660,6 +7677,10 @@ msgstr "Raccourcis clavier disponibles dans l'éditeur et l'espace de travail."
 msgid "Kill Terminal"
 msgstr "Forcer la fermeture du terminal"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+msgstr "Les secrets connus sont masqués, mais d’autres informations sensibles peuvent subsister. Vérifiez le ZIP avant l’envoi."
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 msgid "Label <0>(optional display text)</0>"
 msgstr "Libellé <0>(texte affiché, facultatif)</0>"
@@ -8180,6 +8201,10 @@ msgstr "Nombre maximal d'agents déjà en cours d'exécution"
 #: src/components/settings/SearchSection.tsx
 msgid "Maximum text chunks per indexing request"
 msgstr "Nombre maximal de fragments de texte par requête d'indexation"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "May include unredacted document names."
+msgstr "Peut inclure des noms de documents non masqués."
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -8948,6 +8973,10 @@ msgstr "Pas encore de pages pivots. Les pivots apparaissent une fois que les pag
 msgid "No icons match."
 msgstr "Aucune icône ne correspond."
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "No images added."
+msgstr "Aucune image ajoutée."
+
 #: src/components/GraphPanel.tsx
 msgid "No Incoming"
 msgstr "Aucun lien entrant"
@@ -9214,6 +9243,10 @@ msgstr "Pas encore installée dans ce projet."
 msgid "Not now"
 msgstr "Pas maintenant"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Not redacted. Check the image before sharing."
+msgstr "Non expurgée. Vérifiez l’image avant de la partager."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "Pas nécessaire pour un point de terminaison local comme <0>{endpointHost}</0> — la plupart des serveurs locaux l'ignorent. N'en ajoutez une que si le vôtre l'exige."
@@ -9231,6 +9264,10 @@ msgstr "rien ({0} ne peut correspondre à aucun document)"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "rien ({0} n'est pas un motif valide)"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Nothing leaves your computer until you review and send the report."
+msgstr "Rien ne quitte votre ordinateur avant la vérification et l’envoi du rapport."
 
 #: src/components/settings/SyncSection.tsx
 msgid "Nothing moves until you ask — pull and push from the sync menu."
@@ -9862,6 +9899,14 @@ msgstr "OpenKnowledge n'a pas touché à ce fichier, car il n'a pas pu l'analyse
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge listed the installed skills"
 msgstr "OpenKnowledge a listé les compétences installées"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+msgstr "Journaux OpenKnowledge de plusieurs projets. Aucun projet n’est ouvert ; les journaux du serveur de projet ne sont donc pas inclus."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "OpenKnowledge logs, including activity across projects."
+msgstr "Journaux OpenKnowledge, y compris l’activité de plusieurs projets."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge looked at the link graph"
@@ -10895,6 +10940,7 @@ msgstr "Projet récent"
 msgid "Recently opened"
 msgstr "Ouverts récemment"
 
+#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Recommended"
 msgstr "Recommandé"
@@ -11819,6 +11865,10 @@ msgstr "Portée : "
 msgid "Screenshot"
 msgstr "Capture d'écran"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Screenshot preview"
+msgstr "Aperçu de la capture d’écran"
+
 #: src/components/ui/message-scroller.tsx
 msgid "Scroll to end"
 msgstr "Défiler jusqu'à la fin"
@@ -11964,10 +12014,6 @@ msgstr "Recherche dans les documents"
 #: src/editor/slash-command/items.tsx
 msgid "Second item"
 msgstr "Deuxième élément"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Secrets like API keys and tokens are redacted automatically."
-msgstr "Les secrets comme les clés API et les jetons sont masqués automatiquement."
 
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -13384,10 +13430,6 @@ msgstr "Dites-nous comment ça se passe"
 #: src/components/FeedbackForm.tsx
 msgid "Tell us more (optional)"
 msgstr "Dites-nous en plus (facultatif)"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-msgstr "Dites-nous ce qui s'est mal passé et nous rassemblerons les journaux. Rien ne quitte votre ordinateur avant que vous l'ayez examiné."
 
 #: src/components/NewSkillDialog.tsx
 msgid "Tells agents when to reach for this skill. You can edit it later."
@@ -14914,6 +14956,10 @@ msgstr "Rapport sans titre"
 msgid "Untracked"
 msgstr "Non suivi"
 
+#: src/components/ReportBugImageDropzone.tsx
+msgid "Up to 3 screenshots or photos"
+msgstr "Jusqu’à 3 captures d’écran ou photos"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "À jour"
@@ -15399,6 +15445,10 @@ msgstr "Que souhaitez-vous créer ?"
 msgid "What you share is sent to the OpenKnowledge team."
 msgstr "Ce que vous partagez est envoyé à l'équipe OpenKnowledge."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "What's included"
+msgstr "Éléments inclus"
+
 #: src/components/HelpPopover.tsx
 msgid "What's new"
 msgstr "Nouveautés"
@@ -15740,10 +15790,6 @@ msgstr "Votre session GitHub a expiré — reconnectez-vous pour vérifier l'acc
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "Il manque des portées obligatoires à votre jeton GitHub. Essayez de vous reconnecter."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your images"
-msgstr "Vos images"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

@@ -203,7 +203,7 @@ describe('AppErrorBoundary', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
     expect(
       screen.getByText(
-        "App & system info and recent app logs. No project is open, so project logs aren't included.",
+        'OpenKnowledge logs across projects. No project is open, so project server logs are not included.',
       ),
     ).not.toBeNull();
 

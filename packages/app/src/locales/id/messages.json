@@ -97,6 +97,7 @@
       ") di ",
       ["targetLabel"]
     ],
+    "0cGsQh": ["Yang disertakan"],
     "0cspe_": ["Hapus baris"],
     "0dslv8": [
       ["0"],
@@ -142,6 +143,7 @@
     ],
     "0t0bbC": ["Preferensi sinkronisasi tidak dapat disimpan: ", ["detail"]],
     "0uTHCg": ["Mulai proyek OpenKnowledge baru."],
+    "0wkh7o": ["Log OpenKnowledge, termasuk aktivitas lintas proyek."],
     "0wswKc": ["Garis mendatar yang memisahkan bagian."],
     "0x9smA": ["Halaman ini tidak lagi berada di jalur ini."],
     "0xnQ_X": ["Pembaruan mengalir masuk"],
@@ -226,12 +228,9 @@
     "2Ce6hp": ["Dipindahkan"],
     "2D1x3Y": ["Terapkan dan mulai ulang server proyek"],
     "2FYpfJ": ["Lainnya"],
-    "2FnYUD": [
-      "Info aplikasi & sistem, log aplikasi terbaru, dan log server proyek: hal-hal penting yang kami perlukan untuk menirukan masalahnya."
-    ],
     "2G-56b": ["Gagal memperbarui aturan markdownlint"],
     "2GT3Hf": ["Global"],
-    "2H43L8": ["Rahasia seperti kunci API dan token disunting otomatis."],
+    "2H5Zhu": ["Tidak ada yang dikirim dari komputer sampai laporan ditinjau dan dikirim."],
     "2IYGkU": [
       "Dokumen ini punya perubahan yang belum dikirim. Penerima akan melihat versi terakhir yang dikirim."
     ],
@@ -939,6 +938,7 @@
     ],
     "Aif3E7": ["Aktifkan pencarian semantik"],
     "AkA6DO": ["Bagian dari plugin ", ["0"], " — hanya-baca; buka untuk menyunting salinannya"],
+    "AkJx1j": ["Perbesar tangkapan layar"],
     "Al8HPP": ["Terima versi saat ini untuk konflik ", ["0"]],
     "Am78jY": ["Seret ", ["keyName"], " untuk menata ulang"],
     "ApNWRQ": ["Hapus OpenKnowledge dari ", ["0"], "?"],
@@ -1027,6 +1027,7 @@
     "CFnavk": ["Proyek ini bukan repositori git, jadi worktree tidak tersedia."],
     "CGj3gX": ["galat penguraian"],
     "CHfFN_": ["Hapus OpenKnowledge dari ", ["0"]],
+    "CJ59QJ": ["Detail kesalahan, termasuk nama dokumen jika tersedia, disertakan dalam laporan."],
     "CJpuc1": ["Memulai laporan bug dengan tangkapan layar persis seperti tampilannya saat ini."],
     "CKyk7Q": ["Kembali"],
     "CMd-g-": [
@@ -1103,6 +1104,7 @@
     "DELNQk": ["Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."],
     "DEWDbv": ["Tampilkan diagram"],
     "DF1MtZ": ["Memuat konflik untuk ", ["filePath"]],
+    "DFQ2Sj": ["Email untuk tindak lanjut"],
     "DFfRbX": ["Status sinkronisasi: ", ["syncStateLabel"], " — identitas git belum disetel"],
     "DId6MT": ["Halaman tingkat proyek yang tidak punya sisi graf keluar."],
     "DJd000": ["Mengaktifkan tab penyunting sebelumnya."],
@@ -1149,6 +1151,9 @@
     "DmkTrb": ["Tema ini tidak dapat dibuat. Coba lagi."],
     "Dnn2XG": ["Otomatis"],
     "DpjYd6": ["Lompat ke teks berjangkar"],
+    "DqyItq": [
+      "Log OpenKnowledge lintas proyek. Tidak ada proyek yang terbuka, jadi log server proyek tidak disertakan."
+    ],
     "DsDwR-": [["0", "plural", { "other": ["#", " galat"] }]],
     "DskIkK": ["Aliran proses masuk berakhir tanpa konfirmasi — silakan coba lagi"],
     "DuCPiG": [
@@ -1436,9 +1441,6 @@
     "GUqTzn": ["Riset pesaing"],
     "GW9ZdV": ["Pilih folder"],
     "GXf9hG": ["Mengkloning ", ["repoName"], "..."],
-    "GZzDqc": [
-      "Detail tentang galat yang baru Anda alami disertakan. Rahasia seperti kunci API dan token disunting otomatis."
-    ],
     "G_686w": ["Daftar Tugas"],
     "G_hVTP": ["Aktifkan Tema"],
     "G_mWXb": ["Saring bahasa"],
@@ -1645,6 +1647,7 @@
     "JOcPqH": ["Bawa repositori remote ke komputer ini."],
     "JOhCT9": ["Push menyertakan"],
     "JWsZlx": ["Buka sebuah proyek untuk menyunting."],
+    "JYj5R2": ["Pilih file"],
     "JZ8cO6": ["Terang, gelap, atau ikuti sistem."],
     "J_jZ5z": [
       "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
@@ -2105,9 +2108,6 @@
     "P0HC30": [["targetNoun"], " ini pindah ke <0>", ["0"], "</0>. Buka di sana?"],
     "P3NS4G": ["Galat sintaks pola (baris ", ["lineNumber"], "): ", ["message"]],
     "P3hnm0": ["Berkas terlalu besar untuk dibuka"],
-    "P441h8": [
-      "Beri tahu kami apa yang salah dan kami akan mengumpulkan log. Tidak ada yang meninggalkan komputer Anda sampai Anda meninjaunya."
-    ],
     "P47EWZ": ["Pengaturan bilah sisi tidak dapat diperbarui"],
     "P6gXB-": ["Ganti ", ["keyName"]],
     "P6lAT3": ["Folder tujuan: ", ["linkTitle"], ". Klik untuk membuka ikhtisarnya."],
@@ -2130,9 +2130,6 @@
     "PMyJ9C": ["Belum ada sesi penyuntingan"],
     "PPFQ3o": ["\"", ["0"], "\" dipasang ke ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" tidak ada."],
-    "PR0_fn": [
-      "Tambahkan hingga 3 tangkapan layar atau foto Anda sendiri, misalnya dialog sistem, monitor lain, atau foto ponsel saat aplikasi macet. Isinya tidak disunting, jadi jangan sertakan apa pun yang tidak boleh dibagikan."
-    ],
     "PR9FSv": ["Pergi ke hasil pencarian penyunting visual berikutnya."],
     "PRgIJh": [["subRoot"], " tidak bisa diperbarui: ", ["0"]],
     "PRnH8G": ["dari ", ["0"]],
@@ -2775,6 +2772,7 @@
       "Tidak ada keterampilan yang ditemukan di sumber itu. Jika Anda melanjutkan, impor akan melaporkan alasannya."
     ],
     "XgsZ2F": ["Salin kode ", ["code"]],
+    "XhVmAh": ["Perbesar"],
     "Xhm7gG": ["Saran aset"],
     "Xisk4u": ["Disunting ", ["editedAgo"]],
     "XjqA8x": ["Mengaktifkan atau menonaktifkan pola ", ["0"], "/**"],
@@ -2798,6 +2796,7 @@
     "Xl-UUg": ["guides/install atau https://contoh.com"],
     "XmJfZT": ["nama"],
     "XnlF3W": ["Menambahkan pilihan sumber berikutnya yang cocok."],
+    "XoMG7W": ["Gambar tidak disamarkan."],
     "XopE_I": ["Gagal mengurai respons galat tautan balik (HTTP ", ["status"], ")"],
     "Xp7Kq4": ["Operasi sinkronisasi lain sedang berjalan. Coba lagi sebentar."],
     "Xp94R1": ["Coba sekali lagi"],
@@ -2916,6 +2915,7 @@
     "Z5h97D": [
       "Sembunyikan berkas dan folder dari basis pengetahuan Anda. Item tersembunyi tidak muncul di pohon berkas, pencarian, maupun alat AI. <0>Pelajari lebih lanjut tentang pola</0>."
     ],
+    "Z5q-I8": ["Dapat menyertakan nama dokumen yang tidak disamarkan."],
     "Z67Zlj": [
       "Berikut yang ditambahkan paket ini ke proyek Anda. Tidak ada yang ditulis sampai Anda membuat proyek."
     ],
@@ -2933,6 +2933,7 @@
     "Z8lGw6": ["Bagikan"],
     "Z8nach": ["Unggahan gagal: ", ["0"]],
     "ZBF9fn": ["Kelola folder keterampilan"],
+    "ZBZEkP": ["Diambil sebelum dialog ini, dengan penunjuk ditandai."],
     "ZBt4rI": ["Instruksi untuk AI"],
     "ZBxvV3": ["Terminal Baru"],
     "ZDOq9A": ["Apa yang Anda bagikan dikirim ke tim OpenKnowledge."],
@@ -2967,9 +2968,6 @@
     "Zhe80e": ["Pulihkan hingga suntingan ", ["burstNumber"], " pada ", ["docName"]],
     "ZhhOwV": ["Kutipan"],
     "ZjtgI-": ["Palet perintah"],
-    "ZoOlzR": [
-      "Info aplikasi & sistem dan log aplikasi terbaru. Tidak ada proyek yang terbuka, jadi log proyek tidak disertakan."
-    ],
     "Zon_qG": ["Sumber cermin <0>", ["label"], "</0>"],
     "ZptNUh": ["Tampilkan ", ["hidden"], " lagi"],
     "Zs3d0w": [
@@ -3756,6 +3754,7 @@
     "haHgQj": ["Jalur relatif disalin"],
     "habOU_": ["Gagal memperbarui pengaturan persetujuan otomatis — ", ["detail"]],
     "hadECI": [["0"], " perlu diganti"],
+    "hcBdO4": ["Hingga 3 tangkapan layar atau foto"],
     "he3ygx": ["Salin"],
     "heV8si": [
       "Ini menghapus ",
@@ -4075,6 +4074,9 @@
     "kmKqZg": ["Klaster"],
     "kmPvKZ": ["Server mengembalikan respons pembaruan yang tidak valid."],
     "knjOzA": ["Nilai tag"],
+    "ko-CKk": [
+      "Rahasia yang dikenali dihapus, tetapi informasi sensitif lainnya mungkin masih ada. Tinjau ZIP sebelum mengirim."
+    ],
     "ko386X": ["Sebuah dokumen mengalami konflik — selesaikan agar tetap mutakhir."],
     "kolRU1": ["Hapus permanen saja?"],
     "koo58J": ["Unggah keterampilan"],
@@ -4287,6 +4289,7 @@
     "mxY24F": [
       "Menggandakan item pohon berkas yang difokus ketika fokus ada di bilah sisi Berkas."
     ],
+    "mx_oWI": ["Membantu kami menyelidiki penyebabnya."],
     "n11Jj7": ["Menginstal keterampilan proyek OpenKnowledge untuk agen ini."],
     "n2XqGH": ["panel editor"],
     "n2lRue": ["Lakukan commit atau stash pada perubahan untuk berpindah:"],
@@ -4317,6 +4320,7 @@
     "nP-KFo": ["Obrolan ", ["0"], " baru"],
     "nTM8ab": ["Beri nama sebelum menyunting warnanya."],
     "nTwL53": ["Buka sebuah dokumen untuk membagikan URL-nya."],
+    "nVGRwu": ["Letakkan gambar di sini"],
     "nWMRxa": ["Lepas sematan"],
     "nWS2gQ": ["Diterbitkan oleh ", ["publisher"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
@@ -4328,6 +4332,7 @@
     "nc-ipN": [
       "Penyuntingan bidang tersedia untuk berkas skema yang dipetakan di plugin Skema frontmatter"
     ],
+    "nczGih": ["Diambil sebelum dialog ini."],
     "ndwmea": ["tidak tersedia di platform ini"],
     "neRy3o": ["Pisahkan item daftar"],
     "nem6R7": ["melebihi anggaran token ", ["budgetLabel"]],
@@ -4465,9 +4470,6 @@
     "pMPnZv": [["deleted"], " keterampilan dihapus"],
     "pOo4Aa": ["Teks biasa"],
     "pPiV8s": ["Aktifkan Otomatis (Pull dan Push)"],
-    "pRq670": [
-      "Gambar aplikasi tepat sebelum Anda membuka ini, dengan penanda yang menunjukkan posisi penunjuk Anda. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
-    ],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
     "pTPqMK": ["Menyalakan atau mematikan blok kode berpagar."],
     "pTyA_t": ["tag"],
@@ -4541,6 +4543,7 @@
     ],
     "qAQVSD": ["Respons judul halaman bukan JSON"],
     "qAhFeg": [["userName"], " · ", ["tabCount", "plural", { "other": ["#", " tab"] }]],
+    "qApCYm": ["Tidak disamarkan. Periksa gambar sebelum membagikannya."],
     "qAx7xG": ["Folder tetap di akar konten"],
     "qBi_YG": ["Pasang OpenKnowledge di alat AI Anda"],
     "qC7PwZ": ["Gagal menghapus bidang"],
@@ -4941,7 +4944,6 @@
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
     ],
     "uUCrBv": ["symlink"],
-    "uV3EYs": ["Gambar Anda"],
     "uVbUP8": ["Pengaturan…"],
     "uVhq9B": ["Menginstal keterampilan penemuan OpenKnowledge untuk agen ini."],
     "uX85yl": [
@@ -5078,6 +5080,7 @@
     "w61W3L": ["Hapus ", ["0"]],
     "w6sBjd": ["Pengaturan terminal belum dimuat — coba lagi sebentar"],
     "w6sT-y": ["Ikuti suntingan agen"],
+    "w7IPNE": ["Tidak ada gambar yang ditambahkan."],
     "w7LRoP": ["Studio Keterampilan"],
     "w7SsvI": ["Folder itu belum menjadi proyek OpenKnowledge. Inisialisasi lalu buka?"],
     "w7bnEb": ["Buat keterampilan pribadi, tersedia di semua proyek."],
@@ -5213,6 +5216,7 @@
     "xrVr_k": ["Keterampilan tidak bisa dibuat: ", ["0"]],
     "xsZhu-": ["Nomor halaman"],
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
+    "xvv5gL": ["Pratinjau tangkapan layar"],
     "xxRpzT": ["Slidev ditemukan di sistem Anda."],
     "xzAmL_": ["Disetujui otomatis"],
     "xzktOa": ["Sunting tautan wiki"],
@@ -5307,9 +5311,6 @@
     "yz7wBu": ["Tutup"],
     "yzF66j": ["Tautan"],
     "yzGPkm": ["Bentangkan graf"],
-    "yzYE4B": [
-      "Gambar aplikasi tepat sebelum Anda membuka ini. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
-    ],
     "z-lawV": ["worktree"],
     "z0a2EA": [
       "Diagram dari sumber Mermaid — bagan alir, sekuens, kelas, keadaan, ER, gantt, pai."

@@ -262,9 +262,7 @@ describe('ReportBugDialog', () => {
     expect(screen.getByRole('dialog')).not.toBeNull();
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
     expect(
-      screen.getByText(
-        "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it.",
-      ),
+      screen.getByText('Nothing leaves your computer until you review and send the report.'),
     ).not.toBeNull();
 
     const noteBox = screen.getByRole('textbox', { name: /what happened\? \(optional\)/i });
@@ -278,14 +276,16 @@ describe('ReportBugDialog', () => {
     expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
     expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
     expect(
-      screen.getByText(
-        'App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue.',
-      ),
+      screen.getByText('OpenKnowledge logs, including activity across projects.'),
     ).not.toBeNull();
 
     const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(checkbox.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByText('Recommended')).not.toBeNull();
+    expect(screen.queryByText(/Adds telemetry/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: "What's included" }));
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(
       screen.getByText(
         'Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted).',
@@ -300,7 +300,9 @@ describe('ReportBugDialog', () => {
     ).not.toBeNull();
 
     expect(
-      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
     ).not.toBeNull();
 
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeNull();
@@ -310,6 +312,7 @@ describe('ReportBugDialog', () => {
   test('omits the macOS crash-report sentence off macOS', async () => {
     installBridge({ platform: 'win32' });
     await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: "What's included" }));
 
     expect(
       screen.getByText('Adds telemetry, server state, and runtime info when available.', {
@@ -325,7 +328,7 @@ describe('ReportBugDialog', () => {
 
     expect(
       screen.getByText(
-        "App & system info and recent app logs. No project is open, so project logs aren't included.",
+        'OpenKnowledge logs across projects. No project is open, so project server logs are not included.',
       ),
     ).not.toBeNull();
   });
@@ -522,7 +525,7 @@ describe('ReportBugDialog', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
     expect(
       screen.getByText(
-        'Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically.',
+        'Error details, including the document name when available, are included in the report.',
       ),
     ).not.toBeNull();
 
@@ -785,8 +788,10 @@ describe('ReportBugDialog', () => {
 
     await screen.findByRole('checkbox', { name: 'Crash dump' });
     expect(
-      screen.queryByText('Secrets like API keys and tokens are redacted automatically.'),
-    ).toBeNull();
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
+    ).not.toBeNull();
   });
 
   test('with no dump on offer the plain compose keeps its redaction reassurance', async () => {
@@ -794,7 +799,9 @@ describe('ReportBugDialog', () => {
     await renderDialog();
 
     expect(
-      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
     ).not.toBeNull();
   });
 
@@ -992,7 +999,7 @@ describe('ReportBugDialog', () => {
     installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog();
 
-    expect(screen.getByText(/with a marker showing where your pointer was/)).not.toBeNull();
+    expect(screen.getByText(/with the pointer marked/)).not.toBeNull();
   });
 
   test('with no marker drawn, the hint does not mention one', async () => {
@@ -1001,10 +1008,8 @@ describe('ReportBugDialog', () => {
     await renderDialog();
 
     expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
-    expect(screen.queryByText(/with a marker showing where your pointer was/)).toBeNull();
-    expect(
-      screen.getByText(/A picture of the app from just before you opened this\./),
-    ).not.toBeNull();
+    expect(screen.queryByText(/with the pointer marked/)).toBeNull();
+    expect(screen.getByText(/Captured before this dialog\./)).not.toBeNull();
   });
 
   test('a rejected capture still takes the marker off the screen', async () => {
@@ -1308,7 +1313,7 @@ describe('ReportBugDialog — reporter attachments', () => {
     installBridge();
     await renderDialog();
 
-    expect(screen.getByText('Your images')).not.toBeNull();
+    expect(screen.getByText('Drop images here')).not.toBeNull();
     expect(screen.getByText(/aren't redacted/)).not.toBeNull();
   });
 
@@ -1341,7 +1346,7 @@ describe('ReportBugDialog — reporter attachments', () => {
     expect(log.createCalls[0]?.attachments).toBeUndefined();
   });
 
-  test('a fourth pick is refused at the cap and the picker disables', async () => {
+  test('an over-cap selection is rejected with a visible error and can be corrected', async () => {
     installBridge();
     await renderDialog();
 
@@ -1353,9 +1358,25 @@ describe('ReportBugDialog — reporter attachments', () => {
     ]);
 
     expect(screen.queryByText('d.png')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Attach images' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(screen.getByText('You can attach up to 3 images.')).not.toBeNull();
+    expect(screen.queryByText('a.png')).toBeNull();
+    await userEvent.upload(fileInput(), pngFile('a.png'));
+    expect(screen.getByText('a.png')).not.toBeNull();
+  });
+
+  test('removing an attachment clears a rejected addition and submits the remaining files', async () => {
+    const log = installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    expect(screen.getByText('You can attach up to 3 images.')).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    expect(screen.queryByText('You can attach up to 3 images.')).toBeNull();
+    expect(screen.queryByText('No images added.')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+    expect(log.createCalls[0]?.attachments).toHaveLength(2);
   });
 
   test('a report with no attachments sends includeAttachments false', async () => {
@@ -1366,5 +1387,29 @@ describe('ReportBugDialog — reporter attachments', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
 
     expect(log.sendCalls[0]?.includeAttachments).toBe(false);
+  });
+});
+
+describe('compact report interactions', () => {
+  test('enlarging a screenshot preserves the note and screenshot opt-out and restores focus', async () => {
+    installBridge({ captureScreenshot: async () => SCREENSHOT });
+    await renderDialog({}, { statefulOpen: true });
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /what happened/i }),
+      'Keep this draft',
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Screenshot' }));
+    const trigger = screen.getByRole('button', { name: 'Enlarge screenshot' });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('heading', { name: 'Screenshot preview' })).not.toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('heading', { name: 'Screenshot preview' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(
+      (screen.getByRole('textbox', { name: /what happened/i }) as HTMLTextAreaElement).value,
+    ).toBe('Keep this draft');
   });
 });

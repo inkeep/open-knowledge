@@ -111,6 +111,7 @@
       ") em ",
       ["targetLabel"]
     ],
+    "0cGsQh": ["O que está incluído"],
     "0cspe_": ["Excluir linha"],
     "0dslv8": [
       ["0"],
@@ -174,6 +175,7 @@
     ],
     "0t0bbC": ["Não foi possível salvar a preferência de sincronização: ", ["detail"]],
     "0uTHCg": ["Comece um projeto do OpenKnowledge."],
+    "0wkh7o": ["Logs do OpenKnowledge, incluindo atividade de vários projetos."],
     "0wswKc": ["Linha horizontal que separa seções."],
     "0x9smA": ["Esta página não está mais neste caminho."],
     "0xnQ_X": ["As atualizações chegam sozinhas"],
@@ -266,12 +268,9 @@
     "2Ce6hp": ["São movidas"],
     "2D1x3Y": ["Aplicar e reiniciar o servidor do projeto"],
     "2FYpfJ": ["Mais"],
-    "2FnYUD": [
-      "Informações do app e do sistema, logs recentes do app e logs do servidor do projeto: o essencial para reproduzirmos o problema."
-    ],
     "2G-56b": ["Falha ao atualizar as regras do markdownlint"],
     "2GT3Hf": ["Global"],
-    "2H43L8": ["Segredos como chaves de API e tokens são ocultados automaticamente."],
+    "2H5Zhu": ["Nada sai do computador até que o relatório seja revisado e enviado."],
     "2IYGkU": [
       "Este documento tem alterações não enviadas. Quem receber vai ver a última versão enviada."
     ],
@@ -1086,6 +1085,7 @@
     ],
     "Aif3E7": ["Ativar a busca semântica"],
     "AkA6DO": ["Faz parte do plugin ", ["0"], " — somente leitura; abra-o para editar uma cópia"],
+    "AkJx1j": ["Ampliar captura de tela"],
     "Al8HPP": ["Aceitar a versão atual para o conflito ", ["0"]],
     "Am78jY": ["Arraste ", ["keyName"], " para reordenar"],
     "ApNWRQ": ["Remover o OpenKnowledge de ", ["0"], "?"],
@@ -1208,6 +1208,9 @@
     "CFnavk": ["Este projeto não é um repositório git, então worktrees não estão disponíveis."],
     "CGj3gX": ["erro de análise"],
     "CHfFN_": ["Remover o OpenKnowledge de ", ["0"]],
+    "CJ59QJ": [
+      "Os detalhes do erro, incluindo o nome do documento quando disponível, são incluídos no relatório."
+    ],
     "CJpuc1": [
       "Inicia um relatório de erro com uma captura de tela exatamente como ela está agora."
     ],
@@ -1288,6 +1291,7 @@
     "DELNQk": ["Os colaboradores veem suas edições em andamento assim que elas sincronizam."],
     "DEWDbv": ["Mostrar o diagrama"],
     "DF1MtZ": ["Carregando o conflito de ", ["filePath"]],
+    "DFQ2Sj": ["E-mail para acompanhamento"],
     "DFfRbX": [
       "Status da sincronização: ",
       ["syncStateLabel"],
@@ -1341,6 +1345,9 @@
     "DmkTrb": ["Não foi possível criar este tema. Tente novamente."],
     "Dnn2XG": ["Automático"],
     "DpjYd6": ["Ir para o texto ancorado"],
+    "DqyItq": [
+      "Logs do OpenKnowledge de vários projetos. Nenhum projeto está aberto, por isso os logs do servidor do projeto não são incluídos."
+    ],
     "DsDwR-": [
       ["0", "plural", { "one": ["#", " erro"], "many": ["#", " erros"], "other": ["#", " erros"] }]
     ],
@@ -1644,9 +1651,6 @@
     "GUqTzn": ["Pesquisa da concorrência"],
     "GW9ZdV": ["Escolher pastas"],
     "GXf9hG": ["Clonando ", ["repoName"], "..."],
-    "GZzDqc": [
-      "Os detalhes do erro que você acabou de encontrar estão incluídos. Segredos como chaves de API e tokens são ocultados automaticamente."
-    ],
     "G_686w": ["Lista de tarefas"],
     "G_hVTP": ["Ativar os temas"],
     "G_mWXb": ["Filtrar idiomas"],
@@ -1884,6 +1888,7 @@
     "JOcPqH": ["Traga um repositório remoto para este computador."],
     "JOhCT9": ["O Push inclui"],
     "JWsZlx": ["Abra um projeto para editar."],
+    "JYj5R2": ["Procurar arquivos"],
     "JZ8cO6": ["Claro, escuro ou seguir o sistema."],
     "J_jZ5z": [
       "Cada ferramenta de IA lê as habilidades da sua própria pasta. Aponte uma pasta para outra e as duas ferramentas verão as mesmas habilidades: adicione uma habilidade uma vez em vez de copiá-la para cada ferramenta."
@@ -2390,9 +2395,6 @@
     "P0HC30": ["Este ", ["targetNoun"], " foi movido para <0>", ["0"], "</0>. Abrir por lá?"],
     "P3NS4G": ["Erro de sintaxe no padrão (linha ", ["lineNumber"], "): ", ["message"]],
     "P3hnm0": ["Arquivo grande demais para abrir"],
-    "P441h8": [
-      "Conte o que deu errado e reuniremos os logs. Nada sai do seu computador até você revisar."
-    ],
     "P47EWZ": ["Não foi possível atualizar as configurações da barra lateral"],
     "P6gXB-": ["Substituir ", ["keyName"]],
     "P6lAT3": ["Pasta de destino: ", ["linkTitle"], ". Clique para abrir a visão geral."],
@@ -2415,9 +2417,6 @@
     "PMyJ9C": ["Ainda não há sessão de edição"],
     "PPFQ3o": ["\"", ["0"], "\" instalado em ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" não existe."],
-    "PR0_fn": [
-      "Adicione até 3 capturas ou fotos suas, como uma caixa de diálogo do sistema, outro monitor ou uma foto do travamento feita com o celular. Elas não são ocultadas, então deixe de fora qualquer coisa que não deva ser compartilhada."
-    ],
     "PR9FSv": ["Vai para o próximo resultado de busca do editor visual."],
     "PRgIJh": ["Não deu para atualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
@@ -3155,6 +3154,7 @@
       "Nenhuma habilidade encontrada nessa fonte. Se você continuar, a importação vai dizer por quê."
     ],
     "XgsZ2F": ["Copiar o código ", ["code"]],
+    "XhVmAh": ["Ampliar"],
     "Xhm7gG": ["Sugestões de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "XjqA8x": ["Alterna o padrão ", ["0"], "/**"],
@@ -3193,6 +3193,7 @@
     "Xl-UUg": ["guides/install ou https://exemplo.com"],
     "XmJfZT": ["nome"],
     "XnlF3W": ["Adiciona a próxima correspondência da seleção de origem."],
+    "XoMG7W": ["As imagens não são censuradas."],
     "XopE_I": ["Falha ao interpretar a resposta de erro dos retrolinks (HTTP ", ["status"], ")"],
     "Xp7Kq4": ["Outra operação de sincronização está em andamento. Tente de novo em instantes."],
     "Xp94R1": ["Tentar mais uma vez"],
@@ -3312,6 +3313,7 @@
     "Z5h97D": [
       "Esconda arquivos e pastas da sua base de conhecimento. Os itens ocultos não aparecem na árvore de arquivos, na busca nem nas ferramentas de IA. <0>Saiba mais sobre os padrões</0>."
     ],
+    "Z5q-I8": ["Pode incluir nomes de documentos sem censura."],
     "Z67Zlj": [
       "Veja o que este pacote adiciona ao seu projeto. Nada é gravado até você criar o projeto."
     ],
@@ -3329,6 +3331,7 @@
     "Z8lGw6": ["Compartilhar"],
     "Z8nach": ["Falha no envio: ", ["0"]],
     "ZBF9fn": ["Gerenciar as pastas de habilidades"],
+    "ZBZEkP": ["Capturada antes desta caixa de diálogo, com o ponteiro marcado."],
     "ZBt4rI": ["Instrução para a IA"],
     "ZBxvV3": ["Novo terminal"],
     "ZDOq9A": ["O que você compartilha é enviado para a equipe do OpenKnowledge."],
@@ -3365,9 +3368,6 @@
     "Zhe80e": ["Restaurar até a edição ", ["burstNumber"], " de ", ["docName"]],
     "ZhhOwV": ["Citação"],
     "ZjtgI-": ["Paleta de comandos"],
-    "ZoOlzR": [
-      "Informações do app e do sistema e logs recentes do app. Nenhum projeto está aberto, então logs de projeto não são incluídos."
-    ],
     "Zon_qG": ["Fonte do espelho <0>", ["label"], "</0>"],
     "ZptNUh": ["Mostrar mais ", ["hidden"]],
     "Zs3d0w": [
@@ -4279,6 +4279,7 @@
     "haHgQj": ["Caminho relativo copiado"],
     "habOU_": ["Falha ao atualizar a configuração de aprovação automática — ", ["detail"]],
     "hadECI": [["0"], " precisa ser substituído"],
+    "hcBdO4": ["Até 3 capturas de tela ou fotos"],
     "he3ygx": ["Copiar"],
     "heV8si": [
       "Isto remove permanentemente ",
@@ -4615,6 +4616,9 @@
     "kmKqZg": ["Grupos"],
     "kmPvKZ": ["O servidor retornou uma resposta de atualização malformada."],
     "knjOzA": ["Valor da tag"],
+    "ko-CKk": [
+      "Segredos conhecidos são removidos, mas outras informações sensíveis podem permanecer. Revise o ZIP antes de enviar."
+    ],
     "ko386X": ["Um documento tem um conflito — resolva-o para mantê-lo atualizado."],
     "kolRU1": ["Quer excluir definitivamente?"],
     "koo58J": ["Enviar a habilidade"],
@@ -4854,6 +4858,7 @@
     "mxY24F": [
       "Duplica o item em foco na árvore de arquivos quando o foco está na barra lateral Arquivos."
     ],
+    "mx_oWI": ["Ajuda a investigar a causa."],
     "n11Jj7": ["Instala a habilidade de projeto do OpenKnowledge para este agente."],
     "n2XqGH": ["painel do editor"],
     "n2lRue": ["Faça commit ou stash das alterações para trocar:"],
@@ -4884,6 +4889,7 @@
     "nP-KFo": ["Novo chat do ", ["0"]],
     "nTM8ab": ["Dê um nome antes de editar as cores."],
     "nTwL53": ["Abra um documento para compartilhar a URL dele."],
+    "nVGRwu": ["Solte imagens aqui"],
     "nWMRxa": ["Desafixar"],
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],
@@ -4895,6 +4901,7 @@
     "nc-ipN": [
       "A edição de campos está disponível para arquivos de esquema mapeados no plugin Esquemas de frontmatter"
     ],
+    "nczGih": ["Capturada antes desta caixa de diálogo."],
     "ndwmea": ["indisponível nesta plataforma"],
     "neRy3o": ["Dividir o item de lista"],
     "nem6R7": ["acima do orçamento de tokens de ", ["budgetLabel"]],
@@ -5040,9 +5047,6 @@
     "pMPnZv": [["deleted"], " habilidades excluídas"],
     "pOo4Aa": ["Texto simples"],
     "pPiV8s": ["Ativar Automático (Pull e Push)"],
-    "pRq670": [
-      "Uma imagem do app pouco antes de você abrir isto, com uma marca mostrando onde estava o seu ponteiro. Ela não é ocultada, então revise a pré-visualização e desmarque se houver algo que não deva ser compartilhado."
-    ],
     "pSimwP": ["Novo nome para a versão do ", ["editor"]],
     "pTPqMK": ["Liga ou desliga um bloco de código delimitado."],
     "pTyA_t": ["tags"],
@@ -5128,6 +5132,7 @@
         { "one": ["#", " aba"], "many": ["#", " abas"], "other": ["#", " abas"] }
       ]
     ],
+    "qApCYm": ["Sem censura. Revise a imagem antes de compartilhar."],
     "qAx7xG": ["Pasta fixa na raiz do conteúdo"],
     "qBi_YG": ["Instalar o OpenKnowledge nas suas ferramentas de IA"],
     "qC7PwZ": ["Falha ao remover o campo"],
@@ -5573,7 +5578,6 @@
       "Não deu para reiniciar o servidor — ele está rodando em outra conta. Reinicie o computador para liberá-lo e abra este projeto de novo."
     ],
     "uUCrBv": ["link simbólico"],
-    "uV3EYs": ["Suas imagens"],
     "uVbUP8": ["Configurações…"],
     "uVhq9B": ["Instala a habilidade de descoberta do OpenKnowledge para este agente."],
     "uX85yl": [
@@ -5742,6 +5746,7 @@
     "w61W3L": ["Remover ", ["0"]],
     "w6sBjd": ["As configurações do terminal ainda não carregaram — tente de novo em instantes"],
     "w6sT-y": ["Acompanhar as edições do agente"],
+    "w7IPNE": ["Nenhuma imagem adicionada."],
     "w7LRoP": ["Estúdio de habilidades"],
     "w7SsvI": ["Essa pasta ainda não é um projeto do OpenKnowledge. Inicializar e abrir?"],
     "w7bnEb": ["Crie uma habilidade pessoal, disponível em todos os projetos."],
@@ -5895,6 +5900,7 @@
     "xrVr_k": ["Não deu para criar a habilidade: ", ["0"]],
     "xsZhu-": ["Número da página"],
     "xtJgSe": ["Esta fonte traz várias habilidades — escolha qual importar."],
+    "xvv5gL": ["Prévia da captura de tela"],
     "xxRpzT": ["Slidev encontrado no seu sistema."],
     "xzAmL_": ["Aprovado automaticamente"],
     "xzktOa": ["Editar o link wiki"],
@@ -6007,9 +6013,6 @@
     "yz7wBu": ["Fechar"],
     "yzF66j": ["Link"],
     "yzGPkm": ["Expandir o grafo"],
-    "yzYE4B": [
-      "Uma imagem do app pouco antes de você abrir isto. Ela não é ocultada, então revise a pré-visualização e desmarque se houver algo que não deva ser compartilhado."
-    ],
     "z-lawV": ["worktree"],
     "z0a2EA": [
       "Diagrama a partir de código Mermaid — fluxograma, sequência, classes, estados, ER, Gantt, pizza."

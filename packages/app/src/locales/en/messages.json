@@ -97,6 +97,7 @@
       ") in ",
       ["targetLabel"]
     ],
+    "0cGsQh": ["What's included"],
     "0cspe_": ["Delete row"],
     "0dslv8": [
       ["0"],
@@ -144,6 +145,7 @@
     ],
     "0t0bbC": ["Could not save sync preference: ", ["detail"]],
     "0uTHCg": ["Start a new OpenKnowledge project."],
+    "0wkh7o": ["OpenKnowledge logs, including activity across projects."],
     "0wswKc": ["Horizontal rule that divides sections."],
     "0x9smA": ["This page is no longer at this path."],
     "0xnQ_X": ["Updates flow in"],
@@ -228,12 +230,9 @@
     "2Ce6hp": ["Move across"],
     "2D1x3Y": ["Apply and restart project server"],
     "2FYpfJ": ["More"],
-    "2FnYUD": [
-      "App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue."
-    ],
     "2G-56b": ["Failed to update markdownlint rules"],
     "2GT3Hf": ["Global"],
-    "2H43L8": ["Secrets like API keys and tokens are redacted automatically."],
+    "2H5Zhu": ["Nothing leaves your computer until you review and send the report."],
     "2IYGkU": ["This doc has unpushed changes. Recipients will see the last pushed version."],
     "2L8aeZ": ["network error (is `ok start` running?)"],
     "2M0JF6": ["Auto-update"],
@@ -927,6 +926,7 @@
     ],
     "Aif3E7": ["Enable semantic search"],
     "AkA6DO": ["Part of the ", ["0"], " plugin — read-only; open it to edit a copy"],
+    "AkJx1j": ["Enlarge screenshot"],
     "Al8HPP": ["Accept current version for conflict ", ["0"]],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
     "ApNWRQ": ["Remove OpenKnowledge from ", ["0"], "?"],
@@ -1029,6 +1029,9 @@
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CGj3gX": ["parse error"],
     "CHfFN_": ["Remove OpenKnowledge from ", ["0"]],
+    "CJ59QJ": [
+      "Error details, including the document name when available, are included in the report."
+    ],
     "CJpuc1": ["Start a bug report with a screenshot of the screen as it looks right now."],
     "CKyk7Q": ["Go back"],
     "CMd-g-": [
@@ -1103,6 +1106,7 @@
     "DELNQk": ["Collaborators see your in-progress edits as soon as they sync."],
     "DEWDbv": ["Show diagram"],
     "DF1MtZ": ["Loading conflict for ", ["filePath"]],
+    "DFQ2Sj": ["Email for followups"],
     "DFfRbX": ["Sync status: ", ["syncStateLabel"], " — git identity unset"],
     "DId6MT": ["Project-level pages with no outgoing graph edges."],
     "DJd000": ["Activate the previous editor tab."],
@@ -1146,6 +1150,9 @@
     "DmkTrb": ["Couldn’t create this theme. Try again."],
     "Dnn2XG": ["Automatic"],
     "DpjYd6": ["Jump to the anchored text"],
+    "DqyItq": [
+      "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
+    ],
     "DsDwR-": [["0", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "DskIkK": ["Sign-in stream ended without confirmation — please try again"],
     "DuCPiG": [
@@ -1421,9 +1428,6 @@
     "GUqTzn": ["Competitor research"],
     "GW9ZdV": ["Pick folders"],
     "GXf9hG": ["Cloning ", ["repoName"], "..."],
-    "GZzDqc": [
-      "Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically."
-    ],
     "G_686w": ["Task List"],
     "G_hVTP": ["Enable Themes"],
     "G_mWXb": ["Filter languages"],
@@ -1619,6 +1623,7 @@
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JOhCT9": ["Push includes"],
     "JWsZlx": ["Open a project to edit."],
+    "JYj5R2": ["Browse files"],
     "JZ8cO6": ["Light, dark, or follow the OS."],
     "J_jZ5z": [
       "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -2088,9 +2093,6 @@
     "P0HC30": ["This ", ["targetNoun"], " moved to <0>", ["0"], "</0>. Open it there?"],
     "P3NS4G": ["Pattern syntax error (line ", ["lineNumber"], "): ", ["message"]],
     "P3hnm0": ["File too large to open"],
-    "P441h8": [
-      "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
-    ],
     "P47EWZ": ["Could not update sidebar settings"],
     "P6gXB-": ["Replace ", ["keyName"]],
     "P6lAT3": ["Folder target: ", ["linkTitle"], ". Click to open the overview."],
@@ -2113,9 +2115,6 @@
     "PMyJ9C": ["No edit session yet"],
     "PPFQ3o": ["Installed \"", ["0"], "\" into ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" doesn't exist."],
-    "PR0_fn": [
-      "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
-    ],
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRgIJh": ["Couldn't update ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["of ", ["0"]],
@@ -2746,6 +2745,7 @@
     "Xg-Ntj": ["The token needs the repo and read:user scopes."],
     "XgqUOy": ["No skill found at that source. Import will report why if you continue."],
     "XgsZ2F": ["Copy the code ", ["code"]],
+    "XhVmAh": ["Enlarge"],
     "Xhm7gG": ["Asset suggestions"],
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "XjqA8x": ["Toggles the pattern ", ["0"], "/**"],
@@ -2775,6 +2775,7 @@
     "Xl-UUg": ["guides/install or https://example.com"],
     "XmJfZT": ["name"],
     "XnlF3W": ["Add the next matching source selection."],
+    "XoMG7W": ["Images aren't redacted."],
     "XopE_I": ["Failed to parse backlinks error response (HTTP ", ["status"], ")"],
     "Xp7Kq4": ["Another sync operation is in progress. Try again in a moment."],
     "Xp94R1": ["Try one more time"],
@@ -2890,6 +2891,7 @@
     "Z5h97D": [
       "Hide files and folders from your knowledge base. Hidden items don’t appear in the file tree, search, or AI tools. <0>Learn more about patterns</0>."
     ],
+    "Z5q-I8": ["May include unredacted document names."],
     "Z67Zlj": [
       "Here's what this pack adds to your project. Nothing is written until you create the project."
     ],
@@ -2907,6 +2909,7 @@
     "Z8lGw6": ["Share"],
     "Z8nach": ["Upload failed: ", ["0"]],
     "ZBF9fn": ["Manage skill folders"],
+    "ZBZEkP": ["Captured before this dialog, with the pointer marked."],
     "ZBt4rI": ["Instruction for the AI"],
     "ZBxvV3": ["New Terminal"],
     "ZDOq9A": ["What you share is sent to the OpenKnowledge team."],
@@ -2941,9 +2944,6 @@
     "Zhe80e": ["Restore to edit ", ["burstNumber"], " of ", ["docName"]],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
-    "ZoOlzR": [
-      "App & system info and recent app logs. No project is open, so project logs aren't included."
-    ],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "Zs3d0w": [
@@ -3736,6 +3736,7 @@
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "hadECI": [["0"], " needs replacing"],
+    "hcBdO4": ["Up to 3 screenshots or photos"],
     "he3ygx": ["Copy"],
     "heV8si": [
       "This permanently removes ",
@@ -4047,6 +4048,9 @@
     "kmKqZg": ["Clusters"],
     "kmPvKZ": ["Server returned a malformed update response."],
     "knjOzA": ["Tag value"],
+    "ko-CKk": [
+      "Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending."
+    ],
     "ko386X": ["A document has a conflict — resolve it to keep it up to date."],
     "kolRU1": ["Do you want to permanently delete instead?"],
     "koo58J": ["Upload skill"],
@@ -4258,6 +4262,7 @@
     "mwMF9u": ["Open CodeMirror search in source editor mode."],
     "mxGJVE": ["Switch worktree…"],
     "mxY24F": ["Duplicate the focused file-tree item when focus is in the Files sidebar."],
+    "mx_oWI": ["Helps us investigate the cause."],
     "n11Jj7": ["Installs the OpenKnowledge project skill for this agent."],
     "n2XqGH": ["editor pane"],
     "n2lRue": ["Commit or stash changes to switch:"],
@@ -4288,6 +4293,7 @@
     "nP-KFo": ["New ", ["0"], " chat"],
     "nTM8ab": ["Give it a name before editing its colors."],
     "nTwL53": ["Open a doc to share its URL."],
+    "nVGRwu": ["Drop images here"],
     "nWMRxa": ["Unpin"],
     "nWS2gQ": ["Published by ", ["publisher"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
@@ -4299,6 +4305,7 @@
     "nc-ipN": [
       "Field editing is available for schema files mapped in the Frontmatter schemas plugin"
     ],
+    "nczGih": ["Captured before this dialog."],
     "ndwmea": ["unavailable on this platform"],
     "neRy3o": ["Split list item"],
     "nem6R7": ["over the ", ["budgetLabel"], " token budget"],
@@ -4439,9 +4446,6 @@
     "pMPnZv": ["Deleted ", ["deleted"], " skills"],
     "pOo4Aa": ["Plain text"],
     "pPiV8s": ["Enable Auto (Pull and Push)"],
-    "pRq670": [
-      "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-    ],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
     "pTyA_t": ["tags"],
@@ -4515,6 +4519,7 @@
       " · ",
       ["tabCount", "plural", { "one": ["#", " tab"], "other": ["#", " tabs"] }]
     ],
+    "qApCYm": ["Not redacted. Check the image before sharing."],
     "qAx7xG": ["Fixed folder in content root"],
     "qBi_YG": ["Install OpenKnowledge in your AI tools"],
     "qC7PwZ": ["Failed to remove the field"],
@@ -4919,7 +4924,6 @@
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
     "uUCrBv": ["symlink"],
-    "uV3EYs": ["Your images"],
     "uVbUP8": ["Settings…"],
     "uVhq9B": ["Installs the OpenKnowledge discovery skill for this agent."],
     "uX85yl": [
@@ -5064,6 +5068,7 @@
     "w61W3L": ["Remove ", ["0"]],
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w6sT-y": ["Follow the agent's edits"],
+    "w7IPNE": ["No images added."],
     "w7LRoP": ["Skills Studio"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
     "w7bnEb": ["Create a personal skill, available across every project."],
@@ -5205,6 +5210,7 @@
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
+    "xvv5gL": ["Screenshot preview"],
     "xxRpzT": ["Slidev found on your system."],
     "xzAmL_": ["Auto-approved"],
     "xzktOa": ["Edit wiki link"],
@@ -5303,9 +5309,6 @@
     "yz7wBu": ["Close"],
     "yzF66j": ["Link"],
     "yzGPkm": ["Expand graph"],
-    "yzYE4B": [
-      "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
-    ],
     "z-lawV": ["worktree"],
     "z0a2EA": ["Diagram from Mermaid source — flowchart, sequence, class, state, ER, gantt, pie."],
     "z1uNN0": ["No emoji found."],
