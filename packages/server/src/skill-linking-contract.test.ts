@@ -30,6 +30,18 @@ describe('bundled project skill — link-authoring contract', () => {
     expect(linking).toContain('Never glue `./` onto a content-root path');
   });
 
+  test('core keeps the positive rule AND qualifies it with the suppression field', () => {
+    expect(skill).toContain('`[]` means all links resolve');
+    expect(skill).toContain('brokenLinkSuppression');
+    expect(skill).toContain('not yours to repair');
+  });
+
+  test('linking reference makes the empty list conditional and forbids repairing log history', () => {
+    expect(linking).toContain('`brokenLinkSuppression`');
+    expect(linking).toContain('does not mean every link resolves');
+    expect(linking).toContain('Never rewrite a reserved log');
+  });
+
   test('linking reference makes brokenLinks the primary check + names `audit` as the end-state check', () => {
     expect(linking).toMatch(/`brokenLinks`[^\n]*primary check/);
     expect(linking).toContain('`audit` is the authoritative end-state link check');

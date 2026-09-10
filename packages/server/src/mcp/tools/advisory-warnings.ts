@@ -4,6 +4,8 @@ import {
   assertNeverWriteWarning,
   type BrokenLink,
   BrokenLinkSchema,
+  type BrokenLinkSuppression,
+  BrokenLinkSuppressionSchema,
   isWriteWarningKind,
   type LintViolationWarning,
   type RenderWarning,
@@ -26,6 +28,11 @@ export function parseBrokenLinks(value: unknown): BrokenLink[] {
     const parsed = BrokenLinkSchema.safeParse(entry);
     return parsed.success ? [parsed.data] : [];
   });
+}
+
+export function parseBrokenLinkSuppression(value: unknown): BrokenLinkSuppression | undefined {
+  const parsed = BrokenLinkSuppressionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function formatBrokenLinkLines(links: BrokenLink[]): string[] {

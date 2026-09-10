@@ -228,6 +228,7 @@ export type {
 } from './types.ts';
 export {
   DEFAULT_LINKS_VALIDATION,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   isFrontmatterScoped,
   LINKS_VALIDATION_SETTINGS,
   LINT_PLUGIN_IDS,

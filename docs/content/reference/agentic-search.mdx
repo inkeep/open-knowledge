@@ -240,7 +240,7 @@ set("ok");
 </script>
 ```
 
-`brokenLinks` comes back on every write and edit (empty when they all resolve), so the agent never needs a follow-up dead-link check. A brand-new doc nothing points to comes back flagged as an orphan with a hub to link it from. Every write and edit is versioned, attributed, and the preview updates as it lands. Append to a file by hand and the edit still lands: the file watcher folds it into the live doc and versions it, but anonymously, as `file-system`, and nothing talks back. [Skills](../features/skills/index.mdx) teach the conventions, and the write path enforces the connective tissue.
+`brokenLinks` comes back on every write and edit (empty when they all resolve, unless a `brokenLinkSuppression` beside it reports that the project's reserved-log policy withheld some), so the agent never needs a follow-up dead-link check. A brand-new doc nothing points to comes back flagged as an orphan with a hub to link it from. Every write and edit is versioned, attributed, and the preview updates as it lands. Append to a file by hand and the edit still lands: the file watcher folds it into the live doc and versions it, but anonymously, as `file-system`, and nothing talks back. [Skills](../features/skills/index.mdx) teach the conventions, and the write path enforces the connective tissue.
 
 ## The index is authored, not extracted
 

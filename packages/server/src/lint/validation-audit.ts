@@ -1,8 +1,7 @@
 import {
+  type BrokenLinkSuppression,
   countDiagnosticsBySource,
-  DEFAULT_LINKS_VALIDATION,
   deriveValidationRunSources,
-  type LinksValidationSetting,
   type LinterConfig,
   type LintPluginId,
   SUPPORTED_DOC_EXTENSIONS,
@@ -10,8 +9,13 @@ import {
   type ValidationDocCounts,
   type ValidationSource,
 } from '@inkeep/open-knowledge-core';
+import { createReservedLogBrokenLinkSuppression } from '../broken-link-suppression.ts';
 import { isProblemsPlaneExcludedDoc } from '../cc1-broadcast.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
+import {
+  type LinkAdvisoryPolicy,
+  shouldSuppressLogLinkAdvisories,
+} from '../link-advisory-policy.ts';
 import {
   buildLocalTargetEvidence,
   type LocalTargetAssessment,
@@ -53,6 +57,7 @@ export interface ValidationAuditResult {
   warningCount: number;
   warnings: string[];
   ran: ValidationSource[];
+  brokenLinkSuppression?: BrokenLinkSuppression;
 }
 
 export interface ValidationAuditCountsResult {
@@ -61,6 +66,7 @@ export interface ValidationAuditCountsResult {
   errorCount: number;
   warningCount: number;
   warnings: string[];
+  brokenLinkSuppression?: BrokenLinkSuppression;
 }
 
 export function toValidationCountsPlane(
@@ -75,6 +81,9 @@ export function toValidationCountsPlane(
     errorCount: result.errorCount,
     warningCount: result.warningCount,
     warnings: result.warnings,
+    ...(result.brokenLinkSuppression === undefined
+      ? {}
+      : { brokenLinkSuppression: result.brokenLinkSuppression }),
   };
 }
 
@@ -87,6 +96,7 @@ interface ValidatorRunResult<Source extends ValidationSource = ValidationSource>
   fileCount: number;
   warnings: string[];
   ran?: readonly Source[];
+  suppressedBrokenLinkCount?: number;
 }
 
 export interface ProjectValidator<Source extends ValidationSource = ValidationSource> {
@@ -122,7 +132,7 @@ export interface ValidationAuditDeps {
   baseConfig: LinterConfig;
   liveSourceFor?: (docRelPath: string) => string | null;
   derivedDocumentIndex: ValidationDerivedIndexReader | null;
-  linksValidation?: LinksValidationSetting;
+  linkPolicy: LinkAdvisoryPolicy;
   admittedDocNames: () => Iterable<string> | Promise<Iterable<string>>;
   docFilePathFor: (docName: string) => string | null;
   cache?: AuditCache;
@@ -169,10 +179,12 @@ export async function runValidationAudit(
   const byFile = new Map<string, ValidationDiagnostic[]>();
   const warnings: string[] = [];
   const ran = new Set<ValidationSource>();
+  let suppressedBrokenLinkCount = 0;
   let fileCount = 0;
   for (const result of results) {
     warnings.push(...result.warnings);
     for (const source of result.ran ?? []) ran.add(source);
+    suppressedBrokenLinkCount += result.suppressedBrokenLinkCount ?? 0;
     fileCount = Math.max(fileCount, result.fileCount);
     for (const entry of result.files) {
       const merged = byFile.get(entry.file);
@@ -194,7 +206,17 @@ export async function runValidationAudit(
     }
   }
 
-  return { files, fileCount, errorCount, warningCount, warnings, ran: [...ran] };
+  const brokenLinkSuppression = createReservedLogBrokenLinkSuppression(suppressedBrokenLinkCount);
+
+  return {
+    files,
+    fileCount,
+    errorCount,
+    warningCount,
+    warnings,
+    ran: [...ran],
+    ...(brokenLinkSuppression === undefined ? {} : { brokenLinkSuppression }),
+  };
 }
 
 function byPosition(a: ValidationDiagnostic, b: ValidationDiagnostic): number {
@@ -232,7 +254,8 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator<LintPl
 }
 
 function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'links'> {
-  const setting = deps.linksValidation ?? DEFAULT_LINKS_VALIDATION;
+  const setting = deps.linkPolicy.links;
+  const suppressLogAdvisories = deps.linkPolicy.suppressLogLinkAdvisories;
   const sourceFamilies = deriveValidationRunSources(deps.baseConfig, {
     mode: 'audit',
     linksValidation: setting,
@@ -272,6 +295,9 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
       }
       const deadLinks = await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter);
 
+      const isSuppressedLogAdvisorySource = (source: string): boolean =>
+        shouldSuppressLogLinkAdvisories(source, suppressLogAdvisories);
+
       const byFile = new Map<string, ValidationDiagnosticFor<'links'>[]>();
       const push = (file: string, diagnostic: ValidationDiagnosticFor<'links'>): void => {
         const diagnostics = byFile.get(file) ?? [];
@@ -286,16 +312,19 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
       const documentTargetsFromAssessment = new Set<string>();
       const resolvedTargetsFromAssessment = new Set<string>();
       const warnings: string[] = [];
+      let suppressedBrokenLinkCount = 0;
       try {
         const assessed =
           await deps.derivedDocumentIndex.getLocalTargetAssessmentsForSources(sourceFilter);
         for (const { source, assessments } of assessed) {
           if (isProblemsPlaneExcludedDoc(source)) continue;
+          const suppressSource = isSuppressedLogAdvisorySource(source);
           const file = deps.docFilePathFor(source) ?? `${source}.md`;
           for (const assessment of assessments) {
             const diagnostic = toLocalTargetDiagnostic(assessment, severity);
             if (!diagnostic) continue;
-            localTargetDiagnostics.push({ file, diagnostic });
+            if (suppressSource) suppressedBrokenLinkCount++;
+            else localTargetDiagnostics.push({ file, diagnostic });
             if (assessment.targetKind === 'document' && assessment.resolvedTarget !== null) {
               documentTargetsFromAssessment.add(`${source}\0${assessment.resolvedTarget}`);
             }
@@ -331,6 +360,10 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
           ) {
             continue;
           }
+          if (isSuppressedLogAdvisorySource(occurrence.source)) {
+            suppressedBrokenLinkCount++;
+            continue;
+          }
           const file = deps.docFilePathFor(occurrence.source) ?? `${occurrence.source}.md`;
           const line = occurrence.line ?? 0;
           const character = occurrence.column ?? 0;
@@ -353,6 +386,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'link
         files: [...byFile.entries()].map(([file, diagnostics]) => ({ file, diagnostics })),
         fileCount: 0,
         warnings,
+        ...(suppressedBrokenLinkCount > 0 ? { suppressedBrokenLinkCount } : {}),
       };
     },
   };

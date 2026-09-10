@@ -213,6 +213,16 @@ const FIXTURES: Fixture[] = [
     input: { server: { idleShutdown: '1d' } },
     shouldAccept: false,
   },
+  {
+    name: 'validation.suppressLogLinkAdvisories boolean accepted',
+    input: { validation: { suppressLogLinkAdvisories: false } },
+    shouldAccept: true,
+  },
+  {
+    name: 'validation.suppressLogLinkAdvisories string rejected',
+    input: { validation: { suppressLogLinkAdvisories: 'yes' } },
+    shouldAccept: false,
+  },
 ];
 
 describe('JSON Schema ↔ runtime equivalence', () => {
@@ -238,6 +248,16 @@ describe('JSON Schema ↔ runtime equivalence', () => {
       default: true,
     });
     expect(editorSchema.required ?? []).not.toContain('previewTabs');
+  });
+
+  test('published schema documents the reserved-log advisory policy with its default', () => {
+    const validationSchema = jsonSchema.properties?.validation as {
+      properties?: Record<string, { type?: string; default?: unknown; description?: string }>;
+    };
+    const leaf = validationSchema.properties?.suppressLogLinkAdvisories;
+    expect(leaf).toMatchObject({ type: 'boolean', default: true });
+    expect(leaf?.description).toContain('log.md');
+    expect(leaf?.description).toContain('log.mdx');
   });
 });
 

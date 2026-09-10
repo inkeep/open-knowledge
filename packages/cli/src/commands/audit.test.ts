@@ -139,6 +139,33 @@ describe('runAudit', () => {
     expect(out.join('\n')).toContain('Checks run: markdownlint, links.');
   });
 
+  test('a filtered clean audit reports reserved-log suppression without exposing links', async () => {
+    stubFetch(
+      payload({
+        fileCount: 3,
+        brokenLinkSuppression: { reason: 'reserved-log-policy', count: 2 },
+      }),
+    );
+    const { io, out } = collectIo();
+
+    const code = await runAudit(undefined, {}, minimalConfig, dir, dir, io);
+
+    expect(code).toBe(0);
+    const text = out.join('\n');
+    expect(text).toContain('2 broken-link findings withheld by project policy');
+    expect(text).toContain('audit result is filtered');
+    expect(text).toContain('does NOT prove every link resolves');
+    expect(text).toContain('http://127.0.0.1:54321/api/dead-links');
+    expect(text).toContain('validation.suppressLogLinkAdvisories: false');
+    expect(text).toContain('.ok/config.yml');
+    expect(text).toContain('Settings ▸ This project ▸ Preferences ▸ Content rules');
+    expect(text).not.toContain('links({ kind: "dead" })');
+    expect(text).toContain('not as a repair queue');
+    expect(text).toContain('protect that history');
+    expect(text).not.toContain('the user');
+    expect(text).not.toContain('turning the project setting off yourself');
+  });
+
   test('scopes the query to the contentDir-relative target', async () => {
     const { urls } = stubFetch(payload());
     const { io } = collectIo();

@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
+  BrokenLinkSuppressionSchema,
   validateDocName,
 } from '@inkeep/open-knowledge-core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -82,8 +83,12 @@ export const previewAttachWarningField = z
 const brokenLinksOutputField = z
   .array(BrokenLinkSchema)
   .describe(
-    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" }`. Report-only — the write landed regardless; fix in a follow-up edit.',
+    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves UNLESS `brokenLinkSuppression` is also present, in which case a project policy withheld findings. A withholding that arrives in a shape this build cannot validate is dropped rather than relayed, so `brokenLinkSuppression` stays absent even though findings were withheld. The `audit` tool is the surface that discloses that case, through its `warnings`. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" }`. Report-only — the write landed regardless; fix in a follow-up edit.',
   );
+
+const brokenLinkSuppressionOutputField = BrokenLinkSuppressionSchema.optional().describe(
+  'Present ONLY when a project policy omitted detected broken links from `brokenLinks` — so an empty `brokenLinks` beside it does NOT mean every link resolves. `{ reason, count }`; `reason` today is `"reserved-log-policy"` (a reserved `log.md` records history whose links are expected not to resolve) and is an open token, so treat one you do not recognize as a withholding policy all the same. `count` is how many findings were withheld; the hrefs are deliberately not returned, because none of them is yours to repair.',
+);
 
 export function docExtensionOnDisk(
   contentDir: string,
@@ -106,6 +111,7 @@ export const documentResultBaseShape = {
       "Advisory entries discriminated by `kind`. Write-integrity kinds — `content-divergence` (converged Y.Text didn't byte-match what you composed) and `disk-edit-reconciled` (an out-of-band disk edit was folded in before your write) — mean re-read the doc. The renderability kind `mermaid-parse-error` means the write landed but that fence will not render — fix it and re-edit.",
     ),
   brokenLinks: brokenLinksOutputField,
+  brokenLinkSuppression: brokenLinkSuppressionOutputField,
   templateHint: z
     .array(z.object({ name: z.string(), description: z.string().optional() }))
     .min(1)

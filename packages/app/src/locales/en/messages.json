@@ -3423,6 +3423,7 @@
     "eVPynQ": ["Open <0><1>", ["verificationUri"], "</1><2/></0> and enter this code:"],
     "eXPP7Z": ["Contemplating…"],
     "e_ToF5": ["Sign in with ", ["0"]],
+    "ea7AYn": ["Ignore broken links in log.md"],
     "eaHUxx": ["Files toolbar"],
     "eazHgv": [
       "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
@@ -3623,6 +3624,16 @@
     ],
     "ggs9f8": ["Search files, folders, or commands"],
     "gh27t1": ["Link previews"],
+    "gi9c0-": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Project policy hides ", "#", " broken-link finding from this audit."],
+          "other": ["Project policy hides ", "#", " broken-link findings from this audit."]
+        }
+      ]
+    ],
     "gijbne": ["Failed to rename path"],
     "gkOxmF": ["Moving"],
     "gk_-qj": ["Couldn't rename template: ", ["0"]],
@@ -4096,6 +4107,7 @@
       ") that won't touch the rest of your system."
     ],
     "l87Deg": ["Choose what a new tab starts"],
+    "l91IVc": ["These links remain visible in Links and are not part of the repair queue."],
     "l9s3IX": [["agentName"], " couldn't start a conversation."],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Agent connections"],
@@ -4181,6 +4193,7 @@
     "mHo0kp": [
       "The request to enable Open Knowledge tools timed out. This thread runs without them."
     ],
+    "mI1KPS": ["No lint plugins are enabled, so only links are checked."],
     "mPoOmg": ["install a skill here first"],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
@@ -4322,6 +4335,9 @@
     "njBeMm": ["Both"],
     "njU86j": ["Property \"", ["trimmed"], "\" already exists"],
     "nmwqWS": ["Not answered"],
+    "nnhrHd": [
+      "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
+    ],
     "noH1JX": [
       "Couldn't reach collab server — ",
       ["errorDetail"],

@@ -2,6 +2,7 @@ import type { ValidationAuditResponse } from '@inkeep/open-knowledge-core';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { emitDocumentsChanged } from '@/lib/documents-events';
+import { emitLintConfigChanged } from './lint-config-client';
 import { runValidationAudit, useDocLinkFindings } from './validation-audit-client';
 
 const origFetch = globalThis.fetch;
@@ -73,11 +74,16 @@ describe('useDocLinkFindings', () => {
       errorCount: 1,
       warningCount: 1,
       warnings: [],
+      brokenLinkSuppression: { reason: 'reserved-log-policy', count: 2 },
     };
     const { result } = renderHook(() => useDocLinkFindings('notes'));
     await waitFor(() => expect(result.current.status).toBe('loaded'));
     expect(result.current.findings).toHaveLength(1);
     expect(result.current.findings[0]?.code).toBe('dead-link');
+    expect(result.current.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 2,
+    });
     expect(fetchUrls).toEqual(['/api/audit?doc=notes']);
   });
 
@@ -106,6 +112,52 @@ describe('useDocLinkFindings', () => {
 
     act(() => emitDocumentsChanged(['tags']));
     expect(fetchUrls).toHaveLength(4);
+  });
+
+  test('refreshes on a lint-config change so a policy toggle clears stale findings', async () => {
+    fetchBody = {
+      files: [{ file: 'log.md', diagnostics: [deadLink] }],
+      fileCount: 1,
+      errorCount: 1,
+      warningCount: 0,
+      warnings: [],
+    };
+    const { result } = renderHook(() => useDocLinkFindings('log'));
+    await waitFor(() => expect(result.current.findings).toHaveLength(1));
+
+    fetchBody = { files: [], fileCount: 1, errorCount: 0, warningCount: 0, warnings: [] };
+    act(() => emitLintConfigChanged());
+    await waitFor(() => expect(result.current.findings).toHaveLength(0));
+    expect(fetchUrls).toEqual(['/api/audit?doc=log', '/api/audit?doc=log']);
+  });
+
+  test('clears the suppression marker when a reload comes back without one', async () => {
+    fetchBody = {
+      files: [{ file: 'log.md', diagnostics: [] }],
+      fileCount: 1,
+      errorCount: 0,
+      warningCount: 0,
+      warnings: [],
+      brokenLinkSuppression: { reason: 'reserved-log-policy', count: 2 },
+    };
+    const { result } = renderHook(() => useDocLinkFindings('log'));
+    await waitFor(() =>
+      expect(result.current.brokenLinkSuppression).toEqual({
+        reason: 'reserved-log-policy',
+        count: 2,
+      }),
+    );
+
+    fetchBody = {
+      files: [{ file: 'log.md', diagnostics: [deadLink] }],
+      fileCount: 1,
+      errorCount: 1,
+      warningCount: 0,
+      warnings: [],
+    };
+    act(() => emitLintConfigChanged());
+    await waitFor(() => expect(result.current.findings).toHaveLength(1));
+    expect(result.current.brokenLinkSuppression).toBeUndefined();
   });
 
   test('null docName serves no findings and never fetches', () => {

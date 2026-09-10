@@ -225,6 +225,7 @@ export function DocPanel({
               docName={docName}
               diagnostics={diagnostics}
               linkFindingsStatus={linkFindingsState.status}
+              brokenLinkSuppression={linkFindingsState.brokenLinkSuppression}
               onFix={lintProvider !== null ? handleFix : undefined}
               onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
               onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}

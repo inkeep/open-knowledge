@@ -506,6 +506,7 @@ export {
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
 export { PRODUCT_NAME } from './constants/product.ts';
+export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
   AGENTS_SKILLS_ROOT,
@@ -865,6 +866,7 @@ export {
   DEFAULT_LINTER_CONFIG,
   DEFAULT_MARKDOWNLINT_CONFIG,
   DEFAULT_SCHEMA_DIALECT,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   deriveValidationRunSources,
   displayCategoryForRule,
   emptyFrontmatterSchemaText,
@@ -1131,11 +1133,15 @@ export {
   type BatchEntryError,
   BatchEntryErrorSchema,
   BROKEN_LINK_REASONS,
+  BROKEN_LINK_SUPPRESSION_REASONS,
   type BranchInfoResponse,
   BranchInfoResponseSchema,
   type BrokenLink,
   type BrokenLinkReason,
   BrokenLinkSchema,
+  type BrokenLinkSuppression,
+  type BrokenLinkSuppressionReason,
+  BrokenLinkSuppressionSchema,
   BrokenLinksSchema,
   type CheckoutFailureReason,
   CheckoutFailureReasonSchema,

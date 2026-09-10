@@ -227,6 +227,63 @@ describe('linkPreviews.enabled (external link-hover preview egress default)', ()
   });
 });
 
+describe('validation.suppressLogLinkAdvisories (reserved-log advisory policy)', () => {
+  test('defaults to enabled when the validation block is absent', () => {
+    expect(ConfigSchema.parse({}).validation.suppressLogLinkAdvisories).toBe(true);
+  });
+
+  test('defaults to enabled when validation is present but the key is absent', () => {
+    expect(
+      ConfigSchema.parse({ validation: { links: 'error' } }).validation.suppressLogLinkAdvisories,
+    ).toBe(true);
+  });
+
+  test('accepts an explicit opt-out', () => {
+    expect(
+      ConfigSchema.parse({ validation: { suppressLogLinkAdvisories: false } }).validation
+        .suppressLogLinkAdvisories,
+    ).toBe(false);
+  });
+
+  test('accepts an explicit opt-in', () => {
+    expect(
+      ConfigSchema.parse({ validation: { suppressLogLinkAdvisories: true } }).validation
+        .suppressLogLinkAdvisories,
+    ).toBe(true);
+  });
+
+  test('rejects a non-boolean value', () => {
+    expect(
+      ConfigSchema.safeParse({ validation: { suppressLogLinkAdvisories: 'yes' } }).success,
+    ).toBe(false);
+    expect(ConfigSchema.safeParse({ validation: { suppressLogLinkAdvisories: 1 } }).success).toBe(
+      false,
+    );
+  });
+
+  test('is a project-shared, live, non-agent-settable field', () => {
+    expect(
+      getLeafFieldMeta(ConfigSchema, ['validation', 'suppressLogLinkAdvisories']),
+    ).toMatchObject({
+      scope: 'project',
+      defaultScope: 'project',
+      agentSettable: false,
+      reload: 'live',
+    });
+  });
+
+  test('names the reserved logs and the stem/extension casing split in its published description', () => {
+    const description = getLeafFieldMeta(ConfigSchema, [
+      'validation',
+      'suppressLogLinkAdvisories',
+    ])?.description;
+    expect(description).toContain('log.md');
+    expect(description).toContain('log.mdx');
+    expect(description).toContain("the extension's case does not matter");
+    expect(description).toContain('LOG.md');
+  });
+});
+
 describe('slides.enabled (Slides plugin toggle default)', () => {
   test('resolves to disabled when the section is absent', () => {
     expect(ConfigSchema.parse({}).slides).toEqual({ enabled: false });

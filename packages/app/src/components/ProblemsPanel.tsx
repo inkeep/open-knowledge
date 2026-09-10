@@ -1,6 +1,7 @@
 // oxlint-disable ok/no-raw-html-interactive-element -- matches sibling OutlinePanel — positional list of <button> rows awaiting a shared shadcn list primitive; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 import {
+  type BrokenLinkSuppression,
   type FrontmatterScope,
   isEditableTextDocFile,
   type ValidationAuditResponse,
@@ -16,6 +17,7 @@ import {
   File as FileIcon,
   FilePlus2,
   Image as ImageIcon,
+  Info,
   Link2,
   type LucideIcon,
   RefreshCw,
@@ -453,6 +455,7 @@ export function ProblemsPanel({
   docName,
   diagnostics,
   linkFindingsStatus = 'loaded',
+  brokenLinkSuppression,
   onFix,
   onAutoFix,
   onAskAi,
@@ -461,6 +464,7 @@ export function ProblemsPanel({
   docName: string;
   diagnostics: DiagnosticLike[];
   linkFindingsStatus?: 'idle' | 'loading' | 'loaded' | 'failed';
+  brokenLinkSuppression?: BrokenLinkSuppression;
   onFix?: (diagnostic: DiagnosticLike) => void;
   onAutoFix?: () => void;
   onAskAi?: (diagnostic: DiagnosticLike) => void;
@@ -479,6 +483,7 @@ export function ProblemsPanel({
         ? LINT_PLUGIN_META.filter((plugin) => lintConfig.effective.plugins[plugin.id].enabled)
         : [];
   const noPluginsEnabled = activePlugins !== null && activePlugins.length === 0;
+  const linkFindingsSuppressed = brokenLinkSuppression !== undefined;
   const showActivePluginsPill =
     (scope === 'project' || markdownChecksApply) &&
     activePlugins !== null &&
@@ -700,13 +705,16 @@ export function ProblemsPanel({
             </PanelEmpty>
           ) : linkFindingsStatus === 'failed' ? (
             <PanelError className="px-2 pb-2" role="status" data-testid="problems-links-failed">
-              {sorted.length > 0 ? (
+              {sorted.length > 0 || linkFindingsSuppressed ? (
                 <Trans>Link validation is unavailable. Showing last known problems.</Trans>
               ) : (
                 <Trans>Link validation is unavailable.</Trans>
               )}
             </PanelError>
           ) : null}
+          {linkFindingsSuppressed && (
+            <BrokenLinkSuppressionNote suppression={brokenLinkSuppression} />
+          )}
           {sorted.length === 0 ? (
             linkFindingsStatus !== 'loaded' ? null : !markdownChecksApply ? (
               <PanelEmpty className="px-2" data-testid="problems-markdown-not-applicable">
@@ -715,9 +723,14 @@ export function ProblemsPanel({
             ) : noPluginsEnabled ? (
               <>
                 <PanelEmpty className="px-2" data-testid="problems-no-plugins">
-                  <Trans>
-                    No problems found — but no lint plugins are enabled, so only links are checked.
-                  </Trans>
+                  {linkFindingsSuppressed ? (
+                    <Trans>No lint plugins are enabled, so only links are checked.</Trans>
+                  ) : (
+                    <Trans>
+                      No problems found — but no lint plugins are enabled, so only links are
+                      checked.
+                    </Trans>
+                  )}
                 </PanelEmpty>
                 <div className="px-2 pt-2">
                   <Button
@@ -730,7 +743,7 @@ export function ProblemsPanel({
                   </Button>
                 </div>
               </>
-            ) : (
+            ) : linkFindingsSuppressed ? null : (
               <PanelEmpty className="px-2">
                 <Trans>No problems found.</Trans>
               </PanelEmpty>
@@ -998,6 +1011,27 @@ function ProjectAuditBody({
   );
 }
 
+function BrokenLinkSuppressionNote({ suppression }: { suppression: BrokenLinkSuppression }) {
+  return (
+    <div
+      role="note"
+      aria-live="polite"
+      data-testid="problems-broken-link-suppression"
+      className="mx-2 mb-1 flex items-start gap-1.5 rounded-md border border-border/70 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground"
+    >
+      <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+      <span className="min-w-0">
+        <Plural
+          value={suppression.count}
+          one="Project policy hides # broken-link finding from this audit."
+          other="Project policy hides # broken-link findings from this audit."
+        />{' '}
+        <Trans>These links remain visible in Links and are not part of the repair queue.</Trans>
+      </span>
+    </div>
+  );
+}
+
 function ProjectAuditResults({
   result,
   onNavigate,
@@ -1030,14 +1064,19 @@ function ProjectAuditResults({
           ))}
         </ul>
       )}
+      {result.brokenLinkSuppression !== undefined && (
+        <BrokenLinkSuppressionNote suppression={result.brokenLinkSuppression} />
+      )}
       {result.files.length === 0 ? (
-        <PanelEmpty className="px-2">
-          <Plural
-            value={result.fileCount}
-            one="No problems across # document."
-            other="No problems across # documents."
-          />
-        </PanelEmpty>
+        result.brokenLinkSuppression === undefined ? (
+          <PanelEmpty className="px-2">
+            <Plural
+              value={result.fileCount}
+              one="No problems across # document."
+              other="No problems across # documents."
+            />
+          </PanelEmpty>
+        ) : null
       ) : (
         result.files.map((file) => (
           <ProjectFileGroup

@@ -3997,6 +3997,7 @@
     "eVPynQ": ["Abre <0><1>", ["verificationUri"], "</1><2/></0> e introduce este código:"],
     "eXPP7Z": ["Reflexionando…"],
     "e_ToF5": ["Iniciar sesión con ", ["0"]],
+    "ea7AYn": ["Ignorar los enlaces rotos en log.md"],
     "eaHUxx": ["Barra de herramientas de Archivos"],
     "eazHgv": [
       "Git no puede seguir esta carpeta: está vacía o solo contiene archivos ignorados. El enlace no funcionará hasta que añadas un documento seguido por git."
@@ -4232,6 +4233,29 @@
     ],
     "ggs9f8": ["Busca archivos, carpetas o comandos"],
     "gh27t1": ["Vista previa de enlaces"],
+    "gi9c0-": [
+      [
+        "0",
+        "plural",
+        {
+          "one": [
+            "La política del proyecto oculta ",
+            "#",
+            " hallazgo de enlace roto de esta auditoría."
+          ],
+          "many": [
+            "La política del proyecto oculta ",
+            "#",
+            " hallazgos de enlaces rotos de esta auditoría."
+          ],
+          "other": [
+            "La política del proyecto oculta ",
+            "#",
+            " hallazgos de enlaces rotos de esta auditoría."
+          ]
+        }
+      ]
+    ],
     "gijbne": ["No se pudo renombrar la ruta"],
     "gkOxmF": ["Moviendo"],
     "gk_-qj": ["No se pudo renombrar la plantilla: ", ["0"]],
@@ -4736,6 +4760,9 @@
       ") que no tocará el resto de tu sistema."
     ],
     "l87Deg": ["Elige qué inicia una pestaña nueva"],
+    "l91IVc": [
+      "Estos enlaces siguen visibles en Enlaces y no forman parte de la cola de reparación."
+    ],
     "l9s3IX": [["agentName"], " no pudo iniciar una conversación."],
     "lAiyU_": ["Solo el documento actual usa <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Conexiones de agentes"],
@@ -4837,6 +4864,9 @@
     "mHf8mp": ["Eliminar el archivo de esquema ", ["file"]],
     "mHo0kp": [
       "La solicitud para habilitar las herramientas de Open Knowledge caducó. Este hilo funciona sin ellas."
+    ],
+    "mI1KPS": [
+      "No hay ningún complemento de análisis activado, así que solo se comprueban los enlaces."
     ],
     "mPoOmg": ["instala primero una habilidad aquí"],
     "mPy9lS": [
@@ -4995,6 +5025,9 @@
     "njBeMm": ["Ambos"],
     "njU86j": ["La propiedad \"", ["trimmed"], "\" ya existe"],
     "nmwqWS": ["Sin responder"],
+    "nnhrHd": [
+      "Deja fuera de Problemas, de los indicadores del explorador de archivos, de los diagnósticos del editor, de las auditorías y de los avisos de escritura para agentes los enlaces rotos escritos dentro de un log.md o log.mdx en cualquier nivel de carpeta. Lo que cuenta es el archivo donde está escrito el enlace, no el archivo al que apunta, y LOG.md es un documento normal. El panel Enlaces y el editor siguen mostrándolos."
+    ],
     "noH1JX": [
       "No se pudo contactar con el servidor de colaboración: ",
       ["errorDetail"],

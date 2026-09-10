@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { agentIdentityFields, safeDocNameField, summaryField } from '../../schemas/api/_shared.ts';
-import { LocalTargetDiagnosticEvidenceSchema } from '../../schemas/api/agent-write.ts';
+import {
+  BrokenLinkSuppressionSchema,
+  LocalTargetDiagnosticEvidenceSchema,
+} from '../../schemas/api/agent-write.ts';
 import { DEFAULT_MARKDOWNLINT_CONFIG } from './default-config.ts';
 import type { OkfRuleId } from './okf-rule-meta.ts';
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
@@ -201,6 +204,7 @@ export const ValidationAuditResponseSchema = z.object({
   warningCount: z.number(),
   warnings: z.array(z.string()),
   ran: RunSourcesSchema,
+  brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
 });
 
 export type ValidationDocResult = z.infer<typeof ValidationDocResultSchema>;
@@ -223,6 +227,7 @@ export const ValidationAuditCountsResponseSchema = z.object({
   errorCount: z.number().int().nonnegative(),
   warningCount: z.number().int().nonnegative(),
   warnings: z.array(z.string()),
+  brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
 });
 
 export type ValidationDocCounts = z.infer<typeof ValidationDocCountsSchema>;

@@ -3918,6 +3918,7 @@
     "eVPynQ": ["Abra <0><1>", ["verificationUri"], "</1><2/></0> e digite este código:"],
     "eXPP7Z": ["Refletindo…"],
     "e_ToF5": ["Entrar com ", ["0"]],
+    "ea7AYn": ["Ignorar links quebrados em log.md"],
     "eaHUxx": ["Barra de ferramentas de Arquivos"],
     "eazHgv": [
       "O git não consegue rastrear esta pasta — ela está vazia ou só tem arquivos ignorados. O link não vai funcionar até você adicionar um documento rastreado."
@@ -4145,6 +4146,29 @@
     "ggm6JX": ["Esta página ainda não existe. Abra para criá-la no editor e recolher o grafo."],
     "ggs9f8": ["Busque arquivos, pastas ou comandos"],
     "gh27t1": ["Pré-visualização de links"],
+    "gi9c0-": [
+      [
+        "0",
+        "plural",
+        {
+          "one": [
+            "A política do projeto oculta ",
+            "#",
+            " ocorrência de link quebrado desta auditoria."
+          ],
+          "many": [
+            "A política do projeto oculta ",
+            "#",
+            " ocorrências de links quebrados desta auditoria."
+          ],
+          "other": [
+            "A política do projeto oculta ",
+            "#",
+            " ocorrências de links quebrados desta auditoria."
+          ]
+        }
+      ]
+    ],
     "gijbne": ["Falha ao renomear o caminho"],
     "gkOxmF": ["Movendo"],
     "gk_-qj": ["Não deu para renomear o modelo: ", ["0"]],
@@ -4654,6 +4678,7 @@
       ") que não vai mexer no resto do seu sistema."
     ],
     "l87Deg": ["Escolha o que uma nova aba inicia"],
+    "l91IVc": ["Esses links continuam visíveis em Links e não fazem parte da fila de reparo."],
     "l9s3IX": [["agentName"], " não conseguiu iniciar uma conversa."],
     "lAiyU_": ["Só o documento atual usa <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Conexões de agentes"],
@@ -4748,6 +4773,7 @@
     "mHo0kp": [
       "O pedido para ativar as ferramentas do Open Knowledge expirou. Esta conversa funciona sem elas."
     ],
+    "mI1KPS": ["Nenhum plugin de análise está ativado, então só os links são verificados."],
     "mPoOmg": ["instale primeiro uma habilidade aqui"],
     "mPy9lS": [
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
@@ -4907,6 +4933,9 @@
     "njBeMm": ["Ambos"],
     "njU86j": ["A propriedade \"", ["trimmed"], "\" já existe"],
     "nmwqWS": ["Sem resposta"],
+    "nnhrHd": [
+      "Deixe os links quebrados escritos em um log.md ou log.mdx, em qualquer profundidade de pasta, fora de Problemas, dos indicadores do explorador de arquivos, dos diagnósticos do editor, das auditorias e dos avisos de escrita do agente. O que conta é o arquivo em que o link foi escrito, não o arquivo para o qual ele aponta, e LOG.md é um documento comum. O painel Links e o editor continuam exibindo esses links."
+    ],
     "noH1JX": [
       "Não deu para contatar o servidor de colaboração — ",
       ["errorDetail"],

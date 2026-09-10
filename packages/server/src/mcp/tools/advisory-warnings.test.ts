@@ -15,6 +15,7 @@ import {
   formatRenderWarningsBrief,
   formatRenderWarningsLine,
   parseAdvisoryWarnings,
+  parseBrokenLinkSuppression,
   parseBrokenLinks,
 } from './advisory-warnings.ts';
 
@@ -335,6 +336,32 @@ describe('unrecognized-kind fallback', () => {
     expect(lines.some((l) => l.includes('Content divergence'))).toBe(true);
     expect(lines.some((l) => l.toLowerCase().includes('mermaid'))).toBe(true);
     expect(lines.some((l) => l.includes('future-advisory-kind'))).toBe(true);
+  });
+});
+
+describe('parseBrokenLinkSuppression', () => {
+  const wellFormed = { reason: 'reserved-log-policy', count: 3 };
+
+  test('a well-formed observation parses', () => {
+    expect(parseBrokenLinkSuppression(wellFormed)).toEqual(wellFormed);
+  });
+
+  test.each([
+    ['absent', undefined],
+    ['a non-object', 'reserved-log-policy'],
+    ['a zero count', { reason: 'reserved-log-policy', count: 0 }],
+    ['a fractional count', { reason: 'reserved-log-policy', count: 1.5 }],
+    ['a missing count', { reason: 'reserved-log-policy' }],
+    ['an empty reason', { reason: '', count: 3 }],
+  ])('%s yields undefined rather than a half-relayed observation', (_label, value) => {
+    expect(parseBrokenLinkSuppression(value)).toBeUndefined();
+  });
+
+  test('a reason this build has no prose for still parses', () => {
+    expect(parseBrokenLinkSuppression({ reason: 'some-future-policy', count: 3 })).toEqual({
+      reason: 'some-future-policy',
+      count: 3,
+    });
   });
 });
 

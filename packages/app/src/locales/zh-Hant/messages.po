@@ -261,6 +261,11 @@ msgstr "{0, plural, other {# 份文件都沒有問題。}}"
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, other {外掛程式}}"
 
+#. placeholder {0}: suppression.count
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {Project policy hides # broken-link finding from this audit.} other {Project policy hides # broken-link findings from this audit.}}"
+msgstr "{0, plural, other {專案政策從此次稽核中隱藏了 # 個失效連結問題。}}"
+
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -6993,6 +6998,10 @@ msgstr "如果 {agent} 沒有顯示 OpenKnowledge 工具，請到 Settings → T
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "如果你正在編輯的東西收到更新，你可以像處理合併衝突那樣選擇要保留哪個版本。"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Ignore broken links in log.md"
+msgstr "忽略 log.md 中失效的連結"
+
 #: src/components/ConsentDialogBody.tsx
 #: src/components/settings/OkignoreSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7687,6 +7696,10 @@ msgstr "進一步了解 {title}"
 #: src/components/SharingModeField.tsx
 msgid "Learn more about config sharing"
 msgstr "了解更多關於設定分享的資訊"
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
+msgstr "無論資料夾層級多深，都不在「問題」、檔案總管指示器、編輯器診斷、稽核和代理程式寫入建議中顯示寫在 log.md 或 log.mdx 內的失效連結。判斷依據是連結寫在哪個檔案中，而不是它指向哪個檔案；LOG.md 是一般文件。「連結」面板和編輯器仍會顯示這些連結。"
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -8941,6 +8954,10 @@ msgstr "沒有相符的語言。"
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "還沒有連結。加上維基連結或 markdown 連結來建立關係圖。"
+
+#: src/components/ProblemsPanel.tsx
+msgid "No lint plugins are enabled, so only links are checked."
+msgstr "沒有啟用任何檢查外掛，所以只檢查了連結。"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "No location selected. Use Browse to choose a folder."
@@ -13918,6 +13935,10 @@ msgstr "這個視窗沒有對應的專案資料夾，所以無法在這裡啟動
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "These currently read from another folder. After linking, they read from {keep} instead."
 msgstr "這些技能目前從另一個資料夾讀取。連結後，它們將改為從 {keep} 讀取。"
+
+#: src/components/ProblemsPanel.tsx
+msgid "These links remain visible in Links and are not part of the repair queue."
+msgstr "這些連結仍會顯示在「連結」中，但不屬於修復佇列。"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

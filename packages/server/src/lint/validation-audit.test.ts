@@ -10,6 +10,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { BacklinkIndex } from '../backlink-index.ts';
+import type { LinkAdvisoryPolicy } from '../link-advisory-policy.ts';
 import { LocalTargetIndex } from '../local-target-index.ts';
 import {
   createProjectValidators,
@@ -64,11 +65,16 @@ function docFilePathFor(docName: string): string | null {
   return null;
 }
 
+function linkPolicy(overrides: Partial<LinkAdvisoryPolicy> = {}): LinkAdvisoryPolicy {
+  return { links: 'warning', suppressLogLinkAdvisories: true, ...overrides };
+}
+
 function deps(overrides: Partial<ValidationAuditDeps> = {}): ValidationAuditDeps {
   return {
     projectDir: root,
     contentDir: root,
     baseConfig: lintOn,
+    linkPolicy: linkPolicy(),
     derivedDocumentIndex: {
       getDeadLinks: (a, s) => index.getDeadLinks(a, s),
       getLocalTargetAssessmentsForSources: (s) => localTargets.getAssessmentsForSources(s),
@@ -128,12 +134,14 @@ describe('runValidationAudit', () => {
     seedDoc('linker', '# Linker\n\nSee [[ghost]].\n');
 
     const asError = await runValidationAudit(
-      createProjectValidators(deps({ linksValidation: 'error' })),
+      createProjectValidators(deps({ linkPolicy: linkPolicy({ links: 'error' }) })),
     );
     expect(asError.files[0]?.diagnostics[0]?.severity).toBe('error');
     expect(asError.errorCount).toBe(1);
 
-    const off = await runValidationAudit(createProjectValidators(deps({ linksValidation: 'off' })));
+    const off = await runValidationAudit(
+      createProjectValidators(deps({ linkPolicy: linkPolicy({ links: 'off' }) })),
+    );
     expect(off.files.every((f) => f.diagnostics.every((d) => d.source !== 'links'))).toBe(true);
     expect(off.ran).toEqual(['markdownlint']);
     expect(off.warnings).toEqual([]);
@@ -298,7 +306,9 @@ describe('runValidationAudit', () => {
 
   test('a lint-walk failure keeps its label whatever the enabled plugin count is', async () => {
     const walkFailure = async (baseConfig: LinterConfig) => {
-      const validators = createProjectValidators(deps({ baseConfig, linksValidation: 'off' }));
+      const validators = createProjectValidators(
+        deps({ baseConfig, linkPolicy: linkPolicy({ links: 'off' }) }),
+      );
       const lint = validators.find((validator) => validator.id === 'lint');
       if (!lint) throw new Error('lint validator missing');
       const failing: ProjectValidator = {
@@ -325,7 +335,9 @@ describe('runValidationAudit', () => {
       ...lintOn,
       plugins: { ...lintOn.plugins, okf: { enabled: true } },
     } as LinterConfig;
-    const validators = createProjectValidators(deps({ baseConfig: okfOn, linksValidation: 'off' }));
+    const validators = createProjectValidators(
+      deps({ baseConfig: okfOn, linkPolicy: linkPolicy({ links: 'off' }) }),
+    );
     const okfProject = validators.find((validator) => validator.id === 'okf-project');
     if (!okfProject) throw new Error('okf project validator missing');
     const failing: ProjectValidator = {
@@ -602,12 +614,14 @@ describe('local-target findings (files, images, reference-style)', () => {
   test('validation.links=off silences file findings; =error raises them uniformly with dead links', async () => {
     seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
 
-    const off = await runValidationAudit(createProjectValidators(deps({ linksValidation: 'off' })));
+    const off = await runValidationAudit(
+      createProjectValidators(deps({ linkPolicy: linkPolicy({ links: 'off' }) })),
+    );
     expect(off.files).toEqual([]);
     expect(off.warnings).toEqual([]);
 
     const asError = await runValidationAudit(
-      createProjectValidators(deps({ linksValidation: 'error' })),
+      createProjectValidators(deps({ linkPolicy: linkPolicy({ links: 'error' }) })),
     );
     expect(asError.files[0]?.diagnostics[0]?.severity).toBe('error');
     expect(asError.errorCount).toBe(1);
@@ -667,7 +681,9 @@ describe('the OKF project validator', () => {
 
   const auditOkf = async (overrides: Partial<ValidationAuditDeps> = {}) =>
     runValidationAudit(
-      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off', ...overrides })),
+      createProjectValidators(
+        deps({ baseConfig: okfOnly, linkPolicy: linkPolicy({ links: 'off' }), ...overrides }),
+      ),
     );
 
   test('reports okf in ran exactly once — the lint and tree validators share the family', async () => {
@@ -689,7 +705,9 @@ describe('the OKF project validator', () => {
     writeFile('guide.md');
     writeFile('guide.mdx');
     const scoped = await runValidationAudit(
-      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      createProjectValidators(
+        deps({ baseConfig: okfOnly, linkPolicy: linkPolicy({ links: 'off' }) }),
+      ),
       { targetPath: 'guide.mdx' },
     );
     expect(scoped.files.flatMap((f) => f.diagnostics).map((d) => d.code)).toEqual([
@@ -702,7 +720,9 @@ describe('the OKF project validator', () => {
     writeFile('guide.md');
     writeFile('guide.mdx');
     const scoped = await runValidationAudit(
-      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      createProjectValidators(
+        deps({ baseConfig: okfOnly, linkPolicy: linkPolicy({ links: 'off' }) }),
+      ),
       { targetPath: 'guide.mdx' },
     );
     const message = scoped.files.flatMap((f) => f.diagnostics)[0]?.message ?? '';
@@ -714,7 +734,9 @@ describe('the OKF project validator', () => {
     writeFile('one.mdx');
     writeFile('two.mdx');
     const scoped = await runValidationAudit(
-      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      createProjectValidators(
+        deps({ baseConfig: okfOnly, linkPolicy: linkPolicy({ links: 'off' }) }),
+      ),
       { targetPath: 'one.mdx' },
     );
     expect(scoped.files.map((f) => f.file)).toEqual(['one.mdx']);
@@ -776,7 +798,9 @@ describe('the OKF project validator', () => {
     );
 
     const scoped = await runValidationAudit(
-      createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off' })),
+      createProjectValidators(
+        deps({ baseConfig: okfOnly, linkPolicy: linkPolicy({ links: 'off' }) }),
+      ),
       { targetPath: 'sub' },
     );
     expect(scoped.files.flatMap((f) => f.diagnostics)).toEqual([]);
@@ -993,5 +1017,191 @@ describe('skill-bundle doc scoping', () => {
 
     const plane = await runValidationAudit(createProjectValidators(deps()));
     expect(plane.files).toEqual([]);
+  });
+});
+
+describe('reserved-log link advisory policy', () => {
+  const EVERY_LINK_FORM = [
+    '# Log',
+    '',
+    'Wiki: [[ghost]]',
+    '',
+    'Markdown: [doc](./ghost-doc.md)',
+    '',
+    'File: [report](./report.pdf)',
+    '',
+    'Image: ![logo](./logo.png)',
+    '',
+    'Reference: [one][r]',
+    '',
+    '[r]: ./missing.pdf',
+    '',
+  ].join('\n');
+
+  function seedMdxDoc(docName: string, markdown: string): void {
+    const abs = join(root, `${docName}.mdx`);
+    mkdirSync(join(abs, '..'), { recursive: true });
+    writeFileSync(abs, markdown, 'utf-8');
+    index.updateDocumentFromMarkdown(docName, markdown);
+    localTargets.setSource(docName, markdown);
+    admitted.add(docName);
+  }
+
+  const deadLinkFilesIn = (result: {
+    files: { file: string; diagnostics: { code: string }[] }[];
+  }) =>
+    result.files
+      .filter((f) => f.diagnostics.some((d) => d.code === 'dead-link'))
+      .map((f) => f.file);
+
+  test('the reserved lowercase log document contributes no link findings by default', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedDoc('log', '# Log\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+    expect(result.files.find((f) => f.file === 'log.md')).toBeUndefined();
+    expect(result.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 1,
+    });
+    expect(result.warnings).toEqual([]);
+    expect(result.ran).toContain('links');
+  });
+
+  test('a nested log is suppressed at any depth', async () => {
+    seedDoc('team/notes/log', '# Log\n\nSee [[ghost]].\n');
+    seedDoc('team/notes/journal', '# Journal\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(deadLinkFilesIn(result)).toEqual(['team/notes/journal.md']);
+  });
+
+  test('an .mdx reserved log is suppressed like its .md spelling', async () => {
+    seedMdxDoc('log', '# Log\n\nSee [[ghost]].\n');
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(deadLinkFilesIn(result)).toEqual(['control.md']);
+  });
+
+  test('LOG.md and other casings are ordinary documents that keep their findings', async () => {
+    seedDoc('LOG', '# Log\n\nSee [[ghost]].\n');
+    seedDoc('notes/Log', '# Log\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(deadLinkFilesIn(result)).toEqual(['LOG.md', 'notes/Log.md']);
+    expect(result.brokenLinkSuppression).toBeUndefined();
+  });
+
+  test('a stem that merely ends in the reserved word keeps its findings', async () => {
+    seedDoc('catalog', '# Catalog\n\nSee [[ghost]].\n');
+    seedDoc('changelog', '# Changelog\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    expect(deadLinkFilesIn(result)).toEqual(['catalog.md', 'changelog.md']);
+  });
+
+  test('both detection planes are suppressed, not just the graph', async () => {
+    seedDoc('log', EVERY_LINK_FORM);
+    seedDoc('control', EVERY_LINK_FORM);
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    const forms = new Set(
+      (control?.diagnostics ?? []).map((d) => d.localTarget?.sourceForm ?? 'graph'),
+    );
+    expect(forms).toEqual(new Set(['graph', 'markdown-inline', 'markdown-reference']));
+    expect(result.files.find((f) => f.file === 'log.md')).toBeUndefined();
+    expect(result.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 5,
+    });
+    expect(toValidationCountsPlane(result).brokenLinkSuppression).toEqual(
+      result.brokenLinkSuppression,
+    );
+  });
+
+  test('the findings return in full when the policy is disabled', async () => {
+    seedDoc('log', EVERY_LINK_FORM);
+    seedDoc('control', EVERY_LINK_FORM);
+
+    const on = await runValidationAudit(createProjectValidators(deps()));
+    const off = await runValidationAudit(
+      createProjectValidators(
+        deps({ linkPolicy: linkPolicy({ suppressLogLinkAdvisories: false }) }),
+      ),
+    );
+
+    const controlDiagnostics = (result: typeof off) =>
+      result.files.find((f) => f.file === 'control.md')?.diagnostics;
+    const logRow = off.files.find((f) => f.file === 'log.md');
+    expect(logRow?.diagnostics).toEqual(controlDiagnostics(off));
+    expect(controlDiagnostics(on)).toEqual(controlDiagnostics(off));
+    expect(on.brokenLinkSuppression).toEqual({ reason: 'reserved-log-policy', count: 5 });
+    expect(off.brokenLinkSuppression).toBeUndefined();
+  });
+
+  test('a doc-scoped audit of the reserved log answers empty, and reports when disabled', async () => {
+    seedDoc('log', '# Log\n\nSee [[ghost]].\n');
+    const scope = { targetPath: 'log.md' };
+
+    const suppressed = await runValidationAudit(createProjectValidators(deps()), scope);
+    expect(suppressed.files).toEqual([]);
+    expect(suppressed.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 1,
+    });
+
+    const reported = await runValidationAudit(
+      createProjectValidators(
+        deps({ linkPolicy: linkPolicy({ suppressLogLinkAdvisories: false }) }),
+      ),
+      scope,
+    );
+    expect(reported.files.map((f) => f.file)).toEqual(['log.md']);
+    expect(reported.brokenLinkSuppression).toBeUndefined();
+  });
+
+  test('dead links from an ordinary doc INTO a log document are still reported', async () => {
+    seedDoc('control', '# Control\n\nWiki: [[archive/log]]\n\nMd: [log](archive/log.md)\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.filter((d) => d.code === 'dead-link').length).toBeGreaterThan(0);
+  });
+
+  test('the raw graph and assessment views keep the sources the plane suppresses', async () => {
+    seedDoc('log', '# Log\n\nSee [[ghost]] and [report](./report.pdf).\n');
+
+    const rawGraph = await index.getDeadLinks([...admitted]);
+    expect(rawGraph.some(({ sources }) => sources.some((o) => o.source === 'log'))).toBe(true);
+    const rawAssessed = await localTargets.getAssessmentsForSources(['log']);
+    expect(
+      rawAssessed.some(({ assessments }) => assessments.some((a) => a.status === 'missing')),
+    ).toBe(true);
+
+    const plane = await runValidationAudit(createProjectValidators(deps()));
+    expect(plane.files).toEqual([]);
+  });
+
+  test('validation.links=off silences the plane whatever the log policy says', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedDoc('log', '# Log\n\nSee [[ghost]].\n');
+
+    const result = await runValidationAudit(
+      createProjectValidators(deps({ linkPolicy: linkPolicy({ links: 'off' }) })),
+    );
+
+    expect(result.files).toEqual([]);
+    expect(result.brokenLinkSuppression).toBeUndefined();
   });
 });

@@ -24,7 +24,7 @@ export const DESCRIPTION = [
   '[Requires: Hocuspocus server] Read the wiki-link graph. `kind` takes one value, or an array for a one-call audit — results merge into a single payload; any per-kind failure lands in an `errors` map.',
   '',
   '- `backlinks` / `forward` / `suggest` — operate on one page; require `document`. `suggest` finds prose mentions of the page not yet wrapped in link syntax. Each mention returns an `excerpt` (a normalized, `…`-trimmed snippet for context — NOT an edit-ready literal) plus an `offset`. To wrap one: re-read the doc (`exec("cat …")`), find the real mention text, and `edit` it into a `[[wiki-link]]`.',
-  '- `dead` — missing internal link targets corpus-wide; optional `sourceDocuments` filter (OR semantics).',
+  "- `dead` — missing internal link targets corpus-wide; optional `sourceDocuments` filter (OR semantics). This is the raw graph read: unlike `audit`, it still lists unresolved links whose source is a skill document or a lowercase-stemmed `log.md`/`log.mdx` — read those to audit deliberately, never as a repair queue, and never rewrite a log's existing entries to clear one.",
   '- `orphans` — disconnected pages; optional `mode`: `incoming` | `outgoing` | `both`.',
   '- `hubs` — most-linked pages; optional `limit` (default 20).',
 ].join('\n');

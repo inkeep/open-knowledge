@@ -261,6 +261,11 @@ msgstr "{0, plural, zero {لا مشكلات في # مستند.} one {لا مشك
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, zero {إضافات} one {إضافة} two {إضافتان} few {إضافات} many {إضافة} other {إضافة}}"
 
+#. placeholder {0}: suppression.count
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {Project policy hides # broken-link finding from this audit.} other {Project policy hides # broken-link findings from this audit.}}"
+msgstr "{0, plural, zero {لا تخفي سياسة المشروع أي نتائج لروابط معطلة من هذا التدقيق.} one {تخفي سياسة المشروع نتيجة واحدة لرابط معطل من هذا التدقيق.} two {تخفي سياسة المشروع نتيجتين لرابطين معطلين من هذا التدقيق.} few {تخفي سياسة المشروع # نتائج لروابط معطلة من هذا التدقيق.} many {تخفي سياسة المشروع # نتيجة لرابط معطل من هذا التدقيق.} other {تخفي سياسة المشروع # نتيجة لرابط معطل من هذا التدقيق.}}"
+
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -6993,6 +6998,10 @@ msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، ففعّل ال�
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "إذا وصل تحديث لشيء تحرّره، فأنت من يختار أي نسخة يُبقي، مثل تعارض الدمج."
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Ignore broken links in log.md"
+msgstr "تجاهل الروابط المعطلة في log.md"
+
 #: src/components/ConsentDialogBody.tsx
 #: src/components/settings/OkignoreSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7687,6 +7696,10 @@ msgstr "اعرف المزيد عن {title}"
 #: src/components/SharingModeField.tsx
 msgid "Learn more about config sharing"
 msgstr "اعرف المزيد عن مشاركة الإعدادات"
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
+msgstr "استبعد الروابط المعطلة المكتوبة داخل log.md أو log.mdx على أي عمق للمجلد من «المشكلات» ومؤشرات مستكشف الملفات وتشخيصات المحرر وعمليات التدقيق وتنبيهات كتابة الوكيل. المهم هو الملف الذي كُتب فيه الرابط، وليس الملف الذي يشير إليه، وLOG.md مستند عادي. تظل لوحة «الروابط» والمحرر تعرضانها."
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -8941,6 +8954,10 @@ msgstr "لا توجد لغة مطابقة."
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "لا توجد روابط بعد. أضف روابط ويكي أو روابط Markdown لبناء رسم بياني."
+
+#: src/components/ProblemsPanel.tsx
+msgid "No lint plugins are enabled, so only links are checked."
+msgstr "لا توجد إضافات فحص مفعّلة، لذا تُفحص الروابط فقط."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "No location selected. Use Browse to choose a folder."
@@ -13918,6 +13935,10 @@ msgstr "لا يوجد مجلد مشروع لهذه النافذة، لذا لا 
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "These currently read from another folder. After linking, they read from {keep} instead."
 msgstr "تُقرأ هذه حاليًا من مجلد آخر. بعد الربط، ستُقرأ من {keep} بدلًا منه."
+
+#: src/components/ProblemsPanel.tsx
+msgid "These links remain visible in Links and are not part of the repair queue."
+msgstr "تظل هذه الروابط ظاهرة في «الروابط» وليست جزءًا من قائمة انتظار الإصلاح."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

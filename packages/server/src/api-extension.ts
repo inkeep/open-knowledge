@@ -43,7 +43,6 @@ import {
   colorFromSeed,
   composeWithDerivedFrontmatter,
   createCodeFenceTracker,
-  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   type DiskEditReconciledWarning,
   type DocumentListEntry,
@@ -57,7 +56,6 @@ import {
   type InlineAssetMediaKind,
   isManagedArtifactDocName,
   LEGACY_SKILL_STORE_ROOT,
-  type LinksValidationSetting,
   LintConfigResponseSchema,
   type LinterConfig,
   LintFixRequestSchema,
@@ -178,6 +176,7 @@ import { createSkillsTrackingRoutes } from './http/skills-tracking-routes.ts';
 import { findHubCandidates } from './hub-candidates.ts';
 import { recordSkillInstall, removeSkillInstall } from './installed-skills-marker.ts';
 import { collectDocFiles, lintAndFixSource } from './lint/audit.ts';
+import { composeAuditGeneration } from './lint/audit-generation.ts';
 import {
   createEmptyFrontmatterSchemaFile,
   deleteFrontmatterSchemaFile,
@@ -331,6 +330,11 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import {
+  type LinkAdvisoryPolicy,
+  projectWriteAdvisoryLinks,
+  type WriteLinkAdvisoryProjection,
+} from './link-advisory-policy.ts';
 import type { GuardedFetch } from './link-preview/metadata.ts';
 import {
   checkLocalOpSecurity as checkLocalOpSecurityBase,
@@ -1381,7 +1385,8 @@ export interface ApiExtensionOptions {
   embeddingsSecretsFile?: string;
   readSemanticProviderConfig?: () => ResolvedSemanticConfig;
   getLinterBaseConfig?: () => LinterConfig;
-  getLinksValidationSetting?: () => LinksValidationSetting;
+  getLinkAdvisoryPolicy: () => LinkAdvisoryPolicy;
+  getProjectConfigEpoch: () => number;
 }
 
 export function extractHeadings(content: string): HeadingEntry[] {
@@ -1494,7 +1499,8 @@ export function createApiExtension(
     embeddingsSecretsFile,
     readSemanticProviderConfig,
     getLinterBaseConfig,
-    getLinksValidationSetting,
+    getLinkAdvisoryPolicy,
+    getProjectConfigEpoch,
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
@@ -3477,6 +3483,7 @@ export function createApiExtension(
     AgentWriteMdRequestSchema,
     async (_req, res, body) => {
       try {
+        const linkPolicy = getLinkAdvisoryPolicy();
         const position = body.position ?? 'append';
         const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'agent-write-md');
         if (effectiveDocName === null) return;
@@ -3643,12 +3650,16 @@ export function createApiExtension(
 
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          writtenSource,
+        const linkAdvisory = projectWriteAdvisoryLinks(
+          computeWriteAdvisoryLinks(
+            writtenSource,
+            resolvedDocName,
+            admittedForLinks,
+            createLinkedFileExists(),
+            createLinkedFolderExists(),
+          ),
           resolvedDocName,
-          admittedForLinks,
-          createLinkedFileExists(),
-          createLinkedFolderExists(),
+          linkPolicy.suppressLogLinkAdvisories,
         );
 
         const subscriberCount = getSubscriberCount(resolvedDocName);
@@ -3671,6 +3682,7 @@ export function createApiExtension(
           ...(await computeLintViolations(
             session.dc.document.getText('source').toString(),
             resolvedDocName,
+            linkPolicy,
           )),
         ];
         successResponse(
@@ -3684,7 +3696,7 @@ export function createApiExtension(
             ...(hints ? { hints } : {}),
             ...(summaryResponse ? { summary: summaryResponse } : {}),
             ...(writeMdAdvisories.length > 0 ? { warnings: writeMdAdvisories } : {}),
-            brokenLinks,
+            ...linkAdvisory,
           },
           { handler: 'agent-write-md' },
         );
@@ -3721,6 +3733,7 @@ export function createApiExtension(
     AgentWriteBatchRequestSchema,
     async (_req, res, body) => {
       try {
+        const linkPolicy = getLinkAdvisoryPolicy();
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
@@ -3731,12 +3744,11 @@ export function createApiExtension(
           docName: string;
           error: BatchEntryError;
         }
-        interface BatchWrittenResult {
+        interface BatchWrittenResult extends WriteLinkAdvisoryProjection {
           status: 'written';
           docName: string;
           summary?: SummaryResponse;
           warnings?: AdvisoryWarning[];
-          brokenLinks: ReturnType<typeof computeWriteAdvisoryLinks>;
         }
         type BatchResult = BatchWrittenResult | BatchErrorResult;
 
@@ -3977,19 +3989,22 @@ export function createApiExtension(
             }
             const writtenSource = p.session.dc.document.getText('source').toString();
             registerWrittenDocInFileIndex(p.docName, writtenSource);
-            const brokenLinks = computeWriteAdvisoryLinks(
-              writtenSource,
-              p.docName,
-              admittedForLinks,
-              linkedFileExists,
-              linkedFolderExists,
-            );
             results[p.index] = {
               status: 'written',
               docName: p.docName,
               ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
               ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
-              brokenLinks,
+              ...projectWriteAdvisoryLinks(
+                computeWriteAdvisoryLinks(
+                  writtenSource,
+                  p.docName,
+                  admittedForLinks,
+                  linkedFileExists,
+                  linkedFolderExists,
+                ),
+                p.docName,
+                linkPolicy.suppressLogLinkAdvisories,
+              ),
             };
             lastWrittenDoc = p.docName;
           }
@@ -4044,6 +4059,7 @@ export function createApiExtension(
     FrontmatterPatchRequestSchema,
     async (_req, res, body) => {
       try {
+        const linkPolicy = getLinkAdvisoryPolicy();
         const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'frontmatter-patch');
         if (effectiveDocName === null) return;
         const resolvedDocName = resolveAlias(effectiveDocName);
@@ -4264,11 +4280,15 @@ export function createApiExtension(
 
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          session.dc.document.getText('source').toString(),
+        const linkAdvisory = projectWriteAdvisoryLinks(
+          computeWriteAdvisoryLinks(
+            session.dc.document.getText('source').toString(),
+            resolvedDocName,
+            admittedForLinks,
+            createLinkedFileExists(),
+          ),
           resolvedDocName,
-          admittedForLinks,
-          createLinkedFileExists(),
+          linkPolicy.suppressLogLinkAdvisories,
         );
 
         successResponse(
@@ -4282,7 +4302,7 @@ export function createApiExtension(
             appliedKeys,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
             ...(fmWarning ? { warnings: [fmWarning] } : {}),
-            brokenLinks,
+            ...linkAdvisory,
           },
           { handler: 'frontmatter-patch' },
         );
@@ -4311,6 +4331,7 @@ export function createApiExtension(
     AgentPatchRequestSchema,
     async (_req, res, body) => {
       try {
+        const linkPolicy = getLinkAdvisoryPolicy();
         const { find, replace, offset } = body;
         const effectivePatchDocName = requireNonEmptyDocName(body.docName, res, 'agent-patch');
         if (effectivePatchDocName === null) return;
@@ -4585,11 +4606,15 @@ export function createApiExtension(
 
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(docName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          patchedSource,
+        const linkAdvisory = projectWriteAdvisoryLinks(
+          computeWriteAdvisoryLinks(
+            patchedSource,
+            docName,
+            admittedForLinks,
+            createLinkedFileExists(),
+          ),
           docName,
-          admittedForLinks,
-          createLinkedFileExists(),
+          linkPolicy.suppressLogLinkAdvisories,
         );
 
         const patchWarning = buildReconcileWarning(patchReconcile);
@@ -4602,6 +4627,7 @@ export function createApiExtension(
           ...(await computeLintViolations(
             session.dc.document.getText('source').toString(),
             docName,
+            linkPolicy,
           )),
         ];
         successResponse(
@@ -4614,7 +4640,7 @@ export function createApiExtension(
             systemSubscriberCount,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
             ...(patchAdvisories.length > 0 ? { warnings: patchAdvisories } : {}),
-            brokenLinks,
+            ...linkAdvisory,
           },
           { handler: 'agent-patch' },
         );
@@ -6349,15 +6375,20 @@ export function createApiExtension(
     signalChannel?.('lint-config');
   }
 
-  const readAuditGeneration = (): string =>
-    `${lintConfigEpoch} ${durabilityState.getActiveBranch()} ${
-      derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0
-    }`;
+  const readAuditGeneration = (): string => {
+    return composeAuditGeneration({
+      lintConfigEpoch,
+      projectConfigEpoch: getProjectConfigEpoch(),
+      activeBranch: durabilityState.getActiveBranch(),
+      localTargetGeneration: derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0,
+    });
+  };
 
   const LINT_VIOLATION_CAP = 10;
   async function computeLintViolations(
     source: string,
     docName: string,
+    linkPolicy: LinkAdvisoryPolicy,
   ): Promise<LintViolationWarning[]> {
     const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
     try {
@@ -6369,15 +6400,14 @@ export function createApiExtension(
       const lintFindings = await lintDocument(source, effective, docName);
 
       let linkFindings: ValidationDiagnostic[] = [];
-      const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
-      if (derivedDocumentIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+      if (derivedDocumentIndex && linkPolicy.links !== 'off' && !isLinkIndexExcludedDoc(docName)) {
         await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
         const linksValidator = createProjectValidators({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig: base,
           derivedDocumentIndex,
-          linksValidation: linksSetting,
+          linkPolicy,
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
         }).find((validator) => validator.id === 'links');
@@ -6917,7 +6947,7 @@ export function createApiExtension(
     isValidRelativeContentPath,
     streamShowAllEntries,
     getLinterBaseConfig,
-    getLinksValidationSetting,
+    getLinkAdvisoryPolicy,
     derivedDocumentIndex,
     collectAdmittedDocNames,
     unmatchedGlobProblems,

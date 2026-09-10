@@ -1,5 +1,6 @@
 import {
   DEFAULT_LINKS_VALIDATION,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   humanFormat,
   type LinksValidationSetting,
 } from '@inkeep/open-knowledge-core';
@@ -24,8 +25,14 @@ export function ContentRulesSection() {
   const linksSetting: LinksValidationSetting =
     projectConfig?.validation?.links ?? DEFAULT_LINKS_VALIDATION;
   const indicatorsOn = projectConfig?.validation?.fileTreeIndicators !== false;
+  const suppressLogLinksOn =
+    projectConfig?.validation?.suppressLogLinkAdvisories ?? DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES;
 
-  function write(patch: { links?: LinksValidationSetting; fileTreeIndicators?: boolean }): void {
+  function write(patch: {
+    links?: LinksValidationSetting;
+    fileTreeIndicators?: boolean;
+    suppressLogLinkAdvisories?: boolean;
+  }): void {
     if (projectBinding === null) {
       toast.error(t`Content rules not yet loaded — try again in a moment`);
       return;
@@ -93,6 +100,33 @@ export function ContentRulesSection() {
               </SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-3 py-3">
+          <div className="min-w-0">
+            <Label htmlFor="settings-content-rules-log-links" className="text-sm font-medium">
+              <Trans>Ignore broken links in log.md</Trans>
+            </Label>
+            <p
+              id="settings-content-rules-log-links-description"
+              className="text-1sm text-muted-foreground"
+            >
+              <Trans>
+                Leave the broken links written inside a log.md or log.mdx at any folder depth out of
+                Problems, file explorer indicators, editor diagnostics, audits, and agent write
+                advisories. What counts is the file a link is written in, not the file it points at,
+                and LOG.md is an ordinary document. The Links panel and the editor still show them.
+              </Trans>
+            </p>
+          </div>
+          <Switch
+            id="settings-content-rules-log-links"
+            aria-describedby="settings-content-rules-log-links-description"
+            checked={suppressLogLinksOn}
+            disabled={!bindingReady}
+            onCheckedChange={(next) => write({ suppressLogLinkAdvisories: next })}
+            data-testid="settings-content-rules-log-links"
+          />
         </div>
 
         <div className="flex items-center justify-between gap-3 px-3 py-3">

@@ -17,11 +17,13 @@ This page covers what's the same whatever linter runs; each linter's page covers
 - **The Problems panel** — a tab in the document panel on the right, with a live count badge and two scopes:
   - **This doc** — live diagnostics for the open document, in both WYSIWYG and source mode. Click a problem to jump to it: source mode lands on the exact line and column, WYSIWYG scrolls to the block it falls in.
   - **Project** — an on-demand audit of every in-scope document. It runs when you first open the scope and on the refresh button — never in the background. Results group per file with error/warning totals; configuration problems (a malformed config file, a broken `extends`) surface at the top. Clicking a problem opens the offending doc at that position.
-- **The file sidebar** — a file with problems has its row tinted (red for errors, amber for warnings) and carries a count badge. The badge is a control: click it, or tab to it and press Enter or Space, and the file opens with the Problems panel showing that file's problems in **This doc** scope. Keyboard activation moves focus into the panel; clicking preserves pointer focus. Set `validation.fileTreeIndicators: false` in the project's `config.yml` to turn the tint and the badge off (see the [configuration reference](/docs/reference/configuration)).
+- **The file sidebar** — a file with problems has its row tinted (red for errors, amber for warnings) and carries a count badge. The badge is a control: click it, or tab to it and press Enter or Space, and the file opens with the Problems panel showing that file's problems in **This doc** scope. Keyboard activation moves focus into the panel; clicking preserves pointer focus. Set `validation.fileTreeIndicators: false` in the project's `config.yml` to turn the tint and the badge off (see the [configuration reference](/docs/reference/configuration)). A missing tint has one other cause: a `log.md` whose broken links the reserved-log policy below leaves out.
 
 Skill documents are excluded from link checking: files in a skills folder (`.claude/skills`, `.agents/skills`, `.github/skills`, and the like) and the skill documents you open from the Skills panel. A skill's links routinely name files it creates only when it runs, so they report as broken by construction. What goes quiet is the Problems panel in both scopes, and with it the squiggles and gutter marks the panel drives. What stays is the link styling the editor resolves on its own as you type, so a wiki link to a file the skill has not created yet still renders as unresolved, and the Links panel still lists it under Missing. In short: the skill's Problems tab reads clean while the link itself may still look broken in the text. `links({ kind: "dead" })` and `GET /api/dead-links` list them too.
 
 The exclusion is scoped to the skills folder itself, not to the dot-directory containing it, so ordinary documents that happen to live under a dot directory (`.github/CI_RUNBOOK.md`, a `.changeset` entry) keep their link findings. So do folder templates under `.ok/templates`, which you author like any document. A skills folder you added yourself at a visible path, such as `team/skills`, is ordinary content and is still checked. Links from your other documents to a skill still validate normally.
+
+A reserved `log.md` or `log.mdx` is left out the same way, at any depth, with one difference: this one is a switch you own. It is **Ignore broken links in log.md** under **Settings ▸ This project ▸ Preferences ▸ Content rules**, on by default, and shared with the project as `validation.suppressLogLinkAdvisories`. What goes quiet is the Problems panel in both scopes, the sidebar tint and badge, the editor's lint diagnostics, `ok audit`, and the advisory an agent gets back from a write or edit. What stays is the raw link state: the Links panel, the editor's unresolved-link styling, `links({ kind: "dead" })`, and `GET /api/dead-links` all still list those links. In both scopes the Problems panel carries a policy note with the number of findings left out, so an empty queue is not read as a clean log. The stem has to be lowercase, so `LOG.md` and `catalog.md` keep their findings, but the extension's case is not what decides, so `log.MD` is a reserved log too, and it is the file the link is written in that counts, not the file it points at. The [`ok audit` section](#what-it-returns) covers what the CLI and MCP audits disclose.
 
 In both scopes, each row tags the validator that produced it in uppercase — for example `MARKDOWNLINT`, `FRONTMATTER`, or `LINKS` — next to the rule code, and a finding that repeats collapses into one row with an instance count you can expand to reach the individual lines.
 
@@ -168,7 +170,9 @@ Unlike `ok lint`, `ok audit` needs the project's server running (`ok start` or O
 
 The audit's top-level `ran` array reports the selected source families: enabled document linters plus `links` unless link validation is `off`. OKF's document and project-tree checks share the public `okf` family, so `ran` reports selection, not the number of internal validators or a pass verdict.
 
-Broken links are warnings by default. The project's `validation.links` setting — **Settings ▸ This project ▸ Content rules** — decides both whether they appear and at what severity: `warning` (the default), `error` to gate CI on them with `--errors-only`, or `off` to drop them from the plane entirely. Content-rule findings keep their own severities, so `--errors-only` covers both planes at once. Skill documents are the one exception: their link findings are always excluded, whatever this setting says, because a skill's links name files it creates only at runtime.
+Broken links are warnings by default. The project's `validation.links` setting — **Settings ▸ This project ▸ Preferences ▸ Content rules** — decides both whether they appear and at what severity: `warning` (the default), `error` to gate CI on them with `--errors-only`, or `off` to drop them from the plane entirely. Content-rule findings keep their own severities, so `--errors-only` covers both planes at once. Skill documents are the one exception: their link findings are always excluded, whatever this setting says, because a skill's links name files it creates only at runtime.
+
+A reserved log is the other exclusion, and unlike skills it is a switch you own. **Ignore broken links in log.md** (`validation.suppressLogLinkAdvisories` in the project's `.ok/config.yml` — see the [configuration reference](/docs/reference/configuration)), next to the severity control and on by default, is described under [Where problems show up](#where-problems-show-up), along with the matching rules. `ok audit` and MCP `audit` both disclose the withheld count and warn that the result is filtered, each in the wording its audience needs. The terminal names both remedies, `validation.suppressLogLinkAdvisories: false` in `.ok/config.yml` and the **Settings ▸ This project ▸ Preferences ▸ Content rules** toggle. An agent is told the setting is not its to change, and to point you at that same Settings path if you ask to see the withheld findings. A log is an append-only history: its entries reference the past and pages nobody has written yet, so those links are expected rather than repair work, and an agent told to fix broken links would otherwise rewrite the history to clear them. Turn the switch off and every finding comes straight back, with no restart.
 
 ## AI agents
 
@@ -207,7 +211,7 @@ When the fix landed but the post-write re-lint could not report, the response ca
 
 ### The `audit` tool
 
-The agent-side `ok audit` — content-rule problems and broken links in one read-only call, grouped by file, same 10 × 10 + 10-warning cap with `omittedWarningCount` when warnings are dropped, no fix shape. Its text and structured results both report `ran`. If a selected validator degrades, its family remains in `ran` and the `warnings` channel explains why; a partial degradation may still have contributed findings.
+The agent-side `ok audit` — content-rule problems and broken links in one read-only call, grouped by file, same 10 × 10 + 10-warning cap with `omittedWarningCount` when warnings are dropped, no fix shape. Its text and structured results both report `ran`. If the reserved-log policy withholds one or more link findings, `brokenLinkSuppression: { reason: "reserved-log-policy", count: N }` makes that filtered result explicit without exposing paths or hrefs; the text result says the same. If a selected validator degrades, its family remains in `ran` and the `warnings` channel explains why; a partial degradation may still have contributed findings.
 
 ### Write responses
 
@@ -232,9 +236,20 @@ Every write response carries validation findings for the document it touched, on
 }
 ```
 
-**`warnings`** carries up to 10 findings across the whole validation plane — lint violations and broken links alike, honoring the project's `validation.links` setting. Positions are 1-based (`line`/`column`), ready to echo back to a human, and a `links` finding adds `linkTarget`. The field is present only when the write produced findings.
+**`warnings`** carries up to 10 findings across the whole validation plane — lint violations and broken links alike, honoring the project's `validation.links` setting and, for a reserved log, the **Ignore broken links in log.md** switch. Positions are 1-based (`line`/`column`), ready to echo back to a human, and a `links` finding adds `linkTarget`. The field is present only when the write produced findings.
 
-**`brokenLinks`** is the dedicated link channel, and unlike `warnings` it is **always present** — an empty array is the positive "every outbound link resolves" confirmation, which saves a separate `links({ kind: "dead" })` round-trip. Each entry names the href exactly as authored, so an agent can grep for it. `reason` is `no-such-doc` (resolved to a docName that doesn't exist), `no-such-file` (a linked asset or source file missing from disk), or `unresolvable` (an empty href, or a relative path escaping the content root); `resolvedTo` is `null` for `unresolvable`.
+**`brokenLinks`** is the dedicated link channel, and unlike `warnings` it is **always present**. An empty array is the positive "every outbound link resolves" confirmation, which saves a separate `links({ kind: "dead" })` round-trip, as long as no `brokenLinkSuppression` sits beside it. Each entry names the href exactly as authored, so an agent can grep for it. `reason` is `no-such-doc` (resolved to a docName that doesn't exist), `no-such-file` (a linked asset or source file missing from disk), or `unresolvable` (an empty href, or a relative path escaping the content root); `resolvedTo` is `null` for `unresolvable`.
+
+**`brokenLinkSuppression`** is present only when the project's reserved-log policy kept findings out of `brokenLinks`, which is what makes an empty array conditional rather than a clean bill of health:
+
+```json
+"document": {
+  "brokenLinks": [],
+  "brokenLinkSuppression": { "reason": "reserved-log-policy", "count": 2 }
+}
+```
+
+`reason` names the policy and `count` is how many advisory entries it withheld. No href or path comes back, because none of them is repair work: the write landed in a reserved log, whose entries are meant to keep pointing at what has been moved or has not been written yet. Read `links({ kind: "dead" })` when you want to audit that raw state deliberately, and do not rewrite a log's history to clear it.
 
 ## See also
 

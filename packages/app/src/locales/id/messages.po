@@ -261,6 +261,11 @@ msgstr "{0, plural, other {Tidak ada masalah di # dokumen.}}"
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, other {Plugin}}"
 
+#. placeholder {0}: suppression.count
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {Project policy hides # broken-link finding from this audit.} other {Project policy hides # broken-link findings from this audit.}}"
+msgstr "{0, plural, other {Kebijakan proyek menyembunyikan # temuan tautan rusak dari audit ini.}}"
+
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -6989,6 +6994,10 @@ msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, nyalakan server di Se
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "Jika sebuah pembaruan datang untuk hal yang sedang Anda sunting, Anda memilih versi mana yang disimpan, seperti konflik penggabungan."
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Ignore broken links in log.md"
+msgstr "Abaikan tautan rusak di log.md"
+
 #: src/components/ConsentDialogBody.tsx
 #: src/components/settings/OkignoreSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7683,6 +7692,10 @@ msgstr "Pelajari lebih lanjut tentang {title}"
 #: src/components/SharingModeField.tsx
 msgid "Learn more about config sharing"
 msgstr "Pelajari lebih lanjut tentang berbagi konfigurasi"
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
+msgstr "Kecualikan tautan rusak yang ditulis di dalam log.md atau log.mdx pada kedalaman folder mana pun dari Masalah, indikator penjelajah file, diagnostik editor, audit, dan saran penulisan agen. Yang menentukan adalah file tempat tautan ditulis, bukan file yang dituju, dan LOG.md adalah dokumen biasa. Panel Tautan dan editor tetap menampilkannya."
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -8937,6 +8950,10 @@ msgstr "Tidak ada bahasa yang cocok."
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "Belum ada tautan. Tambahkan tautan wiki atau tautan markdown untuk membangun sebuah graf."
+
+#: src/components/ProblemsPanel.tsx
+msgid "No lint plugins are enabled, so only links are checked."
+msgstr "Tidak ada plugin lint yang aktif, jadi hanya tautan yang diperiksa."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "No location selected. Use Browse to choose a folder."
@@ -13914,6 +13931,10 @@ msgstr "Tidak ada folder proyek untuk jendela ini, jadi terminal tidak bisa dimu
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "These currently read from another folder. After linking, they read from {keep} instead."
 msgstr "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari {keep}."
+
+#: src/components/ProblemsPanel.tsx
+msgid "These links remain visible in Links and are not part of the repair queue."
+msgstr "Tautan ini tetap terlihat di Tautan dan bukan bagian dari antrean perbaikan."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

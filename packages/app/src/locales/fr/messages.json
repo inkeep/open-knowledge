@@ -4038,6 +4038,7 @@
     "eVPynQ": ["Ouvrez <0><1>", ["verificationUri"], "</1><2/></0> et saisissez ce code :"],
     "eXPP7Z": ["Réflexion…"],
     "e_ToF5": ["Se connecter avec ", ["0"]],
+    "ea7AYn": ["Ignorer les liens cassés dans log.md"],
     "eaHUxx": ["Barre d'outils Fichiers"],
     "eazHgv": [
       "Git ne peut pas suivre ce dossier — il est vide ou ne contient que des fichiers ignorés. Le lien ne fonctionnera pas tant que vous n'aurez pas ajouté un document suivi."
@@ -4271,6 +4272,25 @@
     ],
     "ggs9f8": ["Rechercher des fichiers, des dossiers ou des commandes"],
     "gh27t1": ["Aperçus de liens"],
+    "gi9c0-": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["La politique du projet masque ", "#", " résultat de lien rompu de cet audit."],
+          "many": [
+            "La politique du projet masque ",
+            "#",
+            " résultats de liens rompus de cet audit."
+          ],
+          "other": [
+            "La politique du projet masque ",
+            "#",
+            " résultats de liens rompus de cet audit."
+          ]
+        }
+      ]
+    ],
     "gijbne": ["Échec du renommage du chemin"],
     "gkOxmF": ["Déplacement"],
     "gk_-qj": ["Impossible de renommer le modèle : ", ["0"]],
@@ -4783,6 +4803,9 @@
       ") qui ne touchera pas au reste de votre système."
     ],
     "l87Deg": ["Choisissez ce qu'ouvre un nouvel onglet"],
+    "l91IVc": [
+      "Ces liens restent visibles dans Liens et ne font pas partie de la file de réparation."
+    ],
     "l9s3IX": [["agentName"], " n’a pas pu démarrer de conversation."],
     "lAiyU_": ["Seul le document actuel utilise <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Connexions des agents"],
@@ -4887,6 +4910,7 @@
     "mHo0kp": [
       "La demande d'activation des outils Open Knowledge a expiré. Ce fil fonctionne sans eux."
     ],
+    "mI1KPS": ["Aucun plugin de vérification n'est activé, donc seuls les liens sont contrôlés."],
     "mPoOmg": ["installez d'abord une compétence ici"],
     "mPy9lS": [
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
@@ -5044,6 +5068,9 @@
     "njBeMm": ["Les deux"],
     "njU86j": ["La propriété « ", ["trimmed"], " » existe déjà"],
     "nmwqWS": ["Sans réponse"],
+    "nnhrHd": [
+      "Excluez des Problèmes, des indicateurs de l’explorateur de fichiers, des diagnostics de l’éditeur, des audits et des avis d’écriture des agents les liens rompus écrits dans un fichier log.md ou log.mdx, quelle que soit la profondeur du dossier. C’est le fichier dans lequel le lien est écrit qui compte, et non celui qu’il cible, et LOG.md reste un document ordinaire. Le panneau Liens et l’éditeur continuent de les afficher."
+    ],
     "noH1JX": [
       "Impossible de joindre le serveur de collaboration — ",
       ["errorDetail"],

@@ -25,10 +25,10 @@ import {
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
   isKnownConfigError,
-  type LinksValidationSetting,
   type LinterConfig,
   type MarkdownManager,
   modeFromCommittedDefault,
@@ -190,6 +190,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import type { LinkAdvisoryPolicy } from './link-advisory-policy.ts';
 import { ensureOkfSchemaFiles } from './lint/write-okf-schemas.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { localTargetInventoryFromWatcher } from './local-target-inventory.ts';
@@ -590,14 +591,18 @@ export function createServer(options: ServerOptions): ServerInstance {
     return base;
   }
 
-  function readLinksValidationSetting(): LinksValidationSetting {
+  function readLinkAdvisoryPolicy(): LinkAdvisoryPolicy {
     const project = readConfigSafely({
       absPath: resolveConfigPath('project', projectDir),
       sideline: false,
       warn: (message) =>
         log.warn({ message }, '[config] could not read project config for link validation'),
     });
-    return project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION;
+    return {
+      links: project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION,
+      suppressLogLinkAdvisories:
+        project.value.validation?.suppressLogLinkAdvisories ?? DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+    };
   }
 
   function readSemanticSearchConfig(): ResolvedSemanticConfig {
@@ -668,6 +673,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   let lastAppliedAttachmentFolderPath: string | undefined;
+  let projectConfigEpoch = 0;
 
   function applyPersistedConfigToConsumers(
     configDocName: string,
@@ -697,6 +703,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       maxBatchSize: semCfg.maxBatchSize,
     });
     if (configDocName === CONFIG_DOC_NAME_PROJECT) {
+      projectConfigEpoch += 1;
       try {
         const nextAttachmentFolderPath = readProjectAttachmentFolderPath({ requireValid: true });
         contentFilter?.setAttachmentFolderPath(nextAttachmentFolderPath);
@@ -2068,7 +2075,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
       getLinterBaseConfig: () => readLinterBaseConfig(),
-      getLinksValidationSetting: () => readLinksValidationSetting(),
+      getLinkAdvisoryPolicy: readLinkAdvisoryPolicy,
+      getProjectConfigEpoch: () => projectConfigEpoch,
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       getConfigDiagnostics: readConfigDiagnostics,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),

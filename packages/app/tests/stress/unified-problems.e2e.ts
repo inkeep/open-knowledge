@@ -7,6 +7,7 @@ import {
   filterCriticalErrors,
   type LogEntry,
   openProjectPluginsPanel,
+  openSettingsSection,
   setPluginEnabled,
   test,
   waitForActiveProviderSynced as waitForProvider,
@@ -404,5 +405,106 @@ test.describe('unified Problems — file-tree indicators', () => {
         { timeout: 30_000 },
       )
       .toBe('warning');
+  });
+});
+
+async function openProjectProblems(page: Page) {
+  await page.locator('#tab-problems').click();
+  const scope = page.getByTestId('panel-scope-project');
+  if ((await scope.getAttribute('data-state')) !== 'on') await scope.click();
+  await expect(page.getByTestId('problems-project-scope')).toBeVisible({ timeout: 5_000 });
+}
+
+function auditGroupsFor(page: Page, filePath: string) {
+  return page.getByText(filePath, { exact: true });
+}
+
+async function setContentRules(
+  page: Page,
+  docName: string,
+  rules: { linksSeverity?: string; ignoreLogLinks?: boolean },
+) {
+  await openSettingsSection(page, 'project-preferences', 'settings-project-preferences');
+
+  if (rules.linksSeverity !== undefined) {
+    const severity = page.getByTestId('settings-content-rules-links');
+    await expect(severity).toBeEnabled({ timeout: 15_000 });
+    await severity.click();
+    await page.getByRole('option', { name: rules.linksSeverity, exact: true }).click();
+    await expect(severity).toContainText(rules.linksSeverity);
+  }
+
+  if (rules.ignoreLogLinks !== undefined) {
+    const target = String(rules.ignoreLogLinks);
+    const toggle = page.getByTestId('settings-content-rules-log-links');
+    await expect(toggle).toBeEnabled({ timeout: 15_000 });
+    if ((await toggle.getAttribute('aria-checked')) !== target) await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-checked', target);
+  }
+
+  await page.goto(`/#/${docName}`);
+  await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+}
+
+test.describe('unified Problems — reserved-log advisory policy', () => {
+  test('the reserved-log policy clears only exact lowercase log findings, live, and never hides raw link state', async ({
+    page,
+    api,
+  }) => {
+    test.setTimeout(180_000);
+
+    const suffix = randomUUID().slice(0, 8);
+    const folder = `uv-log-${suffix}`;
+    const reservedDoc = `${folder}/history/log`;
+    const uppercaseDoc = `${folder}/shouting/LOG`;
+    const ordinaryDoc = `${folder}/notes`;
+    const ghostDoc = `ghost-${suffix}`;
+    const body = `# History\n\nEarlier this moved to [the retired entry](./${ghostDoc}.md).\n`;
+
+    for (const docName of [reservedDoc, uppercaseDoc, ordinaryDoc]) {
+      await api.createPage(`${docName}.md`);
+      await api.replaceDoc(docName, body);
+    }
+
+    await page.goto(`/#/${reservedDoc}`);
+    await waitForProvider(page);
+    await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+
+    const unresolvedMarks = page.locator(
+      '.ProseMirror:not(.composer-prosemirror) [data-resolution-state="unresolved"]',
+    );
+    const missingPageRow = page.getByRole('button', {
+      name: new RegExp(`Missing page: .*${ghostDoc}\\. Click to create\\.`),
+    });
+
+    await expect(unresolvedMarks).toHaveCount(1, { timeout: 15_000 });
+    await page.locator('#tab-links').click();
+    await expect(missingPageRow).toBeVisible({ timeout: 15_000 });
+
+    await openProjectProblems(page);
+    await expect(auditGroupsFor(page, `${ordinaryDoc}.md`)).toBeVisible({ timeout: 30_000 });
+    await expect(auditGroupsFor(page, `${uppercaseDoc}.md`)).toBeVisible();
+    await expect(auditGroupsFor(page, `${reservedDoc}.md`)).toHaveCount(0);
+
+    await setContentRules(page, reservedDoc, { linksSeverity: 'Warning', ignoreLogLinks: false });
+
+    await openProjectProblems(page);
+    await expect
+      .poll(() => auditGroupsFor(page, `${reservedDoc}.md`).count(), { timeout: 30_000 })
+      .toBe(1);
+    await expect(auditGroupsFor(page, `${ordinaryDoc}.md`)).toBeVisible();
+    await expect(auditGroupsFor(page, `${uppercaseDoc}.md`)).toBeVisible();
+
+    await page.locator('#tab-links').click();
+    await expect(missingPageRow).toBeVisible();
+    await expect(unresolvedMarks).toHaveCount(1);
+
+    await setContentRules(page, reservedDoc, { ignoreLogLinks: true });
+    await openProjectProblems(page);
+    await expect
+      .poll(() => auditGroupsFor(page, `${reservedDoc}.md`).count(), { timeout: 30_000 })
+      .toBe(0);
+    await expect(auditGroupsFor(page, `${ordinaryDoc}.md`)).toBeVisible();
+    await expect(auditGroupsFor(page, `${uppercaseDoc}.md`)).toBeVisible();
   });
 });

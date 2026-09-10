@@ -77,6 +77,8 @@ Log: `ingest` runs (new sources), `research` / `consolidate` runs (provisional o
 
 **Reference docs as markdown links, not bare paths** — `[path/to/doc](./path/to/doc.md)`, so the entry shows up in `links({ kind: "backlinks" })` for those docs. A bare path string does not register in the graph.
 
+Because this append-only `log.md` is a reserved log, its broken links may be withheld from `audit`. When a clean result carries `brokenLinkSuppression`, it is filtered rather than proof that every raw link resolves; do not rewrite log history to clear those links.
+
 Entry shape:
 
 ```markdown

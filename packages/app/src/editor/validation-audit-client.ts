@@ -1,4 +1,5 @@
 import {
+  type BrokenLinkSuppression,
   type ValidationAuditCountsResponse,
   ValidationAuditCountsResponseSchema,
   type ValidationAuditResponse,
@@ -8,6 +9,7 @@ import {
 import { useEffect, useState } from 'react';
 import type { z } from 'zod';
 import { invalidatesLocalTargetAudit, subscribeToDocumentsChanged } from '@/lib/documents-events';
+import { subscribeToLintConfigChanged } from './lint-config-client';
 
 type WireDiagnostic = ValidationDocResult['diagnostics'][number];
 
@@ -71,11 +73,14 @@ async function fetchAudit<T>(
   }
 }
 
-export type DocLinkFindingsState =
-  | { status: 'idle'; findings: readonly WireDiagnostic[] }
-  | { status: 'loading'; findings: readonly WireDiagnostic[] }
-  | { status: 'loaded'; findings: readonly WireDiagnostic[] }
-  | { status: 'failed'; findings: readonly WireDiagnostic[] };
+interface DocLinkFindingsSnapshot {
+  findings: readonly WireDiagnostic[];
+  brokenLinkSuppression?: BrokenLinkSuppression;
+}
+
+export type DocLinkFindingsState = DocLinkFindingsSnapshot & {
+  status: 'idle' | 'loading' | 'loaded' | 'failed';
+};
 
 export function subscribeToDocLinkFindings(
   docName: string,
@@ -85,7 +90,13 @@ export function subscribeToDocLinkFindings(
   let inFlight = false;
   let dirty = false;
   let findings: readonly WireDiagnostic[] = [];
+  let brokenLinkSuppression: BrokenLinkSuppression | undefined;
   let controller: AbortController | null = null;
+
+  const snapshot = (): DocLinkFindingsSnapshot => ({
+    findings,
+    ...(brokenLinkSuppression === undefined ? {} : { brokenLinkSuppression }),
+  });
 
   const load = (): void => {
     if (inFlight) {
@@ -94,12 +105,12 @@ export function subscribeToDocLinkFindings(
     }
     inFlight = true;
     controller = new AbortController();
-    onState({ status: 'loading', findings });
+    onState({ status: 'loading', ...snapshot() });
     void runValidationAudit({ kind: 'doc', docName }, controller.signal)
       .then((result) => {
         if (disposed || controller?.signal.aborted === true) return;
         if (result === null) {
-          onState({ status: 'failed', findings });
+          onState({ status: 'failed', ...snapshot() });
           return;
         }
         if (result === AUDIT_SUPERSEDED) {
@@ -110,7 +121,8 @@ export function subscribeToDocLinkFindings(
         findings = result.files
           .flatMap((file) => file.diagnostics)
           .filter((diagnostic) => diagnostic.source === 'links');
-        onState({ status: 'loaded', findings });
+        brokenLinkSuppression = result.brokenLinkSuppression;
+        onState({ status: 'loaded', ...snapshot() });
       })
       .finally(() => {
         if (disposed) return;
@@ -124,13 +136,15 @@ export function subscribeToDocLinkFindings(
   };
 
   load();
-  const unsubscribe = subscribeToDocumentsChanged((channels) => {
+  const unsubscribeDocuments = subscribeToDocumentsChanged((channels) => {
     if (channels.includes('backlinks') || invalidatesLocalTargetAudit(channels)) load();
   });
+  const unsubscribeLintConfig = subscribeToLintConfigChanged(load);
   return () => {
     disposed = true;
     controller?.abort();
-    unsubscribe();
+    unsubscribeDocuments();
+    unsubscribeLintConfig();
   };
 }
 

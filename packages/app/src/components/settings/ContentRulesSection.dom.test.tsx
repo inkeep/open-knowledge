@@ -58,6 +58,36 @@ describe('ContentRulesSection', () => {
     );
   });
 
+  test('the reserved-log advisory switch is on by default', () => {
+    render(<ContentRulesSection />);
+    const toggle = screen.getByRole('switch', { name: 'Ignore broken links in log.md' });
+    expect(toggle.getAttribute('data-state')).toBe('checked');
+  });
+
+  test('a persisted off value renders the reserved-log switch unchecked', () => {
+    projectConfigValue = { validation: { suppressLogLinkAdvisories: false } };
+    render(<ContentRulesSection />);
+    expect(screen.getByTestId('settings-content-rules-log-links').getAttribute('data-state')).toBe(
+      'unchecked',
+    );
+  });
+
+  test('turning the reserved-log switch off writes a validation patch', () => {
+    render(<ContentRulesSection />);
+    fireEvent.click(screen.getByTestId('settings-content-rules-log-links'));
+    expect(patches).toEqual([{ validation: { suppressLogLinkAdvisories: false } }]);
+  });
+
+  test('the reserved-log description names both reserved extensions and the raw views', () => {
+    render(<ContentRulesSection />);
+    const description = describedTextOf('settings-content-rules-log-links');
+    expect(description).toContain('log.md');
+    expect(description).toContain('log.mdx');
+    expect(description).toContain('Links panel');
+    expect(description).toContain('file explorer indicators');
+    expect(description).toContain('at any folder depth');
+  });
+
   test('persisted values render: links=error, indicators off', () => {
     projectConfigValue = { validation: { links: 'error', fileTreeIndicators: false } };
     render(<ContentRulesSection />);
@@ -74,6 +104,7 @@ describe('ContentRulesSection', () => {
         'settings-content-rules-links',
         'How missing project-local documents, files, and images are reported',
       ],
+      ['settings-content-rules-log-links', 'not the file it points at'],
       ['settings-content-rules-indicators', 'Tint and badge files'],
     ] as const) {
       expect(describedTextOf(testId)).toContain(expected);
@@ -93,6 +124,38 @@ describe('ContentRulesSection', () => {
     expect(patches).toEqual([{ validation: { links: 'error' } }]);
     await waitFor(() => expect(screen.queryByRole('option')).toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  test('the reserved-log switch is not operable while the project config is still loading', () => {
+    projectSyncedValue = false;
+    render(<ContentRulesSection />);
+    const toggle = screen.getByTestId('settings-content-rules-log-links');
+    expect(toggle.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(toggle);
+    expect(patches).toEqual([]);
+  });
+
+  test('a failed reserved-log patch keeps the last confirmed value on screen', () => {
+    patchResult = { ok: false, error: 'nope' };
+    render(<ContentRulesSection />);
+    fireEvent.click(screen.getByTestId('settings-content-rules-log-links'));
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('settings-content-rules-log-links').getAttribute('data-state')).toBe(
+      'checked',
+    );
+  });
+
+  test('a project-config change made elsewhere moves the reserved-log switch', () => {
+    const { rerender } = render(<ContentRulesSection />);
+    expect(screen.getByTestId('settings-content-rules-log-links').getAttribute('data-state')).toBe(
+      'checked',
+    );
+    projectConfigValue = { validation: { suppressLogLinkAdvisories: false } };
+    rerender(<ContentRulesSection />);
+    expect(screen.getByTestId('settings-content-rules-log-links').getAttribute('data-state')).toBe(
+      'unchecked',
+    );
+    expect(patches).toEqual([]);
   });
 
   test('a failed patch surfaces an error toast', () => {

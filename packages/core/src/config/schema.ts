@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { DEFAULT_ATTACHMENT_FOLDER_PATH } from '../constants/upload.ts';
 import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
-import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
+import {
+  DEFAULT_LINKS_VALIDATION,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+  LINKS_VALIDATION_SETTINGS,
+} from '../markdown/lint/types.ts';
 import { BASE16_SLOT_ROLES, BASE16_SLOTS } from '../theme/base16.ts';
 import { THEME_ID_PATTERN, THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
 import {
@@ -990,8 +994,23 @@ export const ConfigSchema = z.looseObject({
             'Whether the file tree tints and badges files that have validation problems.',
         })
         .default(true),
+      suppressLogLinkAdvisories: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'project',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project',
+          description:
+            "Whether unresolved links in the reserved change-history documents (lowercase-stemmed log.md / log.mdx at any depth, where the extension's case does not matter and the stem's does) are omitted from broken-link advisories: the Problems panel, file-tree indicators, source diagnostics, audits, and agent write/edit results. Default true. Raw link views still show them, and LOG.md, Log.md, and every other stem spelling are ordinary documents.",
+        })
+        .default(DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES),
     })
-    .default({ links: DEFAULT_LINKS_VALIDATION, fileTreeIndicators: true }),
+    .default({
+      links: DEFAULT_LINKS_VALIDATION,
+      fileTreeIndicators: true,
+      suppressLogLinkAdvisories: DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+    }),
   linkPreviews: z
     .looseObject({
       enabled: z

@@ -239,6 +239,75 @@ describe('ProblemsPanel', () => {
     expect(screen.getByText('No problems found.')).toBeTruthy();
   });
 
+  test('doc scope reports reserved-log suppression without claiming the document is clean', () => {
+    render(
+      <ProblemsPanel
+        docName="log"
+        diagnostics={[]}
+        brokenLinkSuppression={{ reason: 'reserved-log-policy', count: 2 }}
+      />,
+    );
+
+    const note = screen.getByTestId('problems-broken-link-suppression');
+    expect(note.getAttribute('role')).toBe('note');
+    expect(note.getAttribute('aria-live')).toBe('polite');
+    expect(note.textContent).toContain('Project policy hides 2 broken-link findings');
+    expect(screen.queryByText('No problems found.')).toBeNull();
+  });
+
+  test.each(['loading', 'failed'] as const)(
+    'keeps the suppression note with the retained findings it qualifies mid-refresh (%s)',
+    (linkFindingsStatus) => {
+      render(
+        <ProblemsPanel
+          docName="log"
+          diagnostics={[diag({})]}
+          linkFindingsStatus={linkFindingsStatus}
+          brokenLinkSuppression={{ reason: 'reserved-log-policy', count: 2 }}
+        />,
+      );
+
+      expect(screen.getByText('Hard tabs')).toBeTruthy();
+      expect(screen.getByTestId('problems-broken-link-suppression').textContent).toContain(
+        'Project policy hides 2 broken-link findings',
+      );
+    },
+  );
+
+  test('qualifies the failed link banner when suppression retains the only findings', () => {
+    render(
+      <ProblemsPanel
+        docName="log"
+        diagnostics={[]}
+        linkFindingsStatus="failed"
+        brokenLinkSuppression={{ reason: 'reserved-log-policy', count: 2 }}
+      />,
+    );
+
+    expect(screen.getByTestId('problems-links-failed').textContent).toContain(
+      'Showing last known problems',
+    );
+  });
+
+  test('reserved-log suppression preserves the Enable plugins action without an all-clear', () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: false, frontmatter: false });
+    render(
+      <ProblemsPanel
+        docName="log"
+        diagnostics={[]}
+        brokenLinkSuppression={{ reason: 'reserved-log-policy', count: 2 }}
+      />,
+    );
+
+    expect(screen.getByTestId('problems-broken-link-suppression')).toBeTruthy();
+    expect(screen.getByTestId('problems-no-plugins').textContent).toBe(
+      'No lint plugins are enabled, so only links are checked.',
+    );
+    fireEvent.click(screen.getByTestId('problems-enable-plugins'));
+    expect(window.location.hash).toBe('#settings/plugins-manage');
+    expect(screen.getByTestId('problems-panel').textContent).not.toContain('No problems found');
+  });
+
   test('qualifies the empty state when Markdown checks do not apply', () => {
     render(<ProblemsPanel docName="glossary.csv" diagnostics={[]} />);
     expect(screen.getByTestId('problems-markdown-not-applicable').textContent).toBe(
@@ -308,7 +377,9 @@ describe('ProblemsPanel', () => {
     projectLintConfigData = lintConfigWith({ markdownlint: false, frontmatter: false });
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     expect(screen.queryByTestId('problems-active-plugins')).toBeNull();
-    expect(screen.getByTestId('problems-no-plugins')).toBeTruthy();
+    expect(screen.getByTestId('problems-no-plugins').textContent).toBe(
+      'No problems found — but no lint plugins are enabled, so only links are checked.',
+    );
     fireEvent.click(screen.getByTestId('problems-enable-plugins'));
     expect(window.location.hash).toBe('#settings/plugins-manage');
   });
@@ -994,6 +1065,23 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() =>
       expect(screen.getByText('Failed to parse .markdownlint.json: unexpected token')).toBeTruthy(),
     );
+  });
+
+  test('project audit shows a content-free note when reserved-log links are suppressed', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({
+        brokenLinkSuppression: { reason: 'reserved-log-policy', count: 2 },
+      });
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    const note = await screen.findByTestId('problems-broken-link-suppression');
+    expect(note.getAttribute('role')).toBe('note');
+    expect(note.textContent).toContain('Project policy hides 2 broken-link findings');
+    expect(note.textContent).toContain('remain visible in Links');
+    expect(note.textContent).toContain('not part of the repair queue');
+    expect(note.querySelector('a')).toBeNull();
+    expect(screen.queryByText(/No problems across/)).toBeNull();
   });
 
   test('clicking a project-scope diagnostic for another doc navigates by hash and banks the intent', async () => {

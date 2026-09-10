@@ -6,6 +6,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import {
   type Config,
+  formatAuditBrokenLinkSuppressionLine,
   RUNTIME_VERSION,
   readServerLock,
   resolveContentDir,
@@ -77,10 +78,11 @@ export async function runAudit(
     return 1;
   }
 
+  const serverBaseUrl = `http://127.0.0.1:${lock.port}`;
   const query = target === undefined ? '' : `?path=${encodeURIComponent(target)}`;
   let res: Response;
   try {
-    res = await fetch(`http://127.0.0.1:${lock.port}/api/audit${query}`, {
+    res = await fetch(`${serverBaseUrl}/api/audit${query}`, {
       headers: clientVersionHeaders({ kind: 'cli', runtimeVersion: RUNTIME_VERSION }),
     });
   } catch (e) {
@@ -111,7 +113,18 @@ export async function runAudit(
   if (opts.json === true) {
     io.out(JSON.stringify(result, null, 2));
   } else {
-    io.out(formatLintReport(toReportInput(result)));
+    const suppressionLine = result.brokenLinkSuppression
+      ? formatAuditBrokenLinkSuppressionLine(result.brokenLinkSuppression, {
+          surface: 'cli',
+          serverBaseUrl,
+        })
+      : undefined;
+    io.out(
+      [
+        formatLintReport(toReportInput(result)),
+        ...(suppressionLine === undefined ? [] : [suppressionLine]),
+      ].join('\n'),
+    );
   }
 
   const failed =

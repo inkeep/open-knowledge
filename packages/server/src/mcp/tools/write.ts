@@ -14,6 +14,10 @@ import {
   withFences,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import {
+  formatBrokenLinkSuppressionBrief,
+  formatBrokenLinkSuppressionLine,
+} from '../../broken-link-suppression.ts';
 import { resolveContentDir, resolveLockDir } from '../../config/paths.ts';
 import { mergePatch } from '../../content/frontmatter-merge.ts';
 import { parentFolderOf } from '../../content/nested-folder-rules.ts';
@@ -28,6 +32,7 @@ import {
   formatBrokenLinkBrief,
   formatBrokenLinkLines,
   parseAdvisoryWarnings,
+  parseBrokenLinkSuppression,
   parseBrokenLinks,
 } from './advisory-warnings.ts';
 import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
@@ -661,6 +666,7 @@ async function handleBatch(
     const preview = resolvePreviewUrl(r.docName, { lockDir });
     const warnings = parseAdvisoryWarnings(r.raw.warnings);
     const brokenLinks = parseBrokenLinks(r.raw.brokenLinks);
+    const brokenLinkSuppression = parseBrokenLinkSuppression(r.raw.brokenLinkSuppression);
     return {
       docName: r.docName,
       ok: true as const,
@@ -669,6 +675,7 @@ async function handleBatch(
       ...(warnings ? { warnings } : {}),
       ...(r.templateHint ? { templateHint: r.templateHint } : {}),
       brokenLinks,
+      ...(brokenLinkSuppression ? { brokenLinkSuppression } : {}),
     };
   });
   const okCount = docOut.filter((d) => d.ok).length;
@@ -687,6 +694,9 @@ async function handleBatch(
     if (d?.ok) {
       const brokenBrief = formatBrokenLinkBrief(d.brokenLinks);
       if (brokenBrief) baseParts.push(brokenBrief);
+      if (d.brokenLinkSuppression) {
+        baseParts.push(formatBrokenLinkSuppressionBrief(d.brokenLinkSuppression));
+      }
     }
     if (r.ok && r.templateHint) {
       baseParts.push(
@@ -737,6 +747,7 @@ async function handleSingleDoc(
   const summaryHint = typeof summaryResult?.hint === 'string' ? summaryResult.hint : undefined;
   const advisoryWarnings = parseAdvisoryWarnings(result.warnings);
   const brokenLinks = parseBrokenLinks(result.brokenLinks);
+  const brokenLinkSuppression = parseBrokenLinkSuppression(result.brokenLinkSuppression);
 
   const noOpNote = emptyAppendNoOpNote(w.position, spec.content);
   const lines: string[] = [
@@ -759,12 +770,14 @@ async function handleSingleDoc(
     lines.push(...formatAdvisoryLines(advisoryWarnings));
   }
   lines.push(...formatBrokenLinkLines(brokenLinks));
+  if (brokenLinkSuppression) lines.push(formatBrokenLinkSuppressionLine(brokenLinkSuppression));
   if (w.templateHint) lines.push(formatTemplateHintLine(w.templateHint));
   const text = lines.join('\n');
 
   const document: Record<string, unknown> = {
     brokenLinks,
   };
+  if (brokenLinkSuppression) document.brokenLinkSuppression = brokenLinkSuppression;
   if (hints) document.hints = hints;
   if (summaryResult) document.summary = summaryResult;
   if (advisoryWarnings) document.warnings = advisoryWarnings;
@@ -910,7 +923,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
           })
           .optional()
           .describe(
-            'Single-document write result. Always present on a successful single-doc write — it carries `brokenLinks` (possibly `[]`) plus any `summary`/`hints`/`warnings`.',
+            'Single-document write result. Always present on a successful single-doc write — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`hints`/`warnings`. Read `brokenLinkSuppression` before concluding anything from an empty `brokenLinks`: when it is present, a project policy withheld findings and none of them is yours to repair.',
           ),
         folder: z
           .object({
@@ -964,7 +977,7 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
         documents: looseObjectArray
           .optional()
           .describe(
-            'Batch write: per-doc result `{ docName, ok, position?, previewUrl?, warnings?, brokenLinks, error? }`. `brokenLinks` (possibly `[]`) is present on each successful entry, same as a single-doc write.',
+            'Batch write: per-doc result `{ docName, ok, position?, previewUrl?, warnings?, brokenLinks, brokenLinkSuppression?, error? }`. `brokenLinks` (possibly `[]`) is present on each successful entry, same as a single-doc write — and, same as a single-doc write, an empty list means every link resolves only on entries carrying no `brokenLinkSuppression`.',
           ),
         previewUrl: previewUrlOutputField.optional(),
         previewUrlSource: previewUrlSourceField,

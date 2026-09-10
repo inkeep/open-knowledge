@@ -105,7 +105,7 @@ Atomic pages for domain terms and core abstractions (one term each): definition,
 2. Run `links({ kind: ["orphans", "hubs"] })`, then `audit`:
    - **orphans** — pages nothing links to. Adopt each by linking it from OVERVIEW or a relevant section page (or, rarely, justify it as intentionally standalone).
    - **hubs** — ranks by *inbound* links. Confirm your **concept/module pages** show up here — that's the signal cross-linking actually happened. Don't expect `OVERVIEW`: a freshly authored nav page has almost no inbound links, so it won't appear (and that's correct — its coverage was checked in step 1).
-   - **`audit`** — returns clean (every lint violation + broken internal link) — fix every finding. (This covers links to source files too, not just `.md`/`.mdx`: it's the `orphans`/`hubs` graph above that tracks doc-to-doc edges only. `brokenLinks` on each write/edit is the same check per-write, per the code-reference rule above.)
+   - **`audit`** — fix every reported finding. A clean result proves every checked link resolves only when `brokenLinkSuppression` is absent; when that marker is present, reserved-log findings were deliberately withheld and are not repair work. (This covers links to source files too, not just `.md`/`.mdx`: it's the `orphans`/`hubs` graph above that tracks doc-to-doc edges only. `brokenLinks` on each write/edit is the same check per-write, per the code-reference rule above.)
 3. Append a `wiki/log.md` entry (see *Log discipline*).
 4. Tell the user the wiki is ready and surface the OVERVIEW preview URL.
 

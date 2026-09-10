@@ -76,6 +76,8 @@ export const LINKS_VALIDATION_SETTINGS = ['off', 'warning', 'error'] as const;
 export type LinksValidationSetting = (typeof LINKS_VALIDATION_SETTINGS)[number];
 export const DEFAULT_LINKS_VALIDATION: LinksValidationSetting = 'warning';
 
+export const DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES = true;
+
 type MarkdownlintRuleParams = Record<string, unknown>;
 
 export const MARKDOWNLINT_RULE_SEVERITIES = ['error', 'warning'] as const;

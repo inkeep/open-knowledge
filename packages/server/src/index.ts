@@ -85,6 +85,10 @@ export {
   type ServerExitReason,
 } from './boot.ts';
 export {
+  type AuditSuppressionTarget,
+  formatAuditBrokenLinkSuppressionLine,
+} from './broken-link-suppression.ts';
+export {
   type BuildSkillZipOptions,
   type BuildSkillZipResult,
   type BundleId,

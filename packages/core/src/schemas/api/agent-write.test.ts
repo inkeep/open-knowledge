@@ -4,10 +4,13 @@ import {
   AgentPatchSuccessSchema,
   AgentUndoRequestSchema,
   AgentUndoSuccessSchema,
+  AgentWriteBatchResultSchema,
   AgentWriteMdRequestSchema,
   AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
+  BrokenLinkSuppressionSchema,
+  FrontmatterPatchSuccessSchema,
   LintViolationWarningSchema,
   LocalTargetDiagnosticEvidenceSchema,
   ProblemTypeSchema,
@@ -430,6 +433,116 @@ describe('AgentWriteMdSuccessSchema', () => {
       systemSubscriberCount: 0,
       hints: [{ type: 'something-else', parentCandidates: [], message: '' }],
       brokenLinks: [],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('BrokenLinkSuppressionSchema (reserved-log advisory policy)', () => {
+  test('parses the reason token and a positive omitted count', () => {
+    const result = BrokenLinkSuppressionSchema.safeParse({
+      reason: 'reserved-log-policy',
+      count: 3,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects a zero or negative count (present only when entries were omitted)', () => {
+    expect(
+      BrokenLinkSuppressionSchema.safeParse({ reason: 'reserved-log-policy', count: 0 }).success,
+    ).toBe(false);
+    expect(
+      BrokenLinkSuppressionSchema.safeParse({ reason: 'reserved-log-policy', count: -1 }).success,
+    ).toBe(false);
+  });
+
+  test('rejects a non-integer count', () => {
+    expect(
+      BrokenLinkSuppressionSchema.safeParse({ reason: 'reserved-log-policy', count: 1.5 }).success,
+    ).toBe(false);
+  });
+
+  test('accepts an unknown reason token so a newer policy still qualifies the empty list', () => {
+    const parsed = BrokenLinkSuppressionSchema.safeParse({
+      reason: 'some-future-policy',
+      count: 1,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.reason).toBe('some-future-policy');
+  });
+
+  test('rejects an empty reason token', () => {
+    expect(BrokenLinkSuppressionSchema.safeParse({ reason: '', count: 1 }).success).toBe(false);
+  });
+
+  test('carries no href, path, or content channel', () => {
+    const parsed = BrokenLinkSuppressionSchema.parse({
+      reason: 'reserved-log-policy',
+      count: 2,
+    });
+    expect(Object.keys(parsed).sort()).toEqual(['count', 'reason']);
+  });
+});
+
+describe('brokenLinkSuppression on write/edit success bodies', () => {
+  const suppression = { reason: 'reserved-log-policy', count: 2 } as const;
+
+  test('every write/edit success family accepts the additive suppression field', () => {
+    expect(
+      AgentWriteMdSuccessSchema.safeParse({
+        timestamp: '2026-04-30T00:00:00.000Z',
+        subscriberCount: 0,
+        systemSubscriberCount: 0,
+        brokenLinks: [],
+        brokenLinkSuppression: suppression,
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentPatchSuccessSchema.safeParse({
+        timestamp: '2026-04-30T00:00:00.000Z',
+        subscriberCount: 0,
+        systemSubscriberCount: 0,
+        brokenLinks: [],
+        brokenLinkSuppression: suppression,
+      }).success,
+    ).toBe(true);
+    expect(
+      FrontmatterPatchSuccessSchema.safeParse({
+        timestamp: '2026-04-30T00:00:00.000Z',
+        subscriberCount: 0,
+        systemSubscriberCount: 0,
+        appliedKeys: ['type'],
+        brokenLinks: [],
+        brokenLinkSuppression: suppression,
+      }).success,
+    ).toBe(true);
+    expect(
+      AgentWriteBatchResultSchema.safeParse({
+        status: 'written',
+        docName: 'notes/log',
+        brokenLinks: [],
+        brokenLinkSuppression: suppression,
+      }).success,
+    ).toBe(true);
+  });
+
+  test('the field stays optional so a no-suppression response omits it', () => {
+    const result = AgentWriteMdSuccessSchema.safeParse({
+      timestamp: '2026-04-30T00:00:00.000Z',
+      subscriberCount: 0,
+      systemSubscriberCount: 0,
+      brokenLinks: [],
+    });
+    expect(result.success && result.data.brokenLinkSuppression).toBeUndefined();
+  });
+
+  test('a malformed suppression field is rejected rather than passed through', () => {
+    const result = AgentWriteMdSuccessSchema.safeParse({
+      timestamp: '2026-04-30T00:00:00.000Z',
+      subscriberCount: 0,
+      systemSubscriberCount: 0,
+      brokenLinks: [],
+      brokenLinkSuppression: { reason: 'reserved-log-policy', count: 0 },
     });
     expect(result.success).toBe(false);
   });

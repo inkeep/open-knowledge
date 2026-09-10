@@ -261,6 +261,11 @@ msgstr "{0, plural, one {# दस्तावेज़ में कोई स�
 msgid "{0, plural, one {Plugin} other {Plugins}}"
 msgstr "{0, plural, one {प्लगइन} other {प्लगइन}}"
 
+#. placeholder {0}: suppression.count
+#: src/components/ProblemsPanel.tsx
+msgid "{0, plural, one {Project policy hides # broken-link finding from this audit.} other {Project policy hides # broken-link findings from this audit.}}"
+msgstr "{0, plural, one {प्रोजेक्ट नीति इस ऑडिट से टूटी लिंक का # परिणाम छिपाती है।} other {प्रोजेक्ट नीति इस ऑडिट से टूटी लिंक के # परिणाम छिपाती है।}}"
+
 #. placeholder {0}: skillRows.length
 #: src/components/CreatedItemsList.tsx
 msgid "{0, plural, one {Skill} other {Skills}}"
@@ -6989,6 +6994,10 @@ msgstr "अगर {agent} में OpenKnowledge टूल नहीं दि�
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "यदि आपके संपादित किए जा रहे किसी हिस्से के लिए कोई अपडेट आता है, तो आप चुनते हैं कि कौन सा संस्करण रखना है, ठीक मर्ज टकराव की तरह।"
 
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Ignore broken links in log.md"
+msgstr "log.md में टूटे हुए लिंक अनदेखा करें"
+
 #: src/components/ConsentDialogBody.tsx
 #: src/components/settings/OkignoreSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7683,6 +7692,10 @@ msgstr "{title} के बारे में और जानें"
 #: src/components/SharingModeField.tsx
 msgid "Learn more about config sharing"
 msgstr "कॉन्फ़िग साझाकरण के बारे में और जानें"
+
+#: src/components/settings/ContentRulesSection.tsx
+msgid "Leave the broken links written inside a log.md or log.mdx at any folder depth out of Problems, file explorer indicators, editor diagnostics, audits, and agent write advisories. What counts is the file a link is written in, not the file it points at, and LOG.md is an ordinary document. The Links panel and the editor still show them."
+msgstr "किसी भी फ़ोल्डर की गहराई पर log.md या log.mdx के अंदर लिखी टूटी लिंक को समस्याओं, फ़ाइल एक्सप्लोरर संकेतकों, एडिटर निदान, ऑडिट और एजेंट लेखन सलाह से बाहर रखें। मायने उस फ़ाइल के हैं जिसमें लिंक लिखी गई है, न कि उस फ़ाइल के जिस पर वह जाती है, और LOG.md एक सामान्य दस्तावेज़ है। लिंक पैनल और एडिटर में वे फिर भी दिखाई देती हैं।"
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -8937,6 +8950,10 @@ msgstr "कोई भाषा मेल नहीं खाती।"
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "अभी कोई लिंक नहीं। ग्राफ़ बनाने के लिए विकी लिंक या markdown लिंक जोड़ें।"
+
+#: src/components/ProblemsPanel.tsx
+msgid "No lint plugins are enabled, so only links are checked."
+msgstr "कोई lint प्लगइन सक्षम नहीं है, इसलिए केवल लिंक जाँचे गए।"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "No location selected. Use Browse to choose a folder."
@@ -13914,6 +13931,10 @@ msgstr "इस विंडो के लिए कोई प्रोजेक�
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "These currently read from another folder. After linking, they read from {keep} instead."
 msgstr "ये अभी किसी दूसरे फ़ोल्डर से पढ़े जाते हैं। लिंक करने के बाद, ये उसकी जगह {keep} से पढ़े जाएँगे।"
+
+#: src/components/ProblemsPanel.tsx
+msgid "These links remain visible in Links and are not part of the repair queue."
+msgstr "ये लिंक लिंक पैनल में दिखाई देती रहती हैं और मरम्मत कतार का हिस्सा नहीं हैं।"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

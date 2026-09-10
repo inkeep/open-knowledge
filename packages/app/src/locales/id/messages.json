@@ -3441,6 +3441,7 @@
     "eVPynQ": ["Buka <0><1>", ["verificationUri"], "</1><2/></0> lalu masukkan kode ini:"],
     "eXPP7Z": ["Merenung…"],
     "e_ToF5": ["Masuk dengan ", ["0"]],
+    "ea7AYn": ["Abaikan tautan rusak di log.md"],
     "eaHUxx": ["Bilah alat Berkas"],
     "eazHgv": [
       "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
@@ -3640,6 +3641,15 @@
     ],
     "ggs9f8": ["Cari berkas, folder, atau perintah"],
     "gh27t1": ["Pratinjau tautan"],
+    "gi9c0-": [
+      [
+        "0",
+        "plural",
+        {
+          "other": ["Kebijakan proyek menyembunyikan ", "#", " temuan tautan rusak dari audit ini."]
+        }
+      ]
+    ],
     "gijbne": ["Gagal mengganti nama jalur"],
     "gkOxmF": ["Memindahkan"],
     "gk_-qj": ["Templat tidak bisa diganti namanya: ", ["0"]],
@@ -4128,6 +4138,7 @@
       ") yang tidak akan menyentuh bagian lain sistem Anda."
     ],
     "l87Deg": ["Pilih apa yang dimulai tab baru"],
+    "l91IVc": ["Tautan ini tetap terlihat di Tautan dan bukan bagian dari antrean perbaikan."],
     "l9s3IX": [["agentName"], " tidak dapat memulai percakapan."],
     "lAiyU_": ["Hanya dokumen saat ini yang memakai <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Koneksi agen"],
@@ -4212,6 +4223,7 @@
     "mHo0kp": [
       "Permintaan untuk mengaktifkan alat Open Knowledge kedaluwarsa. Utas ini berjalan tanpa alat itu."
     ],
+    "mI1KPS": ["Tidak ada plugin lint yang aktif, jadi hanya tautan yang diperiksa."],
     "mPoOmg": ["instal dulu sebuah skill di sini"],
     "mPy9lS": [
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."
@@ -4345,6 +4357,9 @@
     "njBeMm": ["Keduanya"],
     "njU86j": ["Properti \"", ["trimmed"], "\" sudah ada"],
     "nmwqWS": ["Belum dijawab"],
+    "nnhrHd": [
+      "Kecualikan tautan rusak yang ditulis di dalam log.md atau log.mdx pada kedalaman folder mana pun dari Masalah, indikator penjelajah file, diagnostik editor, audit, dan saran penulisan agen. Yang menentukan adalah file tempat tautan ditulis, bukan file yang dituju, dan LOG.md adalah dokumen biasa. Panel Tautan dan editor tetap menampilkannya."
+    ],
     "noH1JX": [
       "Server kolaborasi tidak bisa dihubungi — ",
       ["errorDetail"],

@@ -211,6 +211,17 @@ export type BrokenLink = z.infer<typeof BrokenLinkSchema>;
 
 export const BrokenLinksSchema = z.array(BrokenLinkSchema);
 
+export const BROKEN_LINK_SUPPRESSION_REASONS = ['reserved-log-policy'] as const;
+export type BrokenLinkSuppressionReason = (typeof BROKEN_LINK_SUPPRESSION_REASONS)[number];
+
+export const BrokenLinkSuppressionSchema = z
+  .object({
+    reason: z.string().min(1),
+    count: z.number().int().positive(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type BrokenLinkSuppression = z.infer<typeof BrokenLinkSuppressionSchema>;
+
 export const AgentWriteSuccessSchema = z
   .object({
     timestamp: z.string().min(1),
@@ -229,6 +240,7 @@ export const AgentWriteMdSuccessSchema = z
     summary: SummaryResponseFieldSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type AgentWriteMdSuccess = z.infer<typeof AgentWriteMdSuccessSchema>;
@@ -241,6 +253,7 @@ export const AgentPatchSuccessSchema = z
     summary: SummaryResponseFieldSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type AgentPatchSuccess = z.infer<typeof AgentPatchSuccessSchema>;
@@ -292,6 +305,7 @@ export const AgentWriteBatchResultSchema = z.discriminatedUnion('status', [
       summary: SummaryResponseFieldSchema.optional(),
       warnings: AdvisoryWarningsSchema.optional(),
       brokenLinks: BrokenLinksSchema,
+      brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
     })
     .loose(),
   z
@@ -334,6 +348,7 @@ export const FrontmatterPatchSuccessSchema = z
     summary: SummaryResponseFieldSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type FrontmatterPatchSuccess = z.infer<typeof FrontmatterPatchSuccessSchema>;

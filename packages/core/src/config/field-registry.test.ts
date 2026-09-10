@@ -219,6 +219,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'telemetry.localSink.spans.maxBytes',
       'validation.fileTreeIndicators',
       'validation.links',
+      'validation.suppressLogLinkAdvisories',
     ]);
   });
 
