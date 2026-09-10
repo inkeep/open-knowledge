@@ -55,7 +55,7 @@ import {
 } from '../bridge/structural-freshness.ts';
 import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
-import { incrementWholeDocFallback } from '../metrics/parse-health.ts';
+import { incrementBlockFallback, incrementWholeDocFallback } from '../metrics/parse-health.ts';
 import { createRegistry } from '../registry/index.ts';
 import type { PropDef } from '../registry/types.ts';
 import type {
@@ -65,7 +65,11 @@ import type {
   WikiLinkEmbedMdast,
   WikiLinkMdast,
 } from './mdast-augmentation.ts';
-import { parseWithFallback } from './parse-with-fallback.ts';
+import {
+  extractErrorOffset,
+  findFallbackRegion,
+  parseWithFallback,
+} from './parse-with-fallback.ts';
 import {
   createParseProcessor,
   createSerializeProcessor,
@@ -201,8 +205,119 @@ export class MarkdownManager {
     try {
       return this.parseWithSourceMap(markdown, opts);
     } catch (err) {
+      const scoped = this.scopedFallbackWithSourceMap(markdown, err, opts);
+      if (scoped !== null) {
+        incrementBlockFallback();
+        return scoped;
+      }
       incrementWholeDocFallback();
       return this.rawFallbackWithSourceMap(markdown, err);
+    }
+  }
+
+  /* STOP: every span here is an exact slice offset, never an interpolation. computeBlockSplice
+     indexes the source through map.blocks[i].sourceStart/sourceEnd, so a span that is merely
+     close rewrites the wrong bytes on the next keystroke. A side that will not parse becomes
+     one raw block over its own exact bytes rather than a guess at its interior. */
+  private scopedFallbackWithSourceMap(
+    markdown: string,
+    err: unknown,
+    opts?: ParseContext,
+  ): { doc: PmNode; map: PmSourceMap } | null {
+    const offset = extractErrorOffset(err);
+    if (offset === undefined) return null;
+
+    let region: { start: number; end: number };
+    try {
+      region = findFallbackRegion(markdown, offset);
+    } catch {
+      return null;
+    }
+    if (region.start <= 0 && region.end >= markdown.length) return null;
+
+    const reason = err instanceof Error ? err.message : String(err ?? 'unknown parse failure');
+    const beforeRaw = markdown.slice(0, region.start);
+    const beforeSrc = beforeRaw.replace(/\n+$/, '');
+    const afterRaw = markdown.slice(region.end);
+    const afterSrc = afterRaw.replace(/^\n+/, '');
+    const before = this.fallbackSide(beforeSrc, 0, opts);
+    const broken = this.rawFallbackNode(
+      markdown.slice(region.start, region.end),
+      region.start,
+      region.end,
+      reason,
+    );
+    const after = this.fallbackSide(
+      afterSrc,
+      region.end + (afterRaw.length - afterSrc.length),
+      opts,
+    );
+    if (before === null || after === null) return null;
+
+    const children = [...before.children, broken.node, ...after.children];
+    const sources = [...before.sources, broken.source, ...after.sources];
+    if (children.length === 0) return null;
+
+    const doc = this.schema.topNodeType.create(null, children) as PmNode;
+    if (doc.childCount !== sources.length) return null;
+
+    const blocks: PmSourceSpan[] = [];
+    let pos = 0;
+    for (let i = 0; i < doc.childCount; i++) {
+      const child = doc.child(i);
+      const from = pos;
+      pos += child.nodeSize;
+      blocks.push({
+        from,
+        to: pos,
+        sourceStart: sources[i].start,
+        sourceEnd: sources[i].end,
+        type: child.type.name,
+        depth: 1,
+        mapped: true,
+      });
+    }
+
+    return { doc, map: buildBlockSourceMap(blocks, markdown.length, doc.content.size) };
+  }
+
+  private rawFallbackNode(
+    text: string,
+    start: number,
+    end: number,
+    reason: string,
+  ): { node: PmNode; source: { start: number; end: number } } {
+    const node = this.schema.nodeFromJSON({
+      type: 'rawMdxFallback',
+      attrs: { reason, originalSpan: { start, end } },
+      content: text.length > 0 ? [{ type: 'text', text }] : [],
+    }) as PmNode;
+    return { node, source: { start, end } };
+  }
+
+  private fallbackSide(
+    src: string,
+    base: number,
+    opts?: ParseContext,
+  ): { children: PmNode[]; sources: { start: number; end: number }[] } | null {
+    if (src.trim().length === 0) return { children: [], sources: [] };
+    try {
+      const { doc, map } = this.parseWithSourceMap(src, opts);
+      if (map.blocks.length !== doc.childCount) return null;
+      const children: PmNode[] = [];
+      for (let i = 0; i < doc.childCount; i++) children.push(doc.child(i));
+      return {
+        children,
+        sources: map.blocks.map((block) => ({
+          start: block.sourceStart + base,
+          end: block.sourceEnd + base,
+        })),
+      };
+    } catch (sideErr) {
+      const reason =
+        sideErr instanceof Error ? sideErr.message : String(sideErr ?? 'unknown parse failure');
+      const raw = this.rawFallbackNode(src, base, base + src.length, reason);
+      return { children: [raw.node], sources: [raw.source] };
     }
   }
 

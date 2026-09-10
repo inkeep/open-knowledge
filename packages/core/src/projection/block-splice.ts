@@ -23,7 +23,8 @@ export interface ChangedBlocks {
   after: BlockRange;
 }
 
-const MIN_WRITTEN_EDGE_EMPTIES = 2;
+const MIN_WRITTEN_LEADING_EMPTIES = 2;
+const MIN_WRITTEN_TRAILING_EMPTIES = 1;
 
 type ProjectionDeclineReason =
   | 'no-changed-blocks'
@@ -312,7 +313,7 @@ function blankRunGapSplice(
       body,
       0,
       lineStart(body, next.sourceStart),
-      '\n'.repeat(count >= MIN_WRITTEN_EDGE_EMPTIES ? count : 0),
+      '\n'.repeat(count >= MIN_WRITTEN_LEADING_EMPTIES ? count : 0),
       shift,
     );
   }
@@ -330,7 +331,7 @@ function blankRunGapSplice(
       body,
       lineEnd(body, prev.sourceEnd),
       body.length,
-      '\n'.repeat(count >= MIN_WRITTEN_EDGE_EMPTIES ? count + 1 : 1),
+      '\n'.repeat(count >= MIN_WRITTEN_TRAILING_EMPTIES ? count + 1 : 1),
       shift,
     );
   }
@@ -373,12 +374,12 @@ function blankRunAnchoredSplice(
   const trail = runEnd - range.before.to;
   const head =
     prev === undefined
-      ? '\n'.repeat(lead >= MIN_WRITTEN_EDGE_EMPTIES ? lead : 0)
+      ? '\n'.repeat(lead >= MIN_WRITTEN_LEADING_EMPTIES ? lead : 0)
       : '\n'.repeat(lead + 2);
   const tail =
     next !== undefined
       ? '\n'.repeat(trail + 2)
-      : '\n'.repeat(trail >= MIN_WRITTEN_EDGE_EMPTIES ? trail + 1 : 1);
+      : '\n'.repeat(trail >= MIN_WRITTEN_TRAILING_EMPTIES ? trail + 1 : 1);
   return { from: shift(from), to: shift(to), text: `${head}${text}${tail}` };
 }
 

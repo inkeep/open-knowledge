@@ -153,7 +153,7 @@ describe('block ranges resolve through source offsets', () => {
     const broken = 'one\n\n</Callout>\n\ntwo\n';
     const projection = buildProjection(broken, md);
     expect(computeSourceBlocks(broken, md).blocks).toHaveLength(0);
-    expect(projection.doc.childCount).toBe(1);
+    expect(projection.doc.childCount).toBe(3);
     expect(blockRangeToSourceRange(broken, md, 0, 1)).toBeNull();
     expect(blockRangeToPmRange(projection, md, 0, 1)).toBeNull();
   });

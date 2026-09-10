@@ -64,7 +64,12 @@ describe('a slash command leaves no trace in the undo stack', () => {
       expect(rig.ytext.toString()).toBe('Existing paragraph.\n\n#\n');
 
       rig.undoManager.undo();
+      expect(rig.ytext.toString()).toBe('Existing paragraph.\n\n');
+      expect(rig.editor.state.doc.childCount).toBe(2);
+
+      rig.undoManager.undo();
       expect(rig.ytext.toString()).toBe('Existing paragraph.\n');
+      expect(rig.editor.state.doc.childCount).toBe(1);
     } finally {
       rig.destroy();
     }
@@ -95,7 +100,12 @@ describe('a slash command leaves no trace in the undo stack', () => {
       expect(rig.ytext.toString()).toContain('/he');
 
       rig.undoManager.undo();
+      expect(rig.ytext.toString()).toBe('Existing paragraph.\n\n');
+      expect(rig.editor.state.doc.childCount).toBe(2);
+
+      rig.undoManager.undo();
       expect(rig.ytext.toString()).toBe('Existing paragraph.\n');
+      expect(rig.editor.state.doc.childCount).toBe(1);
     } finally {
       rig.destroy();
     }

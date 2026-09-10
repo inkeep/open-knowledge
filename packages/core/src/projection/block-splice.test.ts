@@ -324,22 +324,54 @@ describe('rebaseProjection', () => {
 describe('buildProjection — a document the MDX parser rejects', () => {
   const BROKEN = 'Above.\n\n</Callout>\n\nBelow.\n';
 
-  it('degrades to a single raw block instead of throwing', () => {
+  it('boxes only the rejected region and keeps its neighbours as real blocks', () => {
     const projection = buildProjection(BROKEN, md);
-    expect(projection.doc.childCount).toBe(1);
-    expect(projection.doc.child(0).type.name).toBe('rawMdxFallback');
-    expect(projection.doc.child(0).textContent).toBe(BROKEN);
-    expect(projection.doc.child(0).attrs.reason).toContain('closing slash');
+    expect(projection.doc.childCount).toBe(3);
+    expect(projection.doc.child(0).type.name).toBe('paragraph');
+    expect(projection.doc.child(1).type.name).toBe('rawMdxFallback');
+    expect(projection.doc.child(2).type.name).toBe('paragraph');
+    expect(projection.doc.child(1).textContent).toBe('</Callout>');
+    expect(projection.doc.child(1).attrs.reason).toContain('closing slash');
   });
 
-  it('maps the raw block over the whole body so a splice cannot land off-range', () => {
+  it('gives every block an exact byte span, the raw one included', () => {
     const projection = buildProjection(BROKEN, md);
-    expect(projection.map.blocks).toHaveLength(1);
-    expect(projection.map.blockRangeToSourceRange(0, 1)).toEqual({
+    expect(projection.map.blocks).toHaveLength(3);
+    for (const [index, block] of projection.map.blocks.entries()) {
+      expect(BROKEN.slice(block.sourceStart, block.sourceEnd)).toBe(
+        projection.doc.child(index).textContent,
+      );
+    }
+    expect(projection.map.blockRangeToSourceRange(0, 3)).toEqual({
       from: 0,
-      to: BROKEN.length,
+      to: BROKEN.trimEnd().length,
     });
     expect(projection.map.sourceLength).toBe(BROKEN.length);
+  });
+
+  it('rewrites only the edited neighbour and leaves the rejected bytes alone', () => {
+    const projection = buildProjection(BROKEN, md);
+    const children = [];
+    for (let i = 0; i < projection.doc.childCount; i++) children.push(projection.doc.child(i));
+    const replacement = projection.doc.type.schema.nodeFromJSON(md.parse('Edited.\n')).child(0);
+    const after = projection.doc.type.schema.topNodeType.create(projection.doc.attrs, [
+      replacement,
+      ...children.slice(1),
+    ] as never);
+
+    const changed = changedProjectionBlocks(projection.doc, after);
+    const splice = computeBlockSplice(projection, after, md, changed);
+    expect(splice).toEqual({ from: 0, to: 6, text: 'Edited.' });
+    expect(applySplice(BROKEN, splice as never)).toBe('Edited.\n\n</Callout>\n\nBelow.\n');
+  });
+
+  it('still boxes the whole body when the rejected region is the whole body', () => {
+    const lone = '</Callout>\n';
+    const projection = buildProjection(lone, md);
+    expect(projection.doc.childCount).toBe(1);
+    expect(projection.doc.child(0).type.name).toBe('rawMdxFallback');
+    expect(projection.map.blocks).toHaveLength(1);
+    expect(projection.map.blockRangeToSourceRange(0, 1)).toEqual({ from: 0, to: lone.length });
   });
 
   it('round-trips the rejected bytes verbatim', () => {
@@ -350,9 +382,14 @@ describe('buildProjection — a document the MDX parser rejects', () => {
   it('keeps frontmatter out of the body it boxes', () => {
     const withFm = `---\ntitle: T\n---\n\n${BROKEN}`;
     const projection = buildProjection(withFm, md);
-    expect(withFm.slice(projection.bodyOffset)).toBe(projection.doc.child(0).textContent);
-    expect(projection.doc.child(0).textContent).toContain('</Callout>');
+    expect(projection.doc.child(1).textContent).toBe('</Callout>');
     expect(projection.map.sourceLength).toBe(withFm.length - projection.bodyOffset);
+    const body = withFm.slice(projection.bodyOffset);
+    for (const [index, block] of projection.map.blocks.entries()) {
+      expect(body.slice(block.sourceStart, block.sourceEnd)).toBe(
+        projection.doc.child(index).textContent,
+      );
+    }
   });
 
   it('recovers a normal projection once the source parses again', () => {
@@ -481,9 +518,18 @@ describe('computeBlockSplice — a block landing in a blank run', () => {
     expectTableHolds(after);
   });
 
-  it('materialises a held trailing blank once a block lands after it', () => {
+  it('writes the trailing blank Enter creates, and reclaims its line on materialisation', () => {
     const seeded = pressEnter(buildProjection('Hello.\n', md), 1);
-    expect(seeded.source).toBe('Hello.\n');
+    expect(seeded.source).toBe('Hello.\n\n');
+    expectTableHolds(seeded);
+
+    const typed = advance(seeded, docOf(seeded, [seeded.doc.child(0), block(seeded, 'Tail.\n')]));
+    expect(typed.source).toBe('Hello.\n\nTail.\n');
+    expectTableHolds(typed);
+  });
+
+  it('turns the written trailing blank into an interior run when a block lands after it', () => {
+    const seeded = pressEnter(buildProjection('Hello.\n', md), 1);
     const after = advance(seeded, docOf(seeded, [...kids(seeded.doc), block(seeded, 'Tail.\n')]));
     expect(after.source).toBe('Hello.\n\n\nTail.\n');
     expectTableHolds(after);

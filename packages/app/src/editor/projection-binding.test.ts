@@ -171,7 +171,7 @@ function endOfBlock(editor: Editor, blockIndex: number): number {
 }
 
 describe('projection binding — blocks markdown cannot spell', () => {
-  it('keeps the empty paragraph Enter creates, and writes no bytes for it', () => {
+  it('writes the blank line spelling the empty paragraph Enter creates at the doc end', () => {
     const rig = createRig(DOC);
     const before = rig.ytext.toString();
     const blocks = rig.editor.state.doc.childCount;
@@ -182,7 +182,10 @@ describe('projection binding — blocks markdown cannot spell', () => {
     const added = rig.editor.state.doc.child(blocks);
     expect(added.type.name).toBe('paragraph');
     expect(added.content.size).toBe(0);
-    expect(rig.ytext.toString()).toBe(before);
+    expect(rig.ytext.toString()).toBe(`${before}\n`);
+    expect((md.parse(rig.ytext.toString()) as { content: unknown[] }).content).toHaveLength(
+      blocks + 1,
+    );
     rig.destroy();
   });
 
@@ -260,10 +263,10 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.destroy();
   });
 
-  it('writes a trailing blank run only from the doc-edge floor up', () => {
+  it('writes a trailing blank run at every count, one newline per blank', () => {
     const rig = createRig('a\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
-    expect(rig.ytext.toString()).toBe('a\n');
+    expect(rig.ytext.toString()).toBe('a\n\n');
     expect(rig.editor.state.doc.childCount).toBe(2);
 
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
@@ -299,15 +302,17 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.destroy();
   });
 
-  it('collapses a trailing run below the floor rather than resurrecting a line', () => {
+  it('removes one trailing blank line for each trailing blank deleted', () => {
     const rig = createRig('a\n\n\n\n');
     expect(rig.editor.state.doc.childCount).toBe(4);
 
-    deleteBlock(rig.editor, 1);
-    expect(rig.ytext.toString()).toBe('a\n\n\n');
-
-    deleteBlock(rig.editor, 1);
-    expect(rig.ytext.toString()).toBe('a\n');
+    for (const expected of ['a\n\n\n', 'a\n\n', 'a\n']) {
+      deleteBlock(rig.editor, 1);
+      expect(rig.ytext.toString()).toBe(expected);
+      expect((md.parse(rig.ytext.toString()) as { content: unknown[] }).content).toHaveLength(
+        rig.editor.state.doc.childCount,
+      );
+    }
     rig.destroy();
   });
 
@@ -331,12 +336,12 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.destroy();
   });
 
-  it('keeps an outside write correct while an unspellable block is held', () => {
+  it('keeps an outside write correct while a trailing blank sits at the doc end', () => {
     const rig = createRig(DOC);
     pressEnter(rig.editor, endOfBlock(rig.editor, rig.editor.state.doc.childCount - 1));
     rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
     expect(rig.editor.state.doc.child(0).textContent).toBe('Preamble.');
-    expect(rig.ytext.toString()).toBe(`Preamble.\n\n${DOC}`);
+    expect(rig.ytext.toString()).toBe(`Preamble.\n\n${DOC}\n`);
 
     rig.editor.commands.insertContent('!');
     expect(rig.ytext.toString()).toContain('Preamble.');
@@ -943,10 +948,13 @@ describe('projection binding — a rebuild that changes no bytes', () => {
 describe('projection binding — a document the MDX parser rejects', () => {
   const BROKEN = 'Above.\n\n</Callout>\n\nBelow.\n';
 
-  it('mounts instead of throwing, showing the body as one raw block', () => {
+  it('mounts instead of throwing, boxing only the region the parser rejected', () => {
     const rig = createRig(BROKEN);
-    expect(rig.editor.state.doc.childCount).toBe(1);
-    expect(rig.editor.state.doc.child(0).type.name).toBe('rawMdxFallback');
+    expect(rig.editor.state.doc.childCount).toBe(3);
+    expect(rig.editor.state.doc.child(0).type.name).toBe('paragraph');
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Above.');
+    expect(rig.editor.state.doc.child(1).type.name).toBe('rawMdxFallback');
+    expect(rig.editor.state.doc.child(2).textContent).toBe('Below.');
     expect(rig.ytext.toString()).toBe(BROKEN);
     rig.destroy();
   });
@@ -956,7 +964,7 @@ describe('projection binding — a document the MDX parser rejects', () => {
     rig.ydoc.transact(() => {
       rig.ytext.insert(rig.ytext.length, 'Appended while broken.\n');
     }, 'agent');
-    expect(rig.editor.state.doc.child(0).textContent).toContain('Appended while broken.');
+    expect(rig.editor.state.doc.textContent).toContain('Appended while broken.');
     rig.destroy();
   });
 
