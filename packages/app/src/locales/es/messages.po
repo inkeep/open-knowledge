@@ -1020,6 +1020,10 @@ msgstr "Propiedades de {settingsDescriptorLabel}"
 msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} no es un nombre de rama válido."
 
+#: src/lib/skills-api.ts
+msgid "{shown} and {more} more"
+msgstr "{shown} y {more} más"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · secretos ocultos · {fileCount, plural, one {# archivo} many {# archivos} other {# archivos}}"
@@ -1275,6 +1279,14 @@ msgstr "Una copia es una carpeta propia, y OK la mantiene alineada con el origen
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 msgstr "Una copia es una carpeta propia, y OK la mantiene alineada con el origen: edita la habilidad aquí y todas las copias se actualizan. Eso se detiene en cuanto editas a mano una copia fuera de OK; a partir de ahí sigue su propio camino y aparece como una habilidad aparte. Un enlace simbólico, en cambio, apunta al origen, así que nada se desvía, pero una ubicación deja de funcionar si se elimina el origen."
 
+#: src/lib/skills-api.ts
+msgid "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+msgstr "Puede quedar una copia en {scopeLabel} de: {names}. No elimines nada de ahí antes de compararlo con el original: puede contener la única copia de los archivos que un movimiento fallido ya eliminó."
+
+#: src/lib/skills-api.ts
+msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+msgstr "Se conservó a propósito una copia de «{name}» en {scopeLabel}. No la elimines antes de compararla con el original: puede contener la única copia de los archivos que el movimiento fallido ya eliminó."
+
 #. placeholder {0}: path ?? label
 #: src/components/SkillInstallMenu.tsx
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
@@ -1362,6 +1374,10 @@ msgstr "Una cita destacada resalta sobre el texto que la rodea."
 #: src/components/settings/TerminalSection.tsx
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
 msgstr "El shell real está desactivado para este proyecto. Al activarlo, los comandos se ejecutan con todo el acceso de tu cuenta de usuario."
+
+#: src/lib/skills-api.ts
+msgid "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
+msgstr "Se conservó una copia redundante en {scopeLabel} de: {names}. Se verificó que cada original no cambió, así que elimina esas copias y vuelve a intentar el movimiento."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -8507,6 +8523,10 @@ msgstr "Se movió {label} a un panel nuevo a la izquierda."
 msgid "Moved {label} to a new pane on the right."
 msgstr "Se movió {label} a un panel nuevo a la derecha."
 
+#: src/lib/skills-api.ts
+msgid "Moved {moved} of {total} skills to {scopeLabel}"
+msgstr "{moved} de {total} habilidades movidas a {scopeLabel}"
+
 #: src/components/SkillsTree.tsx
 msgid "Moved {moved} skills to Global"
 msgstr "{moved} habilidades movidas a Global"
@@ -12869,6 +12889,10 @@ msgstr "Algunos archivos no aparecen: el árbol de trabajo tiene demasiados camb
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "Algunos temas guardados no se muestran porque la carpeta de temas supera el límite de análisis."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Some skills were deleted with a warning"
+msgstr "Algunas habilidades se eliminaron con una advertencia"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Algo se rompió"
@@ -12876,6 +12900,10 @@ msgstr "Algo se rompió"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Something else"
 msgstr "Otra cosa"
+
+#: src/lib/skills-api.ts
+msgid "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+msgstr "Ya hay algo llamado «{name}» en {scopeLabel} y el servidor no pudo confirmar qué es. Puede que un movimiento fallido anterior lo dejara ahí a propósito: compáralo con el original antes de eliminarlo o reemplazarlo."
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -13668,6 +13696,10 @@ msgstr "El contenido de la pizarra no es una escena de Excalidraw válida."
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "La aplicación Claude Desktop no abrió el archivo. ¿Está instalada? ({msg})"
+
+#: src/lib/skills-api.ts
+msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+msgstr "La copia de «{name}» conservada en {scopeLabel} es un duplicado redundante: se verificó que el original no cambió. Elimina esa copia y vuelve a intentar el movimiento."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."

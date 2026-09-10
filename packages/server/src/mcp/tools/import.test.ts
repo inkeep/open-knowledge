@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerImport } from './import.ts';
-import type { ServerInstance } from './shared.ts';
+import { type ServerInstance, UNREADABLE_WARNINGS_TEXT } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -140,7 +140,12 @@ describe('import MCP tool', () => {
     globalThis.fetch = vi.fn(async (url: string | URL | Request) =>
       String(url).endsWith('/api/skill/import')
         ? new Response(
-            JSON.stringify({ ok: true, name: 'review-bot', warnings: ['skipped an odd file'] }),
+            JSON.stringify({
+              ok: true,
+              name: 'review-bot',
+              warnings: ['Skill name contains "claude".', 'SKILL.md body is 600 lines.'],
+              warningCodes: ['skill-name-vendor-word', 'skill-body-too-long'],
+            }),
             { status: 200, headers: { 'content-type': 'application/json' } },
           )
         : new Response(
@@ -159,10 +164,42 @@ describe('import MCP tool', () => {
     expect(r.isError).toBeUndefined();
     expect(text(r)).toContain('hand-edited');
     expect(r.structuredContent?.warnings).toEqual([
-      'skipped an odd file',
+      'Skill name contains "claude".',
+      'SKILL.md body is 600 lines.',
       'The copy at .cursor/skills/review-bot has been hand-edited — refused.',
     ]);
-    expect(r.structuredContent?.warningCodes).toEqual(['place-fork-refused']);
+    expect(r.structuredContent?.warningCodes).toEqual([
+      'skill-name-vendor-word',
+      'skill-body-too-long',
+      'place-fork-refused',
+    ]);
+  });
+
+  test('an unreadable warnings payload from one step is rendered in the text, not only in the structured field', async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith('/api/skill/import')
+        ? new Response(
+            JSON.stringify({
+              ok: true,
+              name: 'review-bot',
+              warnings: 'Skipped an unsupported bundle file.',
+              warningCodes: ['skill-body-too-long'],
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        : new Response(JSON.stringify({ ok: true, warnings: [], warningCodes: [] }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+    ) as unknown as typeof fetch;
+
+    const handler = captureImport('http://localhost:4321');
+    const r = await handler({ source: 'acme/skills', add: ['agents'] });
+
+    expect(r.isError).toBeUndefined();
+    expect(text(r)).toContain('treat this result as unverified');
+    expect(r.structuredContent?.warnings).toEqual([UNREADABLE_WARNINGS_TEXT]);
+    expect(r.structuredContent).not.toHaveProperty('warningCodes');
   });
 
   test('a failed placement is reported, not swallowed as a clean import', async () => {

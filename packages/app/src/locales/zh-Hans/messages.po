@@ -1020,6 +1020,10 @@ msgstr "{settingsDescriptorLabel} 属性"
 msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} 不是有效的分支名。"
 
+#: src/lib/skills-api.ts
+msgid "{shown} and {more} more"
+msgstr "{shown} 另外还有 {more} 个"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · 已隐去机密信息 · {fileCount, plural, other {# 个文件}}"
@@ -1275,6 +1279,14 @@ msgstr "副本是一个独立的真实文件夹，OK 会让它与来源保持一
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 msgstr "副本是一个独立的真实文件夹，OK 会让它与来源保持一致：在这里编辑技能，每个副本都会同步更新。一旦你在 OK 之外手动改动某个副本，同步就会停止——从那时起它就自成一份，并显示为一个单独的技能。符号链接则是指向来源的指针，因此不会产生偏差，但来源一旦被删除，该位置就会失效。"
 
+#: src/lib/skills-api.ts
+msgid "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+msgstr "{scopeLabel}中可能残留以下技能的副本：{names}。请先与原件比对再删除其中任何内容：它可能保存着失败的移动已经删掉的文件的唯一副本。"
+
+#: src/lib/skills-api.ts
+msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+msgstr "已在{scopeLabel}中有意保留了“{name}”的一份副本。请先与原件比对再删除：它可能保存着失败的移动已经删掉的文件的唯一副本。"
+
 #. placeholder {0}: path ?? label
 #: src/components/SkillInstallMenu.tsx
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
@@ -1362,6 +1374,10 @@ msgstr "引文块会从周围的正文中凸显出来。"
 #: src/components/settings/TerminalSection.tsx
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
 msgstr "本项目未启用真实 shell。启用后，命令将以你的用户账户的完整权限运行。"
+
+#: src/lib/skills-api.ts
+msgid "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
+msgstr "{scopeLabel}中保留了以下技能的多余副本：{names}。每个原件都已核实未被改动，请删除这些副本，然后重试移动。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -8507,6 +8523,10 @@ msgstr "已将 {label} 移动到左侧的新窗格。"
 msgid "Moved {label} to a new pane on the right."
 msgstr "已将 {label} 移动到右侧的新窗格。"
 
+#: src/lib/skills-api.ts
+msgid "Moved {moved} of {total} skills to {scopeLabel}"
+msgstr "已将 {total} 个技能中的 {moved} 个移至{scopeLabel}"
+
 #: src/components/SkillsTree.tsx
 msgid "Moved {moved} skills to Global"
 msgstr "已将 {moved} 个技能移至全局"
@@ -12869,6 +12889,10 @@ msgstr "部分文件未列出：工作区的更改过多。"
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "因为主题文件夹超出扫描限制，部分已保存的主题未显示。"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Some skills were deleted with a warning"
+msgstr "部分技能删除时带有警告"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "有东西坏了"
@@ -12876,6 +12900,10 @@ msgstr "有东西坏了"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Something else"
 msgstr "其他原因"
+
+#: src/lib/skills-api.ts
+msgid "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+msgstr "{scopeLabel}中已经有名为“{name}”的内容，服务器无法确认它是什么。它可能是此前一次失败的移动有意保留下来的：删除或替换之前，请先与原件比对。"
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -13668,6 +13696,10 @@ msgstr "画板内容不是有效的 Excalidraw 场景。"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude 桌面应用没有打开这个文件。它安装了吗？（{msg}）"
+
+#: src/lib/skills-api.ts
+msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+msgstr "保留在{scopeLabel}中的“{name}”副本是多余的重复：原件已核实未被改动。请删除该副本，然后重试移动。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."

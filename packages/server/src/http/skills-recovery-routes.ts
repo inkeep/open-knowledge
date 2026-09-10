@@ -364,7 +364,13 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
             res,
             200,
             SkillReimportSuccessSchema,
-            { name: body.name, updated: false, source: entry.source, warnings: [] },
+            {
+              name: body.name,
+              updated: false,
+              source: entry.source,
+              warnings: [],
+              warningCodes: [],
+            },
             { handler: 'skill-reimport' },
           );
           return;
@@ -488,7 +494,13 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
         const named = new Set(body.names);
         const wellFormed = [...named].filter((name) => {
           if (isValidSkillName(name)) return true;
-          results.push({ requested: name, status: 'failed', warnings: [], error: 'INVALID_NAME' });
+          results.push({
+            requested: name,
+            status: 'failed',
+            warnings: [],
+            error: 'INVALID_NAME',
+            warningCodes: [],
+          });
           return false;
         });
         const { bySource, unrecorded } = groupReimportNamesBySource(wellFormed, (name) =>
@@ -500,7 +512,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
           ),
         );
         for (const name of unrecorded) {
-          results.push({ requested: name, status: 'not-found', warnings: [] });
+          results.push({ requested: name, status: 'not-found', warnings: [], warningCodes: [] });
         }
 
         for (const group of bySource) {
@@ -531,6 +543,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                     status: 'failed',
                     source: group.source,
                     warnings: [],
+                    warningCodes: [],
                     error: 'INVALID_SOURCE',
                   });
                 }
@@ -551,6 +564,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                   status: 'failed',
                   source: group.source,
                   warnings: [],
+                  warningCodes: [],
                   error: e instanceof Error ? e.message : String(e),
                 });
               }
@@ -564,7 +578,12 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                 lock,
               );
               if (!entry) {
-                results.push({ requested: name, status: 'not-found', warnings: [] });
+                results.push({
+                  requested: name,
+                  status: 'not-found',
+                  warnings: [],
+                  warningCodes: [],
+                });
                 continue;
               }
               const pick = pickReimportDir(dirs, {
@@ -578,6 +597,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                   status: 'not-found',
                   source: entry.source,
                   warnings: [],
+                  warningCodes: [],
                 });
                 continue;
               }
@@ -606,6 +626,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                     status: 'failed',
                     source: entry.source,
                     warnings: [],
+                    warningCodes: [],
                     error: outcome.detail ?? outcome.title,
                   });
                   continue;
@@ -615,6 +636,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                   status: outcome.body.updated ? 'updated' : 'up-to-date',
                   source: outcome.body.source,
                   warnings: outcome.body.warnings,
+                  warningCodes: outcome.body.warningCodes,
                 });
               } catch (e) {
                 getLogger('skills-reimport-bulk').warn(
@@ -626,6 +648,7 @@ export function createSkillsRecoveryRoutes(deps: SkillsRecoveryRouteDeps): ApiRo
                   status: 'failed',
                   source: entry.source,
                   warnings: [],
+                  warningCodes: [],
                   error: e instanceof Error ? e.message : String(e),
                 });
               }

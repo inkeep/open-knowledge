@@ -33,13 +33,19 @@ import { extractActorIdentity } from '../extract-actor-identity.ts';
 import type { PinoLogger } from '../logger.ts';
 import { isInternalBundleSkillName } from '../skill-bundles.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
+import type { ErrorExtensions } from './error-response.ts';
 import { errorResponse } from './error-response.ts';
 import { methodRouter } from './method-router.ts';
 import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 export interface SkillsFileRouteDeps {
-  validateSkillName: (name: string, res: ServerResponse, handler: string) => boolean;
+  validateSkillName: (
+    name: string,
+    res: ServerResponse,
+    handler: string,
+    extensions?: ErrorExtensions,
+  ) => boolean;
   parseSkillScope: (
     raw: string | null,
     res: ServerResponse,
@@ -106,7 +112,7 @@ export interface SkillsFileRouteDeps {
     lifecycleStatus: 'deleted-upstream' | 'renamed',
   ) => Promise<Map<string, string>>;
   log: PinoLogger;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   recordDerivedMutationsBestEffort: (
     mutations: DerivedDocumentIndexMutation[],
     reason: string,

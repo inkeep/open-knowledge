@@ -25,7 +25,7 @@ export interface HistoryRouteDeps {
   log: PinoLogger;
   shadowRef: ShadowRef | undefined;
   flushGitCommit: (() => Promise<void>) | undefined;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   getCurrentBranch: (() => string | null) | undefined;
   validateFolderRel: (
     raw: string,

@@ -865,6 +865,7 @@
     "851WA-": ["Cela se configure dans Paramètres > Outils IA et CLI"],
     "87GMKe": ["Exposer ce projet au réseau ?"],
     "881Uwh": ["Supprimer le tableau sélectionné"],
+    "89TmeV": ["Certaines compétences ont été supprimées avec un avertissement"],
     "89TtiD": [
       "Nouveau fichier à partir du modèle « ",
       ["displayTitle"],
@@ -1711,6 +1712,7 @@
       ["status"],
       ")"
     ],
+    "GesfyX": [["shown"], " et ", ["more"], " de plus"],
     "Gfr4fu": ["Le serveur ne peut pas ouvrir de documents"],
     "GhjUB_": ["Reconnecté"],
     "Gi8Akx": [
@@ -2410,6 +2412,13 @@
     "OKImo8": ["Fichiers en conflit"],
     "OLBz-_": ["Le rendu du diagramme Mermaid a échoué."],
     "OLIKgw": ["Faites glisser l'élément ", ["0"], " pour réorganiser"],
+    "OMS7Xp": [
+      "Une copie de « ",
+      ["name"],
+      " » a été conservée dans ",
+      ["scopeLabel"],
+      " de façon délibérée. Ne la supprimez pas avant de l'avoir comparée à l'original : elle peut contenir la seule copie des fichiers que le déplacement échoué a déjà supprimés."
+    ],
     "ONPvOb": ["Chargement de l'activité de l'agent"],
     "ONUgxB": ["Ce conflit n'est plus disponible."],
     "ONWvwQ": ["Envoyer"],
@@ -2653,6 +2662,7 @@
     "RD8cCw": ["La gestion des connexions des agents n'est pas disponible dans cette version."],
     "RDjuBN": ["Configuration"],
     "RDrXh4": ["Configurez les paramètres utilisateur, projet et intégrations."],
+    "RDzxes": [["moved"], " compétences sur ", ["total"], " déplacées vers ", ["scopeLabel"]],
     "REkvLz": [
       "Le port ",
       ["0"],
@@ -2691,6 +2701,13 @@
     "R_U_A4": ["Ajoutez un motif de fichier ou de dossier, par ex. guides/**/*"],
     "RaPMZv": ["Raccourcis clavier disponibles dans l'éditeur et l'espace de travail."],
     "RaUKLu": ["Contrôle à distance"],
+    "Raayoq": [
+      "La copie de « ",
+      ["name"],
+      " » conservée dans ",
+      ["scopeLabel"],
+      " est un doublon redondant : l'original a été vérifié comme inchangé. Supprimez cette copie, puis réessayez le déplacement."
+    ],
     "Rah7yq": ["Que doit faire l'IA ? (facultatif)"],
     "Rb1zMa": ["Pas d'extrait"],
     "RcrskJ": ["La mise en forme semblait incorrecte"],
@@ -3525,6 +3542,13 @@
     "_G7A92": ["Maintenir index.md"],
     "_GRWOJ": ["Changer de fournisseur d'embeddings ?"],
     "_HgF9q": ["Trier par"],
+    "_HlScO": [
+      "Une copie peut subsister dans ",
+      ["scopeLabel"],
+      " pour : ",
+      ["names"],
+      ". Ne supprimez rien à cet endroit avant de l'avoir comparé à l'original : cela peut contenir la seule copie des fichiers qu'un déplacement échoué a déjà supprimés."
+    ],
     "_IGfXZ": ["OpenKnowledge s'est arrêté de façon inattendue la dernière fois."],
     "_IX_7x": ["Autre"],
     "_IfSZn": ["Un thème enregistré utilise déjà ce nom."],
@@ -4017,6 +4041,13 @@
     "eFJkVt": ["Échec du clonage : ", ["cloneError"]],
     "eG8Jsg": ["Basculer le mode focus de la touche Tab dans la source"],
     "eGUbmF": ["Copier le fichier ou dossier sélectionné"],
+    "eGkfGQ": [
+      "Une copie redondante a été conservée dans ",
+      ["scopeLabel"],
+      " pour : ",
+      ["names"],
+      ". Chaque original a été vérifié comme inchangé : supprimez ces copies, puis réessayez le déplacement."
+    ],
     "eJitUk": ["Envoyer depuis l'ordinateur"],
     "eKThTQ": ["Échec de la réorganisation"],
     "eMWRAs": ["Pages indexées : ", ["semanticIndexedCount"], " sur ", ["semanticTotalCount"], "."],
@@ -6053,6 +6084,13 @@
     "xSVO3J": ["Ce qui est créé"],
     "xV5sXw": ["il y a ", ["0"], " sem"],
     "xW5AUw": ["Récupéré ", ["pulled"]],
+    "xW7KK3": [
+      "Quelque chose nommé « ",
+      ["name"],
+      " » se trouve déjà dans ",
+      ["scopeLabel"],
+      ", et le serveur n'a pas pu confirmer de quoi il s'agit. Un déplacement échoué antérieur l'y a peut-être conservé de façon délibérée : comparez-le à l'original avant de le supprimer ou de le remplacer."
+    ],
     "xWEvuo": ["Demander à l'IA"],
     "xWomUD": ["Utiliser la version ", ["editor"]],
     "xXo8FT": ["Échec de l'enregistrement : ", ["error"]],

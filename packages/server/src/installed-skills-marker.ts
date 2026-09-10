@@ -9,17 +9,11 @@ import {
   parseInstalledSkills,
 } from '@inkeep/open-knowledge-core';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
-import { tracedMkdir, tracedRename, tracedWriteFile } from './fs-traced.ts';
+import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { createKeyedSerializer } from './keyed-serializer.ts';
 import { getLogger } from './logger.ts';
 
 const logger = getLogger('installed-skills-marker');
-
-export const TRACED_FS_ADAPTER = {
-  writeFile: (path: string, content: string, opts: { encoding: 'utf-8'; mode?: number }) =>
-    tracedWriteFile(path, content, opts),
-  rename: (from: string, to: string) => tracedRename(from, to),
-};
 
 export function installedSkillsPath(projectDir: string): string {
   return join(projectDir, ...INSTALLED_SKILLS_REL);
@@ -41,6 +35,46 @@ export function readInstalledSkills(projectDir: string): InstalledSkills {
   }
 }
 
+type MarkerRead =
+  | { ok: true; state: InstalledSkills }
+  | { ok: false; reason: string; cause?: unknown };
+
+function readInstalledSkillsForMutation(projectDir: string): MarkerRead {
+  const path = installedSkillsPath(projectDir);
+  if (!existsSync(path)) return { ok: true, state: emptyInstalledSkills() };
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT') return { ok: true, state: emptyInstalledSkills() };
+    return {
+      ok: false,
+      reason: code ? `it could not be read (${code})` : 'it could not be read',
+      cause: err,
+    };
+  }
+  const parsed = parseInstalledSkills(raw);
+  if (parsed === null) {
+    return {
+      ok: false,
+      reason: 'its contents are not an installed-skills marker this server understands',
+    };
+  }
+  return { ok: true, state: parsed };
+}
+
+function requireMutableInstalledSkills(projectDir: string): InstalledSkills {
+  const read = readInstalledSkillsForMutation(projectDir);
+  if (read.ok) return read.state;
+  const path = installedSkillsPath(projectDir);
+  logger.error(
+    { path, reason: read.reason, err: read.cause },
+    'refusing to rewrite the installed-skills marker because it could not be read — rewriting it would replace every install it records with this one',
+  );
+  throw new Error(`Refusing to rewrite ${path}: ${read.reason}`);
+}
+
 async function writeInstalledSkills(projectDir: string, state: InstalledSkills): Promise<void> {
   const parsed = InstalledSkillsSchema.safeParse(state);
   if (!parsed.success) {
@@ -52,9 +86,7 @@ async function writeInstalledSkills(projectDir: string, state: InstalledSkills):
   }
   const path = installedSkillsPath(projectDir);
   await tracedMkdir(dirname(path), { recursive: true });
-  await atomicWriteFile(path, `${JSON.stringify(parsed.data, null, 2)}\n`, {
-    fs: TRACED_FS_ADAPTER,
-  });
+  await atomicWriteFile(path, `${JSON.stringify(parsed.data, null, 2)}\n`, { fs: tracedAtomicFs });
 }
 
 export async function recordSkillInstall(
@@ -63,7 +95,7 @@ export async function recordSkillInstall(
   entry: InstalledSkillEntry,
 ): Promise<void> {
   return withMarkerLock(projectDir, async () => {
-    const state = readInstalledSkills(projectDir);
+    const state = requireMutableInstalledSkills(projectDir);
     await writeInstalledSkills(projectDir, {
       ...state,
       skills: { ...state.skills, [name]: entry },
@@ -76,7 +108,7 @@ export async function removeSkillInstall(
   name: string,
 ): Promise<InstalledSkillEntry | null> {
   return withMarkerLock(projectDir, async () => {
-    const state = readInstalledSkills(projectDir);
+    const state = requireMutableInstalledSkills(projectDir);
     const removed = state.skills[name] ?? null;
     if (removed === null) return null;
     const { [name]: _dropped, ...rest } = state.skills;

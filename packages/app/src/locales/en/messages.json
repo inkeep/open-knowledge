@@ -700,6 +700,7 @@
     "851WA-": ["This can be configured in Settings > AI tools & CLI"],
     "87GMKe": ["Expose this project to the network?"],
     "881Uwh": ["Delete selected table"],
+    "89TmeV": ["Some skills were deleted with a warning"],
     "89TtiD": [
       "New file from template \"",
       ["displayTitle"],
@@ -1436,6 +1437,7 @@
     "GbzBEk": ["Server returned an incomplete skills response."],
     "GceAYf": ["Moved ", ["label"], " to a new pane on the right."],
     "GemPfn": ["Failed to parse forward-links error response (HTTP ", ["status"], ")"],
+    "GesfyX": [["shown"], " and ", ["more"], " more"],
     "Gfr4fu": ["Server can't open documents"],
     "GhjUB_": ["Reconnected"],
     "Gi8Akx": [
@@ -2041,6 +2043,13 @@
     "OKImo8": ["Conflicted files"],
     "OLBz-_": ["Mermaid diagram failed to render."],
     "OLIKgw": ["Drag item ", ["0"], " to reorder"],
+    "OMS7Xp": [
+      "A copy of \"",
+      ["name"],
+      "\" was kept in ",
+      ["scopeLabel"],
+      " on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+    ],
     "ONPvOb": ["Loading agent activity"],
     "ONUgxB": ["That conflict is no longer available."],
     "ONWvwQ": ["Upload"],
@@ -2262,6 +2271,7 @@
     "RD8cCw": ["Managing agent connections is unavailable in this build."],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
+    "RDzxes": ["Moved ", ["moved"], " of ", ["total"], " skills to ", ["scopeLabel"]],
     "REkvLz": [
       "Port ",
       ["0"],
@@ -2300,6 +2310,13 @@
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
     "RaUKLu": ["Remote control"],
+    "Raayoq": [
+      "The copy of \"",
+      ["name"],
+      "\" kept in ",
+      ["scopeLabel"],
+      " is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+    ],
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
     "RcrskJ": ["Formatting looked wrong"],
@@ -2994,6 +3011,13 @@
     "_G7A92": ["Maintain index.md"],
     "_GRWOJ": ["Change the embeddings provider?"],
     "_HgF9q": ["Sort by"],
+    "_HlScO": [
+      "A copy may remain in ",
+      ["scopeLabel"],
+      " for: ",
+      ["names"],
+      ". Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+    ],
     "_IGfXZ": ["OpenKnowledge quit unexpectedly last time."],
     "_IX_7x": ["Other"],
     "_IfSZn": ["A saved theme already uses this name."],
@@ -3404,6 +3428,13 @@
     "eFJkVt": ["Clone failed: ", ["cloneError"]],
     "eG8Jsg": ["Toggle source tab focus mode"],
     "eGUbmF": ["Copy selected file or folder"],
+    "eGkfGQ": [
+      "A redundant copy was kept in ",
+      ["scopeLabel"],
+      " for: ",
+      ["names"],
+      ". Each original was verified unchanged, so remove those copies and retry the move."
+    ],
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
     "eMWRAs": ["Pages indexed: ", ["semanticIndexedCount"], " of ", ["semanticTotalCount"], "."],
@@ -5185,6 +5216,13 @@
     "xSVO3J": ["What gets created"],
     "xV5sXw": [["0"], "w ago"],
     "xW5AUw": ["Pulled ", ["pulled"]],
+    "xW7KK3": [
+      "Something named \"",
+      ["name"],
+      "\" is already in ",
+      ["scopeLabel"],
+      ", and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+    ],
     "xWEvuo": ["Ask AI"],
     "xWomUD": ["Use ", ["editor"], " version"],
     "xXo8FT": ["Save failed: ", ["error"]],

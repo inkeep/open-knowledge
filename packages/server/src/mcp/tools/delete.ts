@@ -172,6 +172,12 @@ export function register(server: ServerInstance, deps: DeleteDeps): void {
             files: looseObjectArray
               .optional()
               .describe('Per-bundle-file delete results `{ path, ok, existed?, error? }`.'),
+            warnings: z
+              .array(z.string())
+              .optional()
+              .describe(
+                'Whole-skill delete only: what the deletion took with it that a caller would not expect from the name alone — a destination copy an earlier failed cross-level move had retained, whose content the server confirmed matched the record before removing it. Absent when there is nothing to report; never present on a bundle-file delete.',
+              ),
           })
           .optional()
           .describe('Skill delete result (whole skill or specific bundle files).'),

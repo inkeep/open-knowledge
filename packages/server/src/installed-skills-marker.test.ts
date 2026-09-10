@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   installedSkillsPath,
@@ -18,6 +18,11 @@ const entry = (hosts: string[]) => ({
   scripts: false,
   installedAt: '2026-06-05T00:00:00.000Z',
 });
+
+const seedMarker = (contents: string): void => {
+  mkdirSync(dirname(installedSkillsPath(projectDir)), { recursive: true });
+  writeFileSync(installedSkillsPath(projectDir), contents, 'utf-8');
+};
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), 'ok-marker-'));
@@ -65,5 +70,61 @@ describe('installed-skills marker', () => {
     writeFileSync(installedSkillsPath(projectDir), '{ not valid json', 'utf-8');
     const state = readInstalledSkills(projectDir);
     expect(state.skills).toEqual({});
+  });
+
+  test('recording over a corrupt marker refuses and leaves the file byte-identical', async () => {
+    await recordSkillInstall(projectDir, 'seed', entry(['claude']));
+    const truncated = '{"schema":1,"skills":{"seed":{"hosts":["cla';
+    writeFileSync(installedSkillsPath(projectDir), truncated, 'utf-8');
+
+    await expect(recordSkillInstall(projectDir, 'next', entry(['cursor']))).rejects.toThrow(
+      /Refusing to rewrite/,
+    );
+    expect(readFileSync(installedSkillsPath(projectDir), 'utf-8')).toBe(truncated);
+  });
+
+  test('recording over a marker version this server cannot read keeps every sibling install', async () => {
+    const future = `${JSON.stringify(
+      { schema: 2, skills: { seed: { hosts: ['claude'], scope: 'project' } } },
+      null,
+      2,
+    )}\n`;
+    seedMarker(future);
+
+    await expect(recordSkillInstall(projectDir, 'next', entry(['cursor']))).rejects.toThrow(
+      /Refusing to rewrite/,
+    );
+    expect(readFileSync(installedSkillsPath(projectDir), 'utf-8')).toBe(future);
+  });
+
+  test('removing over a corrupt marker refuses rather than reporting nothing to remove', async () => {
+    const truncated = '{"schema":1,"skills":{"gone":{"hosts":["cla';
+    seedMarker(truncated);
+
+    await expect(removeSkillInstall(projectDir, 'gone')).rejects.toThrow(/Refusing to rewrite/);
+    expect(readFileSync(installedSkillsPath(projectDir), 'utf-8')).toBe(truncated);
+  });
+
+  test('a marker that cannot be opened at all refuses with the errno, not a parse verdict', async () => {
+    mkdirSync(installedSkillsPath(projectDir), { recursive: true });
+
+    await expect(recordSkillInstall(projectDir, 'next', entry(['cursor']))).rejects.toThrow(
+      /Refusing to rewrite .*: it could not be read \(EISDIR\)/,
+    );
+  });
+
+  test('an entry field this server does not model survives a sibling record', async () => {
+    seedMarker(
+      JSON.stringify({
+        schema: 1,
+        skills: { seed: { ...entry(['claude']), futureField: 'keep-me' } },
+      }),
+    );
+
+    await recordSkillInstall(projectDir, 'next', entry(['cursor']));
+
+    const state = JSON.parse(readFileSync(installedSkillsPath(projectDir), 'utf-8'));
+    expect(state.skills.seed.futureField).toBe('keep-me');
+    expect(state.skills.next.hosts).toEqual(['cursor']);
   });
 });

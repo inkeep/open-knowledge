@@ -319,6 +319,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
                 requested,
                 status: e instanceof SkillFetchError ? 'not-found' : 'failed',
                 warnings: [],
+                warningCodes: [],
                 ...(e instanceof SkillFetchError ? {} : { error: String(e) }),
               });
               continue;
@@ -329,7 +330,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
               dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
             if (!found) {
-              results.push({ requested, status: 'not-found', warnings: [] });
+              results.push({ requested, status: 'not-found', warnings: [], warningCodes: [] });
               continue;
             }
             acquiredDir = found.dir;
@@ -355,6 +356,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
                 requested,
                 status: 'failed',
                 warnings: [],
+                warningCodes: [],
                 error: outcome.detail ?? outcome.title,
               });
               continue;
@@ -367,6 +369,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
                 ? { collisionRenamedFrom: outcome.body.collisionRenamedFrom }
                 : {}),
               warnings: outcome.body.warnings,
+              warningCodes: outcome.body.warningCodes,
             });
           } catch (e) {
             getLogger('skills-import-bulk').warn(
@@ -377,6 +380,7 @@ export function createSkillsImportRoutes(deps: SkillsImportRouteDeps): ApiRouteG
               requested,
               status: 'failed',
               warnings: [],
+              warningCodes: [],
               error: e instanceof Error ? e.message : String(e),
             });
           } finally {

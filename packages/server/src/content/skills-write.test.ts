@@ -90,6 +90,7 @@ describe('applySkillWrite', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.warnings.some((w) => w.includes('"claude"'))).toBe(true);
+      expect(result.warningCodes).toEqual(['skill-name-vendor-word']);
     }
   });
 
@@ -115,7 +116,26 @@ describe('applySkillWrite', () => {
       frontmatter: fm('big'),
     });
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.warnings.some((w) => w.includes('600 lines'))).toBe(true);
+    if (result.ok) {
+      expect(result.warnings.some((w) => w.includes('600 lines'))).toBe(true);
+      expect(result.warningCodes).toEqual(['skill-body-too-long']);
+    }
+  });
+
+  test('two warnings on one write keep codes positionally aligned with their text', () => {
+    const result = applySkillWrite({
+      skillsRoot,
+      name: 'claude-helper',
+      body: Array.from({ length: 600 }, (_, i) => `line ${i}`).join('\n'),
+      frontmatter: fm('claude-helper'),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.warningCodes).toEqual(['skill-name-vendor-word', 'skill-body-too-long']);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings[0]).toContain('"claude"');
+      expect(result.warnings[1]).toContain('600 lines');
+    }
   });
 });
 
