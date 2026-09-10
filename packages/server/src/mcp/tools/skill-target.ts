@@ -1,8 +1,20 @@
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import {
+  ALL_EDITOR_IDS,
+  EDITOR_PROJECT_SKILL_ROOT,
+  EDITOR_USER_SKILL_ROOT,
+  type EditorId,
+  HUB_READER_EDITORS,
+  interpretSkillMoveFailure,
+  normalizeApiWarnings,
+  SKILL_AUTHORING_WARNING_CODES,
+  type SkillScope,
+} from '@inkeep/open-knowledge-core';
 import type { AgentIdentity } from '../agent-identity.ts';
 import { resolveSkillPreviewUrl } from './preview-url.ts';
 import {
   agentIdentityFields,
+  alignWarningCodes,
+  errorTextWithDetail,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpDelete,
   httpGet,
@@ -14,6 +26,8 @@ import {
 import { resolveSkillName } from './verb-schemas.ts';
 
 export type { SkillScope };
+
+const KNOWN_AUTHORING_WARNING_CODES: ReadonlySet<string> = new Set(SKILL_AUTHORING_WARNING_CODES);
 
 interface SkillIdentity {
   summary?: string;
@@ -50,16 +64,20 @@ export async function writeSkill(
   if (!result.ok) return textResult(`Error: ${result.error}`, true);
   const created = result.created === true;
   const path = typeof result.path === 'string' ? result.path : undefined;
-  const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
+  const aligned = alignWarningCodes(
+    result.warnings,
+    result.warningCodes,
+    KNOWN_AUTHORING_WARNING_CODES,
+  );
   const lines = [
     `${created ? 'Created' : 'Updated'} skill "${input.name}"${path ? ` (${path})` : ''} — live for that folder's agent. Use \`install\` with \`add\` to put it in your other editors.`,
-    ...warnings,
+    ...aligned.warnings,
   ];
   const preview = input.lockDir
     ? resolveSkillPreviewUrl(input.scope ?? 'project', input.name, { lockDir: input.lockDir })
     : null;
   return textPlusStructured(lines.join('\n'), {
-    skill: { ok: true, path, created },
+    skill: { ok: true, path, created, ...aligned },
     ...(preview ? { previewUrl: preview.url, previewUrlSource: preview.source } : {}),
   });
 }
@@ -185,12 +203,16 @@ export async function deleteSkill(
   const result = await httpDelete(url, `/api/skill?${params.toString()}`);
   if (!result.ok) return textResult(`Error: ${result.error}`, true);
   const existed = result.existed === true;
-  return textPlusStructured(
+  const warnings = normalizeApiWarnings(result.warnings);
+  const lines = [
     existed
       ? `Deleted skill "${input.name}".`
       : `Skill "${input.name}" did not exist — nothing to delete.`,
-    { skill: { ok: true, existed } },
-  );
+    ...warnings,
+  ];
+  return textPlusStructured(lines.join('\n'), {
+    skill: { ok: true, existed, ...(warnings.length > 0 ? { warnings } : {}) },
+  });
 }
 
 export async function moveSkill(
@@ -211,7 +233,11 @@ export async function moveSkill(
   });
   if (!result.ok) {
     const error = typeof result.error === 'string' ? result.error : 'Skill move failed';
-    return textPlusStructured(`Error: ${error}`, { ok: false, kind: 'skill', error }, true);
+    return textPlusStructured(
+      errorTextWithDetail({ ...result, error }),
+      { ok: false, kind: 'skill', error },
+      true,
+    );
   }
   const committed = result.committed === true;
   const from = typeof result.from === 'string' ? result.from : input.fromName;
@@ -224,6 +250,66 @@ export async function moveSkill(
   );
 }
 
+function destinationSkillRoot(entry: string, scope: SkillScope): string | null | undefined {
+  if (!(ALL_EDITOR_IDS as readonly string[]).includes(entry)) return undefined;
+  const roots = scope === 'global' ? EDITOR_USER_SKILL_ROOT : EDITOR_PROJECT_SKILL_ROOT;
+  return roots[entry as EditorId];
+}
+
+function readsHubAt(entry: string, scope: SkillScope): boolean {
+  return HUB_READER_EDITORS.some((reader) => reader.editorId === entry && reader.scope === scope);
+}
+
+export function crossScopeMoveSuccessText(input: {
+  fromName: string;
+  toName: string;
+  fromScope: SkillScope;
+  toScope: SkillScope;
+  droppedLocations: readonly string[];
+}): string {
+  const fromLabel = input.fromScope === 'global' ? 'Global' : 'Project';
+  const toLabel = input.toScope === 'global' ? 'Global' : 'Project';
+  const unhostable = input.droppedLocations.filter(
+    (entry) => destinationSkillRoot(entry, input.toScope) === null,
+  );
+  const hubEquivalent = unhostable.filter((entry) => readsHubAt(entry, input.toScope));
+  const noPlacement = unhostable.filter((entry) => !readsHubAt(entry, input.toScope));
+  const reinstallable = input.droppedLocations.filter((entry) => !unhostable.includes(entry));
+  const list = (entries: readonly string[]) => entries.join(', ');
+  const verb = (entries: readonly string[]) => (entries.length === 1 ? 'has' : 'have');
+
+  const lead = `Moved skill "${input.fromName}" (${fromLabel}) → "${input.toName}" (${toLabel}) with its references, scripts, and bundle files, and re-projected it into the editor locations the ${toLabel} level can host. History did not transfer; it starts fresh at the ${toLabel} level.`;
+  if (input.droppedLocations.length === 0) return lead;
+
+  const parts = [
+    `${lead} It also occupied ${list(input.droppedLocations)}; those were removed at the source and not re-created at the destination.`,
+  ];
+  if (reinstallable.length > 0) {
+    const add = reinstallable.map((entry) => `"${entry}"`).join(', ');
+    parts.push(
+      `Re-add ${list(reinstallable)} with \`install({ name: "${input.toName}", scope: "${input.toScope}", add: [${add}] })\`.`,
+    );
+    if (reinstallable.some((entry) => entry.includes('/'))) {
+      const destinationBase =
+        input.toScope === 'global' ? 'your home directory' : 'the project directory';
+      parts.push(
+        `Custom roots resolve against the destination base — ${destinationBase} — not wherever the root lived before the move.`,
+      );
+    }
+  }
+  if (hubEquivalent.length > 0) {
+    parts.push(
+      `${list(hubEquivalent)} ${verb(hubEquivalent)} no ${toLabel}-level skills root, so \`install\` cannot place the skill there; ${hubEquivalent.length === 1 ? 'it reads' : 'they read'} the \`agents\` hub at that level, so \`install({ name: "${input.toName}", scope: "${input.toScope}", add: ["agents"] })\` is the equivalent.`,
+    );
+  }
+  if (noPlacement.length > 0) {
+    parts.push(
+      `${list(noPlacement)} ${verb(noPlacement)} no ${toLabel}-level skills root and ${noPlacement.length === 1 ? 'does' : 'do'} not read the \`agents\` hub there, so no ${toLabel}-level placement exists — \`install\` would accept the id and project nothing.`,
+    );
+  }
+  return parts.join(' ');
+}
+
 export async function moveSkillCrossScope(
   url: string | undefined,
   input: {
@@ -233,110 +319,67 @@ export async function moveSkillCrossScope(
     toName: string;
   } & SkillIdentity,
 ) {
+  const refuse = (error: string) =>
+    textPlusStructured(
+      error,
+      { ok: false, kind: 'skill', error, moveState: 'nothing-written' as const },
+      true,
+    );
   const rf = resolveSkillName(input.fromName);
-  if (!rf.ok) return textResult(`Error: ${rf.error}`, true);
+  if (!rf.ok) return refuse(`Error: ${rf.error}`);
   const rt = resolveSkillName(input.toName);
-  if (!rt.ok) return textResult(`Error: ${rt.error}`, true);
-  if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
+  if (!rt.ok) return refuse(`Error: ${rt.error}`);
+  if (!url) return refuse(HOCUSPOCUS_NOT_RUNNING_ERROR);
 
-  const src = await fetchSkill(url, input.fromScope, input.fromName);
-  if (!src.ok) {
-    return textPlusStructured(
-      `Error: ${src.error}`,
-      { ok: false, kind: 'skill', error: src.error },
-      true,
-    );
-  }
-
-  const dest = await fetchSkill(url, input.toScope, input.toName);
-  if (dest.ok) {
-    const label = input.toScope === 'global' ? 'Global' : 'Project';
-    return textPlusStructured(
-      `Error: a ${label} skill named "${input.toName}" already exists — delete or rename it first (cross-level move will not overwrite it).`,
-      { ok: false, kind: 'skill', error: 'destination already exists' },
-      true,
-    );
-  }
-  if (!dest.notFound) {
-    return textPlusStructured(
-      `Error: could not verify the ${input.toScope} destination "${input.toName}" is free (${dest.error}); aborting before any write so an existing skill can't be overwritten. Retry once the server is reachable.`,
-      { ok: false, kind: 'skill', error: dest.error },
-      true,
-    );
-  }
-
-  const put = await httpPut(url, '/api/skill', {
-    scope: input.toScope,
-    name: input.toName,
-    body: src.body,
-    frontmatter: { name: input.toName, description: src.description },
+  const moved = await httpPost(url, '/api/skill/move-scope', {
+    name: input.fromName,
+    ...(input.toName !== input.fromName ? { toName: input.toName } : {}),
+    fromScope: input.fromScope,
+    toScope: input.toScope,
     ...(input.summary !== undefined ? { summary: input.summary } : {}),
     ...agentIdentityFields(input.identity),
   });
-  if (!put.ok) {
-    const error = typeof put.error === 'string' ? put.error : 'Skill move failed';
-    return textPlusStructured(`Error: ${error}`, { ok: false, kind: 'skill', error }, true);
-  }
-
-  const skippedBinary: string[] = [];
-  for (const file of src.files) {
-    const read = await readSkillFile(url, input.fromScope, input.fromName, file.path);
-    if (!read.ok) {
-      if (read.status === 415) {
-        skippedBinary.push(file.path);
-        continue;
-      }
-      return textPlusStructured(
-        `Error: copied skill "${input.toName}" into ${input.toScope} scope, but reading its bundle file "${file.path}" from the source failed (${read.error}); aborting before deleting the source. The original ${input.fromScope} skill is intact — retry or fix the file, then move again. (A partial ${input.toScope} copy may exist; delete it first.)`,
-        { ok: false, kind: 'skill', error: read.error },
-        true,
-      );
-    }
-    const copy = await httpPut(url, '/api/skill-file', {
-      scope: input.toScope,
-      name: input.toName,
-      path: file.path,
-      content: read.text,
-      ...(input.summary !== undefined ? { summary: input.summary } : {}),
-      ...agentIdentityFields(input.identity),
-    });
-    if (!copy.ok) {
-      const error = typeof copy.error === 'string' ? copy.error : 'bundle-file copy failed';
-      return textPlusStructured(
-        `Error: copied skill "${input.toName}" into ${input.toScope} scope, but copying its bundle file "${file.path}" failed (${error}); aborting before deleting the source. The original ${input.fromScope} skill is intact — retry. (A partial ${input.toScope} copy may exist; delete it first.)`,
-        { ok: false, kind: 'skill', error },
-        true,
-      );
-    }
-  }
-
-  const params = new URLSearchParams({ name: input.fromName, scope: input.fromScope });
-  if (input.summary !== undefined) params.set('summary', input.summary);
-  appendIdentityParams(params, input.identity);
-  const del = await httpDelete(url, `/api/skill?${params.toString()}`);
-  if (!del.ok) {
-    const error = typeof del.error === 'string' ? del.error : 'source delete failed';
+  const readDroppedLocations = (raw: unknown): string[] =>
+    Array.isArray(raw) ? raw.filter((entry): entry is string => typeof entry === 'string') : [];
+  if (!moved.ok) {
+    const error = typeof moved.error === 'string' ? moved.error : 'Skill move failed';
+    const outcome = interpretSkillMoveFailure(moved);
+    const detail = errorTextWithDetail({ ...moved, error });
     return textPlusStructured(
-      `Partially moved skill "${input.fromName}" → ${input.toScope} scope as "${input.toName}", but deleting the ${input.fromScope}-scope original failed (${error}). The skill now exists in BOTH scopes — delete the ${input.fromScope} copy manually. Run \`install\` to project the new ${input.toScope} skill.`,
-      { ok: false, kind: 'skill', error, bothScopes: true },
+      outcome.kind === 'unverified'
+        ? `${detail}\nThe server returned an unrecognized or inconsistent move outcome. Do not remove either copy before comparing the source and destination.`
+        : detail,
+      {
+        ok: false,
+        kind: 'skill',
+        error,
+        droppedLocations: readDroppedLocations(moved.droppedLocations),
+        ...(outcome.kind === 'coherent'
+          ? {
+              ...(outcome.moveState ? { moveState: outcome.moveState } : {}),
+              ...(outcome.sourceState ? { sourceState: outcome.sourceState } : {}),
+              ...(outcome.retentionLedger ? { retentionLedger: outcome.retentionLedger } : {}),
+            }
+          : {}),
+      },
       true,
     );
   }
-
-  const fromLabel = input.fromScope === 'global' ? 'Global' : 'Project';
-  const toLabel = input.toScope === 'global' ? 'Global' : 'Project';
-  const skippedNote =
-    skippedBinary.length > 0
-      ? ` ${skippedBinary.length} binary/oversize bundle file(s) were NOT copied (outside the text-only bundle contract): ${skippedBinary.join(', ')}.`
-      : '';
+  const droppedLocations = readDroppedLocations(moved.droppedLocations);
   return textPlusStructured(
-    `Moved skill "${input.fromName}" (${fromLabel}) → "${input.toName}" (${toLabel}) with its references and scripts, and re-projected into the locations it occupied. History did not transfer — it starts fresh at the ${toLabel} level.${skippedNote}`,
+    crossScopeMoveSuccessText({
+      fromName: input.fromName,
+      toName: input.toName,
+      fromScope: input.fromScope,
+      toScope: input.toScope,
+      droppedLocations,
+    }),
     {
       ok: true,
       kind: 'skill',
       committed: false,
       crossScope: true,
-      ...(skippedBinary.length > 0 ? { skippedBinaryFiles: skippedBinary } : {}),
+      droppedLocations,
     },
   );
 }

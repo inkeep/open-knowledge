@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   type FrontmatterPatch,
   renderInventoryList,
+  SKILL_AUTHORING_WARNING_CODES,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
@@ -24,6 +25,7 @@ import { resolveWithinRoot } from './path-safety.ts';
 import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
   documentResultBaseShape,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -41,6 +43,8 @@ import {
   summaryArgSchema,
   textPlusStructured,
   textResult,
+  WARNING_CODES_CONTRACT,
+  WARNINGS_FIELD_CONTRACT,
 } from './shared.ts';
 import {
   fetchSkill,
@@ -680,6 +684,16 @@ export function register(server: ServerInstance, deps: EditDeps): void {
               .boolean()
               .optional()
               .describe('Always false for an edit (the skill already existed).'),
+            warnings: z
+              .array(z.string())
+              .optional()
+              .describe(
+                `Non-fatal authoring warnings for the SKILL.md that was written. ${WARNINGS_FIELD_CONTRACT}`,
+              ),
+            warningCodes: z
+              .array(z.enum(SKILL_AUTHORING_WARNING_CODES))
+              .optional()
+              .describe(`${WARNING_CODES_CONTRACT} ${AUTHORING_WARNING_CODE_GLOSS}`),
             file: z
               .object({
                 path: z.string(),

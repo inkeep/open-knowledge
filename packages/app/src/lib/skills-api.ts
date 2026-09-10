@@ -5,6 +5,7 @@ import type {
   SkillFolderLinkPreview,
   SkillFrontmatter,
   SkillInstallWarningCode,
+  SkillMoveFailureOutcome,
   SkillPreview,
   SkillRefResolution,
   SkillScope,
@@ -14,8 +15,15 @@ import type {
   SkillsReimportBulkSuccess,
   SkillsSearchSuccess,
 } from '@inkeep/open-knowledge-core';
-import { SkillFolderLinkPreviewSchema, SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  interpretSkillMoveFailure,
+  isSkillMoveRetainedDestinationCode,
+  normalizeApiWarnings,
+  SkillFolderLinkPreviewSchema,
+  SkillsListSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
+import { toast } from 'sonner';
 import { emitSkillScopeMoved, emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
@@ -363,30 +371,164 @@ export async function duplicateSkill(input: {
   }
 }
 
+export type MoveSkillScopeResult =
+  | { ok: true; scope: SkillScope; path?: string; droppedLocations: string[] }
+  | {
+      ok: false;
+      error: string;
+      outcome: SkillMoveFailureOutcome;
+      droppedLocations: string[];
+    };
+
+function skillMoveRetainedToastId(toScope: SkillScope, name: string): string {
+  return `skill-move-retained:${toScope}:${name}`;
+}
+
+function skillMoveRetainedBatchToastId(toScope: SkillScope): string {
+  return `skill-move-retained-batch:${toScope}`;
+}
+
+const outstandingRetainedNames = new Map<SkillScope, Set<string>>();
+
+function clearSkillMoveRetained(scope: SkillScope, name: string): void {
+  toast.dismiss(skillMoveRetainedToastId(scope, name));
+  const outstanding = outstandingRetainedNames.get(scope);
+  if (outstanding === undefined || !outstanding.delete(name)) return;
+  if (outstanding.size > 0) return;
+  outstandingRetainedNames.delete(scope);
+  toast.dismiss(skillMoveRetainedBatchToastId(scope));
+}
+
+function skillMoveRetentionClass(
+  outcome: SkillMoveFailureOutcome,
+): 'none' | 'redundant' | 'uncertain' {
+  if (outcome.kind === 'unverified') return 'uncertain';
+  const retained =
+    outcome.moveState !== undefined && isSkillMoveRetainedDestinationCode(outcome.moveState);
+  if (!retained && outcome.retentionLedger === undefined) return 'none';
+  if (outcome.retentionLedger !== undefined) return 'uncertain';
+  return outcome.sourceState === 'intact' ? 'redundant' : 'uncertain';
+}
+
+export function skillMoveRetainedCopyToast(input: {
+  outcome: SkillMoveFailureOutcome;
+  name: string;
+  toScope: SkillScope;
+  scopeLabel: string;
+}): { description: string; id: string; duration: number } | undefined {
+  const { outcome, name, toScope, scopeLabel } = input;
+  const retention = skillMoveRetentionClass(outcome);
+  if (retention === 'none') return undefined;
+  const id = skillMoveRetainedToastId(toScope, name);
+  if (outcome.kind === 'unverified') {
+    const names = name;
+    return {
+      description: t`A copy may remain in ${scopeLabel} for: ${names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed.`,
+      id,
+      duration: Infinity,
+    };
+  }
+  if (outcome.retentionLedger !== undefined) {
+    return {
+      description: t`Something named "${name}" is already in ${scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it.`,
+      id,
+      duration: Infinity,
+    };
+  }
+  const description =
+    retention === 'redundant'
+      ? t`The copy of "${name}" kept in ${scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move.`
+      : t`A copy of "${name}" was kept in ${scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed.`;
+  return { description, id, duration: Infinity };
+}
+
+const RETAINED_NAMES_SHOWN = 3;
+
+function retainedNamesText(names: readonly string[]): string {
+  if (names.length <= RETAINED_NAMES_SHOWN) return names.join(', ');
+  const shown = names.slice(0, RETAINED_NAMES_SHOWN).join(', ');
+  const more = names.length - RETAINED_NAMES_SHOWN;
+  return t`${shown} and ${more} more`;
+}
+
+export function skillMoveRetainedBatchToast(input: {
+  failures: readonly { name: string; outcome: SkillMoveFailureOutcome }[];
+  moved: number;
+  total: number;
+  toScope: SkillScope;
+  scopeLabel: string;
+}): { title: string; description: string; id: string; duration: number } | undefined {
+  const { failures, moved, total, toScope, scopeLabel } = input;
+  const retained = failures
+    .map((failure) => ({ name: failure.name, retention: skillMoveRetentionClass(failure.outcome) }))
+    .filter((failure) => failure.retention !== 'none');
+  if (retained.length === 0) return undefined;
+  outstandingRetainedNames.set(toScope, new Set(retained.map((failure) => failure.name)));
+  const names = retainedNamesText(retained.map((failure) => failure.name));
+  const description = retained.some((failure) => failure.retention === 'uncertain')
+    ? t`A copy may remain in ${scopeLabel} for: ${names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed.`
+    : t`A redundant copy was kept in ${scopeLabel} for: ${names}. Each original was verified unchanged, so remove those copies and retry the move.`;
+  return {
+    title: t`Moved ${moved} of ${total} skills to ${scopeLabel}`,
+    description,
+    id: skillMoveRetainedBatchToastId(toScope),
+    duration: Infinity,
+  };
+}
+
+function readField(body: unknown, key: string): unknown {
+  return body === null || typeof body !== 'object'
+    ? undefined
+    : (body as Record<string, unknown>)[key];
+}
+
+function parseDroppedLocations(body: unknown): string[] {
+  const value = readField(body, 'droppedLocations');
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
 export async function moveSkillScope(input: {
   name: string;
   fromScope: SkillScope;
   toScope: SkillScope;
-}): Promise<WriteResult<{ scope: SkillScope; path?: string }>> {
+}): Promise<MoveSkillScopeResult> {
   const { name, fromScope, toScope } = input;
-  if (fromScope === toScope) return { ok: true, scope: toScope };
+  if (fromScope === toScope) return { ok: true, scope: toScope, droppedLocations: [] };
   try {
     const res = await fetch('/api/skill/move-scope', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name, fromScope, toScope }),
     });
-    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    const payload = (await res.json().catch(() => null)) as { path?: string } | null;
+    const payload = (await res.json().catch(() => null)) as unknown;
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: parseApiError(payload) ?? `HTTP ${res.status}`,
+        outcome: interpretSkillMoveFailure(payload),
+        droppedLocations: parseDroppedLocations(payload),
+      };
+    }
+    const path = readField(payload, 'path');
     emitSkillScopeMoved({ name, fromScope, toScope });
-    emitSkillsChanged();
+    clearSkillMoveRetained(toScope, name);
     return {
       ok: true,
       scope: toScope,
-      ...(typeof payload?.path === 'string' ? { path: payload.path } : {}),
+      ...(typeof path === 'string' ? { path } : {}),
+      droppedLocations: parseDroppedLocations(payload),
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+      outcome: { kind: 'coherent' },
+      droppedLocations: [],
+    };
+  } finally {
+    emitSkillsChanged();
   }
 }
 
@@ -464,14 +606,19 @@ export async function deleteSkill(
   scope: SkillScope,
   name: string,
   host?: string,
-): Promise<WriteResult<{ existed: boolean }>> {
+): Promise<WriteResult<{ existed: boolean; warnings: string[] }>> {
   try {
     const qs = `?name=${encodeURIComponent(name)}&scope=${encodeURIComponent(scope)}${host ? `&host=${encodeURIComponent(host)}` : ''}`;
     const res = await fetch(`/api/skill${qs}`, { method: 'DELETE' });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as { existed?: boolean } | null;
     emitSkillsChanged();
-    return { ok: true, existed: payload?.existed ?? false };
+    if (host === undefined) clearSkillMoveRetained(scope, name);
+    return {
+      ok: true,
+      existed: payload?.existed ?? false,
+      warnings: normalizeApiWarnings(readField(payload, 'warnings')),
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

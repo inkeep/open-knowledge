@@ -4,6 +4,7 @@ import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
   BrokenLinkSuppressionSchema,
+  UNREADABLE_WARNINGS_TEXT,
   validateDocName,
 } from '@inkeep/open-knowledge-core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -534,6 +535,44 @@ export function parseRenameCollidingPairs(value: unknown): RenameCollisionPair[]
       : [];
   });
 }
+
+export { UNREADABLE_WARNINGS_TEXT };
+
+export function alignWarningCodes(
+  warnings: unknown,
+  codes: unknown,
+  known: ReadonlySet<string>,
+): { warnings: string[]; warningCodes?: string[] } {
+  if (warnings !== undefined && !Array.isArray(warnings)) {
+    return { warnings: [UNREADABLE_WARNINGS_TEXT] };
+  }
+  const text = (Array.isArray(warnings) ? warnings : []).map((entry) =>
+    typeof entry === 'string' ? entry : String(entry),
+  );
+  const rawCodes = Array.isArray(codes) ? (codes as string[]) : [];
+  if (text.length !== rawCodes.length) return { warnings: text };
+  return rawCodes.every((code) => known.has(code))
+    ? { warnings: text, warningCodes: rawCodes }
+    : { warnings: text };
+}
+
+export function warningCodesContract(reporter: string): string {
+  return `Machine-readable codes aligned 1:1 with \`warnings\` (\`warnings[i]\` is the display text for \`warningCodes[i]\`) — switch on these, never on the English. Absent when ${reporter} sent warning text it did not pair with codes, or paired one with a code this build does not recognise; \`warnings\` still carries the full text either way, so treat a missing field as unknown rather than as an all-clear.`;
+}
+
+export const WARNING_CODES_CONTRACT = warningCodesContract('the server');
+
+export function warningsFieldContract(reporter: string): string {
+  return `Always emitted, \`[]\` when there were none. \`warningCodes\` accompanies this list 1:1 whenever ${reporter} paired every warning it sent with a code this build recognises; otherwise \`warningCodes\` is absent and this list still carries the full text. \`content[0].text\` lists every warning either way. A \`warnings\` payload in a shape this build cannot read at all becomes one entry saying so, with \`warningCodes\` absent — \`[]\` never means "unreadable".`;
+}
+
+export const WARNINGS_FIELD_CONTRACT = warningsFieldContract('the server');
+
+export const AUTHORING_WARNING_CODE_GLOSS =
+  '`skill-name-vendor-word`: the name contains a vendor word. `skill-body-too-long`: the body exceeds the 500-line soft cap.';
+
+export const INSTALL_WARNING_CODE_GLOSS =
+  '`no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a hand-edited copy was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.';
 
 export const AUDIT_FILE_CAP = 10;
 export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerInstall } from './install.ts';
-import type { ServerInstance } from './shared.ts';
+import { type ServerInstance, UNREADABLE_WARNINGS_TEXT } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -122,6 +122,17 @@ describe('install MCP tool', () => {
     expect(calls).toHaveLength(0);
   });
 
+  test('`mode` without `add` or `convert` is refused before any request', async () => {
+    stubOk();
+    const r = await captureInstall('http://localhost:4321')({
+      name: 'trip-log',
+      mode: 'copy',
+    });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('`mode` needs `add` or `convert`');
+    expect(calls).toHaveLength(0);
+  });
+
   test('a failed shaping reports what already landed', async () => {
     globalThis.fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -212,6 +223,16 @@ describe('skillFolders — folder topology, moved off the read-only `config` too
     });
     expect(text(res)).toContain('Unlinked');
     expect(text(res)).toContain('nothing stopped working');
+  });
+
+  test('an unreadable warnings payload is rendered in the text, not only in the structured field', async () => {
+    stubOk({ warnings: 'Nothing was projected.', warningCodes: ['no-targets'] });
+
+    const r = await captureInstall('http://localhost:4321')({ name: 'trip-log', add: ['claude'] });
+
+    expect(r.isError).toBeUndefined();
+    expect(text(r)).toContain('treat this result as unverified');
+    expect(r.structuredContent?.warnings).toEqual([UNREADABLE_WARNINGS_TEXT]);
   });
 
   test('refuses to combine with `name` — it acts on folders, not one skill', async () => {

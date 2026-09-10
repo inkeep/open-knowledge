@@ -122,6 +122,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/skill-move-retained.json` | Bookkeeping for a skill move between Project and Global scope that could not finish: which destination copy was kept, why, and what the source looked like at the time. Keyed by scope and skill name, one record each. A record clears when a later move of that skill completes, when the copy at the destination stops matching the one recorded, or when you delete that skill at that scope. No document content | In-project, gitignored |
 | `.ok/local/terminal/claude-settings-{mcp,tools,mcp-tools}.json` | Windows-only Claude launch settings written when **Open in Claude** requests MCP or tool preapproval; one of three possible files, overwritten rather than appended on each launch that uses that combination. macOS and Linux pass the same settings inline | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.ok/worktrees/<branch>/` | Git worktree checkout created when you open a branch in its own window (project switcher); the path is also added to `.git/info/exclude` | In-project, gitignored |
@@ -142,6 +143,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/auth.yml` | Auth-token fallback, used only when the Keychain is unavailable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
+| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-move-retained.json` | The same skill-install markers and unfinished-scope-move bookkeeping the tables above list under a project's `.ok/local/`, written under your home directory for Global-scope skills instead | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/themes/` | Your saved color themes from the [Themes plugin](../plugins/themes.mdx), one Tinted Theming base16 YAML file per theme, written when you create or edit a theme | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
@@ -243,6 +245,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/skill-move-retained.json` | Bookkeeping for a skill move between Project and Global scope that could not finish: which destination copy was kept, why, and what the source looked like at the time. Keyed by scope and skill name, one record each. A record clears when a later move of that skill completes, when the copy at the destination stops matching the one recorded, or when you delete that skill at that scope. No document content | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
 
@@ -270,6 +273,7 @@ Disable both with `OK_RECLAIM_DISABLE=1`. `ok start` does not touch skill files;
 | `~/.ok/auth.yml` | Auth-token fallback, used when no OS credential store is reachable. Written `0600` | **Yes** (`0600`) |
 | `~/.ok/skill-state.yml`, `~/.ok/skill-install-events.jsonl` | Skill-install bookkeeping | No |
 | `~/.agents/skills/<name>/`, `~/.claude/skills/<name>/`, … | Your global-scope skills, versioned in place in your home editor dirs (kept by `ok uninstall` unless `--purge-content`) | No |
+| `~/.ok/local/installed-skills.json`, `~/.ok/local/skill-move-retained.json` | The same skill-install markers and unfinished-scope-move bookkeeping the tables above list under a project's `.ok/local/`, written under your home directory for Global-scope skills instead | No |
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/themes/` | Your saved color themes from the [Themes plugin](../plugins/themes.mdx), one Tinted Theming base16 YAML file per theme, written when you create or edit a theme | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |

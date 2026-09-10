@@ -25,7 +25,7 @@ A new skill goes into a skills folder the project already has. OpenKnowledge nev
 
 OpenKnowledge keeps one source folder per skill. Other locations use symlinks by default, so they read the same bytes. The install menu can convert a location to a copy, which OpenKnowledge refreshes until it is edited independently outside the app.
 
-**Make source** relocates the real folder. Moving between Project and Global recreates the skill and its locations; history does not transfer. Project skills are versioned with project content. Global skills outside a base carry no version history.
+**Make source** relocates the real folder. Moving between Project and Global re-creates the skill in the destination scope: history does not transfer, and the editor locations the destination scope can host are re-projected there. Its `.agents/skills` hub entry, any **Add custom path** locations, and any AI tool with no skills folder at that scope are removed at the source and not re-created at the destination; add the ones the destination scope can hold again from the destination skill. That applies to a move that succeeded: if the move fails, the same list names locations it had already removed at the source, so adding them from the destination would spread the copy the failure left behind. Project skills are versioned with project content. Global skills outside a base carry no version history.
 
 ## Existing skills
 

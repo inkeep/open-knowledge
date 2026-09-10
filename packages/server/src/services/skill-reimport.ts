@@ -47,7 +47,7 @@ export interface SkillReimportDeps {
   ) => { root: string; dirRel: string; realDir: string | null };
   parseFrontmatterDoc: (raw: string) => { frontmatter: Record<string, unknown>; body: string };
   attributeOkArtifactWrite: (actor: ActorIdentity, keyPath: string, summary: string) => void;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   shadowHeadSha: (writerId?: string, verifyPathRel?: string) => Promise<string | undefined>;
   artifactWriterId: (actor: ActorIdentity) => string | undefined;
   skillArtifactKey: (name: string) => string;
@@ -198,7 +198,10 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
           : null,
       });
       if (upToDate) {
-        return { ok: true, body: { name, updated: false, source: entry.source, warnings: [] } };
+        return {
+          ok: true,
+          body: { name, updated: false, source: entry.source, warnings: [], warningCodes: [] },
+        };
       }
 
       const acquiredDoc = deps.parseFrontmatterDoc(acquired.skillMd);
@@ -226,6 +229,7 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
             upstreamBody: skillBody,
             ...(gitTracked !== undefined ? { gitTracked } : {}),
             warnings: [],
+            warningCodes: [],
           },
         };
       }
@@ -330,7 +334,16 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
       }
 
       deps.signalFiles();
-      return { ok: true, body: { name, updated: true, source: entry.source, warnings } };
+      return {
+        ok: true,
+        body: {
+          name,
+          updated: true,
+          source: entry.source,
+          warnings,
+          warningCodes: wr.warningCodes,
+        },
+      };
     },
   };
 }

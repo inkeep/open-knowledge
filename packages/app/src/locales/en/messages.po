@@ -1020,6 +1020,10 @@ msgstr "{settingsDescriptorLabel} properties"
 msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} isn't a valid branch name."
 
+#: src/lib/skills-api.ts
+msgid "{shown} and {more} more"
+msgstr "{shown} and {more} more"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
@@ -1275,6 +1279,14 @@ msgstr "A copy is a real folder of its own, and OK keeps it in step with the sou
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 msgstr "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 
+#: src/lib/skills-api.ts
+msgid "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+msgstr "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+
+#: src/lib/skills-api.ts
+msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+msgstr "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+
 #. placeholder {0}: path ?? label
 #: src/components/SkillInstallMenu.tsx
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
@@ -1362,6 +1374,10 @@ msgstr "A pull quote stands out from the surrounding text."
 #: src/components/settings/TerminalSection.tsx
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
 msgstr "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
+
+#: src/lib/skills-api.ts
+msgid "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
+msgstr "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -8507,6 +8523,10 @@ msgstr "Moved {label} to a new pane on the left."
 msgid "Moved {label} to a new pane on the right."
 msgstr "Moved {label} to a new pane on the right."
 
+#: src/lib/skills-api.ts
+msgid "Moved {moved} of {total} skills to {scopeLabel}"
+msgstr "Moved {moved} of {total} skills to {scopeLabel}"
+
 #: src/components/SkillsTree.tsx
 msgid "Moved {moved} skills to Global"
 msgstr "Moved {moved} skills to Global"
@@ -12869,6 +12889,10 @@ msgstr "Some files are not listed — the working tree has too many changes."
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Some skills were deleted with a warning"
+msgstr "Some skills were deleted with a warning"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Something broke"
@@ -12876,6 +12900,10 @@ msgstr "Something broke"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Something else"
 msgstr "Something else"
+
+#: src/lib/skills-api.ts
+msgid "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+msgstr "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -13668,6 +13696,10 @@ msgstr "The board's content is not a valid Excalidraw scene."
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
+
+#: src/lib/skills-api.ts
+msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+msgstr "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."

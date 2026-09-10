@@ -1020,6 +1020,10 @@ msgstr "Properti {settingsDescriptorLabel}"
 msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} bukan nama cabang yang valid."
 
+#: src/lib/skills-api.ts
+msgid "{shown} and {more} more"
+msgstr "{shown} dan {more} lagi"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · rahasia disunting · {fileCount, plural, other {# berkas}}"
@@ -1271,6 +1275,14 @@ msgstr "Salinan adalah folder tersendiri, dan OK menjaganya tetap selaras dengan
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 msgstr "Salinan adalah folder tersendiri, dan OK menjaganya tetap selaras dengan sumbernya: sunting keterampilan di sini dan setiap salinan ikut diperbarui. Itu berhenti begitu Anda menyunting sebuah salinan secara manual di luar OK — sejak saat itu ia berjalan sendiri dan muncul sebagai keterampilan terpisah. Symlink justru merupakan penunjuk ke sumbernya, jadi tidak ada yang bisa melenceng, tetapi sebuah lokasi berhenti bekerja jika sumbernya dihapus."
 
+#: src/lib/skills-api.ts
+msgid "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+msgstr "Sebuah salinan mungkin masih ada di {scopeLabel} untuk: {names}. Jangan hapus apa pun di sana sebelum dibandingkan dengan aslinya: salinan itu mungkin menyimpan satu-satunya salinan berkas yang sudah dihapus oleh pemindahan yang gagal."
+
+#: src/lib/skills-api.ts
+msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+msgstr "Sebuah salinan “{name}” sengaja disimpan di {scopeLabel}. Jangan hapus salinan itu sebelum dibandingkan dengan aslinya: salinan itu mungkin menyimpan satu-satunya salinan berkas yang sudah dihapus oleh pemindahan yang gagal."
+
 #. placeholder {0}: path ?? label
 #: src/components/SkillInstallMenu.tsx
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
@@ -1358,6 +1370,10 @@ msgstr "Kutipan sorot menonjol dari teks di sekitarnya."
 #: src/components/settings/TerminalSection.tsx
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
 msgstr "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
+
+#: src/lib/skills-api.ts
+msgid "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
+msgstr "Salinan yang tidak diperlukan disimpan di {scopeLabel} untuk: {names}. Setiap aslinya sudah diverifikasi tidak berubah, jadi hapus salinan itu lalu coba pemindahan lagi."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -8503,6 +8519,10 @@ msgstr "{label} dipindahkan ke panel baru di sebelah kiri."
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label} dipindahkan ke panel baru di sebelah kanan."
 
+#: src/lib/skills-api.ts
+msgid "Moved {moved} of {total} skills to {scopeLabel}"
+msgstr "{moved} dari {total} keterampilan dipindahkan ke {scopeLabel}"
+
 #: src/components/SkillsTree.tsx
 msgid "Moved {moved} skills to Global"
 msgstr "{moved} keterampilan dipindahkan ke Global"
@@ -12865,6 +12885,10 @@ msgstr "Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak pe
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "Beberapa tema tersimpan tidak ditampilkan karena folder tema melewati batas pemindaian."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Some skills were deleted with a warning"
+msgstr "Beberapa keterampilan dihapus dengan peringatan"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Ada yang rusak"
@@ -12872,6 +12896,10 @@ msgstr "Ada yang rusak"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Something else"
 msgstr "Hal lain"
+
+#: src/lib/skills-api.ts
+msgid "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+msgstr "Sudah ada sesuatu bernama “{name}” di {scopeLabel}, dan server tidak dapat memastikan apa itu. Pemindahan yang gagal sebelumnya mungkin sengaja menyimpannya di sana: bandingkan dengan aslinya sebelum dihapus atau diganti."
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -13664,6 +13692,10 @@ msgstr "Konten papan bukan scene Excalidraw yang valid."
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Aplikasi Claude Desktop tidak membuka berkasnya. Apakah ia terpasang? ({msg})"
+
+#: src/lib/skills-api.ts
+msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+msgstr "Salinan “{name}” yang disimpan di {scopeLabel} adalah duplikat yang tidak diperlukan: aslinya sudah diverifikasi tidak berubah. Hapus salinan itu, lalu coba pemindahan lagi."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."

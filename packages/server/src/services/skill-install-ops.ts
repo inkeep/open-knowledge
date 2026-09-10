@@ -1,9 +1,7 @@
-import { existsSync, lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
-  applyPatchToFm,
-  detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
@@ -12,13 +10,13 @@ import {
   type SkillInstallWarningCode,
 } from '@inkeep/open-knowledge-core';
 import { parseSkillDir, type SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
+import { applySkillDirNameSync } from '../content/skills-write.ts';
 import {
   tracedCpSync,
   tracedMkdirSync,
   tracedRenameSync,
   tracedRmSync,
   tracedSymlinkSync,
-  tracedWriteFileSync,
 } from '../fs-traced.ts';
 import {
   scanGlobalInPlaceSkills,
@@ -229,27 +227,22 @@ export function createSkillInstallOpsService(deps: SkillInstallOpsDeps): SkillIn
         }
         const dest = resolve(inPlaceScanBase, forkRootRel, toName);
         tracedRenameSync(forkDir, dest);
-        const skillMdPath = resolve(dest, 'SKILL.md');
-        try {
-          const raw = readFileSync(skillMdPath, 'utf-8');
-          const { fenced, body: skillBody } = detectFmRegion(raw);
-          const renamed = applyPatchToFm(fenced, { name: toName });
-          if (renamed.ok) {
-            tracedWriteFileSync(skillMdPath, `${renamed.nextFenced}${skillBody}`);
-          } else {
+        const synced = applySkillDirNameSync({ skillDir: dest, toName });
+        if (!synced.ok) {
+          if (synced.stage === 'patch') {
             log.warn(
-              { name: toName, reason: renamed.error.kind },
+              { name: toName, reason: synced.error.kind },
               '[skill-fork] frontmatter rename failed',
             );
             forkWarnings.push(
               `Renamed the folder to "${toName}", but its SKILL.md still declares the old name — edit the frontmatter to match.`,
             );
+          } else {
+            log.warn({ name: toName, err: synced.cause }, '[skill-fork] frontmatter rename failed');
+            forkWarnings.push(
+              `Renamed the folder to "${toName}", but its SKILL.md could not be updated — edit the frontmatter to match.`,
+            );
           }
-        } catch (e) {
-          log.warn({ name: toName, err: e }, '[skill-fork] frontmatter rename failed');
-          forkWarnings.push(
-            `Renamed the folder to "${toName}", but its SKILL.md could not be updated — edit the frontmatter to match.`,
-          );
         }
       }
       return { ok: true, warnings: forkWarnings };

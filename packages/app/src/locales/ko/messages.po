@@ -1020,6 +1020,10 @@ msgstr "{settingsDescriptorLabel} 속성"
 msgid "{shareBranch} isn't a valid branch name."
 msgstr "유효하지 않은 브랜치 이름입니다: {shareBranch}"
 
+#: src/lib/skills-api.ts
+msgid "{shown} and {more} more"
+msgstr "{shown} 및 {more}개 더"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · 시크릿이 비공개 처리됨 · {fileCount, plural, other {파일 #개}}"
@@ -1275,6 +1279,14 @@ msgstr "복사본은 독립된 실제 폴더이며, OK가 소스와 동기화합
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
 msgstr "복사본은 독립된 실제 폴더이며, OK가 소스와 동기화합니다. 여기에서 스킬을 편집하면 모든 복사본이 새로고침됩니다. OK 외부에서 복사본을 직접 편집하는 순간 동기화가 중단됩니다. 그때부터 복사본은 별도 경로로 작동하며 별도 스킬로 표시됩니다. 심볼릭 링크는 대신 소스를 가리키므로 내용이 달라질 수 없지만, 소스를 삭제하면 해당 위치가 작동하지 않습니다."
 
+#: src/lib/skills-api.ts
+msgid "A copy may remain in {scopeLabel} for: {names}. Don't delete anything there before comparing it with the original: it may hold the only copy of files a failed move already removed."
+msgstr "{scopeLabel}에 다음 스킬의 사본이 남아 있을 수 있습니다: {names}. 원본과 비교하기 전에는 그곳의 어떤 것도 삭제하지 마세요. 실패한 이동이 이미 지운 파일의 유일한 사본일 수 있습니다."
+
+#: src/lib/skills-api.ts
+msgid "A copy of \"{name}\" was kept in {scopeLabel} on purpose. Don't delete it before comparing it with the original: it may hold the only copy of files the failed move already removed."
+msgstr "“{name}”의 사본을 {scopeLabel}에 일부러 남겨 두었습니다. 원본과 비교하기 전에는 삭제하지 마세요. 실패한 이동이 이미 지운 파일의 유일한 사본일 수 있습니다."
+
 #. placeholder {0}: path ?? label
 #: src/components/SkillInstallMenu.tsx
 msgid "A DIFFERENT skill named like this one lives at {0} — that folder is not this skill. Rename or delete one of the two to resolve."
@@ -1362,6 +1374,10 @@ msgstr "인용문이 주변 텍스트에서 돋보입니다."
 #: src/components/settings/TerminalSection.tsx
 msgid "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
 msgstr "이 프로젝트에서 실제 셸이 꺼져 있습니다. 켜면 사용자 계정의 전체 권한으로 명령을 실행합니다."
+
+#: src/lib/skills-api.ts
+msgid "A redundant copy was kept in {scopeLabel} for: {names}. Each original was verified unchanged, so remove those copies and retry the move."
+msgstr "{scopeLabel}에 다음 스킬의 불필요한 중복 사본이 남았습니다: {names}. 각 원본이 변경되지 않았음을 확인했으니 그 사본을 삭제한 뒤 이동을 다시 시도하세요."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A report helps us find the cause. Nothing is sent until you review it."
@@ -8507,6 +8523,10 @@ msgstr "{label}을 왼쪽의 새 패널로 이동했습니다."
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label}을 오른쪽의 새 패널로 이동했습니다."
 
+#: src/lib/skills-api.ts
+msgid "Moved {moved} of {total} skills to {scopeLabel}"
+msgstr "스킬 {total}개 중 {moved}개를 {scopeLabel}(으)로 이동함"
+
 #: src/components/SkillsTree.tsx
 msgid "Moved {moved} skills to Global"
 msgstr "스킬 {moved}개를 전역으로 이동함"
@@ -12869,6 +12889,10 @@ msgstr "일부 파일이 표시되지 않았습니다. 작업 트리의 변경 �
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "테마 폴더가 스캔 한도를 초과해 일부 저장된 테마가 나타나지 않습니다."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Some skills were deleted with a warning"
+msgstr "일부 스킬이 경고와 함께 삭제되었습니다"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "문제가 발생했습니다"
@@ -12876,6 +12900,10 @@ msgstr "문제가 발생했습니다"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Something else"
 msgstr "기타"
+
+#: src/lib/skills-api.ts
+msgid "Something named \"{name}\" is already in {scopeLabel}, and the server couldn't confirm what it is. An earlier failed move may have kept it there on purpose: compare it with the original before you delete or replace it."
+msgstr "“{name}”(이)라는 항목이 이미 {scopeLabel}에 있는데, 서버가 그것이 무엇인지 확인하지 못했습니다. 이전에 실패한 이동이 일부러 남겨 둔 것일 수 있습니다. 삭제하거나 교체하기 전에 원본과 비교하세요."
 
 #: src/components/AppErrorBoundary.tsx
 msgid "Something went wrong"
@@ -13668,6 +13696,10 @@ msgstr "보드의 내용이 유효한 Excalidraw 장면이 아닙니다."
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App 파일 열기 실패. 설치 상태 확인: ({msg})"
+
+#: src/lib/skills-api.ts
+msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
+msgstr "{scopeLabel}에 남아 있는 “{name}” 사본은 불필요한 중복입니다. 원본이 변경되지 않았음을 확인했습니다. 그 사본을 삭제한 뒤 이동을 다시 시도하세요."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "The default branch is protected — pushes need a pull request."

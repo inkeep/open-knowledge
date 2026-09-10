@@ -254,7 +254,11 @@ import { catchErrors } from './http/catch-errors.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
-import { errorResponse, type HttpErrorStatus } from './http/error-response.ts';
+import {
+  type ErrorExtensions,
+  errorResponse,
+  type HttpErrorStatus,
+} from './http/error-response.ts';
 import {
   createFileOpsRoutes,
   type ManagedRenameRewrittenDoc,
@@ -411,6 +415,9 @@ export const MANAGED_RENAME_ORIGIN = {
 } as const satisfies PairedWriteOrigin;
 
 const log = getLogger('api');
+
+const storeRefusalDetail = (err: unknown): string | undefined =>
+  err instanceof Error && err.message.startsWith('Refusing to rewrite ') ? err.message : undefined;
 
 function safeDocPath(docName: string, contentRoot: string): { path: string } | { error: string } {
   if (!docName || docName.includes('..') || docName.includes('\0')) {
@@ -3205,22 +3212,36 @@ export function createApiExtension(
       void contentFilter?.rebuildIgnorePatterns().catch(() => {});
     }, 120_000);
   }
+  function invalidateSkillCatalog(): void {
+    bumpSkillsCatalogGen();
+    contentFilter?.refreshInPlaceSkillDirs();
+    scheduleDeferredIgnoreRebuild();
+  }
+  function settleSkillCatalog(): void {
+    invalidateSkillCatalog();
+    signalChannel?.('files');
+  }
+  type OkArtifactFlush = 'flushed' | 'unavailable' | 'failed';
   let okArtifactFlushChain: Promise<void> = Promise.resolve();
   function scheduleOkArtifactFlush(context: string): void {
     bumpSkillsCatalogGen();
     okArtifactFlushChain = okArtifactFlushChain
-      .then(() => commitOkArtifactWrite(context))
+      .then(async () => {
+        await commitOkArtifactWrite(context);
+      })
       .catch(() => {});
   }
-  async function commitOkArtifactWrite(context: string): Promise<void> {
-    if (!flushContributors) return;
+  async function commitOkArtifactWrite(context: string): Promise<OkArtifactFlush> {
+    if (!flushContributors) return 'unavailable';
     try {
       await flushContributors();
+      return 'flushed';
     } catch (flushErr) {
       log.warn(
         { context, err: flushErr },
         `[${context}] flushContributors failed; attribution stays queued for the next flush`,
       );
+      return 'failed';
     }
   }
 
@@ -3892,14 +3913,19 @@ export function createApiExtension(
   function isValidSkillName(name: string): boolean {
     return Boolean(name) && name.length <= 64 && SKILL_NAME_REGEX.test(name);
   }
-  function validateSkillName(name: string, res: ServerResponse, handler: string): boolean {
+  function validateSkillName(
+    name: string,
+    res: ServerResponse,
+    handler: string,
+    extensions?: ErrorExtensions,
+  ): boolean {
     if (!isValidSkillName(name)) {
       errorResponse(
         res,
         400,
         'urn:ok:error:invalid-request',
         'Invalid skill name: lowercase letters, digits, and hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase).',
-        { handler },
+        { handler, ...(extensions ? { extensions } : {}) },
       );
       return false;
     }
@@ -4200,13 +4226,12 @@ export function createApiExtension(
     return scope === 'global' ? skillsHome : projectDir;
   }
 
-  async function uninstallSkillFromHostDirs(
+  function removeSkillFromHostDirs(
     base: string,
     name: string,
     scope: 'project' | 'global',
-    opts: { purge?: { contentHash: string } } = {},
-  ): Promise<boolean> {
-    const installed = await removeSkillInstall(base, name);
+    opts: { purge?: { contentHash: string } },
+  ): void {
     const scanBaseForPurge = scope === 'project' ? contentDir : skillsHome;
     if (opts.purge !== undefined) {
       reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
@@ -4218,7 +4243,7 @@ export function createApiExtension(
       )) {
         tracedRmSync(dir, { recursive: true, force: true });
       }
-      return installed !== null;
+      return;
     }
     if (!existsSync(resolve(resolveSkillsRoot(scope), name, 'SKILL.md'))) {
       const entry = (
@@ -4247,11 +4272,20 @@ export function createApiExtension(
           targets: [...skillProjectionEditorIds(scope)],
           roots: skillProjectionRoots(scope),
         });
-        return installed !== null;
+        return;
       }
     }
     reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
-    return installed !== null;
+  }
+
+  async function uninstallSkillFromHostDirs(
+    base: string,
+    name: string,
+    scope: 'project' | 'global',
+    opts: { purge?: { contentHash: string } } = {},
+  ): Promise<boolean> {
+    removeSkillFromHostDirs(base, name, scope, opts);
+    return (await removeSkillInstall(base, name)) !== null;
   }
 
   function resolveSkillsList(
@@ -4470,6 +4504,7 @@ export function createApiExtension(
           'Failed to uninstall skill.',
           {
             handler: 'skill-uninstall',
+            ...(storeRefusalDetail(e) !== undefined ? { detail: storeRefusalDetail(e) } : {}),
             cause: e,
           },
         );
@@ -5170,6 +5205,8 @@ export function createApiExtension(
     derivedDocumentIndex,
     contentFilter,
     bumpSkillsCatalogGen,
+    settleSkillCatalog,
+    invalidateSkillCatalog,
     scheduleDeferredIgnoreRebuild,
     recordDerivedDocumentBestEffort,
     getPrincipal,

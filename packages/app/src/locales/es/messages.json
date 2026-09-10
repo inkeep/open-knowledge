@@ -838,6 +838,7 @@
     "851WA-": ["Esto se puede configurar en Ajustes > Herramientas de IA y CLI"],
     "87GMKe": ["¿Exponer este proyecto a la red?"],
     "881Uwh": ["Eliminar la tabla seleccionada"],
+    "89TmeV": ["Algunas habilidades se eliminaron con una advertencia"],
     "89TtiD": [
       "Archivo nuevo a partir de la plantilla \"",
       ["displayTitle"],
@@ -1675,6 +1676,7 @@
       ["status"],
       ")"
     ],
+    "GesfyX": [["shown"], " y ", ["more"], " más"],
     "Gfr4fu": ["El servidor no puede abrir documentos"],
     "GhjUB_": ["Reconectado"],
     "Gi8Akx": [
@@ -2369,6 +2371,13 @@
     "OKImo8": ["Archivos en conflicto"],
     "OLBz-_": ["No se pudo renderizar el diagrama de Mermaid."],
     "OLIKgw": ["Arrastra el elemento ", ["0"], " para reordenar"],
+    "OMS7Xp": [
+      "Se conservó a propósito una copia de «",
+      ["name"],
+      "» en ",
+      ["scopeLabel"],
+      ". No la elimines antes de compararla con el original: puede contener la única copia de los archivos que el movimiento fallido ya eliminó."
+    ],
     "ONPvOb": ["Cargando la actividad del agente"],
     "ONUgxB": ["Ese conflicto ya no está disponible."],
     "ONWvwQ": ["Subir"],
@@ -2610,6 +2619,7 @@
     "RD8cCw": ["La gestión de conexiones de agentes no está disponible en esta versión."],
     "RDjuBN": ["Configuración"],
     "RDrXh4": ["Configura los ajustes de usuario, de proyecto y de integraciones."],
+    "RDzxes": [["moved"], " de ", ["total"], " habilidades movidas a ", ["scopeLabel"]],
     "REkvLz": [
       "El puerto ",
       ["0"],
@@ -2648,6 +2658,13 @@
     "R_U_A4": ["Añade un patrón de archivo o carpeta, p. ej. guides/**/*"],
     "RaPMZv": ["Atajos de teclado disponibles en el editor y en el espacio de trabajo."],
     "RaUKLu": ["Control remoto"],
+    "Raayoq": [
+      "La copia de «",
+      ["name"],
+      "» conservada en ",
+      ["scopeLabel"],
+      " es un duplicado redundante: se verificó que el original no cambió. Elimina esa copia y vuelve a intentar el movimiento."
+    ],
     "Rah7yq": ["¿Qué debería hacer la IA? (opcional)"],
     "Rb1zMa": ["Sin extracto"],
     "RcrskJ": ["El formato se veía mal"],
@@ -3480,6 +3497,13 @@
     "_G7A92": ["Mantener index.md"],
     "_GRWOJ": ["¿Cambiar el proveedor de embeddings?"],
     "_HgF9q": ["Ordenar por"],
+    "_HlScO": [
+      "Puede quedar una copia en ",
+      ["scopeLabel"],
+      " de: ",
+      ["names"],
+      ". No elimines nada de ahí antes de compararlo con el original: puede contener la única copia de los archivos que un movimiento fallido ya eliminó."
+    ],
     "_IGfXZ": ["La última vez OpenKnowledge se cerró de forma inesperada."],
     "_IX_7x": ["Otro"],
     "_IfSZn": ["Ya existe un tema guardado con este nombre."],
@@ -3970,6 +3994,13 @@
     "eFJkVt": ["No se pudo clonar: ", ["cloneError"]],
     "eG8Jsg": ["Activar o desactivar el modo de foco del tabulador en el código"],
     "eGUbmF": ["Copiar el archivo o la carpeta seleccionados"],
+    "eGkfGQ": [
+      "Se conservó una copia redundante en ",
+      ["scopeLabel"],
+      " de: ",
+      ["names"],
+      ". Se verificó que cada original no cambió, así que elimina esas copias y vuelve a intentar el movimiento."
+    ],
     "eJitUk": ["Subir desde el equipo"],
     "eKThTQ": ["No se pudo reordenar"],
     "eMWRAs": [
@@ -5985,6 +6016,13 @@
     "xSVO3J": ["Qué se crea"],
     "xV5sXw": ["hace ", ["0"], " sem"],
     "xW5AUw": ["Traído ", ["pulled"]],
+    "xW7KK3": [
+      "Ya hay algo llamado «",
+      ["name"],
+      "» en ",
+      ["scopeLabel"],
+      " y el servidor no pudo confirmar qué es. Puede que un movimiento fallido anterior lo dejara ahí a propósito: compáralo con el original antes de eliminarlo o reemplazarlo."
+    ],
     "xWEvuo": ["Preguntar a la IA"],
     "xWomUD": ["Usar la versión de ", ["editor"]],
     "xXo8FT": ["Falló al guardar: ", ["error"]],

@@ -8,6 +8,7 @@ import {
   normalizeBridge,
   parseFrontmatterYaml,
   renderInventoryFooter,
+  SKILL_AUTHORING_WARNING_CODES,
   serializeFrontmatterMap,
   stripFrontmatter,
   unwrapFrontmatterFences,
@@ -38,6 +39,7 @@ import {
 import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
   apiTarget,
   docExtensionOnDisk,
@@ -58,6 +60,8 @@ import {
   summaryArgSchema,
   textPlusStructured,
   textResult,
+  WARNING_CODES_CONTRACT,
+  WARNINGS_FIELD_CONTRACT,
 } from './shared.ts';
 import { writeSkill, writeSkillFile } from './skill-target.ts';
 import {
@@ -632,8 +636,9 @@ async function handleSkillWrite(
       | Record<string, unknown>
       | undefined) ?? {};
   const baseSkill = (baseStructured.skill as Record<string, unknown> | undefined) ?? { ok: true };
+  const { text: _skillMdOnlyText, ...baseWithoutText } = baseStructured;
   const structured: Record<string, unknown> = {
-    ...baseStructured,
+    ...baseWithoutText,
     skill: { ...baseSkill, ...(files.length > 0 ? { files: fileResults } : {}) },
   };
 
@@ -959,6 +964,16 @@ export function register(server: ServerInstance, deps: WriteDeps): void {
             files: looseObjectArray
               .optional()
               .describe('Per-bundle-file results `{ path, kind, created, ok, error? }`.'),
+            warnings: z
+              .array(z.string())
+              .optional()
+              .describe(
+                `Non-fatal authoring warnings for the SKILL.md that was written. ${WARNINGS_FIELD_CONTRACT}`,
+              ),
+            warningCodes: z
+              .array(z.enum(SKILL_AUTHORING_WARNING_CODES))
+              .optional()
+              .describe(`${WARNING_CODES_CONTRACT} ${AUTHORING_WARNING_CODE_GLOSS}`),
           })
           .optional()
           .describe('Skill-create result (SKILL.md and/or bundle files).'),

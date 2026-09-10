@@ -1,4 +1,9 @@
-import type { CatalogSkill, SkillScope, SkillsListEntry } from '@inkeep/open-knowledge-core';
+import type {
+  CatalogSkill,
+  SkillMoveFailureOutcome,
+  SkillScope,
+  SkillsListEntry,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FILE_TREE_TAG_NAME, type FileTreeSortComparator } from '@pierre/trees';
 import { useFileTree } from '@pierre/trees/react';
@@ -89,9 +94,10 @@ import {
   skillEntryDirs,
   skillHostRootDir,
   tildeHomePath,
+  useSkillScopeLabels,
 } from '@/lib/skill-scope';
 import { SKILL_MD_PATH } from '@/lib/skill-sort';
-import { importSkill, moveSkillScope } from '@/lib/skills-api';
+import { importSkill, moveSkillScope, skillMoveRetainedBatchToast } from '@/lib/skills-api';
 import { EMPTY_SCOPE_SENTINEL } from '@/lib/skills-tree-paths';
 
 const PLUGIN_PACKAGE_ICON_ID = 'ok-skills-plugin-package-decoration';
@@ -273,6 +279,7 @@ export function SkillsTree({
   onTogglePin: (scope: SkillScope, name: string, pinned: boolean) => void;
 }) {
   const { t } = useLingui();
+  const scopeLabels = useSkillScopeLabels();
   const { resolvedTheme } = useTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const iconPoolRef = useRef<HTMLDivElement | null>(null);
@@ -571,12 +578,27 @@ export function SkillsTree({
   }
   async function bulkMoveScope(entries: readonly SkillsListEntry[], toScope: SkillScope) {
     let moved = 0;
+    const failures: { name: string; outcome: SkillMoveFailureOutcome }[] = [];
     for (const s of entries) {
       const r = await moveSkillScope({ name: s.name, fromScope: s.scope, toScope });
-      if (r.ok) moved += 1;
-      else toast.error(t`Couldn't move ${s.name}: ${r.error}`);
+      if (r.ok) {
+        moved += 1;
+      } else {
+        failures.push({ name: s.name, outcome: r.outcome });
+        toast.error(t`Couldn't move ${s.name}: ${r.error}`);
+      }
     }
-    if (moved > 0) {
+    const retainedSummary = skillMoveRetainedBatchToast({
+      failures,
+      moved,
+      total: entries.length,
+      toScope,
+      scopeLabel: scopeLabels[toScope],
+    });
+    if (retainedSummary !== undefined) {
+      const { title, ...options } = retainedSummary;
+      toast.warning(title, options);
+    } else if (moved > 0) {
       toast.success(
         toScope === 'global'
           ? t`Moved ${moved} skills to Global`

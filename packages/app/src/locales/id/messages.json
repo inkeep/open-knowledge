@@ -715,6 +715,7 @@
     "851WA-": ["Ini bisa diatur di Pengaturan > Alat AI & CLI"],
     "87GMKe": ["Ekspos proyek ini ke jaringan?"],
     "881Uwh": ["Hapus tabel terpilih"],
+    "89TmeV": ["Beberapa keterampilan dihapus dengan peringatan"],
     "89TtiD": [
       "Berkas baru dari templat \"",
       ["displayTitle"],
@@ -1449,6 +1450,7 @@
     "GbzBEk": ["Server mengembalikan respons skill yang tidak lengkap."],
     "GceAYf": [["label"], " dipindahkan ke panel baru di sebelah kanan."],
     "GemPfn": ["Gagal mengurai respons galat tautan keluar (HTTP ", ["status"], ")"],
+    "GesfyX": [["shown"], " dan ", ["more"], " lagi"],
     "Gfr4fu": ["Server tidak bisa membuka dokumen"],
     "GhjUB_": ["Tersambung kembali"],
     "Gi8Akx": [
@@ -2056,6 +2058,13 @@
     "OKImo8": ["Berkas yang berkonflik"],
     "OLBz-_": ["Diagram Mermaid gagal dirender."],
     "OLIKgw": ["Seret item ", ["0"], " untuk menata ulang"],
+    "OMS7Xp": [
+      "Sebuah salinan “",
+      ["name"],
+      "” sengaja disimpan di ",
+      ["scopeLabel"],
+      ". Jangan hapus salinan itu sebelum dibandingkan dengan aslinya: salinan itu mungkin menyimpan satu-satunya salinan berkas yang sudah dihapus oleh pemindahan yang gagal."
+    ],
     "ONPvOb": ["Memuat aktivitas agen"],
     "ONUgxB": ["Konflik itu sudah tidak tersedia."],
     "ONWvwQ": ["Unggah"],
@@ -2271,6 +2280,7 @@
     "RD8cCw": ["Pengelolaan koneksi agen tidak tersedia di build ini."],
     "RDjuBN": ["Penyiapan"],
     "RDrXh4": ["Atur pengaturan pengguna, proyek, dan integrasi."],
+    "RDzxes": [["moved"], " dari ", ["total"], " keterampilan dipindahkan ke ", ["scopeLabel"]],
     "REkvLz": [
       "Port ",
       ["0"],
@@ -2309,6 +2319,13 @@
     "R_U_A4": ["Tambahkan pola berkas atau folder, mis. guides/**/*"],
     "RaPMZv": ["Pintasan papan ketik yang tersedia di penyunting dan ruang kerja."],
     "RaUKLu": ["Kontrol jarak jauh"],
+    "Raayoq": [
+      "Salinan “",
+      ["name"],
+      "” yang disimpan di ",
+      ["scopeLabel"],
+      " adalah duplikat yang tidak diperlukan: aslinya sudah diverifikasi tidak berubah. Hapus salinan itu, lalu coba pemindahan lagi."
+    ],
     "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
     "RcrskJ": ["Format terlihat salah"],
@@ -3010,6 +3027,13 @@
     "_G7A92": ["Pertahankan index.md"],
     "_GRWOJ": ["Ganti penyedia embedding?"],
     "_HgF9q": ["Urutkan menurut"],
+    "_HlScO": [
+      "Sebuah salinan mungkin masih ada di ",
+      ["scopeLabel"],
+      " untuk: ",
+      ["names"],
+      ". Jangan hapus apa pun di sana sebelum dibandingkan dengan aslinya: salinan itu mungkin menyimpan satu-satunya salinan berkas yang sudah dihapus oleh pemindahan yang gagal."
+    ],
     "_IGfXZ": ["OpenKnowledge berhenti tak terduga terakhir kali."],
     "_IX_7x": ["Lainnya"],
     "_IfSZn": ["Tema tersimpan lain sudah menggunakan nama ini."],
@@ -3414,6 +3438,13 @@
     "eFJkVt": ["Kloning gagal: ", ["cloneError"]],
     "eG8Jsg": ["Alihkan mode fokus Tab di sumber"],
     "eGUbmF": ["Salin berkas atau folder terpilih"],
+    "eGkfGQ": [
+      "Salinan yang tidak diperlukan disimpan di ",
+      ["scopeLabel"],
+      " untuk: ",
+      ["names"],
+      ". Setiap aslinya sudah diverifikasi tidak berubah, jadi hapus salinan itu lalu coba pemindahan lagi."
+    ],
     "eJitUk": ["Unggah dari komputer"],
     "eKThTQ": ["Gagal menata ulang"],
     "eMWRAs": [
@@ -5191,6 +5222,13 @@
     "xSVO3J": ["Apa yang dibuat"],
     "xV5sXw": [["0"], " mgg lalu"],
     "xW5AUw": ["Ditarik ", ["pulled"]],
+    "xW7KK3": [
+      "Sudah ada sesuatu bernama “",
+      ["name"],
+      "” di ",
+      ["scopeLabel"],
+      ", dan server tidak dapat memastikan apa itu. Pemindahan yang gagal sebelumnya mungkin sengaja menyimpannya di sana: bandingkan dengan aslinya sebelum dihapus atau diganti."
+    ],
     "xWEvuo": ["Tanya AI"],
     "xWomUD": ["Pakai versi ", ["editor"]],
     "xXo8FT": ["Gagal menyimpan: ", ["error"]],

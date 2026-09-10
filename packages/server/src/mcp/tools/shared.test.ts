@@ -11,6 +11,7 @@ import {
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import {
   AUDIT_WARNING_CAP,
+  alignWarningCodes,
   capAuditWarnings,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
@@ -24,6 +25,7 @@ import {
   TEXT_CHANNEL_FIELD,
   textPlusStructured,
   textResult,
+  UNREADABLE_WARNINGS_TEXT,
 } from './shared.ts';
 
 describe('capAuditWarnings', () => {
@@ -729,6 +731,97 @@ describe('parseRenameCollidingPairs — defensive parsing at trust boundary', ()
 
   test('empty array → empty array', () => {
     expect(parseRenameCollidingPairs([])).toEqual([]);
+  });
+});
+
+describe('alignWarningCodes — defensive normalization at trust boundary', () => {
+  const known: ReadonlySet<string> = new Set(['no-targets', 'scripts-present']);
+
+  test('every warning paired with a code this build knows → text and codes survive in index order', () => {
+    expect(
+      alignWarningCodes(
+        ['Nothing was projected.', 'Ships scripts/.'],
+        ['no-targets', 'scripts-present'],
+        known,
+      ),
+    ).toEqual({
+      warnings: ['Nothing was projected.', 'Ships scripts/.'],
+      warningCodes: ['no-targets', 'scripts-present'],
+    });
+  });
+
+  test('one code this build does not know → every warning survives, codes are withheld', () => {
+    const aligned = alignWarningCodes(
+      ['Nothing was projected.', 'A warning from the future.', 'Ships scripts/.'],
+      ['no-targets', 'from-the-future', 'scripts-present'],
+      known,
+    );
+    expect(aligned).toEqual({
+      warnings: ['Nothing was projected.', 'A warning from the future.', 'Ships scripts/.'],
+    });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('every code unknown → every warning survives, codes are withheld', () => {
+    const aligned = alignWarningCodes(['One.', 'Two.'], ['from-the-future', 'also-unknown'], known);
+    expect(aligned).toEqual({ warnings: ['One.', 'Two.'] });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('more warnings than codes → every warning survives, codes are withheld', () => {
+    const aligned = alignWarningCodes(
+      ['Nothing was projected.', 'Ships scripts/.'],
+      ['no-targets'],
+      known,
+    );
+    expect(aligned).toEqual({ warnings: ['Nothing was projected.', 'Ships scripts/.'] });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('more codes than warnings → the warning survives, codes are withheld', () => {
+    const aligned = alignWarningCodes(
+      ['Nothing was projected.'],
+      ['no-targets', 'scripts-present'],
+      known,
+    );
+    expect(aligned).toEqual({ warnings: ['Nothing was projected.'] });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('a server that sent no warnings at all is the one paired empty all-clear', () => {
+    expect(alignWarningCodes(undefined, undefined, known)).toEqual({
+      warnings: [],
+      warningCodes: [],
+    });
+  });
+
+  test('a warnings payload this build cannot read is reported, never flattened to an all-clear', () => {
+    for (const unreadable of ['Nothing was projected.', null, { warnings: [] }, 7]) {
+      const aligned = alignWarningCodes(unreadable, ['no-targets'], known);
+      expect(aligned).toEqual({ warnings: [UNREADABLE_WARNINGS_TEXT] });
+      expect(aligned).not.toHaveProperty('warningCodes');
+    }
+  });
+
+  test('an unreadable warnings payload alongside unreadable codes still is not an all-clear', () => {
+    const aligned = alignWarningCodes(null, 'no-targets', known);
+    expect(aligned).toEqual({ warnings: [UNREADABLE_WARNINGS_TEXT] });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('a non-string warning is rendered as text rather than dropped, so it still counts against the codes', () => {
+    const aligned = alignWarningCodes(['Nothing was projected.', 42], ['no-targets'], known);
+    expect(aligned).toEqual({ warnings: ['Nothing was projected.', '42'] });
+    expect(aligned).not.toHaveProperty('warningCodes');
+  });
+
+  test('a non-string warning paired with a known code keeps that pairing, index-aligned', () => {
+    expect(
+      alignWarningCodes(['Nothing was projected.', 42], ['no-targets', 'scripts-present'], known),
+    ).toEqual({
+      warnings: ['Nothing was projected.', '42'],
+      warningCodes: ['no-targets', 'scripts-present'],
+    });
   });
 });
 

@@ -12,18 +12,24 @@ import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   agentIdentityFields,
+  alignWarningCodes,
   apiTarget,
   errorTextWithDetail,
   httpPost,
   httpPut,
+  INSTALL_WARNING_CODE_GLOSS,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
   requireProjectServer,
   summaryArgSchema,
   textPlusStructured,
   textResult,
+  WARNING_CODES_CONTRACT,
+  WARNINGS_FIELD_CONTRACT,
 } from './shared.ts';
 import { resolveSkillName, SKILL_NAME_DESCRIBE, SkillScopeArg } from './verb-schemas.ts';
+
+const KNOWN_INSTALL_CODES: ReadonlySet<string> = new Set(SKILL_INSTALL_WARNING_CODES);
 
 const DESCRIPTION = [
   '[Requires: Hocuspocus server] Manage WHERE a skill is available. A skill is ONE real folder (its SOURCE — the skill itself) plus managed copies/symlinks at other locations. `add`/`remove` change the other locations; `mode` flips copies↔symlinks; `source` moves the real folder. There is NO "uninstall everywhere" and no draft state — a skill with no extra locations still lives (and loads) at its source folder; to make a skill stop existing, use `delete`.',
@@ -34,7 +40,7 @@ const DESCRIPTION = [
   `- \`name\` — ${SKILL_NAME_DESCRIBE}`,
   '- `add` — Locations to ADD the skill to (everything else untouched). Editor ids fan out a copy/symlink; a custom root path places the bundle there. Omitting both `add` and `remove` installs into the project-configured editors.',
   '- `remove` — Locations to REMOVE it from (lossless only: a hand-edited fork is refused, never deleted). Works however the agent gets the skill: removing an editor that reads it through a folder alias (its skills folder symlinked into a shared root) automatically unfollows that folder from the root MINUS this skill — the editor keeps its other skills. The SOURCE cannot be removed — its folder is the skill; move it with `source` or use `delete`.',
-  '- `mode` — `"link"`: a live symlink to the source. `"copy"`: an independent folder, auto-refreshed from the source until hand-edited (a hand-edit forks that copy). Applies ONLY to the locations this call names — the ones in `add`, or the ones in `convert` — and sets no skill-wide default. Omit it on `add` and the new location takes the form the skill already uses.',
+  '- `mode` — `"link"`: a live symlink to the source. `"copy"`: an independent folder, auto-refreshed from the source until hand-edited (a hand-edit forks that copy). Applies ONLY to the locations this call names — the ones in `add`, or the ones in `convert` — and sets no skill-wide default. Omit it on `add` and the new location takes the form the skill already uses. Requires `add` or `convert` — passing `mode` alone is refused rather than silently ignored.',
   '- `convert` — Existing locations to change the FORM of, leaving membership alone. Requires `mode`. Pass every location to make them uniform. Lossless both ways; a hand-edited copy is refused rather than overwritten.',
   "- `source` — Move the skill's REAL folder to this location; the old source becomes a symlink to it. Run alone (not with add/remove).",
   '- `scope` — `project` (default, shared via git) or `global` (user-level, every project on this machine).',
@@ -117,7 +123,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
           .enum(['copy', 'link'])
           .optional()
           .describe(
-            'The form for the locations THIS call touches — the ones in `add`, or the ones in `convert`. "link": a pointer to the source, so nothing can drift. "copy": an independent folder, auto-refreshed from the source until hand-edited. Omit on `add` to follow the form the skill already uses. This does not change locations the call does not name, and sets no skill-wide default.',
+            'The form for the locations THIS call touches — the ones in `add`, or the ones in `convert`. "link": a pointer to the source, so nothing can drift. "copy": an independent folder, auto-refreshed from the source until hand-edited. Omit on `add` to follow the form the skill already uses. This does not change locations the call does not name, and sets no skill-wide default. Requires `add` or `convert` — passing `mode` alone is refused rather than silently ignored.',
           ),
         source: SkillLocationIdSchema.optional().describe(
           "Move the skill's REAL folder to this location (the old source becomes a symlink — never a removal). Run alone, not combined with add/remove.",
@@ -145,9 +151,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         warningCodes: z
           .array(z.enum(SKILL_INSTALL_WARNING_CODES))
           .optional()
-          .describe(
-            'Machine-readable codes aligned 1:1 with `warnings` (`warnings[i]` is the display text for `warningCodes[i]`) — switch on these, never on the English. `no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a hand-edited copy was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.',
-          ),
+          .describe(`${WARNING_CODES_CONTRACT} ${INSTALL_WARNING_CODE_GLOSS}`),
         scripts: z
           .boolean()
           .optional()
@@ -155,7 +159,9 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         warnings: z
           .array(z.string())
           .optional()
-          .describe('Non-fatal install/uninstall warnings from target projection.'),
+          .describe(
+            `Non-fatal install/uninstall warnings from target projection. ${WARNINGS_FIELD_CONTRACT}`,
+          ),
         folder: z
           .object({
             moved: z.array(z.string()).describe('Skill bundles moved into the target root.'),
@@ -194,6 +200,22 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       }
       const resolved = resolveSkillName(args.name);
       if (!resolved.ok) return textResult(`Error: ${resolved.error}`, true);
+      if (args.convert !== undefined && args.mode === undefined) {
+        return textResult(
+          'Error: `convert` needs `mode` — the form to convert those locations to.',
+          true,
+        );
+      }
+      if (
+        args.mode !== undefined &&
+        (args.add?.length ?? 0) === 0 &&
+        (args.convert?.length ?? 0) === 0
+      ) {
+        return textResult(
+          'Error: `mode` needs `add` or `convert` — name the locations whose form should change.',
+          true,
+        );
+      }
       const context = await requireProjectServer(
         deps.resolveCwd,
         deps.config,
@@ -201,13 +223,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         args.cwd,
       );
       if (!context.ok) return context.result;
-
-      if (args.convert !== undefined && args.mode === undefined) {
-        return textResult(
-          'Error: `convert` needs `mode` — the form to convert those locations to.',
-          true,
-        );
-      }
 
       for (const target of args.convert ?? []) {
         const converted = await httpPost(
@@ -264,24 +279,21 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
 
       const hosts = Array.isArray(result.hosts) ? (result.hosts as string[]) : [];
       const scripts = result.scripts === true;
-      const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
-      const warningCodes = Array.isArray(result.warningCodes)
-        ? (result.warningCodes as string[])
-        : [];
+      const aligned = alignWarningCodes(result.warnings, result.warningCodes, KNOWN_INSTALL_CODES);
       const sourceMovedTo =
         typeof result.sourceMovedTo === 'string' ? result.sourceMovedTo : undefined;
       const lines = [
         sourceMovedTo !== undefined
           ? `Moved skill "${args.name}"'s source folder to ${sourceMovedTo}; other locations now link to it.`
           : `Skill "${args.name}" now lives at: ${hosts.join(', ') || '(its source folder)'}.`,
-        ...warnings,
+        ...aligned.warnings,
       ];
       return textPlusStructured(lines.join('\n'), {
         name: args.name,
         hosts,
         scripts,
-        warnings,
-        ...(warningCodes.length > 0 ? { warningCodes } : {}),
+        warnings: aligned.warnings,
+        ...(aligned.warningCodes ? { warningCodes: aligned.warningCodes } : {}),
         ...(sourceMovedTo !== undefined ? { sourceMovedTo } : {}),
       });
     },
