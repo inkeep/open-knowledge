@@ -138,7 +138,20 @@ You never have to edit these files by hand (the folder overview page is the fron
 - A folder's own properties live in `<folder>/.ok/frontmatter.yml` (open-shape: any keys; `title` / `description` / `tags` are the conventional ones).
 - Templates live in `<folder>/.ok/templates/<name>.md`.
 
-A folder only gets a `.ok/` directory once you give it a description or its first template; folders with nothing special stay plain. See the [Configuration reference](/docs/reference/configuration#folder-properties) for the file formats, and the [MCP reference](/docs/reference/mcp) for the `write` and `edit` tools (with `folder` and `template` targets) that set the same things from an AI agent.
+A folder only gets a `.ok/` directory once you give it a description or its first template; folders with nothing special stay plain. `<folder>/.ok` and `<folder>/.ok/templates` must be real directories, and `frontmatter.yml` and each template real files.
+
+Only one malformation stops the page from loading: a symlink at the folder's own `.ok`. Everything else still loads and shows less — though editing properties can still fail where the table says so:
+
+| What is wrong | What the folder loses |
+|---|---|
+| A symlink at `.ok/templates` — on this folder or on an ancestor it inherits from, wherever it points and whether or not its target exists — or at an ancestor's `.ok` | That directory's templates, for this folder and every folder inheriting from it. Properties keep working, and the response warnings name the directory. |
+| A symlink at `frontmatter.yml` | Only this folder's properties; the warnings name it. Saving a property edit also fails until you replace it. |
+| `frontmatter.yml` is a real file but is not valid YAML | Only this folder's properties; the warnings name it. Saving a property edit also fails until you fix the syntax. |
+| A symlink at a single template | Only that template. |
+| `.ok` is a plain file, or a directory the server cannot read — on this folder or on an ancestor it inherits from | If it is this folder's, its properties and its own templates, and saving a property edit here fails until you fix it; if an ancestor's, that ancestor's templates for every folder inheriting from it, while this folder's own properties keep saving. Templates from unaffected ancestors still resolve. |
+| `.ok/templates` is a plain file, or a directory the server cannot read — on this folder or on an ancestor it inherits from | That directory's templates, for this folder or for every folder inheriting from the affected ancestor. |
+
+Those last two rows may drop templates with nothing in the warnings, so a folder that quietly loses templates — its own or an inherited set — is the signal to check `.ok` and `.ok/templates` on that folder and on every ancestor above it. To restore what broke: replace a symlink or a plain file with a real directory or file, copying in whatever the link pointed at if you want that content back; if the directory is already there, restore read access for the OpenKnowledge process rather than replacing it. See the [Configuration reference](/docs/reference/configuration#folder-properties) for the file formats, and the [MCP reference](/docs/reference/mcp) for the `write` and `edit` tools (with `folder` and `template` targets) that set the same things from an AI agent.
 
 ## See also
 

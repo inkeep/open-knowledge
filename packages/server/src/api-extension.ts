@@ -238,6 +238,7 @@ import {
 } from './frontmatter-malformed-error.ts';
 import {
   assertNoSymlinkEscape,
+  checkSymlinkLeaf,
   isContainmentRejection,
   PathContainmentError,
 } from './fs-safety.ts';
@@ -5680,8 +5681,9 @@ export function createApiExtension(
   function validateFolderRel(
     raw: string,
     res: ServerResponse,
-    label: 'path' | 'folder' = 'path',
-    handler = 'folder-config',
+    label: 'path' | 'folder',
+    handler: string,
+    components: 'ok' | 'ok-and-templates',
   ): { folderRel: string; resolvedContentDir: string } | null {
     const folderRel = raw.replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+$/, '');
     if (folderRel.split('/').some((seg) => seg === '..') || raw.startsWith('/')) {
@@ -5706,10 +5708,57 @@ export function createApiExtension(
       });
       return null;
     }
+    /* STOP: the escape asserts below admit an IN-ROOT symlinked
+       `<folder>/.ok` OR `<folder>/.ok/templates` (their realpaths stay
+       inside the content root), which would alias every folder-config and
+       template arm — including the WRITE arms (`applyTemplateWrite`'s
+       rename lands wherever `templates` points; `applyTemplateDelete`
+       unlinks through it) — into another directory. Refuse by identity —
+       same posture as `initContent`'s `assertNotSymlink` on the root `.ok/`
+       and the templates resolver's gates. The `templates` component is
+       checked only for the template arms (`components: 'ok-and-templates'`).
+       The folder-config arms DO reach `.ok/templates` — through
+       `collectFromFolder` (content/templates-resolver.ts), which gates it by
+       identity and degrades, skipping a symlinked templates dir (and
+       reporting it via `onRefused`) rather than failing the folder payload.
+       Do not hard-fail here for those arms or the per-field degrade contract
+       breaks; do not delete the resolver-side gate, which is what makes the
+       degrade safe. The same unconditional `.ok` identity check also gates
+       the folder-history arm (http/history-routes.ts) for a uniform
+       refuse-by-identity posture, even though that arm only uses the path as
+       a `git log` pathspec and the aliasing risk above does not apply there.
+       Only an actual
+       symlink short-circuits here; a non-ENOENT lstat failure
+       (`unverifiable`) is left to the `assertNoSymlinkEscape` asserts below,
+       which classify it (ELOOP → path-escape, other errnos → 500) rather
+       than mislabel a non-symlink path as a symlink. */
+    const okDir = resolve(candidateAbs, '.ok');
+    if (checkSymlinkLeaf(okDir).kind === 'symlink') {
+      errorResponse(
+        res,
+        400,
+        'urn:ok:error:symlink-refused',
+        `${folderRel || '.'}/.ok is a symlink — refusing to operate through it. Replace the symlink with a real file or directory and retry.`,
+        { handler, detail: folderRel || '.' },
+      );
+      return null;
+    }
+    const okTemplatesDir = resolve(candidateAbs, '.ok', 'templates');
+    if (components === 'ok-and-templates' && checkSymlinkLeaf(okTemplatesDir).kind === 'symlink') {
+      errorResponse(
+        res,
+        400,
+        'urn:ok:error:symlink-refused',
+        `${folderRel || '.'}/.ok/templates is a symlink — refusing to operate through it. Replace the symlink with a real file or directory and retry.`,
+        { handler, detail: folderRel || '.' },
+      );
+      return null;
+    }
     try {
-      const okDir = resolve(candidateAbs, '.ok');
       assertNoSymlinkEscape(okDir, resolvedContentDir);
-      assertNoSymlinkEscape(resolve(okDir, 'templates'), resolvedContentDir);
+      if (components === 'ok-and-templates') {
+        assertNoSymlinkEscape(okTemplatesDir, resolvedContentDir);
+      }
     } catch (err) {
       if (isContainmentRejection(err)) {
         errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {

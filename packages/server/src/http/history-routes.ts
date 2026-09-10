@@ -29,8 +29,9 @@ export interface HistoryRouteDeps {
   validateFolderRel: (
     raw: string,
     res: ServerResponse,
-    label?: 'path' | 'folder',
-    handler?: string,
+    label: 'path' | 'folder',
+    handler: string,
+    components: 'ok' | 'ok-and-templates',
   ) => { folderRel: string; resolvedContentDir: string } | null;
   safeDocPath: (docName: string, contentRoot: string) => { path: string } | { error: string };
   docTreePathCandidates: (docName: string, contentRoot: string) => readonly string[];
@@ -106,7 +107,7 @@ export function createHistoryRoutes(deps: HistoryRouteDeps): HistoryRoutes {
       }
 
       if (folderParam !== null && !docName) {
-        const validated = validateFolderRel(folderParam, res, 'folder', 'history');
+        const validated = validateFolderRel(folderParam, res, 'folder', 'history', 'ok');
         if (!validated) return;
         const rawFolderLimit = Number(url.searchParams.get('limit') ?? '50');
         const folderLimit = Math.min(200, Number.isFinite(rawFolderLimit) ? rawFolderLimit : 50);

@@ -168,7 +168,7 @@ Right-click anywhere in the sidebar to get a context-aware menu. Three shapes sh
 
 Items that depend on the desktop app (revealing in your file manager, Delete via the OS trash) are hidden in the web build. Asset rows (images, PDFs, other non-markdown files) suppress Open with AI, Share, Duplicate, and Hide; they keep Reveal, Copy Path, Rename, and Delete.
 
-Expand all and Collapse all only appear when they have work to do: Expand all is hidden when no folder is collapsed; Collapse all is hidden when no folder is expanded. New from template appears only when templates are available for the target folder, and Share only when the project has a GitHub remote.
+Expand all and Collapse all only appear when they have work to do: Expand all is hidden when no folder is collapsed; Collapse all is hidden when no folder is expanded. New from template appears when templates are available for the target folder, and also whenever its folder config has not loaded — if the load failed, the item opens to a disabled "Couldn't load templates" row. A symlink, a plain file, or an unreadable directory under `.ok/` can drop a folder's templates (hiding the item); a symlink at the folder's own `.ok` fails its config load (the disabled row) — see [where templates are stored](../advanced/folders-and-templates.mdx#where-its-stored). Share appears only when the project has a GitHub remote.
 
 ### Creating files and folders
 

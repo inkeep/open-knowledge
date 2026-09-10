@@ -3,7 +3,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { resolveProjectTemplates, resolveTemplatesAvailable } from './templates-resolver.ts';
+import {
+  resolveProjectTemplates,
+  resolveTemplatesAvailable,
+  type TemplateDirRefusalListener,
+} from './templates-resolver.ts';
+
+type TemplateDirRefusal = Parameters<TemplateDirRefusalListener>[0];
 
 describe('resolveTemplatesAvailable', () => {
   let projectDir: string;
@@ -90,6 +96,98 @@ describe('resolveTemplatesAvailable', () => {
     expect(tpls.find((t) => t.name === 'prep-notes')).toBeUndefined();
   });
 
+  test('a non-directory ancestor .ok is skipped WITHOUT a refusal and the walk continues to the root', () => {
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
+    mkdirSync(join(projectDir, 'anc', 'child'), { recursive: true });
+    writeFileSync(join(projectDir, 'anc', '.ok'), 'not a directory\n');
+    const refusals: TemplateDirRefusal[] = [];
+    const tpls = resolveTemplatesAvailable(projectDir, 'anc/child', {
+      onRefused: (r) => refusals.push(r),
+    });
+    expect(tpls.map((t) => t.name)).toEqual(['global']);
+    expect(tpls[0]?.scope).toBe('inherited');
+    expect(refusals).toEqual([]);
+  });
+
+  test('a regular FILE at .ok/templates is skipped WITHOUT a refusal and inherited templates still resolve', () => {
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
+    mkdirSync(join(projectDir, 'flat', '.ok'), { recursive: true });
+    writeFileSync(join(projectDir, 'flat', '.ok', 'templates'), 'not a directory\n');
+    const refusals: TemplateDirRefusal[] = [];
+    const tpls = resolveTemplatesAvailable(projectDir, 'flat', {
+      onRefused: (r) => refusals.push(r),
+    });
+    expect(tpls.map((t) => t.name)).toEqual(['global']);
+    expect(refusals).toEqual([]);
+  });
+
+  test('a self-referential symlink on the path reaches onRefused as unverifiable (no chmod needed)', () => {
+    symlinkSync('loop', join(projectDir, 'loop'), 'dir');
+    const refusals: TemplateDirRefusal[] = [];
+    expect(
+      resolveTemplatesAvailable(projectDir, 'loop', { onRefused: (r) => refusals.push(r) }),
+    ).toEqual([]);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({
+      kind: 'unverifiable',
+      folder: 'loop',
+      component: '.ok/templates',
+    });
+    expect((refusals[0] as { code?: string }).code).toBe('ELOOP');
+  });
+
+  test('a symlinked ancestor .ok and a symlinked templates dir each reach onRefused, naming the folder', () => {
+    mkdirSync(join(projectDir, 'target-a', 'templates'), { recursive: true });
+    writeFileSync(join(projectDir, 'target-a', 'templates', 'x.md'), withFm('X', 'x'));
+    mkdirSync(join(projectDir, 'a', 'child'), { recursive: true });
+    symlinkSync('../target-a', join(projectDir, 'a', '.ok'), 'dir');
+    mkdirSync(join(projectDir, 'target-b'), { recursive: true });
+    writeFileSync(join(projectDir, 'target-b', 'y.md'), withFm('Y', 'y'));
+    mkdirSync(join(projectDir, 'b', '.ok'), { recursive: true });
+    symlinkSync('../../target-b', join(projectDir, 'b', '.ok', 'templates'), 'dir');
+
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
+    const fromA: TemplateDirRefusal[] = [];
+    const viaA = resolveTemplatesAvailable(projectDir, 'a/child', {
+      onRefused: (r) => fromA.push(r),
+    });
+    expect(viaA.map((t) => t.name)).toEqual(['global']);
+    expect(fromA).toEqual([{ kind: 'symlink', folder: 'a', component: '.ok' }]);
+
+    const fromB: TemplateDirRefusal[] = [];
+    const viaB = resolveTemplatesAvailable(projectDir, 'b', { onRefused: (r) => fromB.push(r) });
+    expect(viaB.map((t) => t.name)).toEqual(['global']);
+    expect(fromB).toEqual([{ kind: 'symlink', folder: 'b', component: '.ok/templates' }]);
+  });
+
+  test('an in-root symlinked ancestor .ok is not enumerated (menu matches fetch-by-name)', () => {
+    mkdirSync(join(projectDir, 'secretdir', 'templates'), { recursive: true });
+    writeFileSync(
+      join(projectDir, 'secretdir', 'templates', 'note.md'),
+      withFm('Hidden', 'Aliased through .ok'),
+      'utf-8',
+    );
+    mkdirSync(join(projectDir, 'notes'), { recursive: true });
+    symlinkSync('../secretdir', join(projectDir, 'notes', '.ok'), 'dir');
+    mkdirSync(join(projectDir, 'notes', 'sub'), { recursive: true });
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
+
+    expect(resolveTemplatesAvailable(projectDir, 'notes/sub').map((t) => t.name)).toEqual([
+      'global',
+    ]);
+    expect(resolveTemplatesAvailable(projectDir, 'notes').map((t) => t.name)).toEqual(['global']);
+  });
+
+  test('an in-root symlinked templates dir is not enumerated', () => {
+    mkdirSync(join(projectDir, 'elsewhere'), { recursive: true });
+    writeFileSync(join(projectDir, 'elsewhere', 'x.md'), withFm('X', 'aliased'), 'utf-8');
+    mkdirSync(join(projectDir, 'notes2', '.ok'), { recursive: true });
+    symlinkSync('../../elsewhere', join(projectDir, 'notes2', '.ok', 'templates'), 'dir');
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
+
+    expect(resolveTemplatesAvailable(projectDir, 'notes2').map((t) => t.name)).toEqual(['global']);
+  });
+
   test('descendant templates do NOT surface in the parent folder (D17 — two-value scope)', () => {
     writeTemplate(
       'meetings/prep-notes',
@@ -99,9 +197,6 @@ describe('resolveTemplatesAvailable', () => {
 
     expect(resolveTemplatesAvailable(projectDir, 'meetings')).toEqual([]);
 
-    expect(resolveTemplatesAvailable(projectDir, 'meetings', { depth: 2 })).toEqual([]);
-    expect(resolveTemplatesAvailable(projectDir, 'meetings', { depth: Infinity })).toEqual([]);
-
     const ownTpls = resolveTemplatesAvailable(projectDir, 'meetings/prep-notes');
     expect(ownTpls).toHaveLength(1);
     expect(ownTpls[0]?.name).toBe('agenda');
@@ -109,13 +204,11 @@ describe('resolveTemplatesAvailable', () => {
     expect(ownTpls[0]?.source_folder).toBe('meetings/prep-notes');
   });
 
-  test('depth parameter is a no-op — no descent into subfolders from the resolver', () => {
+  test('the resolver never descends into subfolders — only leaf→root ancestors', () => {
     writeTemplate('a/b/c', 'deep', withFm('Deep', 'Buried in a/b/c.'));
 
     expect(resolveTemplatesAvailable(projectDir, 'a')).toEqual([]);
-    expect(resolveTemplatesAvailable(projectDir, 'a', { depth: 2 })).toEqual([]);
-    expect(resolveTemplatesAvailable(projectDir, 'a', { depth: 100 })).toEqual([]);
-    expect(resolveTemplatesAvailable(projectDir, 'a', { depth: Infinity })).toEqual([]);
+    expect(resolveTemplatesAvailable(projectDir, 'a/b')).toEqual([]);
 
     const own = resolveTemplatesAvailable(projectDir, 'a/b/c');
     expect(own).toHaveLength(1);
@@ -239,8 +332,9 @@ describe('resolveTemplatesAvailable', () => {
       writeFileSync(join(outside, 'leak.md'), withFm('Leak', 'Foreign template.'));
       mkdirSync(join(projectDir, 'notes', '.ok'), { recursive: true });
       symlinkSync(outside, join(projectDir, 'notes', '.ok', 'templates'), 'dir');
+      writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
 
-      expect(resolveTemplatesAvailable(projectDir, 'notes')).toEqual([]);
+      expect(resolveTemplatesAvailable(projectDir, 'notes').map((t) => t.name)).toEqual(['global']);
     } finally {
       await rm(outside, { recursive: true, force: true });
     }
@@ -250,8 +344,9 @@ describe('resolveTemplatesAvailable', () => {
     writeFileSync(join(projectDir, 'stash.md'), withFm('Stash', 'Not a template.'));
     mkdirSync(join(projectDir, 'notes', '.ok'), { recursive: true });
     symlinkSync(projectDir, join(projectDir, 'notes', '.ok', 'templates'), 'dir');
+    writeTemplate('', 'global', withFm('Global', 'Survives the skip.'));
 
-    expect(resolveTemplatesAvailable(projectDir, 'notes')).toEqual([]);
+    expect(resolveTemplatesAvailable(projectDir, 'notes').map((t) => t.name)).toEqual(['global']);
   });
 });
 
