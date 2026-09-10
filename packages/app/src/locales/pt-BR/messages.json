@@ -1093,6 +1093,7 @@
     "ApeA0n": [["dropCount"], " edições desfeitas em ", ["docName"]],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["Chave de API definida"],
+    "Arr7LU": ["Não foi possível iniciar ", ["agentName"], ": ", ["0"]],
     "AsqRE_": ["Local padrão para novos anexos"],
     "AtBdnD": ["Não deu para excluir a habilidade: ", ["error"]],
     "AvqEDl": ["Alguns arquivos soltos não puderam ser inseridos com segurança."],
@@ -2054,6 +2055,7 @@
       ]
     ],
     "LKOLNn": ["Nenhum agente de IA instalado"],
+    "LMVNT6": [["agentName"], " precisa que você faça login."],
     "LPAv9E": ["há ", ["days"], " d"],
     "LPLWpO": ["O conteúdo do quadro não é uma cena válida do Excalidraw."],
     "LQdLio": ["Novo esquema"],
@@ -2313,6 +2315,7 @@
     "O0Z2Xr": ["Saída"],
     "O2UpM1": ["Procurar"],
     "O3oNi5": ["E-mail"],
+    "O4rQ4h": [["agentName"], " precisava que você fizesse login."],
     "O6H89R": ["Resolvido"],
     "O6yEPk": ["Cria um novo projeto do OpenKnowledge na pasta que você escolher."],
     "O7_W_a": ["Abrir com IA"],
@@ -2864,7 +2867,6 @@
       ]
     ],
     "UIjjFa": ["Ver o que será adicionado"],
-    "UJEFJY": ["Não foi possível iniciar ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge abriu a pré-visualização ao vivo"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["Como usar o OpenKnowledge e suas ferramentas MCP."],
@@ -3078,6 +3080,10 @@
       " itens selecionados? As pastas e todos os arquivos dentro delas serão excluídos. Esta ação não pode ser desfeita."
     ],
     "WMsoIm": ["Já fez login?"],
+    "WOY8rV": [
+      ["agentName"],
+      " precisava que você fizesse login. Retome este chat para tentar de novo."
+    ],
     "WOfp4H": ["Falha ao atualizar o intervalo de sincronização — ", ["detail"]],
     "WOr-hW": ["tokens"],
     "WPwDin": ["Abrir a pasta no disco"],
@@ -3433,6 +3439,7 @@
     "_9rYSZ": ["integração MCP de ", ["names"], " reparada"],
     "_Bix3-": ["Ocorrências de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Criando…"],
+    "_FqAty": ["Retomar chat"],
     "_G7A92": ["Manter index.md"],
     "_GRWOJ": ["Trocar o provedor de embeddings?"],
     "_HgF9q": ["Ordenar por"],
@@ -3489,6 +3496,7 @@
     "_tekeB": ["propriedades da pasta atualizadas"],
     "_tjopj": ["Colar duplicado"],
     "_uxBz5": ["Adicionar MCP e habilidade para ", ["rowLabel"]],
+    "_xWxLt": [["agentName"], " parou com um erro."],
     "_yB-24": ["tudo dentro de qualquer pasta ", ["0"], "/"],
     "a-cKXz": ["Selecionar todo o código"],
     "a3LDKx": ["Segurança"],
@@ -4284,7 +4292,6 @@
     "hFmYGU": ["Arquivos de tema vinculados não são compatíveis"],
     "hGmuTc": ["Documentos com a tag #", ["tagDocsName"]],
     "hHMv6l": ["Excluir o bloco"],
-    "hHR0tt": ["Novo chat com ", ["0"]],
     "hItdtk": ["Escolher pasta"],
     "hLKfZe": ["Usar um token em vez disso"],
     "hLod4_": ["Converter em modelo"],
@@ -4397,6 +4404,7 @@
     "iSLIjg": ["Conectar"],
     "iSQTsg": ["Lista ordenada"],
     "iSWh95": ["O destino da imagem \"", ["shown"], "\" não corresponde a um arquivo existente."],
+    "iSguIe": ["Novo chat com ", ["agentName"]],
     "iSnkwB": ["Falha ao abrir o projeto clonado."],
     "iTylMl": ["Modelos"],
     "iUwpZI": ["Sem espaços — use <0>-</0> no lugar."],
@@ -4597,6 +4605,7 @@
     "kNGLX6": ["Tentando novamente…"],
     "kNiQp6": ["Fixados"],
     "kNqMMd": ["Pasta"],
+    "kNvMl7": ["Abrir terminal para fazer login"],
     "kPOw9O": ["Copiar a mensagem"],
     "kRTXGw": [
       "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
@@ -4801,6 +4810,10 @@
       "A sincronização do Git está pausada porque uma operação do Git ou conflitos não resolvidos precisam de atenção. Suas alterações continuam sendo salvas localmente. Conclua a operação ou resolva os conflitos no terminal e tente sincronizar novamente."
     ],
     "mPoOmg": ["instale primeiro uma habilidade aqui"],
+    "mPwwPl": [
+      ["agentName"],
+      " não consegue retomar este chat. A transcrição é mantida, então comece um novo chat para continuar."
+    ],
     "mPy9lS": [
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
     ],
@@ -4875,10 +4888,6 @@
       "</1> em <2>",
       ["src"],
       "</2>."
-    ],
-    "ms4r8V": [
-      ["0"],
-      " não pode continuar este chat — a transcrição foi mantida, mas a sessão do agente não existe mais."
     ],
     "msOK6I": [
       "Os repositórios que você já clonou podem continuar sincronizando pelas credenciais salvas do próprio git, mesmo depois de você desconectar."
@@ -5560,6 +5569,7 @@
       ["trashNoun"],
       ". Deseja excluir permanentemente?"
     ],
+    "txGF-X": [["agentName"], " não está em execução. Comece um novo chat para fazer login."],
     "txUHO8": [["localizedMessage"], " na linha ", ["displayLine"]],
     "txmRmK": ["Redimensionar o painel de Habilidades"],
     "tzGWeg": ["Preparando a desinstalação do OpenKnowledge"],

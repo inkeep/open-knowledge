@@ -1,0 +1,30 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+An in-app agent chat in the **Agents panel** that stopped for sign-in now offers the action its message names, instead of telling you to sign in and giving you nothing to press.
+
+Four states reached that dead end. An archived chat whose agent had asked you to sign in, a live chat whose agent had exited, a chat awaiting sign-in with nothing in its transcript yet, and a sign-in failure that carried no method you could click all rendered `Sign in to <agent> to continue.` with no sign-in button anywhere on the card. The only state that offered real sign-in buttons was the one the feature was built for.
+
+The message and the control now come from one decision, so a surface cannot claim an action it does not offer. An archived chat reads `<agent> needed you to sign in. Resume this chat to try again.` and offers `Resume chat`. An exited chat offers `New chat with <agent>`, the only thing its status permits. A chat awaiting sign-in with no clickable method offers `Retry`, and no longer claims that the retry is what signs you in, because it is not: it restarts the agent. A chat that has since recovered reads as history rather than as an instruction, and asks nothing of you.
+
+The message that ran into the sign-in wall is no longer stranded. It sat in the transcript unanswered, and the only way to get it to the agent was to type it again, because the app already knew how to hand a failed message back to the composer but only did so for delivery failures, never for a sign-in one. Once the chat can send again, that message offers `Edit and resend` like any other undelivered one, which returns it to the composer and clears the sign-in notice with it. It is offered only once sending actually works, so a chat still waiting on sign-in is not handed a resend that would fail.
+
+`Already signed in? Retry` now works for the agents that most needed it. An agent that opens its session first and only demands sign-in when you actually send something, which is what Claude does, left the chat holding a session id it could no longer use, and the retry refused to run because of it. Every press failed with `this thread already has an agent session`. The retry restarts the agent from scratch, so a session belonging to a process it is about to replace was never a reason to refuse, and the id is now cleared when that process is torn down rather than left pointing at something that is gone.
+
+Agents that sign you in through their own command-line tool now get a real sign-in action rather than an honest dead end. Claude, Codex and the rest reach OpenKnowledge through a CLI you already have installed, and several of them advertise no sign-in method the app can click, so the card had nothing to offer beyond a retry. Those chats now offer `Open terminal to sign in`, which opens that agent's own CLI in the terminal, where its sign-in flow runs. Sign in there, come back, and `Already signed in? Retry` picks up the credentials. The offer appears only when the app can see that CLI installed on the machine and the terminal is available, so it never opens a terminal onto a command that is not there.
+
+The most common shape of this bug was an archived chat that could never be resumed in the first place, because the agent asked for sign-in before the chat ever got a session. Those chats offered `Resume chat`, and pressing it did nothing useful. The server now reports whether a chat is resumable, from the session capabilities the agent advertised when it connected, so an archived chat that has nothing to return to offers `New chat with <agent>` up front, which is the control that actually gets you to a sign-in prompt. That answer is written to disk with the chat, so a restart no longer hands back a `Resume chat` the agent has already refused. Every chat comes back from a restart archived, including one that was still open when the app closed, and a chat written by an older build carries no answer at all, so it falls back to whether it ever opened a session.
+
+A resume the server turns down while the app is still waiting on it no longer costs you the tab. The chat stays where it was with its transcript intact and shows the explanation with its `New chat with <agent>` escape. It used to vanish from the chat strip, and reopening it from history left a chat that never finished loading until you reloaded the page.
+
+Both `New chat with <agent>` controls now behave identically. A message the chat failed to deliver is carried into the new chat and sent; text you only typed is carried over as a draft in the new chat's composer, unsent, rather than being fired off on your behalf. A new chat that cannot start because one is already starting says so instead of quietly doing nothing.
+
+Send is disabled on an archived chat the server says it cannot resume, so a message can no longer be swallowed by a resume that was never going to work. You can still type: only the send that had nowhere to go is blocked, and the chat now says why and offers `New chat with <agent>` rather than leaving a dead Send unexplained. A resume the agent turns down once is treated as the one-off it usually is, so a hiccup no longer retires the resume and the composer for the rest of the session.
+
+An archived chat is never offered a sign-in button, because the server refuses to authenticate an archived thread.
+
+A chat that died before it said anything no longer claims to be connecting. An empty transcript on a thread that exited or errored showed a pulsing `Connecting to <agent>…` forever, which was untrue and offered nothing; it now shows the same sentence and control the rest of the surface would give it, `New chat with <agent>` for an exited chat and `Retry` for an errored one. A chat genuinely still installing or starting keeps its progress message.
+
+Signing in also gets the time the server actually allows. The app gave up on a sign-in after three minutes while the server waits five, so a slow browser flow was cut short by the app with a generic timeout instead of finishing, or failing with the server's own reason.
+

@@ -304,11 +304,6 @@ msgstr "{0} ditambahkan, {1} dihapus"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} tidak dapat melanjutkan obrolan ini — transkrip tetap tersimpan, tetapi sesi agen sudah hilang."
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} tidak menawarkan pengaturan untuk disesuaikan"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "Penyimpanan keterampilan pusat {agent} belum ada; jalankan {agent} sekali agar ia membuatnya, lalu coba lagi."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "{agentName} tidak dapat melanjutkan obrolan ini. Transkrip tetap tersimpan, jadi mulai obrolan baru untuk melanjutkan."
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} tidak dapat memulai percakapan."
 
@@ -562,9 +561,29 @@ msgstr "{agentName} tidak dapat dijalankan."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} tidak menerima lampiran gambar."
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName} tidak berjalan. Mulai obrolan baru untuk masuk."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "{agentName} tadi memerlukan Anda untuk masuk."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "{agentName} tadi memerlukan Anda untuk masuk. Lanjutkan obrolan ini untuk mencoba lagi."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "{agentName} memerlukan Anda untuk masuk."
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} melaporkan: {headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "{agentName} berhenti dengan galat."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4308,11 +4327,10 @@ msgstr "Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."
 msgid "Couldn't send your prompt — please try again."
 msgstr "Prompt Anda tidak bisa dikirim — silakan coba lagi."
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "Tidak dapat menjalankan {0}: {1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "Tidak dapat menjalankan {agentName}: {0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8673,10 +8691,10 @@ msgstr "Cabang baru <0>{trimmed}</0> akan dibuat dari commit saat ini, di worktr
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "Perubahan baru dari remote Anda muncul di salinan Anda secara otomatis."
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "Obrolan baru dengan {0}"
+msgid "New chat with {agentName}"
+msgstr "Obrolan baru dengan {agentName}"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9717,6 +9735,10 @@ msgstr "Buka sumber: {mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "Buka terminal"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "Buka terminal untuk masuk"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11649,6 +11671,10 @@ msgstr "Dipulihkan ke versi dari {0}"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "Hasil dibatasi — ruang kerja ini punya lebih banyak berkas daripada yang bisa diindeks pencarian. Berkas yang hilang bisa jadi efek batasan itu, bukan salah ketik."
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "Lanjutkan obrolan"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "Melanjutkan obrolan"
@@ -11657,6 +11683,7 @@ msgstr "Melanjutkan obrolan"
 msgid "Retrieving…"
 msgstr "Mengambil…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11672,6 +11699,7 @@ msgstr "Coba lagi"
 msgid "Retry push"
 msgstr "Coba push lagi"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "Mencoba lagi"
@@ -12668,6 +12696,7 @@ msgstr "Muncul di atas badan kode. Bolak-balik sebagai `title=\"...\"` di markdo
 msgid "Sifting…"
 msgstr "Menyaring…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12679,7 +12708,7 @@ msgstr "Masuk"
 msgid "Sign in to {agentName} first"
 msgstr "Masuk dulu ke {agentName}"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "Masuk ke {agentName} untuk melanjutkan."
 

@@ -44,6 +44,14 @@ const removeQueued = vi.fn((_threadId: string, _id: string) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
 const retryThread = vi.fn(async (_threadId: string) => {});
+const createThread = vi.fn(
+  async (_params: unknown): Promise<unknown> => ({
+    threadId: 'thread-2',
+  }),
+);
+const resumeThread = vi.fn(
+  async (_threadId: string, _prompt?: string, _attachments?: unknown) => {},
+);
 let authenticateResult: Promise<void> = Promise.resolve();
 const authenticateThread = vi.fn((_threadId: string, _methodId: string) => authenticateResult);
 
@@ -60,14 +68,12 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     setMode,
     setConfigOption,
     closeThread: () => {},
-    createThread: async () => {
-      throw new Error('unused');
-    },
-    resumeThread: async () => {
-      throw new Error('unused');
-    },
+    createThread,
+    resumeThread,
     retryThread,
     authenticateThread,
+    getThread: () => null,
+    subscribe: () => () => {},
   }),
   ThreadResumeError: class ThreadResumeError extends Error {
     readonly code: string;
@@ -76,6 +82,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       this.code = code;
     }
   },
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
   useAgentThread: () => threadState,
   useAgentThreadModel: () => model,
 }));
@@ -101,6 +108,11 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
 }));
 
 const { ThreadView } = await import('./ThreadView');
+const { resetStagedThreadDrafts, subscribeStagedThreadDraft } = await import(
+  '@/lib/acp/thread-draft-staging'
+);
+const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
+const { ThreadResumeError } = await import('@/lib/acp/thread-client');
 const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
   '@/lib/acp/agent-settings-store'
 );
@@ -181,6 +193,9 @@ afterEach(() => {
   toastError.mockClear();
   cancel.mockClear();
   retryThread.mockClear();
+  createThread.mockClear();
+  resumeThread.mockClear();
+  resetStagedThreadDrafts();
   authenticateThread.mockClear();
   authenticateResult = Promise.resolve();
   model = null;
@@ -1905,6 +1920,40 @@ describe('ThreadView retry', () => {
     expect(retryThread).toHaveBeenCalledWith('thread-1');
   });
 
+  test('a message stranded by a sign-in failure comes back once the thread can send again', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        failureNotice('auth-required'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('');
+
+    await userEvent.click(screen.getByTestId('agent-thread-restore'));
+
+    expect(composer.value).toBe('summarise the standup');
+    expect(screen.queryByTestId('agent-thread-user-message')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-notice')).toBeNull();
+  });
+
+  test('a thread still parked on sign-in is not offered a resend it cannot deliver', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        failureNotice('auth-required'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
+    expect(screen.getByTestId('agent-thread-auth-status')).toBeDefined();
+  });
+
   test('a prompt failure offers Edit and resend instead of Retry, seeds the composer, and hides the failed pair', async () => {
     model = makeModel({
       turnActive: false,
@@ -2463,6 +2512,7 @@ describe('ThreadView failure notices', () => {
 
     const card = screen.getByTestId('agent-thread-notice');
     expect(card.textContent).toContain('Sign in to Claude to continue');
+    expect(within(card).getAllByTestId('agent-thread-auth-method')).toHaveLength(1);
     expect(card.textContent).toContain('Authentication required');
     expect(card.textContent).not.toContain('run /login first');
     expect(screen.queryByTestId('agent-thread-notice-details')).toBeNull();
@@ -2959,6 +3009,834 @@ describe('ThreadView plan approval wiring (PRD-8022)', () => {
     model = makeModel({ plan, turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready', archived: true })} />);
     expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
+  });
+});
+
+describe('ThreadView auth-required dead ends', () => {
+  type NoticeItem = Extract<RenderedItem, { kind: 'notice' }>;
+  type Failure = NonNullable<NoticeItem['failure']>;
+
+  const SIGN_IN_INSTRUCTION = /Sign in to .+ to continue/;
+  const LAUNCH_FAILED = "Couldn't start the agent thread — please try again.";
+
+  let stopStaging: (() => void) | null = null;
+  afterEach(() => {
+    stopStaging?.();
+    stopStaging = null;
+  });
+
+  function authNotice(failure?: Partial<Failure>): NoticeItem {
+    return {
+      kind: 'notice',
+      text: '',
+      tone: 'info',
+      failure: {
+        reason: 'auth-required',
+        agentMessage: 'Authentication required',
+        machineDetail: '{"detail":"run /login first"}',
+        authMethods: [{ id: 'test_login', name: 'Test Login' }],
+        ...failure,
+      },
+      attempts: 1,
+    };
+  }
+
+  function authSurface(): HTMLElement {
+    const cards = screen.queryAllByTestId('agent-thread-notice');
+    return cards[0] ?? screen.getByTestId('agent-thread-transcript');
+  }
+
+  function offerButton(): HTMLElement {
+    return within(authSurface()).getByTestId('agent-thread-auth-action');
+  }
+
+  test('an archived thread holding an auth failure offers the resume its copy names', () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain(
+      'Claude needed you to sign in. Resume this chat to try again.',
+    );
+    expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('resume');
+    expect(within(surface).getByRole('button', { name: 'Resume chat' })).toBeTruthy();
+  });
+
+  test('an archived thread that never opened an agent session offers the new chat instead', () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain("Claude isn't running. Start a new chat to sign in.");
+    expect(surface.textContent).not.toContain('Resume this chat to try again');
+    expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
+    expect(screen.queryByRole('button', { name: 'Resume chat' })).toBeNull();
+  });
+
+  test('the unresumable archived offer starts a fresh thread rather than a doomed resume', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    await userEvent.click(offerButton());
+    expect(resumeThread).not.toHaveBeenCalled();
+    expect(createThread).toHaveBeenCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+  });
+
+  test('a new chat that lost the race to another launch says so rather than going quiet', async () => {
+    let releaseCreate: (() => void) | undefined;
+    createThread.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      }),
+    );
+    const inflight = launchAgentThread({ source: 'registry', id: 'claude' }, null, null, null);
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'Already starting a chat with this agent — try again in a moment.',
+      ),
+    );
+    expect(createThread).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseCreate?.();
+      await inflight;
+    });
+  });
+
+  test('an archived thread the server can still resume keeps the resume offer', () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: true })} />);
+
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('resume');
+  });
+
+  test('an archived thread does not offer a sign-in the server would refuse', () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    expect(screen.queryAllByTestId('agent-thread-auth-method')).toHaveLength(0);
+    expect(offerButton()).toBeTruthy();
+  });
+
+  test('the archived offer resumes the chat when pressed', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    expect(resumeThread).toHaveBeenCalledWith('thread-1', undefined, undefined);
+  });
+
+  test('a failed resume re-enables the offer and explains itself', async () => {
+    resumeThread.mockRejectedValueOnce(new Error('agent session is gone'));
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+    expect(screen.getByTestId('agent-thread-resume-failed').textContent).toContain(
+      "Couldn't resume this chat: agent session is gone",
+    );
+    expect(offerButton().hasAttribute('disabled')).toBe(false);
+  });
+
+  test('an exited live thread holding an auth failure offers the new chat its copy names', () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain("Claude isn't running. Start a new chat to sign in.");
+    expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
+    expect(within(surface).getByRole('button', { name: 'New chat with Claude' })).toBeTruthy();
+  });
+
+  function stagedDraftFor(threadId: string): { text: string | null } {
+    const seen = { text: null as string | null };
+    stopStaging = subscribeStagedThreadDraft(threadId, (text) => {
+      seen.text = text;
+    });
+    return seen;
+  }
+
+  test('the exited offer carries an unsent draft into the new chat rather than sending it', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+    const staged = stagedDraftFor('thread-2');
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'draft I have not sent yet' } });
+
+    await userEvent.click(offerButton());
+    expect(createThread).toHaveBeenCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+    await waitFor(() => expect(staged.text).toBe('draft I have not sent yet'));
+    expect(composer.value).toBe('draft I have not sent yet');
+  });
+
+  test('both New chat controls treat an unsent draft the same way', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('capacity', 'maximum of 8 concurrent agent threads'),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+    const staged = stagedDraftFor('thread-2');
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'half-finished instruction' } });
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    expect(createThread).toHaveBeenCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+    await waitFor(() => expect(staged.text).toBe('half-finished instruction'));
+    expect(composer.value).toBe('half-finished instruction');
+  });
+
+  test('the banner New chat control resends the prompt the archived chat could not deliver', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', "couldn't resume the previous session"),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: true })} />);
+    const staged = stagedDraftFor('thread-2');
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'finish the migration' },
+    });
+    await userEvent.click(screen.getByTestId('agent-thread-send'));
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+    expect(createThread).toHaveBeenLastCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: 'finish the migration',
+    });
+    expect(staged.text).toBeNull();
+  });
+
+  test('the card New chat control carries the draft an unresumable chat could never send', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+    const staged = stagedDraftFor('thread-2');
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'finish the migration' } });
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+    expect(createThread).toHaveBeenLastCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+    await waitFor(() => expect(staged.text).toBe('finish the migration'));
+  });
+
+  const IN_FLIGHT_CASES = [
+    {
+      kind: 'new-chat',
+      info: { archived: false, status: 'exited' } as Partial<ThreadInfo>,
+      items: [authNotice()],
+      spy: () => createThread,
+      announcement: 'Starting Claude…',
+    },
+    {
+      kind: 'resume',
+      info: { archived: true, status: 'exited' } as Partial<ThreadInfo>,
+      items: [authNotice()],
+      spy: () => resumeThread,
+      announcement: 'Resuming the chat',
+    },
+    {
+      kind: 'retry',
+      info: { archived: false, status: 'auth_required' } as Partial<ThreadInfo>,
+      items: [],
+      spy: () => retryThread,
+      announcement: 'Retrying',
+    },
+  ] as const;
+
+  test.each(IN_FLIGHT_CASES)(
+    'the $kind offer is disabled and announced while it is in flight',
+    async ({ info, items, spy, announcement }) => {
+      let release: (() => void) | undefined;
+      spy().mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
+      model = makeModel({ turnActive: false, items: [...items] });
+      render(<ThreadView info={makeInfo(info)} />);
+
+      await userEvent.click(offerButton());
+      expect(offerButton().hasAttribute('disabled')).toBe(true);
+      expect(offerButton().getAttribute('aria-busy')).toBe('true');
+      expect(screen.getByTestId('agent-thread-auth-status').textContent).toBe(announcement);
+
+      await userEvent.click(offerButton());
+      expect(spy()).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        release?.();
+      });
+      await waitFor(() => expect(offerButton().hasAttribute('disabled')).toBe(false));
+      expect(offerButton().getAttribute('aria-busy')).toBe('false');
+      expect(screen.getByTestId('agent-thread-auth-status').textContent).toBe('');
+    },
+  );
+
+  test('a failed retry says so', async () => {
+    retryThread.mockRejectedValueOnce(new Error('agent binary is missing'));
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Couldn't start Claude: agent binary is missing"),
+    );
+    expect(offerButton().hasAttribute('disabled')).toBe(false);
+  });
+
+  test('a resume the server turns down explains itself and hands over the escape', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', 'this thread never completed an agent session'),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-thread-resume-failed').textContent).toContain(
+        'this thread never completed an agent session',
+      ),
+    );
+    expect(screen.getByTestId('agent-thread-resume-failed').textContent).toContain(
+      "Couldn't resume this chat",
+    );
+    expect(screen.getByTestId('agent-thread-resume-failed').textContent).not.toContain(
+      "can't pick this chat back up",
+    );
+    expect(screen.getByTestId('agent-thread-resume-fallback-new')).toBeTruthy();
+  });
+
+  test('an unresumable archived chat explains itself without waiting for a failed attempt', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    expect(screen.queryByTestId('agent-thread-auth-action')).toBeNull();
+    const banner = screen.getByTestId('agent-thread-resume-failed');
+    expect(banner.textContent).toContain("Claude can't pick this chat back up");
+    expect(banner.textContent).toContain('The transcript is kept, so start a new chat to continue');
+    expect(screen.getByTestId('agent-thread-resume-fallback-new').hasAttribute('disabled')).toBe(
+      false,
+    );
+    expect(resumeThread).not.toHaveBeenCalled();
+  });
+
+  test('the escape on an unresumable archived chat starts a new chat with the same agent', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+    expect(createThread).toHaveBeenCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+  });
+
+  test('a thread the server says it cannot resume leaves no control that still says resume', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    const offers = screen.getAllByTestId('agent-thread-auth-action');
+    expect(offers.map((node) => node.getAttribute('data-auth-offer-kind'))).toEqual(['new-chat']);
+    expect(screen.queryByRole('button', { name: 'Resume chat' })).toBeNull();
+    await userEvent.click(offerButton());
+    expect(resumeThread).not.toHaveBeenCalled();
+    expect(createThread).toHaveBeenCalledWith({
+      agent: { source: 'registry', id: 'claude' },
+      prompt: undefined,
+    });
+  });
+
+  test('one rejection does not retire a resume the server still says is available', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', "couldn't resume the previous session"),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: true })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('resume');
+    expect(screen.getByTestId('agent-thread-resume-fallback-new')).toBeTruthy();
+
+    await userEvent.click(offerButton());
+    expect(resumeThread).toHaveBeenCalledTimes(2);
+  });
+
+  test('the resume-failure live region is mounted before there is a failure to announce', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', 'this thread never completed an agent session'),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    const region = screen.getByTestId('agent-thread-resume-status');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent).toBe('');
+    expect(screen.queryByTestId('agent-thread-resume-failed')).toBeNull();
+
+    await userEvent.click(offerButton());
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-thread-resume-status').textContent).toContain(
+        'this thread never completed an agent session',
+      ),
+    );
+    expect(screen.getByTestId('agent-thread-resume-status')).toBe(region);
+  });
+
+  test('an auth control is only busy while its own action is the one running', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('capacity', 'maximum of 8 concurrent agent threads'),
+    );
+    let releaseCreate: (() => void) | undefined;
+    createThread.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      }),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('resume');
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    expect(offerButton().hasAttribute('disabled')).toBe(true);
+    expect(offerButton().getAttribute('aria-busy')).toBe('false');
+    expect(within(offerButton()).queryByRole('status')).toBeNull();
+
+    await act(async () => {
+      releaseCreate?.();
+    });
+    await waitFor(() => expect(offerButton().hasAttribute('disabled')).toBe(false));
+  });
+
+  test('a transient resume failure keeps the offer and announces the action actually running', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('capacity', 'maximum of 8 concurrent agent threads'),
+    );
+    let releaseCreate: (() => void) | undefined;
+    createThread.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      }),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-thread-resume-failed').textContent).toContain(
+        'maximum of 8 concurrent agent threads',
+      ),
+    );
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('resume');
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    expect(screen.getByTestId('agent-thread-auth-status').textContent).toBe('Starting Claude…');
+    expect(offerButton().hasAttribute('disabled')).toBe(true);
+
+    await act(async () => {
+      releaseCreate?.();
+    });
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+  });
+
+  test('an unresumable chat keeps its new-chat offer through the launch it starts', async () => {
+    let releaseCreate: (() => void) | undefined;
+    createThread.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      }),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    await userEvent.click(offerButton());
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
+
+    await act(async () => {
+      releaseCreate?.();
+    });
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('new-chat');
+    expect(authSurface().textContent).not.toContain('Resume this chat to try again');
+  });
+
+  test('a new chat that fails from the recovery banner reports once and blames the right call', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', 'this thread never completed an agent session'),
+    );
+    createThread.mockRejectedValueOnce(new Error('at capacity'));
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    await userEvent.click(screen.getByTestId('agent-thread-resume-fallback-new'));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(LAUNCH_FAILED));
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const banner = screen.getByTestId('agent-thread-resume-failed');
+    expect(banner.textContent).toContain(
+      "Couldn't resume this chat: this thread never completed an agent session",
+    );
+    expect(banner.textContent).not.toContain(LAUNCH_FAILED);
+  });
+
+  test('a failed new chat says so instead of leaving the card silent', async () => {
+    createThread.mockRejectedValueOnce(new Error('at capacity'));
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(LAUNCH_FAILED));
+    expect(offerButton().hasAttribute('disabled')).toBe(false);
+  });
+
+  test('the banner control announces its launch and cannot be pressed twice', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', 'this thread never completed an agent session'),
+    );
+    let releaseCreate: (() => void) | undefined;
+    createThread.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      }),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    const banner = screen.getByTestId('agent-thread-resume-fallback-new');
+    expect(banner.hasAttribute('disabled')).toBe(false);
+    expect(banner.getAttribute('aria-busy')).toBe('false');
+
+    await userEvent.click(banner);
+    expect(screen.queryByTestId('agent-thread-resume-fallback-new')).toBeNull();
+    expect(screen.getByTestId('agent-thread-auth-status').textContent).toBe('Starting Claude…');
+    expect(offerButton().hasAttribute('disabled')).toBe(true);
+
+    await act(async () => {
+      releaseCreate?.();
+    });
+    await waitFor(() => expect(createThread).toHaveBeenCalledTimes(1));
+  });
+
+  test('an archived chat the server cannot resume will not send a message into that resume', async () => {
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: false })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'this would be lost' } });
+
+    expect(composer.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
+
+    fireEvent.keyDown(composer, { key: 'Enter' });
+    await waitFor(() => expect(resumeThread).not.toHaveBeenCalled());
+  });
+
+  test('a resume the agent turned down once leaves the composer usable', async () => {
+    resumeThread.mockRejectedValueOnce(
+      new ThreadResumeError('resume-unsupported', "couldn't resume the previous session"),
+    );
+    model = makeModel({ turnActive: false, items: [authNotice()] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited', resumable: true })} />);
+
+    fireEvent.change(screen.getByTestId('agent-thread-composer'), {
+      target: { value: 'try once more' },
+    });
+    expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(false);
+
+    await userEvent.click(offerButton());
+    await waitFor(() => expect(screen.getByTestId('agent-thread-resume-failed')).toBeTruthy());
+
+    expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(false);
+    expect(resumeThread).toHaveBeenCalledTimes(1);
+  });
+
+  test('only the last auth notice carries the offer', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        authNotice({ machineDetail: 'first stderr tail' }),
+        authNotice({ machineDetail: 'second stderr tail' }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    const cards = screen.getAllByTestId('agent-thread-notice');
+    expect(cards).toHaveLength(2);
+    expect(screen.getAllByTestId('agent-thread-auth-action')).toHaveLength(1);
+    expect(within(cards[1] as HTMLElement).getByTestId('agent-thread-auth-action')).toBeTruthy();
+    expect(cards[0]?.textContent).toContain('Claude needed you to sign in.');
+    expect(cards[0]?.textContent).not.toContain('Resume this chat to try again');
+  });
+
+  test('a thread awaiting sign-in with nothing in its transcript offers the retry its copy names', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain('Claude needs you to sign in.');
+    expect(surface.textContent).not.toContain('Retry to sign in');
+    expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
+    expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('retry');
+    expect(within(surface).getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  test('an empty transcript on a dead thread offers a way out instead of claiming it is connecting', () => {
+    for (const [status, kind, label] of [
+      ['exited', 'new-chat', 'New chat with Claude'],
+      ['error', 'retry', 'Retry'],
+    ] as const) {
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      const surface = screen.getByTestId('agent-thread-transcript');
+      expect({ status, connecting: surface.textContent?.includes('Connecting to') }).toEqual({
+        status,
+        connecting: false,
+      });
+      const offer = screen.getByTestId('agent-thread-auth-action');
+      expect({
+        status,
+        kind: offer.getAttribute('data-auth-offer-kind'),
+        label: offer.textContent,
+      }).toEqual({ status, kind, label });
+      view.unmount();
+    }
+  });
+
+  test('a thread genuinely still starting keeps its progress message and offers nothing', () => {
+    for (const status of ['installing', 'spawning'] as const) {
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      expect(screen.queryByTestId('agent-thread-auth-action')).toBeNull();
+      view.unmount();
+    }
+  });
+
+  test('an agent whose own CLI is installed offers to sign in in the terminal', async () => {
+    const launches: { prompt: unknown; cli: unknown }[] = [];
+    const onLaunch = (event: Event) => {
+      const { prompt, cli } = (event as CustomEvent).detail;
+      launches.push({ prompt, cli });
+    };
+    window.addEventListener('open-knowledge:terminal-launch', onLaunch);
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({ claude: true }) },
+      },
+    });
+    try {
+      model = makeModel({ turnActive: false, items: [] });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          })}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('terminal-sign-in'),
+      );
+      const surface = authSurface();
+      expect(surface.textContent).toContain('Claude needs you to sign in.');
+      expect(
+        within(surface).getByRole('button', { name: 'Open terminal to sign in' }),
+      ).toBeTruthy();
+
+      await userEvent.click(offerButton());
+      expect(launches).toEqual([{ prompt: '', cli: 'claude' }]);
+      expect(retryThread).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('the live auth card itself carries the terminal action, not just the sentence', async () => {
+    const launches: { prompt: unknown; cli: unknown }[] = [];
+    const onLaunch = (event: Event) => {
+      const { prompt, cli } = (event as CustomEvent).detail;
+      launches.push({ prompt, cli });
+    };
+    window.addEventListener('open-knowledge:terminal-launch', onLaunch);
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({ claude: true }) },
+      },
+    });
+    try {
+      const noMethods = authNotice({ authMethods: undefined, machineDetail: '' });
+      model = makeModel({ turnActive: false, items: [noMethods] });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          })}
+        />,
+      );
+
+      const surface = authSurface();
+      await waitFor(() =>
+        expect(within(surface).getByTestId('agent-thread-auth-action')).toBeTruthy(),
+      );
+      expect(
+        within(surface)
+          .getByTestId('agent-thread-auth-action')
+          .getAttribute('data-auth-offer-kind'),
+      ).toBe('terminal-sign-in');
+      expect(surface.textContent).toContain('Claude needs you to sign in.');
+
+      await userEvent.click(within(surface).getByTestId('agent-thread-auth-action'));
+      expect(launches).toEqual([{ prompt: '', cli: 'claude' }]);
+    } finally {
+      window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('a clickable sign-in method still wins over the terminal fallback', async () => {
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({ claude: true }) },
+      },
+    });
+    try {
+      model = makeModel({ turnActive: false, items: [authNotice({ machineDetail: '' })] });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          })}
+        />,
+      );
+
+      const surface = authSurface();
+      expect(within(surface).getAllByTestId('agent-thread-auth-method')).toHaveLength(1);
+      await waitFor(() =>
+        expect(within(surface).queryByTestId('agent-thread-auth-action')).toBeNull(),
+      );
+      expect(surface.textContent).toContain('Sign in to Claude to continue.');
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('an agent whose CLI is missing keeps the retry rather than a terminal it cannot open', async () => {
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({ claude: false }) },
+      },
+    });
+    try {
+      model = makeModel({ turnActive: false, items: [] });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          })}
+        />,
+      );
+
+      expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('retry');
+      await waitFor(() => expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('retry'));
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('the empty-transcript offer retries the thread when pressed', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    await userEvent.click(offerButton());
+    expect(retryThread).toHaveBeenCalledWith('thread-1');
+  });
+
+  test('an auth failure that carries no sign-in methods offers retry without the sign-in framing', () => {
+    const noMethods = authNotice({ authMethods: undefined, machineDetail: '' });
+    model = makeModel({ turnActive: false, items: [noMethods] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain('Claude needs you to sign in.');
+    expect(surface.textContent).not.toContain('Retry to sign in');
+    expect(SIGN_IN_INSTRUCTION.test(surface.textContent ?? '')).toBe(false);
+    expect(surface.textContent).not.toContain('Already signed in?');
+    expect(within(surface).getByTestId('agent-thread-retry')).toBeTruthy();
+  });
+
+  test('an out-of-band sign-in method keeps the framing that names the order', () => {
+    const manualOnly = authNotice({
+      authMethods: [{ id: 'cli', name: 'CLI', kind: 'terminal', description: 'run /login' }],
+      machineDetail: '',
+    });
+    model = makeModel({ turnActive: false, items: [manualOnly] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    const surface = authSurface();
+    expect(within(surface).getAllByTestId('agent-thread-auth-manual')).toHaveLength(1);
+    expect(within(surface).queryAllByTestId('agent-thread-auth-method')).toHaveLength(0);
+    expect(surface.textContent).toContain('Claude needed you to sign in.');
+    expect(screen.queryByTestId('agent-thread-auth-action')).toBeNull();
+    expect(surface.textContent).toContain('Already signed in?');
+  });
+
+  test('a sign-in method the user can click keeps the sign-in copy and its framing', () => {
+    model = makeModel({ turnActive: false, items: [authNotice({ machineDetail: '' })] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    const surface = authSurface();
+    expect(surface.textContent).toContain('Sign in to Claude to continue.');
+    expect(within(surface).getAllByTestId('agent-thread-auth-method')).toHaveLength(1);
+    expect(surface.textContent).toContain('Already signed in?');
   });
 });
 

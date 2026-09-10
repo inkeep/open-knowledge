@@ -517,6 +517,7 @@ export class AcpThreadManager {
         availableCommands: null,
         lastSeq: -1,
         archived: false,
+        resumable: false,
       },
       docName: params.docName,
       agentRef: { source: params.agent.source, id: params.agent.id },
@@ -1489,6 +1490,7 @@ export class AcpThreadManager {
         mcpServers,
       });
       record.sessionId = session.sessionId;
+      record.info.resumable = resumableFromCapabilities(init);
       record.envNotePending = true;
       this.persistence.queueMetaWrite(record.info.threadId, this.buildMeta(record));
       if (session.modes !== undefined && session.modes !== null) {
@@ -1580,6 +1582,10 @@ export class AcpThreadManager {
       this.emitStatus(t, 'installing');
       try {
         if (sessionId === null) {
+          this.opts.log.warn(
+            { threadId, agentId: t.info.agent.id, cause: 'no-session' },
+            '[acp-threads] thread is not resumable',
+          );
           throw new ThreadOpError(
             'resume-unsupported',
             'this thread never completed an agent session',
@@ -1590,6 +1596,7 @@ export class AcpThreadManager {
           throw new ThreadOpError('not-ready', 'thread closed during resume');
         }
         const { conn, init } = handshake;
+        t.info.resumable = resumableFromCapabilities(init);
         const { servers: mcpServers } = await this.buildMcpServers(
           t,
           init,
@@ -1618,6 +1625,10 @@ export class AcpThreadManager {
             t.suppressUpdates = false;
           }
         } else {
+          this.opts.log.warn(
+            { threadId, agentId: t.info.agent.id, cause: 'no-resume-capability' },
+            '[acp-threads] thread is not resumable',
+          );
           throw new ThreadOpError(
             'resume-unsupported',
             `${t.info.agent.name} doesn't support resuming previous sessions`,
@@ -1682,9 +1693,6 @@ export class AcpThreadManager {
     }
     if (t.info.status !== 'error' && t.info.status !== 'auth_required' && !t.authInFlight) {
       throw new ThreadOpError('not-ready', 'this thread did not fail to start');
-    }
-    if (t.sessionId !== null) {
-      throw new ThreadOpError('not-ready', 'this thread already has an agent session');
     }
     if (t.resumeInFlight) {
       throw new ThreadOpError('not-ready', 'a retry is already in progress');
@@ -2736,6 +2744,7 @@ export class AcpThreadManager {
     t.conn = null;
     t.lastInit = null;
     t.terminals = null;
+    t.sessionId = null;
     try {
       conn?.close();
     } catch {}
@@ -2914,6 +2923,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
       ...meta.info,
       status,
       archived: true,
+      resumable: meta.info.resumable === false ? false : meta.sessionId !== null,
       queue: undefined,
       steer: undefined,
       signInOutput: undefined,
@@ -3029,6 +3039,11 @@ function joinMachineDetail(...parts: Array<string | undefined>): string | undefi
 function authMachineDetail(err: unknown, t: ThreadRecord): string | undefined {
   const duringSignIn = t.authStderr === null ? undefined : t.authStderr.join('\n');
   return joinMachineDetail(agentErrorData(err), duringSignIn);
+}
+
+function resumableFromCapabilities(init: InitializeResponse): boolean {
+  const caps = init.agentCapabilities;
+  return caps?.sessionCapabilities?.resume != null || caps?.loadSession === true;
 }
 
 function threadAuthMethods(methods: InitializeResponse['authMethods']): ThreadAuthMethod[] {

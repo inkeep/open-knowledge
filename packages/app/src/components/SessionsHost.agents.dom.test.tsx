@@ -80,6 +80,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     deleteThread,
     markThreadViewed: () => {},
   }),
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
 
 vi.doMock('@/components/acp/ThreadView', () => ({

@@ -946,6 +946,7 @@
     "ApeA0n": [["dropCount"], " suntingan pada ", ["docName"], " dibatalkan"],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["Kunci API disetel"],
+    "Arr7LU": ["Tidak dapat menjalankan ", ["agentName"], ": ", ["0"]],
     "AsqRE_": ["Lokasi bawaan untuk lampiran baru"],
     "AtBdnD": ["Keterampilan tidak bisa dihapus: ", ["error"]],
     "AvqEDl": ["Beberapa file yang dilepas tidak dapat disisipkan dengan aman."],
@@ -1813,6 +1814,7 @@
       ]
     ],
     "LKOLNn": ["Tidak ada agen AI yang terpasang"],
+    "LMVNT6": [["agentName"], " memerlukan Anda untuk masuk."],
     "LPAv9E": [["days"], " hr lalu"],
     "LPLWpO": ["Konten papan bukan scene Excalidraw yang valid."],
     "LQdLio": ["Skema baru"],
@@ -2026,6 +2028,7 @@
     "O0Z2Xr": ["Keluar"],
     "O2UpM1": ["Telusuri"],
     "O3oNi5": ["Surel"],
+    "O4rQ4h": [["agentName"], " tadi memerlukan Anda untuk masuk."],
     "O6H89R": ["Selesai"],
     "O6yEPk": ["Membuat proyek OpenKnowledge baru di folder pilihan Anda."],
     "O7_W_a": ["Buka dengan AI"],
@@ -2516,7 +2519,6 @@
     ],
     "UI0WPT": [["propertyCount", "plural", { "other": ["#", " properti"] }]],
     "UIjjFa": ["Lihat yang ditambahkan"],
-    "UJEFJY": ["Tidak dapat menjalankan ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["Cara menggunakan OpenKnowledge dan alat MCP-nya."],
@@ -2696,6 +2698,10 @@
       " item terpilih? Folder dan semua berkas di dalamnya akan dihapus. Tindakan ini tidak bisa dibatalkan."
     ],
     "WMsoIm": ["Sudah masuk?"],
+    "WOY8rV": [
+      ["agentName"],
+      " tadi memerlukan Anda untuk masuk. Lanjutkan obrolan ini untuk mencoba lagi."
+    ],
     "WOfp4H": ["Gagal memperbarui interval sinkronisasi — ", ["detail"]],
     "WOr-hW": ["token"],
     "WPwDin": ["Buka folder di disk"],
@@ -3024,6 +3030,7 @@
     "_9rYSZ": ["integrasi MCP ", ["names"], " diperbaiki"],
     "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
     "_DwR-n": ["Membuat…"],
+    "_FqAty": ["Lanjutkan obrolan"],
     "_G7A92": ["Pertahankan index.md"],
     "_GRWOJ": ["Ganti penyedia embedding?"],
     "_HgF9q": ["Urutkan menurut"],
@@ -3078,6 +3085,7 @@
     "_tekeB": ["properti folder diperbarui"],
     "_tjopj": ["Tempel gandaan"],
     "_uxBz5": ["Tambahkan MCP & keterampilan untuk ", ["rowLabel"]],
+    "_xWxLt": [["agentName"], " berhenti dengan galat."],
     "_yB-24": ["semua yang ada di folder ", ["0"], "/ mana pun"],
     "a-cKXz": ["Pilih seluruh sumber"],
     "a3LDKx": ["Keamanan"],
@@ -3759,7 +3767,6 @@
     "hFmYGU": ["Berkas tema tertaut tidak didukung"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
-    "hHR0tt": ["Obrolan baru dengan ", ["0"]],
     "hItdtk": ["Pilih folder"],
     "hLKfZe": ["Pakai token saja"],
     "hLod4_": ["Ubah menjadi templat"],
@@ -3873,6 +3880,7 @@
     "iSLIjg": ["Hubungkan"],
     "iSQTsg": ["Daftar berurut"],
     "iSWh95": ["Target gambar \"", ["shown"], "\" tidak merujuk ke file yang ada."],
+    "iSguIe": ["Obrolan baru dengan ", ["agentName"]],
     "iSnkwB": ["Gagal membuka proyek hasil kloning."],
     "iTylMl": ["Templat"],
     "iUwpZI": ["Tanpa spasi — gunakan <0>-</0> saja."],
@@ -4065,6 +4073,7 @@
     "kNGLX6": ["Mencoba lagi…"],
     "kNiQp6": ["Disematkan"],
     "kNqMMd": ["Folder"],
+    "kNvMl7": ["Buka terminal untuk masuk"],
     "kPOw9O": ["Salin pesan"],
     "kRTXGw": [
       "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
@@ -4248,6 +4257,10 @@
       "Sinkronisasi Git dijeda karena ada operasi Git atau konflik yang belum terselesaikan yang perlu ditangani. Perubahan Anda tetap disimpan secara lokal. Selesaikan operasi atau konflik tersebut di terminal, lalu coba sinkronkan lagi."
     ],
     "mPoOmg": ["instal dulu sebuah skill di sini"],
+    "mPwwPl": [
+      ["agentName"],
+      " tidak dapat melanjutkan obrolan ini. Transkrip tetap tersimpan, jadi mulai obrolan baru untuk melanjutkan."
+    ],
     "mPy9lS": [
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."
     ],
@@ -4306,10 +4319,6 @@
       "</1> di <2>",
       ["src"],
       "</2>."
-    ],
-    "ms4r8V": [
-      ["0"],
-      " tidak dapat melanjutkan obrolan ini — transkrip tetap tersimpan, tetapi sesi agen sudah hilang."
     ],
     "msOK6I": [
       "Repositori yang sudah Anda kloning mungkin tetap tersinkron lewat kredensial yang disimpan git sendiri, bahkan setelah Anda memutus koneksi."
@@ -4932,6 +4941,7 @@
       ["trashNoun"],
       ". Apakah Anda ingin menghapus permanen saja?"
     ],
+    "txGF-X": [["agentName"], " tidak berjalan. Mulai obrolan baru untuk masuk."],
     "txUHO8": [["localizedMessage"], " pada baris ", ["displayLine"]],
     "txmRmK": ["Ubah ukuran panel Keterampilan"],
     "tzGWeg": ["Bersiap mencopot OpenKnowledge"],

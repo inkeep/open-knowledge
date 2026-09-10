@@ -304,11 +304,6 @@ msgstr "新增 {0} 項，移除 {1} 項"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} 無法繼續此對話 — 對話記錄已保留，但智慧代理的工作階段已遺失。"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} 沒有可調整的設定"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "{agent} 的中央技能庫還不存在；先啟動一次 {agent} 讓它建立，然後再試。"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "{agentName} 無法繼續此對話。記錄會保留，請開始新的對話以繼續。"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 無法開始對話。"
 
@@ -562,9 +561,29 @@ msgstr "{agentName} 無法啟動。"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} 不接受圖片附件。"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName} 未在執行。請開始新的對話以登入。"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "{agentName} 之前需要你登入。"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "{agentName} 之前需要你登入。恢復此對話以重試。"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "{agentName} 需要你登入。"
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} 回報：{headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "{agentName} 因錯誤已停止。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4312,11 +4331,10 @@ msgstr "無法傳送你的註解——工作區還沒準備好。"
 msgid "Couldn't send your prompt — please try again."
 msgstr "無法送出你的提示——請再試一次。"
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "無法啟動 {0}：{1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "無法啟動 {agentName}：{0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8677,10 +8695,10 @@ msgstr "新分支 <0>{trimmed}</0> 會從目前的提交建立，放在 <1>.ok/w
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "來自遠端的新變更會自動出現在你的副本裡。"
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "與 {0} 的新對話"
+msgid "New chat with {agentName}"
+msgstr "與 {agentName} 的新對話"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9721,6 +9739,10 @@ msgstr "來源：{mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "開啟終端機"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "開啟終端機以登入"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11653,6 +11675,10 @@ msgstr "已還原到 {0} 的版本"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "結果已被截斷——這個工作區的檔案數超過搜尋能索引的上限。找不到某個檔案可能是上限造成的，不是打錯字。"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "恢復對話"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "正在恢復對話"
@@ -11661,6 +11687,7 @@ msgstr "正在恢復對話"
 msgid "Retrieving…"
 msgstr "擷取中…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11676,6 +11703,7 @@ msgstr "重試"
 msgid "Retry push"
 msgstr "重試推送"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "正在重試"
@@ -12672,6 +12700,7 @@ msgstr "顯示在程式碼內文上方。在 markdown 中以 `title=\"...\"` 的
 msgid "Sifting…"
 msgstr "篩查中…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12683,7 +12712,7 @@ msgstr "登入"
 msgid "Sign in to {agentName} first"
 msgstr "請先登入 {agentName}"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "請登入 {agentName} 以繼續。"
 

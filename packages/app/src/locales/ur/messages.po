@@ -304,11 +304,6 @@ msgstr "{0} شامل، {1} ہٹائے گئے"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} اس چیٹ کو جاری نہیں رکھ سکتا — ٹرانسکرپٹ محفوظ ہے، لیکن ایجنٹ سیشن ختم ہو گیا ہے۔"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} ایڈجسٹ کرنے کے لیے کوئی ترتیبات فراہم نہیں کرتا"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "{agent} کا مرکزی اسکل اسٹور ابھی موجود نہیں؛ {agent} کو ایک بار چلائیں تاکہ وہ اسے بنا لے، پھر دوبارہ کوشش کریں۔"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "{agentName} اس چیٹ کو دوبارہ جاری نہیں رکھ سکتا۔ ٹرانسکرپٹ محفوظ ہے، اس لیے جاری رکھنے کے لیے نئی چیٹ شروع کریں۔"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} گفتگو شروع نہ کر سکا۔"
 
@@ -562,9 +561,29 @@ msgstr "{agentName} شروع نہ ہو سکا۔"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} تصویری منسلکات قبول نہیں کرتا۔"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName} نہیں چل رہا۔ سائن اِن کرنے کے لیے نئی چیٹ شروع کریں۔"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "{agentName} کو آپ کے سائن اِن کرنے کی ضرورت تھی۔"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "{agentName} کو آپ کے سائن اِن کرنے کی ضرورت تھی۔ اس چیٹ کو دوبارہ شروع کر کے پھر کوشش کریں۔"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "{agentName} کو آپ کے سائن اِن کرنے کی ضرورت ہے۔"
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} نے اطلاع دی: {headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "{agentName} ایک خرابی کے ساتھ رک گیا۔"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4312,11 +4331,10 @@ msgstr "آپ کے تبصرے نہیں بھیجے جا سکے — ورک اسپی
 msgid "Couldn't send your prompt — please try again."
 msgstr "آپ کا پرامپٹ نہیں بھیجا جا سکا — براہِ کرم دوبارہ کوشش کریں۔"
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "{0} شروع نہ ہو سکا: {1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "{agentName} شروع نہ ہو سکا: {0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8677,10 +8695,10 @@ msgstr "نئی برانچ <0>{trimmed}</0> موجودہ کمٹ سے بنے گی�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "آپ کے ریموٹ کی نئی تبدیلیاں خودکار طور پر آپ کی نقل میں آ جاتی ہیں۔"
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "{0} کے ساتھ نئی چیٹ"
+msgid "New chat with {agentName}"
+msgstr "{agentName} کے ساتھ نئی چیٹ"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9721,6 +9739,10 @@ msgstr "ماخذ کھولیں: {mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "ٹرمینل کھولیں"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "سائن اِن کرنے کے لیے ٹرمینل کھولیں"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11653,6 +11675,10 @@ msgstr "{0} کے ورژن پر بحال کر دیا گیا"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "نتائج محدود — اس ورک اسپیس میں اتنی فائلیں ہیں جتنی تلاش اشاریہ بند نہیں کر سکتی۔ کوئی غائب فائل اس حد کا نتیجہ ہو سکتی ہے، املا کی غلطی نہیں۔"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "چیٹ دوبارہ شروع کریں"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "چیٹ دوبارہ شروع ہو رہی ہے"
@@ -11661,6 +11687,7 @@ msgstr "چیٹ دوبارہ شروع ہو رہی ہے"
 msgid "Retrieving…"
 msgstr "حاصل کیا جا رہا ہے…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11676,6 +11703,7 @@ msgstr "دوبارہ کوشش کریں"
 msgid "Retry push"
 msgstr "پُش دوبارہ آزمائیں"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "دوبارہ کوشش کی جا رہی ہے"
@@ -12672,6 +12700,7 @@ msgstr "کوڈ کے متن کے اوپر ظاہر ہوتا ہے۔ Markdown می�
 msgid "Sifting…"
 msgstr "چھانٹا جا رہا ہے…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12683,7 +12712,7 @@ msgstr "سائن اِن کریں"
 msgid "Sign in to {agentName} first"
 msgstr "پہلے {agentName} میں سائن اِن کریں"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "جاری رکھنے کے لیے {agentName} میں سائن اِن کریں۔"
 

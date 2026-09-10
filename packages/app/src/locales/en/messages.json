@@ -934,6 +934,7 @@
     "ApeA0n": ["Undid ", ["dropCount"], " edits on ", ["docName"]],
     "Aq-O0x": ["status"],
     "AqnqMJ": ["API key set"],
+    "Arr7LU": ["Couldn't start ", ["agentName"], ": ", ["0"]],
     "AsqRE_": ["Default location for new attachments"],
     "AtBdnD": ["Couldn't delete skill: ", ["error"]],
     "AvqEDl": ["Some dropped files could not be inserted safely."],
@@ -1782,6 +1783,7 @@
       ]
     ],
     "LKOLNn": ["No AI agents installed"],
+    "LMVNT6": [["agentName"], " needs you to sign in."],
     "LPAv9E": [["days"], "d ago"],
     "LPLWpO": ["The board's content is not a valid Excalidraw scene."],
     "LQdLio": ["New schema"],
@@ -2013,6 +2015,7 @@
     "O0Z2Xr": ["Outgoing"],
     "O2UpM1": ["Browse"],
     "O3oNi5": ["Email"],
+    "O4rQ4h": [["agentName"], " needed you to sign in."],
     "O6H89R": ["Resolved"],
     "O6yEPk": ["Create a new OpenKnowledge project in the folder of your choice."],
     "O7_W_a": ["Open with AI"],
@@ -2505,7 +2508,6 @@
       ["propertyCount", "plural", { "one": ["#", " property"], "other": ["#", " properties"] }]
     ],
     "UIjjFa": ["See what's added"],
-    "UJEFJY": ["Couldn't start ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge opened the live preview"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["How to use OpenKnowledge and its MCP tools."],
@@ -2671,6 +2673,7 @@
       " selected items? Folders and all files inside them will be deleted. This action cannot be undone."
     ],
     "WMsoIm": ["Already signed in?"],
+    "WOY8rV": [["agentName"], " needed you to sign in. Resume this chat to try again."],
     "WOfp4H": ["Failed to update the sync interval — ", ["detail"]],
     "WOr-hW": ["tokens"],
     "WPwDin": ["Open folder on disk"],
@@ -3008,6 +3011,7 @@
     "_9rYSZ": ["repaired MCP integration for ", ["names"]],
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creating…"],
+    "_FqAty": ["Resume chat"],
     "_G7A92": ["Maintain index.md"],
     "_GRWOJ": ["Change the embeddings provider?"],
     "_HgF9q": ["Sort by"],
@@ -3062,6 +3066,7 @@
     "_tekeB": ["updated folder properties"],
     "_tjopj": ["Paste duplicate"],
     "_uxBz5": ["Add MCP & skill for ", ["rowLabel"]],
+    "_xWxLt": [["agentName"], " stopped with an error."],
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
     "a-cKXz": ["Select all source"],
     "a3LDKx": ["Security"],
@@ -3743,7 +3748,6 @@
     "hFmYGU": ["Linked theme files aren’t supported"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
-    "hHR0tt": ["New chat with ", ["0"]],
     "hItdtk": ["Browse folder"],
     "hLKfZe": ["Use a token instead"],
     "hLod4_": ["Convert to template"],
@@ -3846,6 +3850,7 @@
     "iSLIjg": ["Connect"],
     "iSQTsg": ["Ordered list"],
     "iSWh95": ["Image target \"", ["shown"], "\" does not resolve to an existing file."],
+    "iSguIe": ["New chat with ", ["agentName"]],
     "iSnkwB": ["Failed to open cloned project."],
     "iTylMl": ["Templates"],
     "iUwpZI": ["No spaces — use <0>-</0> instead."],
@@ -4034,6 +4039,7 @@
     "kNGLX6": ["Retrying…"],
     "kNiQp6": ["Pinned"],
     "kNqMMd": ["Folder"],
+    "kNvMl7": ["Open terminal to sign in"],
     "kPOw9O": ["Copy message"],
     "kRTXGw": [
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
@@ -4220,6 +4226,10 @@
       "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
     ],
     "mPoOmg": ["install a skill here first"],
+    "mPwwPl": [
+      ["agentName"],
+      " can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+    ],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],
@@ -4281,10 +4291,6 @@
       "</1> exists in <2>",
       ["src"],
       "</2>."
-    ],
-    "ms4r8V": [
-      ["0"],
-      " can't continue this chat — the transcript is kept, but the agent session is gone."
     ],
     "msOK6I": [
       "Repositories you've already cloned may keep syncing through git's own saved credentials, even after you disconnect."
@@ -4914,6 +4920,7 @@
       ["trashNoun"],
       ". Do you want to permanently delete instead?"
     ],
+    "txGF-X": [["agentName"], " isn't running. Start a new chat to sign in."],
     "txUHO8": [["localizedMessage"], " at line ", ["displayLine"]],
     "txmRmK": ["Resize skills panel"],
     "tzGWeg": ["Preparing to uninstall OpenKnowledge"],
