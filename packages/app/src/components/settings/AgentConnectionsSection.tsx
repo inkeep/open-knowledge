@@ -6,6 +6,7 @@ import {
   agentIdForHandoffTarget,
   agentIdForTerminalCli,
   CONNECTION_ROW_AGENT_IDS,
+  type HandoffTarget,
   type HostSnapshot,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
@@ -160,6 +161,7 @@ function AgentGroup({
       <div className="mb-2">
         <h4
           id={labelId}
+          tabIndex={-1}
           className="flex items-center gap-1.5 font-mono text-muted-foreground text-xs uppercase tracking-wide"
         >
           {label}
@@ -169,6 +171,43 @@ function AgentGroup({
       </div>
       <div className="divide-y overflow-hidden rounded-md border">{children}</div>
     </section>
+  );
+}
+
+function restoreGroupFocusOnRemoval(button: HTMLButtonElement | null) {
+  if (!button) return;
+  return () => {
+    if (button.ownerDocument.activeElement === button) {
+      button.closest('section')?.querySelector('h4')?.focus();
+    }
+  };
+}
+
+function FoldToggleButton({
+  hiddenCount,
+  expanded,
+  onToggle,
+  testId,
+}: {
+  hiddenCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+  testId: string;
+}): ReactNode {
+  const { t } = useLingui();
+  if (hiddenCount <= 0) return null;
+  return (
+    <Button
+      ref={restoreGroupFocusOnRemoval}
+      type="button"
+      variant="ghost"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
+      data-testid={testId}
+    >
+      {expanded ? t`Show less` : t`Show ${hiddenCount} more`}
+    </Button>
   );
 }
 
@@ -317,7 +356,6 @@ export function AgentConnectionsSection({
   applyConnections?: ApplyConnections;
 } = {}): ReactNode {
   const { t } = useLingui();
-  const showMoreLabel = (hiddenCount: number): string => t`Show ${hiddenCount} more`;
   const overrides = useEnabledOverrides();
   const registered = useRegisteredAgents();
   const { states, refresh } = useInstalledAgents();
@@ -325,6 +363,7 @@ export function AgentConnectionsSection({
   const [query, setQuery] = useState('');
   const [showInAppOverflow, setShowInAppOverflow] = useState(false);
   const [showTerminalOverflow, setShowTerminalOverflow] = useState(false);
+  const [showDesktopOverflow, setShowDesktopOverflow] = useState(false);
   const [snapshot, setSnapshot] = useState<HostSnapshot | null>(null);
   const [readFailed, setReadFailed] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
@@ -502,11 +541,14 @@ export function AgentConnectionsSection({
       Number(cliPresent(b)) - Number(cliPresent(a)) ||
       TERMINAL_CLIS[a].displayName.localeCompare(TERMINAL_CLIS[b].displayName),
   );
+  const desktopPresence = (id: HandoffTarget) =>
+    rowPresence(agentIdForHandoffTarget(id), states[id]?.installed ?? null);
   const desktopTargets = VISIBLE_TARGETS.filter((target) => {
     const { displayName } = target;
     return matches(t`${displayName} Desktop`) || matches(target.id);
   }).sort(
-    (a, b) => Number(states[a.id]?.installed === false) - Number(states[b.id]?.installed === false),
+    (a, b) =>
+      Number(desktopPresence(a.id) === 'absent') - Number(desktopPresence(b.id) === 'absent'),
   );
 
   const canLaunchTerminal = terminalLaunch !== null;
@@ -555,6 +597,20 @@ export function AgentConnectionsSection({
     !terminalFoldable || searching || showTerminalOverflow ? terminalClis : terminalPrimary;
   const terminalHiddenCount =
     terminalFoldable && !searching ? terminalClis.length - terminalPrimary.length : 0;
+
+  const desktopPrimary = desktopTargets.filter((target) => desktopPresence(target.id) !== 'absent');
+  const unlaunchablePrimary = unlaunchableIds.filter(
+    (id) =>
+      rowPresence(id, connections.find((c) => c.id === id)?.row.detected ?? null) !== 'absent',
+  );
+  const desktopPrimaryCount = desktopPrimary.length + unlaunchablePrimary.length;
+  const desktopTotalCount = desktopTargets.length + unlaunchableIds.length;
+  const desktopFoldable = desktopPrimaryCount > 0 && desktopPrimaryCount < desktopTotalCount;
+  const desktopExpanded = !desktopFoldable || searching || showDesktopOverflow;
+  const desktopShown = desktopExpanded ? desktopTargets : desktopPrimary;
+  const unlaunchableShown = desktopExpanded ? unlaunchableIds : unlaunchablePrimary;
+  const desktopHiddenCount =
+    desktopFoldable && !searching ? desktopTotalCount - desktopPrimaryCount : 0;
 
   const inAppHasDetected = !catalogReady || inAppAgents.some(isHarnessDetected);
   const terminalHasPresent = canLaunchTerminal && terminalClis.some(cliPresent);
@@ -625,17 +681,12 @@ export function AgentConnectionsSection({
               />
             );
           })}
-          {inAppHiddenCount > 0 ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setShowInAppOverflow((v) => !v)}
-              className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
-              data-testid="configure-agents-in-app-show-more"
-            >
-              {showInAppOverflow ? t`Show less` : showMoreLabel(inAppHiddenCount)}
-            </Button>
-          ) : null}
+          <FoldToggleButton
+            hiddenCount={inAppHiddenCount}
+            expanded={showInAppOverflow}
+            onToggle={() => setShowInAppOverflow((v) => !v)}
+            testId="configure-agents-in-app-show-more"
+          />
         </>
       )}
     </AgentGroup>
@@ -688,17 +739,12 @@ export function AgentConnectionsSection({
           />
         );
       })}
-      {terminalHiddenCount > 0 ? (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => setShowTerminalOverflow((v) => !v)}
-          className="w-full justify-center rounded-none font-normal text-1sm text-muted-foreground"
-          data-testid="configure-agents-terminal-show-more"
-        >
-          {showTerminalOverflow ? t`Show less` : showMoreLabel(terminalHiddenCount)}
-        </Button>
-      ) : null}
+      <FoldToggleButton
+        hiddenCount={terminalHiddenCount}
+        expanded={showTerminalOverflow}
+        onToggle={() => setShowTerminalOverflow((v) => !v)}
+        testId="configure-agents-terminal-show-more"
+      />
     </AgentGroup>
   ) : null;
 
@@ -709,7 +755,7 @@ export function AgentConnectionsSection({
       labelId="settings-configure-agents-desktop"
       labelIcon={<ArrowUpRight aria-hidden="true" className="size-3" />}
     >
-      {desktopTargets.map((target) => {
+      {desktopShown.map((target) => {
         const installed = states[target.id]?.installed ?? null;
         const { displayName } = target;
         const enabled = isDesktopTargetEnabled(overrides, target.id, installed);
@@ -750,7 +796,7 @@ export function AgentConnectionsSection({
           />
         );
       })}
-      {unlaunchableIds.map((agentId) => {
+      {unlaunchableShown.map((agentId) => {
         const connection = connections.find((c) => c.id === agentId) ?? null;
         const detected = connection?.row.detected ?? null;
         const label = connectionLabel(agentId);
@@ -785,6 +831,12 @@ export function AgentConnectionsSection({
           />
         );
       })}
+      <FoldToggleButton
+        hiddenCount={desktopHiddenCount}
+        expanded={showDesktopOverflow}
+        onToggle={() => setShowDesktopOverflow((v) => !v)}
+        testId="configure-agents-desktop-show-more"
+      />
     </AgentGroup>
   ) : null;
 

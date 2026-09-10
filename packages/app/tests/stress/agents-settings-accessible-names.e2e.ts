@@ -46,6 +46,13 @@ const CATALOG_BODY = {
 };
 
 async function openAgentsSettings(page: Page): Promise<Locator> {
+  await page.route('**/api/installed-agents', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ claude: true }),
+    }),
+  );
   await page.route('**/api/agent-integrations/apply', (route) =>
     route.fulfill({
       status: 200,
@@ -67,6 +74,9 @@ async function openAgentsSettings(page: Page): Promise<Locator> {
   await expect(page.getByTestId('agent-connection-lm-studio')).toBeVisible({
     timeout: 15_000,
   });
+  const desktopOverflow = section.getByTestId('configure-agents-desktop-show-more');
+  await desktopOverflow.click();
+  await expect(section.getByTestId('configure-agents-desktop-codex')).toBeVisible();
   return section;
 }
 
@@ -84,7 +94,7 @@ async function controlsMissingAccessibleName(section: Locator): Promise<number> 
   return missing;
 }
 
-test.describe('merged Agents settings — every control keeps a readable label', () => {
+test.describe('merged Agents settings — accessible controls and focus', () => {
   test('every switch and button on the page has a non-empty accessible name', async ({ page }) => {
     const section = await openAgentsSettings(page);
 
@@ -92,6 +102,24 @@ test.describe('merged Agents settings — every control keeps a readable label',
     await expect(section.getByRole('button').nth(2)).toBeVisible();
 
     expect(await controlsMissingAccessibleName(section)).toBe(0);
+  });
+
+  test('focus stays in External apps when detection removes the disclosure', async ({ page }) => {
+    await page.clock.install();
+    const section = await openAgentsSettings(page);
+    const fold = section.getByTestId('configure-agents-desktop-show-more');
+    await fold.focus();
+    await page.route('**/api/installed-agents', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ claude: true, codex: true, cursor: true }),
+      }),
+    );
+    await page.clock.fastForward(11_000);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(fold).toHaveCount(0);
+    await expect(section.getByRole('heading', { name: 'External apps' })).toBeFocused();
   });
 
   test('the sweep goes red when a control label is blanked', async ({ page }) => {

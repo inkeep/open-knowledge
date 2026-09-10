@@ -235,6 +235,10 @@ async function expandInApp(): Promise<void> {
   fireEvent.click(await screen.findByTestId('configure-agents-in-app-show-more'));
 }
 
+async function expandDesktop(): Promise<void> {
+  fireEvent.click(await screen.findByTestId('configure-agents-desktop-show-more'));
+}
+
 function groupOrder(): string[] {
   return screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent?.trim() ?? '');
 }
@@ -303,9 +307,11 @@ describe('AgentConnectionsSection', () => {
     expect(screen.queryByText('Cline')).toBeNull();
     const toggle = screen.getByTestId('configure-agents-in-app-show-more');
     expect(toggle.textContent).toContain('Show 3 more');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(toggle);
 
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('Cline')).toBeTruthy();
     expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
     expect(toggle.textContent).toContain('Show less');
@@ -457,14 +463,26 @@ describe('AgentConnectionsSection', () => {
   test('a detected external app is on with no override; a missing one is off', async () => {
     renderSection();
     const detected = await screen.findByTestId('configure-agents-desktop-claude-code');
+    expect(screen.queryByTestId('configure-agents-desktop-codex')).toBeNull();
+    expect(screen.getByTestId('configure-agents-desktop-cursor')).toBeTruthy();
+    const fold = screen.getByTestId('configure-agents-desktop-show-more');
+    expect(fold.textContent).toBe('Show 1 more');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    await expandDesktop();
     const missing = await screen.findByTestId('configure-agents-desktop-codex');
     expect(overrides()['desktop:claude-code']).toBeUndefined();
     expect(detected.getAttribute('aria-checked')).toBe('true');
     expect(missing.getAttribute('aria-checked')).toBe('false');
+    expect(fold.textContent).toBe('Show less');
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(fold);
+    expect(screen.queryByTestId('configure-agents-desktop-codex')).toBeNull();
+    expect(screen.getByTestId('configure-agents-desktop-claude-code')).toBe(detected);
   });
 
   test('an absent external app cannot be switched on, and offers to install instead', async () => {
     renderSection();
+    await expandDesktop();
     const toggle = await screen.findByTestId('configure-agents-desktop-codex');
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(toggle.getAttribute('data-disabled')).toBe('');
@@ -489,7 +507,81 @@ describe('AgentConnectionsSection', () => {
     fireEvent.change(screen.getByTestId('configure-agents-search'), { target: { value: 'codex' } });
     await waitFor(() => expect(screen.queryByText('Claude Agent')).toBeNull());
     expect(screen.getByTestId('configure-agents-desktop-codex')).toBeTruthy();
+    expect(screen.queryByTestId('configure-agents-desktop-show-more')).toBeNull();
     expect(screen.queryByTestId('configure-agents-no-results')).toBeNull();
+  });
+
+  test.each([false, true])(
+    'search preserves external expansion %s with mixed matches',
+    async (expanded) => {
+      renderSection();
+      await screen.findByText('Claude Agent');
+      if (expanded) await expandDesktop();
+      const search = screen.getByTestId('configure-agents-search');
+      fireEvent.change(search, { target: { value: 'desktop' } });
+      expect(screen.getByTestId('configure-agents-desktop-codex')).toBeTruthy();
+      expect(screen.getByTestId('configure-agents-desktop-claude-code')).toBeTruthy();
+      expect(screen.queryByTestId('configure-agents-desktop-show-more')).toBeNull();
+      fireEvent.change(search, { target: { value: '' } });
+      expect(
+        screen.getByTestId('configure-agents-desktop-show-more').getAttribute('aria-expanded'),
+      ).toBe(String(expanded));
+      expect(screen.queryByTestId('configure-agents-desktop-codex') !== null).toBe(expanded);
+    },
+  );
+
+  test('all absent external apps stay visible without a disclosure', async () => {
+    states = {};
+    const snapshot = { ...snapshotWith(), detection: { detected: [], probed: true } };
+    renderSection(async () => result(snapshot));
+    await screen.findByText('Claude Agent');
+    await waitFor(() =>
+      expect(screen.getByTestId('agent-connection-lm-studio').textContent).toContain(
+        'Not detected',
+      ),
+    );
+    expect(screen.getByTestId('configure-agents-desktop-claude-code')).toBeTruthy();
+    expect(screen.getByTestId('configure-agents-desktop-codex')).toBeTruthy();
+    expect(screen.getByTestId('configure-agents-desktop-cursor')).toBeTruthy();
+    expect(screen.queryByTestId('configure-agents-desktop-show-more')).toBeNull();
+  });
+
+  test('enabled but absent external apps remain behind the disclosure', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'desktop:codex': true }));
+    reloadEnabledAgentsFromStorage();
+    renderSection();
+    await screen.findByText('Claude Agent');
+    expect(screen.queryByTestId('configure-agents-desktop-codex')).toBeNull();
+    await expandDesktop();
+    expect(screen.getByTestId('configure-agents-desktop-codex').getAttribute('aria-checked')).toBe(
+      'true',
+    );
+  });
+
+  test('resolved presence keeps newly revealed desktop targets after visible targets', async () => {
+    states = {
+      'claude-code': { installed: null },
+      codex: { installed: null },
+      cursor: { installed: true },
+    } as Record<string, InstallState>;
+    renderSection(async () =>
+      result({ ...snapshotWith(), detection: { detected: [], probed: true } }),
+    );
+    await waitFor(() => expect(screen.queryByTestId('configure-agents-desktop-codex')).toBeNull());
+    await expandDesktop();
+    const rows = screen.getAllByTestId(/^configure-agents-desktop-row-/);
+    expect(rows[0].getAttribute('data-testid')).toBe('configure-agents-desktop-row-cursor');
+  });
+
+  test('focus returns to the group when detection removes its disclosure', async () => {
+    renderSection();
+    await screen.findByText('Claude Agent');
+    const fold = screen.getByTestId('configure-agents-desktop-show-more');
+    fold.focus();
+    states = { ...states, codex: { installed: true } };
+    fireEvent.click(fold);
+    expect(screen.queryByTestId('configure-agents-desktop-show-more')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'External apps' }));
   });
 
   test('a query matching nothing shows the no-results line', async () => {
@@ -527,10 +619,12 @@ describe('AgentConnectionsSection — Terminal group (docked terminal present)',
   test('Terminal sorts installed CLIs first and folds the not-installed ones', async () => {
     renderSection();
     const fold = await screen.findByTestId('configure-agents-terminal-show-more');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByTestId('configure-agents-terminal-codex')).toBeNull();
     expect(screen.getByTestId('configure-agents-terminal-claude')).toBeTruthy();
 
     fireEvent.click(fold);
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByTestId('configure-agents-terminal-codex')).toBeTruthy();
     expect(fold.textContent).toContain('Show less');
   });
@@ -688,6 +782,7 @@ describe('AgentConnectionsSection — connection status and action', () => {
     renderSection(async () => result(snapshotWith([])));
 
     await screen.findByTestId('configure-agents-terminal-claude');
+    await expandDesktop();
     await waitFor(() => expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy());
     expect(within(terminalRow('claude')).queryByRole('button')).toBeNull();
     expect(within(terminalRow('claude')).getByRole('switch')).toBeTruthy();
@@ -757,6 +852,7 @@ describe('AgentConnectionsSection — connect dialog on switch press', () => {
     renderSection(async () => result(snapshotWith([])));
 
     const toggle = await screen.findByTestId('configure-agents-terminal-claude');
+    await expandDesktop();
     await waitFor(() => expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy());
     expect(toggle.getAttribute('aria-checked')).toBe('false');
 
@@ -772,6 +868,7 @@ describe('AgentConnectionsSection — connect dialog on switch press', () => {
     renderSection(async () => result(snapshotWith([])));
 
     const toggle = await screen.findByTestId('configure-agents-terminal-claude');
+    await expandDesktop();
     await waitFor(() => expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy());
     fireEvent.click(toggle);
     const dialog = await screen.findByRole('dialog');
@@ -799,6 +896,7 @@ describe('AgentConnectionsSection — connect dialog on switch press', () => {
     });
 
     const toggle = await screen.findByTestId('configure-agents-terminal-claude');
+    await expandDesktop();
     await waitFor(() => expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy());
     fireEvent.click(toggle);
     const dialog = await screen.findByRole('dialog');
@@ -864,6 +962,7 @@ describe('AgentConnectionsSection — an agent nothing can open', () => {
     renderSection(async () => result(snapshotWith([])));
 
     await screen.findByText('External apps');
+    await expandDesktop();
     expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy();
     expect(screen.queryByText('Connect only')).toBeNull();
   });
@@ -871,6 +970,7 @@ describe('AgentConnectionsSection — an agent nothing can open', () => {
   test('its row carries no switch, having no launcher entry to control', async () => {
     renderSection(async () => result(snapshotWith([])));
 
+    await expandDesktop();
     const row = await screen.findByTestId('agent-connection-lm-studio');
     expect(within(row).queryByRole('switch')).toBeNull();
   });
@@ -878,6 +978,7 @@ describe('AgentConnectionsSection — an agent nothing can open', () => {
   test('removal is reachable from the row once its setup is on disk', async () => {
     renderSection(async () => result(snapshotWith(diskSatisfierIds('lm-studio'))));
 
+    await expandDesktop();
     const row = await screen.findByTestId('agent-connection-lm-studio');
     await waitFor(() =>
       expect(within(row).getByRole('button', { name: /^Remove\b/ })).toBeTruthy(),
@@ -893,6 +994,7 @@ describe('AgentConnectionsSection — an agent nothing can open', () => {
     });
 
     await waitFor(() => expect(screen.getByTestId('agent-connection-lm-studio')).toBeTruthy());
+    expect(screen.queryByTestId('configure-agents-desktop-show-more')).toBeNull();
     expect(screen.queryByText('Terminal')).toBeNull();
   });
 
@@ -943,6 +1045,7 @@ describe('AgentConnectionsSection — no connection row lost on any host', () =>
     fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
     expect(connectionRowFor('opencode')).not.toBeNull();
 
+    await expandDesktop();
     expect(CONNECTION_ROW_AGENT_IDS.length).toBeGreaterThanOrEqual(10);
     for (const agentId of CONNECTION_ROW_AGENT_IDS) {
       expect(
@@ -959,6 +1062,7 @@ describe('AgentConnectionsSection — no connection row lost on any host', () =>
     await screen.findByText('External apps');
 
     expect(screen.getByText('Terminal')).toBeTruthy();
+    await expandDesktop();
     expect(CONNECTION_ROW_AGENT_IDS.length).toBeGreaterThanOrEqual(10);
     for (const agentId of CONNECTION_ROW_AGENT_IDS) {
       expect(connectionRowFor(agentId), `no connection row for ${agentId} on web`).not.toBeNull();
@@ -1090,6 +1194,7 @@ describe('AgentConnectionsSection — degraded install-state read', () => {
 
   test('an External-apps row wires its hint to its switch', async () => {
     renderSection();
+    await expandDesktop();
     const toggle = await screen.findByTestId('configure-agents-desktop-codex');
     const row = screen.getByTestId('configure-agents-desktop-row-codex');
 
