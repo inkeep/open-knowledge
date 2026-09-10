@@ -631,6 +631,10 @@ msgstr "{componentLabel} (비어 있음)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel}, 항목 {childCount, plural, other {#개}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (미등록)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, other {충돌 #개}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "터미널을 오른쪽으로 이동"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "현재 블록을 한 위치 위 또는 아래로 이동합니다."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "현재 블록을 위나 아래로 이동합니다. 목록에서는 현재 항목이나 선택한 항목을 이동합니다."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "스킬 {moved}개를 전역으로 이동함"
 msgid "Moved {moved} skills to Project"
 msgstr "스킬 {moved}개를 프로젝트로 이동함"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "아래로 이동했습니다."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "템플릿 이동됨"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "위로 이동했습니다."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "나가는 링크"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "개요"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "블록 밖"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "블록 선택"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "파일 사이드바에 포커스가 있을 때 표시되는 모든 파일 트리 행을 선택합니다."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "목록 항목 선택"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "다음 발생 항목 선택"
@@ -12167,6 +12187,18 @@ msgstr "선택한 그래프 항목"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "그래프에서 선택됨"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "선택됨: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "선택됨: {parentLabel}의 {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "선택됨: {innermostLabel}, {parentLabel}에서 {total}개 중 {position}번째"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

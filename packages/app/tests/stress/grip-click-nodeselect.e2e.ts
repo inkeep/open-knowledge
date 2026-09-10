@@ -210,6 +210,9 @@ test('AC23: grip drag still moves block (drag past dragstart threshold)', async 
   await setupDoc(page, api, 'first paragraph\n\nsecond paragraph\n\nthird paragraph\n');
   await resetSelectionToDocStart(page);
 
+  expect(await page.evaluate(() => window.__activeEditor?.state.selection.empty)).toBe(true);
+  await expect(page.getByTestId('bubble-menu-bar')).toBeHidden();
+
   const orderBefore = await page.evaluate(() => {
     const editor = window.__activeEditor;
     if (!editor) return [];
@@ -240,6 +243,10 @@ test('AC23: grip drag still moves block (drag past dragstart threshold)', async 
   await page.mouse.move(thirdBox.x + thirdBox.width / 2, thirdBox.y + thirdBox.height + 4, {
     steps: 20,
   });
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__activeEditor?.view.dragging)))
+    .toBe(true);
+  await expect(page.getByTestId('bubble-menu-bar')).toBeHidden();
   await page.mouse.up();
 
   await expect
@@ -258,6 +265,11 @@ test('AC23: grip drag still moves block (drag past dragstart threshold)', async 
       { timeout: 5_000 },
     )
     .toEqual(['second paragraph', 'third paragraph', 'first paragraph']);
+  await expect
+    .poll(() => page.evaluate(() => window.__activeEditor?.view.dragging === null))
+    .toBe(true);
+  expect(await selectionType(page)).toBe('NodeSelection');
+  await expect(page.getByTestId('bubble-menu-bar')).toBeVisible();
 });
 
 test('AC29: sub-threshold pointer movement still fires click → NodeSelect (no threshold)', async ({

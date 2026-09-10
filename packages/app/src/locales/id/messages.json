@@ -199,6 +199,7 @@
     "1di5fu": ["Dokumen tidak ditemukan"],
     "1hvhf0": ["Folder di disk dan id yang dipakai agen untuk memanggil keterampilan ini."],
     "1jym2J": ["Jangan kirim komentar ini"],
+    "1kFgmi": ["Di luar blok mana pun"],
     "1lFNz3": ["Dokumen ini telah dihapus"],
     "1njn7W": ["Terang"],
     "1nke1r": ["Buka ", ["0"], " di GitHub (terbuka di tab baru)"],
@@ -921,6 +922,16 @@
     "AddR83": ["Proyek tidak dapat dibuat. Coba lagi atau pilih lokasi lain."],
     "AeHuzT": ["# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"],
     "AeLo3p": ["OpenKnowledge menyelesaikan konflik di ", ["subject"]],
+    "AeORtB": [
+      "Dipilih: ",
+      ["innermostLabel"],
+      ", ",
+      ["position"],
+      " dari ",
+      ["total"],
+      " dalam ",
+      ["parentLabel"]
+    ],
     "AeXO77": ["Akun"],
     "AgoIW4": [
       ["source"],
@@ -1516,6 +1527,9 @@
       "Koneksi hilang — biarkan tab ini terbuka, suntingan Anda akan tersinkron saat tersambung kembali"
     ],
     "HIb0vl": ["Galat jaringan — silakan coba lagi"],
+    "HJ7aHU": [
+      "Pindahkan blok saat ini ke atas atau ke bawah. Dalam daftar, pindahkan item saat ini atau item yang dipilih."
+    ],
     "HKH-W-": ["Data"],
     "HLoO-Z": ["Server mengembalikan respons impor yang salah bentuk."],
     "HM56Bx": ["Membuat..."],
@@ -2652,6 +2666,7 @@
     "VpRSfQ": [
       "Sinkronisasi memakan waktu lebih lama dari biasanya — perubahan Anda aman di perangkat ini."
     ],
+    "VsY-gw": ["Dipilih: ", ["innermostLabel"]],
     "VsaI0G": [["folderCount", "plural", { "other": ["folder"] }]],
     "VuxVSP": ["Mulai pelengkapan sumber"],
     "VxLvKE": ["Kembalikan ke versi yang terpasang"],
@@ -3029,6 +3044,7 @@
     ],
     "_9rYSZ": ["integrasi MCP ", ["names"], " diperbaiki"],
     "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
+    "_CWM2I": ["Pilih item daftar"],
     "_DwR-n": ["Membuat…"],
     "_FqAty": ["Lanjutkan obrolan"],
     "_G7A92": ["Pertahankan index.md"],
@@ -3342,6 +3358,7 @@
     "d3dX3w": ["Cari \"", ["word"], "\""],
     "d5rK4X": [["chars", "plural", { "other": ["karakter"] }]],
     "d6qW27": [["agentName"], " melaporkan: ", ["headline"]],
+    "d7QZ7W": [["componentName"], " (tidak terdaftar)"],
     "dCforW": ["Gagal menulis file ini. Periksa log OpenKnowledge untuk mengetahui alasannya."],
     "dD7NPy": ["Kerangka"],
     "dDBZ0j": [["0", "plural", { "other": ["#", " lampiran siap dikirim"] }]],
@@ -3381,6 +3398,7 @@
     ],
     "dSORvE": ["Menghentikan proses saat ini dan mengirim ini sebagai gantinya"],
     "dT-HIQ": ["Terlalu banyak referensi langsung di halaman ini. Papan ini tidak dimuat."],
+    "dTJhys": ["Dipilih: ", ["innermostLabel"], " dalam ", ["parentLabel"]],
     "dTaauv": ["Alasan: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" adalah nama properti yang dicadangkan"],
     "dVaXnv": ["Aturan konten belum dimuat — coba lagi sebentar"],
@@ -3912,6 +3930,7 @@
     ],
     "ij-Elv": ["Pratinjau gambar"],
     "ijLc3m": ["Daftar berpoin"],
+    "ikSw6W": ["Dipindahkan ke bawah."],
     "ilodsp": ["Biarkan agen memakai OpenKnowledge tanpa bertanya"],
     "inJhKB": ["Ganti dan simpan"],
     "ioMn4Z": ["Baru dari Templat…"],
@@ -4410,6 +4429,7 @@
     ],
     "nrXDdR": ["Nama bidang"],
     "nsM-_m": ["Jelajahi ratusan tema"],
+    "nsS50V": ["Dipindahkan ke atas."],
     "nsUDL8": [["0"], " dari ", ["1"], " proyek dipilih"],
     "nskygk": ["Pilih agen"],
     "nta97o": [
@@ -5396,7 +5416,6 @@
     "zLGXna": ["Tidak ada paket awal yang tersedia."],
     "zLak8b": ["Aktifkan tab baru"],
     "zMmwh4": ["Pilih tema atau buat tema Anda sendiri."],
-    "zQBg2C": ["Menaikkan atau menurunkan blok saat ini satu posisi."],
     "zWZBPx": ["Tipe berubah"],
     "zXj1rA": ["Cari berdasarkan makna"],
     "zYp8Sr": [

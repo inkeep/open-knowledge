@@ -631,6 +631,10 @@ msgstr "{componentLabel} (فارغ)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel} ويحتوي على {childCount, plural, zero {# عنصر} one {عنصر واحد} two {عنصرين} few {# عناصر} many {# عنصرًا} other {# عنصر}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (غير مسجل)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, zero {# تعارض} one {تعارض واحد} two {تعارضان} few {# تعارضات} many {# تعارضًا} other {# تعارض}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "نقل Terminal إلى اليمين"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "حرّك الكتلة الحالية موضعًا واحدًا لأعلى أو لأسفل."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "انقل الكتلة الحالية إلى أعلى أو أسفل. في القوائم، انقل العنصر الحالي أو العناصر المحددة."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "تم نقل {moved} مهارات إلى العام"
 msgid "Moved {moved} skills to Project"
 msgstr "تم نقل {moved} مهارات إلى المشروع"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "تم النقل إلى أسفل."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "نقل قالبًا"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "تم النقل إلى أعلى."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "صادر"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "المخطط"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "خارج أي كتلة"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "تحديد الكتلة"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "حدّد كل صفوف شجرة الملفات الظاهرة عندما يكون التركيز في شريط الملفات الجانبي."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "تحديد عنصر القائمة"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "تحديد التكرار التالي"
@@ -12167,6 +12187,18 @@ msgstr "عنصر الرسم البياني المحدد"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "محدَّد في الرسم البياني"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "تم التحديد: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "تم التحديد: {innermostLabel} في {parentLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "تم التحديد: {innermostLabel}، {position} من {total} في {parentLabel}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

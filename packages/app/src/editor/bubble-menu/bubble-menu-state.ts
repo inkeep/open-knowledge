@@ -1,11 +1,19 @@
 import { commentQuoteText } from '@inkeep/open-knowledge-core';
+import type { EditorView } from '@tiptap/pm/view';
 import type { Editor } from '@tiptap/react';
 import { findMarkIdAt } from '../extensions/mark-identity';
 import { getFindReplaceState } from '../find-replace/tiptap-find-replace-extension';
 import { isFileNodeSelected } from './FileBubbleButtons';
 import { isImageNodeSelected } from './ImageAlignButtons';
 
-export function shouldShowBubbleMenu({ editor }: { editor: Editor }): boolean {
+export function shouldShowBubbleMenu({
+  editor,
+  view,
+}: {
+  editor: Editor;
+  view?: EditorView;
+}): boolean {
+  if (view?.dragging) return false;
   if (getFindReplaceState(editor.state).query) return false;
   if (editor.isActive('codeBlock')) return false;
   if (isImageNodeSelected(editor)) return true;

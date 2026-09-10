@@ -109,6 +109,9 @@ describe('scope membership', () => {
     'packages/app/node_modules/x/src/a.ts',
     'tech-probes/r1-preflight-gate/probe.mjs',
     'packages/native-config/index.js',
+    'packages/desktop/out/main/index.js',
+    'packages/desktop/dist-desktop/linux-unpacked/resources/app/index.js',
+    'packages/desktop/playwright-report/trace/assets/index.js',
     'packages/md-conformance/md-audit/src/lib/registry.mjs',
     '.claude/hooks/no-comments-guard.sh',
     'reports/comment-policy-adoption/scripts/measure.sh',
@@ -495,6 +498,7 @@ describe('every directory-name-shaped exclude is pinned to what it hides', () =>
     '**/.git/**',
     '**/coverage/**',
     '**/__fixtures__/**',
+    '**/playwright-report/**',
   ];
 
   const tracked = execFileSync('git', ['ls-files', '-z'], {

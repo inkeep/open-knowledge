@@ -245,6 +245,7 @@
       "Le dossier sur le disque et l'id que les agents utilisent pour invoquer cette compétence."
     ],
     "1jym2J": ["Ne pas envoyer ce commentaire"],
+    "1kFgmi": ["En dehors de tout bloc"],
     "1lFNz3": ["Ce document a été supprimé"],
     "1njn7W": ["Clair"],
     "1nke1r": ["Ouvrir ", ["0"], " sur GitHub (s'ouvre dans un nouvel onglet)"],
@@ -1103,6 +1104,16 @@
     "AddR83": ["Impossible de créer le projet. Réessayez ou choisissez un autre emplacement."],
     "AeHuzT": ["# Un motif par ligne.\n# Exemples :\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
     "AeLo3p": ["OpenKnowledge a résolu un conflit dans ", ["subject"]],
+    "AeORtB": [
+      "Sélection : ",
+      ["innermostLabel"],
+      ", ",
+      ["position"],
+      " sur ",
+      ["total"],
+      " dans ",
+      ["parentLabel"]
+    ],
     "AeXO77": ["Compte"],
     "AgoIW4": [
       ["source"],
@@ -1786,6 +1797,9 @@
       "Connexion perdue — gardez cet onglet ouvert, vos modifications se synchroniseront une fois reconnecté"
     ],
     "HIb0vl": ["Erreur réseau — veuillez réessayer"],
+    "HJ7aHU": [
+      "Déplace le bloc courant vers le haut ou vers le bas. Dans les listes, déplace l’élément courant ou les éléments sélectionnés."
+    ],
     "HKH-W-": ["Données"],
     "HLoO-Z": ["Le serveur a renvoyé une réponse d'importation mal formée."],
     "HM56Bx": ["Création…"],
@@ -3112,6 +3126,7 @@
     "VpRSfQ": [
       "La synchronisation prend plus de temps que d'habitude — vos modifications sont en sécurité sur cet appareil."
     ],
+    "VsY-gw": ["Sélection : ", ["innermostLabel"]],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["dossier"], "many": ["dossiers"], "other": ["dossiers"] }]
     ],
@@ -3544,6 +3559,7 @@
     ],
     "_9rYSZ": ["intégration MCP de ", ["names"], " réparée"],
     "_Bix3-": ["Occurrences de ", ["localizedFirstMessage"]],
+    "_CWM2I": ["Sélectionner un élément de liste"],
     "_DwR-n": ["Création…"],
     "_FqAty": ["Reprendre le chat"],
     "_G7A92": ["Maintenir index.md"],
@@ -3897,6 +3913,7 @@
     "d3dX3w": ["Rechercher « ", ["word"], " »"],
     "d5rK4X": [["chars", "plural", { "one": ["car."], "many": ["car."], "other": ["car."] }]],
     "d6qW27": [["agentName"], " signale : ", ["headline"]],
+    "d7QZ7W": [["componentName"], " (non enregistré)"],
     "dCforW": [
       "L'écriture de ce fichier a échoué. Consultez le journal d'OpenKnowledge pour en connaître la raison."
     ],
@@ -3960,6 +3977,7 @@
     ],
     "dSORvE": ["Arrête l’exécution en cours et envoie ceci à la place"],
     "dT-HIQ": ["Trop de références en direct sur cette page. Ce tableau n'a pas été chargé."],
+    "dTJhys": ["Sélection : ", ["innermostLabel"], " dans ", ["parentLabel"]],
     "dTaauv": ["Raison : ", ["reason"]],
     "dURmlQ": ["« frontmatter » est un nom de propriété réservé"],
     "dVaXnv": ["Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"],
@@ -4562,6 +4580,7 @@
     ],
     "ij-Elv": ["Aperçu de l'image"],
     "ijLc3m": ["Liste à puces"],
+    "ikSw6W": ["Déplacé vers le bas."],
     "ilodsp": ["Laisser les agents utiliser OpenKnowledge sans demander"],
     "inJhKB": ["Remplacer et enregistrer"],
     "ioMn4Z": ["Nouveau à partir d'un modèle…"],
@@ -5123,6 +5142,7 @@
     ],
     "nrXDdR": ["Nom du champ"],
     "nsM-_m": ["Parcourir des centaines de thèmes"],
+    "nsS50V": ["Déplacé vers le haut."],
     "nsUDL8": [["0"], " projet(s) sélectionné(s) sur ", ["1"]],
     "nskygk": ["Choisir un agent"],
     "nta97o": [
@@ -6303,7 +6323,6 @@
     "zLGXna": ["Aucun pack de démarrage disponible."],
     "zLak8b": ["Activer le nouvel onglet"],
     "zMmwh4": ["Choisissez un thème ou créez le vôtre."],
-    "zQBg2C": ["Déplace le bloc courant d'une position vers le haut ou vers le bas."],
     "zWZBPx": ["Type modifié"],
     "zXj1rA": ["Rechercher par le sens"],
     "zYp8Sr": [

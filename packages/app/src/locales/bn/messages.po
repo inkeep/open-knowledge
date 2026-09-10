@@ -631,6 +631,10 @@ msgstr "{componentLabel} (খালি)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel}, যেখানে {childCount, plural, one {# আইটেম} other {# আইটেম}} আছে"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (নিবন্ধিত নয়)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# দ্বন্দ্ব} other {# দ্বন্দ্ব}}"
@@ -8445,8 +8449,8 @@ msgid "Move Terminal to right"
 msgstr "Terminal ডান দিকে সরান"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "বর্তমান ব্লকটি এক ধাপ উপরে বা নিচে সরান।"
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "বর্তমান ব্লকটি উপরে বা নিচে সরান। তালিকায়, বর্তমান আইটেম বা নির্বাচিত আইটেমগুলি সরান।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8553,9 +8557,17 @@ msgstr "{moved}টি স্কিল গ্লোবালে সরানো �
 msgid "Moved {moved} skills to Project"
 msgstr "{moved}টি স্কিল প্রকল্পে সরানো হয়েছে"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "নিচে সরানো হয়েছে।"
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "টেমপ্লেট সরানো হয়েছে"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "উপরে সরানো হয়েছে।"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10154,6 +10166,10 @@ msgstr "বহির্গামী"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "রূপরেখা"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "সব ব্লকের বাইরে"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12140,6 +12156,10 @@ msgstr "ব্লক নির্বাচন করুন"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "ফোকাস Files সাইডবারে থাকলে দৃশ্যমান প্রতিটি ফাইল-ট্রি সারি নির্বাচন করুন।"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "তালিকার আইটেম নির্বাচন করুন"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "পরবর্তী উপস্থিতি নির্বাচন করুন"
@@ -12163,6 +12183,18 @@ msgstr "নির্বাচিত গ্রাফ আইটেম"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "গ্রাফে নির্বাচিত"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "নির্বাচিত: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "নির্বাচিত: {parentLabel}-এ {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "নির্বাচিত: {innermostLabel}, {parentLabel}-এ {total}টির মধ্যে {position}তম"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

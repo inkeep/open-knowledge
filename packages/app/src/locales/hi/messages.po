@@ -631,6 +631,10 @@ msgstr "{componentLabel} (खाली)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel}, जिसमें {childCount, plural, one {# आइटम} other {# आइटम}} हैं"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (पंजीकृत नहीं)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# टकराव} other {# टकराव}}"
@@ -8445,8 +8449,8 @@ msgid "Move Terminal to right"
 msgstr "Terminal को दाईं ओर ले जाएँ"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "मौजूदा ब्लॉक को एक स्थान ऊपर या नीचे ले जाएँ।"
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "मौजूदा ब्लॉक को ऊपर या नीचे ले जाएँ। सूचियों में, मौजूदा आइटम या चुने हुए आइटम ले जाएँ।"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8553,9 +8557,17 @@ msgstr "{moved} स्किलें ग्लोबल में ले जा
 msgid "Moved {moved} skills to Project"
 msgstr "{moved} स्किलें प्रोजेक्ट में ले जाई गईं"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "नीचे ले जाया गया।"
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "टेम्पलेट हिलाया गया"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "ऊपर ले जाया गया।"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10154,6 +10166,10 @@ msgstr "बाहर जाने वाले"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "रूपरेखा"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "किसी भी ब्लॉक के बाहर"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12140,6 +12156,10 @@ msgstr "ब्लॉक चुनें"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "जब फ़ोकस Files साइडबार में हो तब हर दिखाई देने वाली फ़ाइल-ट्री पंक्ति चुनें।"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "सूची आइटम चुनें"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "अगली घटना चुनें"
@@ -12163,6 +12183,18 @@ msgstr "चयनित ग्राफ़ आइटम"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "ग्राफ़ में चयनित"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "चुना गया: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "चुना गया: {parentLabel} में {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "चुना गया: {innermostLabel}, {parentLabel} में {total} में से {position}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

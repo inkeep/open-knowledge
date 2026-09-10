@@ -631,6 +631,10 @@ msgstr ""
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr ""
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr ""
@@ -8445,7 +8449,7 @@ msgid "Move Terminal to right"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -8553,8 +8557,16 @@ msgstr ""
 msgid "Moved {moved} skills to Project"
 msgstr ""
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr ""
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
+msgstr ""
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
 msgstr ""
 
 #: src/components/file-tree-trash-copy.ts
@@ -10153,6 +10165,10 @@ msgstr ""
 #: src/components/DocPanel.tsx
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
+msgstr ""
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -12140,6 +12156,10 @@ msgstr ""
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr ""
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr ""
@@ -12162,6 +12182,18 @@ msgstr ""
 
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
+msgstr ""
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr ""
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr ""
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx

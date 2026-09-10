@@ -13,6 +13,7 @@ import {
   SELECTION_SURFACE_GAP_PX,
 } from '../utils/editor-visible-region';
 import { BlockTypeSelector } from './BlockTypeSelector';
+import { EDITOR_BUBBLE_MENU_KEY } from './bubble-menu-key';
 import { shouldShowBubbleMenu } from './bubble-menu-state';
 import { FileBubbleButtons, isFileNodeSelected } from './FileBubbleButtons';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
@@ -97,6 +98,7 @@ export function BubbleMenuBar({
 
   return (
     <BubbleMenu
+      pluginKey={EDITOR_BUBBLE_MENU_KEY}
       ref={menuRef}
       editor={editor}
       data-testid="bubble-menu-bar"

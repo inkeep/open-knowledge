@@ -631,6 +631,10 @@ msgstr "{componentLabel} (vazio)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel} com {childCount, plural, one {# item} many {# itens} other {# itens}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (não registrado)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# conflito} many {# conflitos} other {# conflitos}}"
@@ -8445,8 +8449,8 @@ msgid "Move Terminal to right"
 msgstr "Mover o Terminal para a direita"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "Sobe ou desce o bloco atual uma posição."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "Move o bloco atual para cima ou para baixo. Nas listas, move o item atual ou os itens selecionados."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8553,9 +8557,17 @@ msgstr "{moved} habilidades movidas para Global"
 msgid "Moved {moved} skills to Project"
 msgstr "{moved} habilidades movidas para Projeto"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "Movido para baixo."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "modelo movido"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "Movido para cima."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10154,6 +10166,10 @@ msgstr "Saída"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Estrutura"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "Fora de qualquer bloco"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12140,6 +12156,10 @@ msgstr "Selecionar bloco"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "Seleciona todas as linhas visíveis da árvore de arquivos quando o foco está na barra lateral Arquivos."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "Selecionar item da lista"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Selecionar a próxima ocorrência"
@@ -12163,6 +12183,18 @@ msgstr "Item selecionado do grafo"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "Selecionado no grafo"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "Selecionado: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "Selecionado: {innermostLabel} em {parentLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "Selecionado: {innermostLabel}, {position} de {total} em {parentLabel}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

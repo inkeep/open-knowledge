@@ -35,6 +35,8 @@
     "packages/md-conformance/**",
     "packages/app/src/locales/**",
     "packages/native-config/index.js",
+    "packages/desktop/out/**",
+    "packages/desktop/dist-desktop/**",
     "docs/.source/**",
     "docs/.source-vitest/**",
     "knip.config.ts",
@@ -51,6 +53,7 @@
     "**/.next/**",
     "**/.turbo/**",
     "**/.git/**",
-    "**/coverage/**"
+    "**/coverage/**",
+    "**/playwright-report/**"
   ]
 }

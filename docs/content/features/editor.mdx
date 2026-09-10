@@ -42,6 +42,12 @@ No text is removed when that happens. One case is still not covered. If a rewrit
 
 To go further back, the [Timeline](./timeline-and-recovery.mdx) keeps earlier versions of the whole document. Each entry is a snapshot of the whole document. Agent edits, human edits, and file-system changes are batched into an entry once activity settles. Upstream syncs get their own entry when the sync lands. Restoring an entry brings back that version's content. Restoring is append-only, so the edits you made since then stay on the timeline and you can restore back to them.
 
+### Lists
+
+Hover over a bullet, numbered, or task-list item and drag its grip to move that item within the list or elsewhere in the document. Nested items have their own grips; select several items or a passage spanning multiple blocks before dragging to move them together. Task checkboxes keep their checked state. Reordering a numbered list's items, or moving items into or out of one, renumbers that list's items sequentially from its starting number, replacing custom gaps or repeated numbers. Moving a whole numbered list preserves its authored numbers unless its items merge into another list.
+
+To reorder with the keyboard, place the cursor in an item or select several neighboring items, then press `Cmd+Shift+↑` or `Cmd+Shift+↓` on macOS (`Ctrl+Shift+↑` or `Ctrl+Shift+↓` on Windows and Linux). At a list's edge, the same shortcut moves the selection past the neighboring block or out of its parent item.
+
 ### Tables
 
 Insert a table from the slash menu. The header row stays visible as you scroll down a long table, the first column stays pinned as you scroll sideways, and dragging a row or column handle reorders it. Cells are single-line in the stored markdown: pressing Enter inside a cell — or pasting a table whose cells hold lists or paragraphs — joins the lines with `<br />`, the GFM line-break idiom, so the table stays valid for everyone else opening the file. `<br>` tags in existing files render as real line breaks and round-trip byte-for-byte.

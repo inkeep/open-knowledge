@@ -1,3 +1,4 @@
+
 export const SAFE_URL_SCHEMES = ['https', 'http', 'mailto', 'tel', 'ftp', 'sms'] as const;
 
 const SCHEME_ALT = SAFE_URL_SCHEMES.map((s) => `${s}:`).join('|');

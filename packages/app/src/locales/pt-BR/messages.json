@@ -237,6 +237,7 @@
     "1di5fu": ["Documento não encontrado"],
     "1hvhf0": ["A pasta no disco e o id que os agentes usam para invocar esta habilidade."],
     "1jym2J": ["Não enviar este comentário"],
+    "1kFgmi": ["Fora de qualquer bloco"],
     "1lFNz3": ["Este documento foi excluído"],
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " no GitHub (abre em uma nova aba)"],
@@ -1068,6 +1069,16 @@
       "# Um padrão por linha.\\n# Exemplos:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
     ],
     "AeLo3p": ["OpenKnowledge resolveu um conflito em ", ["subject"]],
+    "AeORtB": [
+      "Selecionado: ",
+      ["innermostLabel"],
+      ", ",
+      ["position"],
+      " de ",
+      ["total"],
+      " em ",
+      ["parentLabel"]
+    ],
     "AeXO77": ["Conta"],
     "AgoIW4": [
       ["source"],
@@ -1740,6 +1751,9 @@
       "Conexão perdida — deixe esta aba aberta, suas edições vão sincronizar quando reconectar"
     ],
     "HIb0vl": ["Erro de rede — tente de novo"],
+    "HJ7aHU": [
+      "Move o bloco atual para cima ou para baixo. Nas listas, move o item atual ou os itens selecionados."
+    ],
     "HKH-W-": ["Dados"],
     "HLoO-Z": ["O servidor retornou uma resposta de importação malformada."],
     "HM56Bx": ["Criando..."],
@@ -3026,6 +3040,7 @@
     "VpRSfQ": [
       "A sincronização está demorando mais que o normal — suas alterações estão seguras neste dispositivo."
     ],
+    "VsY-gw": ["Selecionado: ", ["innermostLabel"]],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["pasta"], "many": ["pastas"], "other": ["pastas"] }]
     ],
@@ -3438,6 +3453,7 @@
     ],
     "_9rYSZ": ["integração MCP de ", ["names"], " reparada"],
     "_Bix3-": ["Ocorrências de ", ["localizedFirstMessage"]],
+    "_CWM2I": ["Selecionar item da lista"],
     "_DwR-n": ["Criando…"],
     "_FqAty": ["Retomar chat"],
     "_G7A92": ["Manter index.md"],
@@ -3773,6 +3789,7 @@
       ["chars", "plural", { "one": ["caractere"], "many": ["caracteres"], "other": ["caracteres"] }]
     ],
     "d6qW27": [["agentName"], " informou: ", ["headline"]],
+    "d7QZ7W": [["componentName"], " (não registrado)"],
     "dCforW": [
       "Falha ao gravar este arquivo. Consulte o log do OpenKnowledge para saber o motivo."
     ],
@@ -3836,6 +3853,7 @@
     ],
     "dSORvE": ["Interrompe a execução atual e envia isto no lugar"],
     "dT-HIQ": ["Referências ao vivo demais nesta página. Este quadro não foi carregado."],
+    "dTJhys": ["Selecionado: ", ["innermostLabel"], " em ", ["parentLabel"]],
     "dTaauv": ["Motivo: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" é um nome de propriedade reservado"],
     "dVaXnv": ["As regras de conteúdo ainda não carregaram — tente de novo em instantes"],
@@ -4442,6 +4460,7 @@
     ],
     "ij-Elv": ["Pré-visualização de imagem"],
     "ijLc3m": ["Lista com marcadores"],
+    "ikSw6W": ["Movido para baixo."],
     "ilodsp": ["Deixar os agentes usarem o OpenKnowledge sem perguntar"],
     "inJhKB": ["Substituir e salvar"],
     "ioMn4Z": ["Novo a partir de um modelo…"],
@@ -4989,6 +5008,7 @@
     ],
     "nrXDdR": ["Nome do campo"],
     "nsM-_m": ["Explorar centenas de temas"],
+    "nsS50V": ["Movido para cima."],
     "nsUDL8": [["0"], " de ", ["1"], " projetos selecionados"],
     "nskygk": ["Escolher agente"],
     "nta97o": [
@@ -6102,7 +6122,6 @@
     "zLGXna": ["Nenhum pacote inicial disponível."],
     "zLak8b": ["Ativar nova aba"],
     "zMmwh4": ["Escolha um tema ou crie o seu."],
-    "zQBg2C": ["Sobe ou desce o bloco atual uma posição."],
     "zWZBPx": ["Tipo alterado"],
     "zXj1rA": ["Buscar por significado"],
     "zYp8Sr": [

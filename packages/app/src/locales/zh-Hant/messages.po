@@ -631,6 +631,10 @@ msgstr "{componentLabel}（空的）"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel}，包含 {childCount, plural, other {# 個項目}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName}（未註冊）"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, other {# 處衝突}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "將 Terminal 移到右側"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "把目前的區塊往上或往下移一個位置。"
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "將目前的區塊向上或向下移動。在清單中，移動目前的項目或所選項目。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "已將 {moved} 個技能移至全域"
 msgid "Moved {moved} skills to Project"
 msgstr "已將 {moved} 個技能移至專案"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "已向下移動。"
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "已移動範本"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "已向上移動。"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "連出"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "大綱"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "不在任何區塊內"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "選取區塊"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "當焦點在「檔案」側邊欄時，選取檔案樹中所有看得到的列。"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "選取清單項目"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "選取下一個出現的位置"
@@ -12167,6 +12187,18 @@ msgstr "選取的關係圖項目"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "在關係圖中已選取"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "已選取：{innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "已選取：{parentLabel} 中的 {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "已選取：{innermostLabel}，在 {parentLabel} 中的第 {position} 項，共 {total} 項"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

@@ -1,6 +1,74 @@
 import { Extension } from '@tiptap/core';
+import { Fragment } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { dispatchAsOwnUndoStep } from '../undo-isolation.ts';
+import { listItemIntersectsSelection, normalizeList } from './list-editing-helpers.ts';
+
+export const blockMoveAnnouncementKey = new PluginKey<'up' | 'down'>('blockMoveAnnouncement');
+
+function moveListItems(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  direction: -1 | 1,
+): boolean | null {
+  const { selection, doc } = state;
+  const { $from } = selection;
+  let depth = $from.depth;
+  while (depth > 0 && $from.node(depth).type.name !== 'list') depth--;
+  if (depth === 0 || selection.to > $from.end(depth)) return null;
+  const list = $from.node(depth);
+  const listPos = $from.before(depth);
+  let from = -1;
+  let to = -1;
+  list.forEach((item, offset) => {
+    const pos = listPos + 1 + offset;
+    const intersects = selection.empty
+      ? pos <= selection.from && selection.from < pos + item.nodeSize
+      : listItemIntersectsSelection(selection, pos, item.nodeSize);
+    if (intersects) {
+      if (from < 0) from = pos;
+      to = pos + item.nodeSize;
+    }
+  });
+  if (from < 0) return null;
+  const adjacent = direction === -1 ? doc.resolve(from).nodeBefore : doc.resolve(to).nodeAfter;
+  let target: number;
+  let wrap = false;
+  if (adjacent) {
+    target = direction === -1 ? from - adjacent.nodeSize : to + adjacent.nodeSize;
+  } else if (depth > 1 && $from.node(depth - 1).type.name === 'listItem') {
+    target = direction === -1 ? $from.before(depth - 1) : $from.after(depth - 1);
+  } else if (depth === 1) {
+    const $edge = doc.resolve(direction === -1 ? listPos : listPos + list.nodeSize);
+    const block = direction === -1 ? $edge.nodeBefore : $edge.nodeAfter;
+    if (!block) return false;
+    target = direction === -1 ? listPos - block.nodeSize : listPos + list.nodeSize + block.nodeSize;
+    wrap = true;
+  } else {
+    return null;
+  }
+  if (!dispatch) return true;
+  const moved = doc.slice(from, to).content;
+  const content = wrap ? Fragment.from(list.copy(moved)) : moved;
+  const tr = state.tr.deleteRange(from, to);
+  const insertAt = tr.mapping.map(target);
+  tr.insert(insertAt, content);
+  const movedWholeList = to - from === list.content.size;
+  if (!movedWholeList) normalizeList(tr, tr.mapping.map(listPos));
+  if (!(wrap && movedWholeList)) {
+    const $insert = tr.doc.resolve(insertAt);
+    normalizeList(tr, wrap ? insertAt : $insert.before());
+  }
+  const offset = insertAt + (wrap ? 1 : 0) - from;
+  tr.setSelection(
+    selection instanceof NodeSelection
+      ? NodeSelection.create(tr.doc, selection.from + offset)
+      : TextSelection.create(tr.doc, selection.anchor + offset, selection.head + offset),
+  );
+  dispatch(tr.scrollIntoView());
+  return true;
+}
 
 export function currentTopLevelBlock(state: EditorState): { from: number; to: number } | null {
   const { $from } = state.selection;
@@ -14,6 +82,8 @@ export function moveBlockUp(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
 ): boolean {
+  const movedItems = moveListItems(state, dispatch, -1);
+  if (movedItems !== null) return movedItems;
   const block = currentTopLevelBlock(state);
   if (!block) return false;
 
@@ -46,6 +116,8 @@ export function moveBlockDown(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
 ): boolean {
+  const movedItems = moveListItems(state, dispatch, 1);
+  if (movedItems !== null) return movedItems;
   const block = currentTopLevelBlock(state);
   if (!block) return false;
 
@@ -79,8 +151,14 @@ export const BlockMover = Extension.create({
 
   addKeyboardShortcuts() {
     return {
-      'Mod-Shift-ArrowUp': ({ editor }) => moveBlockUp(editor.state, editor.view.dispatch),
-      'Mod-Shift-ArrowDown': ({ editor }) => moveBlockDown(editor.state, editor.view.dispatch),
+      'Mod-Shift-ArrowUp': ({ editor }) =>
+        moveBlockUp(editor.state, (tr) =>
+          dispatchAsOwnUndoStep(editor.view, tr.setMeta(blockMoveAnnouncementKey, 'up')),
+        ),
+      'Mod-Shift-ArrowDown': ({ editor }) =>
+        moveBlockDown(editor.state, (tr) =>
+          dispatchAsOwnUndoStep(editor.view, tr.setMeta(blockMoveAnnouncementKey, 'down')),
+        ),
     };
   },
 });

@@ -1,9 +1,4 @@
-/**
- * Shared label resolver for `BlockChainEntry` consumers, per precedent #31: descriptor
- * `displayName`, then `name`, then the entry's `componentName` for the wildcard case, with
- * `unregisteredSuffix` appending ` (unregistered)` for assistive-technology surfaces.
- */
-
+import { t } from '@lingui/core/macro';
 import type { BlockChainEntry } from '../extensions/selection-state-plugin.ts';
 import { getDescriptor } from '../registry/index.ts';
 
@@ -14,7 +9,8 @@ interface EntryLabelOptions {
 export function getEntryLabel(entry: BlockChainEntry, opts: EntryLabelOptions = {}): string {
   const descriptor = getDescriptor(entry.componentName);
   if (descriptor.name === '*') {
-    return opts.unregisteredSuffix ? `${entry.componentName} (unregistered)` : entry.componentName;
+    const componentName = entry.componentName;
+    return opts.unregisteredSuffix ? t`${componentName} (unregistered)` : componentName;
   }
   return descriptor.displayName ?? descriptor.name;
 }

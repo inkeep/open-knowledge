@@ -201,6 +201,7 @@
     "1di5fu": ["Document not found"],
     "1hvhf0": ["The folder on disk and the id agents use to invoke this skill."],
     "1jym2J": ["Don't send this comment"],
+    "1kFgmi": ["Outside any block"],
     "1lFNz3": ["This document was deleted"],
     "1njn7W": ["Light"],
     "1nke1r": ["Open ", ["0"], " on GitHub (opens in a new tab)"],
@@ -909,6 +910,16 @@
     "AddR83": ["Could not create project. Try again or pick a different location."],
     "AeHuzT": ["# One pattern per line.\n# Examples:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
     "AeLo3p": ["OpenKnowledge resolved a conflict in ", ["subject"]],
+    "AeORtB": [
+      "Selected: ",
+      ["innermostLabel"],
+      ", ",
+      ["position"],
+      " of ",
+      ["total"],
+      " in ",
+      ["parentLabel"]
+    ],
     "AeXO77": ["Account"],
     "AgoIW4": [
       ["source"],
@@ -1499,6 +1510,9 @@
     "HCn0Ay": ["Toggle strikethrough formatting."],
     "HGNCsl": ["Connection lost — keep this tab open, your edits will sync when reconnected"],
     "HIb0vl": ["Network error — please try again"],
+    "HJ7aHU": [
+      "Move the current block up or down. In lists, move the current item or selected items."
+    ],
     "HKH-W-": ["Data"],
     "HLoO-Z": ["Server returned a malformed import response."],
     "HM56Bx": ["Creating..."],
@@ -2633,6 +2647,7 @@
     "VmJT51": ["Loading your reports"],
     "VmXASo": ["(symlink)"],
     "VpRSfQ": ["Sync is taking longer than usual — your changes are safe on this device."],
+    "VsY-gw": ["Selected: ", ["innermostLabel"]],
     "VsaI0G": [["folderCount", "plural", { "one": ["folder"], "other": ["folders"] }]],
     "VuxVSP": ["Start source completion"],
     "VxLvKE": ["Revert to installed version"],
@@ -3010,6 +3025,7 @@
     ],
     "_9rYSZ": ["repaired MCP integration for ", ["names"]],
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
+    "_CWM2I": ["Select list item"],
     "_DwR-n": ["Creating…"],
     "_FqAty": ["Resume chat"],
     "_G7A92": ["Maintain index.md"],
@@ -3309,6 +3325,7 @@
     "d3dX3w": ["Look Up \"", ["word"], "\""],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
     "d6qW27": [["agentName"], " reported: ", ["headline"]],
+    "d7QZ7W": [["componentName"], " (unregistered)"],
     "dCforW": ["Writing this file failed. Check the OpenKnowledge log for the reason."],
     "dD7NPy": ["Outline"],
     "dDBZ0j": [
@@ -3363,6 +3380,7 @@
     ],
     "dSORvE": ["Stops the current run and sends this instead"],
     "dT-HIQ": ["Too many live references on this page. This board was not loaded."],
+    "dTJhys": ["Selected: ", ["innermostLabel"], " in ", ["parentLabel"]],
     "dTaauv": ["Reason: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" is a reserved property name"],
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
@@ -3884,6 +3902,7 @@
     ],
     "ij-Elv": ["Image preview"],
     "ijLc3m": ["Bullet list"],
+    "ikSw6W": ["Moved down."],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
     "inJhKB": ["Replace and save"],
     "ioMn4Z": ["New from Template…"],
@@ -4385,6 +4404,7 @@
     ],
     "nrXDdR": ["Field name"],
     "nsM-_m": ["Browse hundreds of themes"],
+    "nsS50V": ["Moved up."],
     "nsUDL8": [["0"], " of ", ["1"], " projects selected"],
     "nskygk": ["Choose agent"],
     "nta97o": [
@@ -5382,7 +5402,6 @@
     "zLGXna": ["No starter packs available."],
     "zLak8b": ["Activate new tab"],
     "zMmwh4": ["Pick a theme or create your own."],
-    "zQBg2C": ["Move the current block up or down one position."],
     "zWZBPx": ["Type changed"],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [

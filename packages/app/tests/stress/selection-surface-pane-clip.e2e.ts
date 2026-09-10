@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
+import { EDITOR_BUBBLE_MENU_KEY } from '../../src/editor/bubble-menu/bubble-menu-key';
 import {
   type ApiHelpers,
   blockMarker,
@@ -314,15 +315,15 @@ async function repositionViaPluginPath(page: Page): Promise<PluginWrite> {
       'under test',
   ).toBe('');
 
-  await page.evaluate(() => {
+  await page.evaluate((pluginKey) => {
     const editor = window.__activeEditor;
     if (!editor) throw new Error('repositionViaPluginPath: window.__activeEditor not set');
-    const pluginKey = editor.state.plugins
-      .map((plugin) => plugin.key)
-      .find((key) => key.startsWith('bubbleMenu'));
-    if (!pluginKey) throw new Error('repositionViaPluginPath: bubble-menu plugin not registered');
+    const registered = editor.state.plugins.some((plugin) =>
+      plugin.key.startsWith(`${pluginKey}$`),
+    );
+    if (!registered) throw new Error('repositionViaPluginPath: bubble-menu plugin not registered');
     editor.view.dispatch(editor.state.tr.setMeta(pluginKey, 'updatePosition'));
-  });
+  }, EDITOR_BUBBLE_MENU_KEY);
 
   let written: PluginWrite = { top: null };
   await expect

@@ -631,6 +631,10 @@ msgstr "{componentLabel} (vide)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel} avec {childCount, plural, one {# élément} many {# éléments} other {# éléments}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (non enregistré)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# conflit} many {# conflits} other {# conflits}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "Déplacer Terminal à droite"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "Déplace le bloc courant d'une position vers le haut ou vers le bas."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "Déplace le bloc courant vers le haut ou vers le bas. Dans les listes, déplace l’élément courant ou les éléments sélectionnés."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "{moved} compétences déplacées vers Global"
 msgid "Moved {moved} skills to Project"
 msgstr "{moved} compétences déplacées vers Projet"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "Déplacé vers le bas."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "modèle déplacé"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "Déplacé vers le haut."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "Sortants"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Plan"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "En dehors de tout bloc"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "Sélectionner le bloc"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "Sélectionne toutes les lignes visibles de l'arborescence lorsque le focus est dans la barre latérale Fichiers."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "Sélectionner un élément de liste"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Sélectionner l'occurrence suivante"
@@ -12167,6 +12187,18 @@ msgstr "Élément du graphe sélectionné"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "Sélectionné dans le graphe"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "Sélection : {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "Sélection : {innermostLabel} dans {parentLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "Sélection : {innermostLabel}, {position} sur {total} dans {parentLabel}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

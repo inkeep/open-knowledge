@@ -163,7 +163,7 @@ patchedDependencies:
     hash: 1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5
     path: patches/@tiptap%2Fextension-drag-handle@3.22.3.patch
   '@tiptap/y-tiptap@3.0.3':
-    hash: 43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4
+    hash: cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43
     path: patches/@tiptap%2Fy-tiptap@3.0.3.patch
   '@xterm/xterm@6.0.0':
     hash: 52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90
@@ -524,13 +524,13 @@ importers:
         version: 3.22.3(@tiptap/pm@3.22.4)
       '@tiptap/extension-collaboration':
         specifier: 3.22.3
-        version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)
+        version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)
       '@tiptap/extension-collaboration-cursor':
         specifier: 3.0.0
         version: 3.0.0(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(y-prosemirror@1.3.7(patch_hash=b77fc38bdf246f08f73b6bc5d12ec24d29408b663f0a4224758d3f776ef124e7)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))
       '@tiptap/extension-drag-handle':
         specifier: 3.22.3
-        version: 3.22.3(patch_hash=1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5)(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))
+        version: 3.22.3(patch_hash=1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5)(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))
       '@tiptap/extension-file-handler':
         specifier: 3.22.3
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/extension-text-style@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4)))(@tiptap/pm@3.22.4)
@@ -548,7 +548,7 @@ importers:
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)
       '@tiptap/y-tiptap':
         specifier: 3.0.3
-        version: 3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+        version: 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@u-wave/react-vimeo':
         specifier: ^0.9.12
         version: 0.9.12(react@19.2.5)
@@ -1116,7 +1116,7 @@ importers:
         version: 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))
       '@tiptap/y-tiptap':
         specifier: 3.0.3
-        version: 3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+        version: 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@types/culori':
         specifier: ^4.0.0
         version: 4.0.1
@@ -1318,7 +1318,7 @@ importers:
         version: 3.22.4
       '@tiptap/y-tiptap':
         specifier: 3.0.3
-        version: 3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+        version: 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@types/busboy':
         specifier: ^1.5.4
         version: 1.5.4
@@ -16118,25 +16118,25 @@ snapshots:
       '@tiptap/core': 3.22.3(@tiptap/pm@3.22.4)
       y-prosemirror: 1.3.7(patch_hash=b77fc38bdf246f08f73b6bc5d12ec24d29408b663f0a4224758d3f776ef124e7)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
 
-  '@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)':
+  '@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)':
     dependencies:
       '@tiptap/core': 3.22.3(@tiptap/pm@3.22.4)
       '@tiptap/pm': 3.22.4
-      '@tiptap/y-tiptap': 3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+      '@tiptap/y-tiptap': 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       yjs: 13.6.31
 
   '@tiptap/extension-document@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))':
     dependencies:
       '@tiptap/core': 3.22.3(@tiptap/pm@3.22.4)
 
-  '@tiptap/extension-drag-handle@3.22.3(patch_hash=1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5)(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))':
+  '@tiptap/extension-drag-handle@3.22.3(patch_hash=1b9619bc7312665109e19145213057775714cfb21879fb32ab1237fbfbffcdc5)(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/extension-collaboration@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31))(@tiptap/extension-node-range@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))':
     dependencies:
       '@floating-ui/dom': 1.7.6
       '@tiptap/core': 3.22.3(@tiptap/pm@3.22.4)
-      '@tiptap/extension-collaboration': 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)
+      '@tiptap/extension-collaboration': 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)(@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31))(yjs@13.6.31)
       '@tiptap/extension-node-range': 3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4)
       '@tiptap/pm': 3.22.4
-      '@tiptap/y-tiptap': 3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+      '@tiptap/y-tiptap': 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
 
   '@tiptap/extension-dropcursor@3.22.3(@tiptap/extensions@3.22.3(@tiptap/core@3.22.3(@tiptap/pm@3.22.4))(@tiptap/pm@3.22.4))':
     dependencies:
@@ -16310,7 +16310,7 @@ snapshots:
       '@tiptap/core': 3.22.3(@tiptap/pm@3.22.4)
       '@tiptap/pm': 3.22.4
 
-  '@tiptap/y-tiptap@3.0.3(patch_hash=43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)':
+  '@tiptap/y-tiptap@3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)':
     dependencies:
       lib0: 0.2.117
       prosemirror-model: 1.25.4

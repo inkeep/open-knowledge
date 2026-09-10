@@ -237,6 +237,7 @@
     "1di5fu": ["No se encontró el documento"],
     "1hvhf0": ["La carpeta en el disco y el id con el que los agentes invocan esta habilidad."],
     "1jym2J": ["No enviar este comentario"],
+    "1kFgmi": ["Fuera de cualquier bloque"],
     "1lFNz3": ["Este documento se eliminó"],
     "1njn7W": ["Claro"],
     "1nke1r": ["Abrir ", ["0"], " en GitHub (se abre en una pestaña nueva)"],
@@ -1076,6 +1077,16 @@
     "AddR83": ["No se pudo crear el proyecto. Inténtalo de nuevo o elige otra ubicación."],
     "AeHuzT": ["# Un patrón por línea.\n# Ejemplos:\n#   drafts/\n#   *.draft.md\n#   !keep.md"],
     "AeLo3p": ["OpenKnowledge resolvió un conflicto en ", ["subject"]],
+    "AeORtB": [
+      "Seleccionado: ",
+      ["innermostLabel"],
+      ", ",
+      ["position"],
+      " de ",
+      ["total"],
+      " en ",
+      ["parentLabel"]
+    ],
     "AeXO77": ["Cuenta"],
     "AgoIW4": [
       ["source"],
@@ -1754,6 +1765,9 @@
       "Conexión perdida: deja esta pestaña abierta, tus ediciones se sincronizarán al reconectar"
     ],
     "HIb0vl": ["Error de red: inténtalo de nuevo"],
+    "HJ7aHU": [
+      "Mueve el bloque actual hacia arriba o hacia abajo. En las listas, mueve el elemento actual o los elementos seleccionados."
+    ],
     "HKH-W-": ["Datos"],
     "HLoO-Z": ["El servidor devolvió una respuesta de importación con formato incorrecto."],
     "HM56Bx": ["Creando..."],
@@ -3066,6 +3080,7 @@
     "VpRSfQ": [
       "La sincronización está tardando más de lo habitual: tus cambios están a salvo en este dispositivo."
     ],
+    "VsY-gw": ["Seleccionado: ", ["innermostLabel"]],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["carpeta"], "many": ["carpetas"], "other": ["carpetas"] }]
     ],
@@ -3499,6 +3514,7 @@
     ],
     "_9rYSZ": ["se reparó la integración MCP de ", ["names"]],
     "_Bix3-": ["Apariciones de ", ["localizedFirstMessage"]],
+    "_CWM2I": ["Seleccionar elemento de lista"],
     "_DwR-n": ["Creando…"],
     "_FqAty": ["Reanudar chat"],
     "_G7A92": ["Mantener index.md"],
@@ -3847,6 +3863,7 @@
       ["chars", "plural", { "one": ["carácter"], "many": ["caracteres"], "other": ["caracteres"] }]
     ],
     "d6qW27": [["agentName"], " informa: ", ["headline"]],
+    "d7QZ7W": [["componentName"], " (sin registrar)"],
     "dCforW": [
       "No se pudo escribir este archivo. Consulta el registro de OpenKnowledge para conocer el motivo."
     ],
@@ -3913,6 +3930,7 @@
     ],
     "dSORvE": ["Detiene la ejecución actual y envía esto en su lugar"],
     "dT-HIQ": ["Demasiadas referencias en vivo en esta página. Esta pizarra no se cargó."],
+    "dTJhys": ["Seleccionado: ", ["innermostLabel"], " en ", ["parentLabel"]],
     "dTaauv": ["Motivo: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" es un nombre de propiedad reservado"],
     "dVaXnv": ["Las reglas de contenido aún no se han cargado; inténtalo de nuevo en un momento"],
@@ -4527,6 +4545,7 @@
     ],
     "ij-Elv": ["Vista previa de imagen"],
     "ijLc3m": ["Lista con viñetas"],
+    "ikSw6W": ["Se movió hacia abajo."],
     "ilodsp": ["Dejar que los agentes usen OpenKnowledge sin preguntar"],
     "inJhKB": ["Reemplazar y guardar"],
     "ioMn4Z": ["Nuevo desde plantilla…"],
@@ -5080,6 +5099,7 @@
     ],
     "nrXDdR": ["Nombre del campo"],
     "nsM-_m": ["Explorar cientos de temas"],
+    "nsS50V": ["Se movió hacia arriba."],
     "nsUDL8": [["0"], " de ", ["1"], " proyectos seleccionados"],
     "nskygk": ["Elegir agente"],
     "nta97o": [
@@ -6226,7 +6246,6 @@
     "zLGXna": ["No hay paquetes iniciales disponibles."],
     "zLak8b": ["Activar pestaña nueva"],
     "zMmwh4": ["Elige un tema o crea el tuyo."],
-    "zQBg2C": ["Sube o baja una posición el bloque actual."],
     "zWZBPx": ["Tipo cambiado"],
     "zXj1rA": ["Buscar por significado"],
     "zYp8Sr": [

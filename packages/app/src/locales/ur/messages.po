@@ -631,6 +631,10 @@ msgstr "{componentLabel} (خالی)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel}، جس میں {childCount, plural, one {# آئٹم} other {# آئٹمز}} ہیں"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (غیر رجسٹرڈ)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# تصادم} other {# تصادمات}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "Terminal کو دائیں منتقل کریں"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "موجودہ بلاک کو ایک درجہ اوپر یا نیچے لے جائیں۔"
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "موجودہ بلاک کو اوپر یا نیچے منتقل کریں۔ فہرستوں میں، موجودہ آئٹم یا منتخب آئٹمز کو منتقل کریں۔"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "{moved} مہارتیں گلوبل میں منتقل ہو گئیں"
 msgid "Moved {moved} skills to Project"
 msgstr "{moved} مہارتیں پروجیکٹ میں منتقل ہو گئیں"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "نیچے منتقل کر دیا گیا۔"
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "ٹیمپلیٹ منتقل کیا"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "اوپر منتقل کر دیا گیا۔"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "جانے والے"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "خاکہ"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "کسی بھی بلاک سے باہر"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "بلاک منتخب کریں"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "جب فوکس فائلوں کے سائیڈ بار میں ہو تو فائل ٹری کی ہر نظر آنے والی قطار منتخب کریں۔"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "فہرست کا آئٹم منتخب کریں"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "اگلا موقع منتخب کریں"
@@ -12167,6 +12187,18 @@ msgstr "منتخب گراف آئٹم"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "گراف میں منتخب"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "منتخب: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "منتخب: {parentLabel} میں {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "منتخب: {innermostLabel}، {parentLabel} میں {total} میں سے {position}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

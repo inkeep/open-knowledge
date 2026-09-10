@@ -631,6 +631,10 @@ msgstr "{componentLabel} (empty)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (unregistered)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, one {# conflict} other {# conflicts}}"
@@ -8449,8 +8453,8 @@ msgid "Move Terminal to right"
 msgstr "Move Terminal to right"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "Move the current block up or down one position."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "Move the current block up or down. In lists, move the current item or selected items."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8557,9 +8561,17 @@ msgstr "Moved {moved} skills to Global"
 msgid "Moved {moved} skills to Project"
 msgstr "Moved {moved} skills to Project"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "Moved down."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "moved template"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "Moved up."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10158,6 +10170,10 @@ msgstr "Outgoing"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Outline"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "Outside any block"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12144,6 +12160,10 @@ msgstr "Select block"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "Select every visible file-tree row when focus is in the Files sidebar."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "Select list item"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Select next occurrence"
@@ -12167,6 +12187,18 @@ msgstr "Selected graph item"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "Selected in graph"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "Selected: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "Selected: {innermostLabel} in {parentLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

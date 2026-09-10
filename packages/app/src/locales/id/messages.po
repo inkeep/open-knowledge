@@ -631,6 +631,10 @@ msgstr "{componentLabel} (kosong)"
 msgid "{componentLabel} with {childCount, plural, one {# item} other {# items}}"
 msgstr "{componentLabel} dengan {childCount, plural, other {# item}}"
 
+#: src/editor/selection/entry-label.ts
+msgid "{componentName} (unregistered)"
+msgstr "{componentName} (tidak terdaftar)"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{conflictCount, plural, one {# conflict} other {# conflicts}}"
 msgstr "{conflictCount, plural, other {# konflik}}"
@@ -8445,8 +8449,8 @@ msgid "Move Terminal to right"
 msgstr "Pindahkan Terminal ke kanan"
 
 #: src/lib/keyboard-shortcuts.ts
-msgid "Move the current block up or down one position."
-msgstr "Menaikkan atau menurunkan blok saat ini satu posisi."
+msgid "Move the current block up or down. In lists, move the current item or selected items."
+msgstr "Pindahkan blok saat ini ke atas atau ke bawah. Dalam daftar, pindahkan item saat ini atau item yang dipilih."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
@@ -8553,9 +8557,17 @@ msgstr "{moved} keterampilan dipindahkan ke Global"
 msgid "Moved {moved} skills to Project"
 msgstr "{moved} keterampilan dipindahkan ke Proyek"
 
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved down."
+msgstr "Dipindahkan ke bawah."
+
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
 msgstr "templat dipindahkan"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Moved up."
+msgstr "Dipindahkan ke atas."
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -10154,6 +10166,10 @@ msgstr "Keluar"
 #: src/components/OutlinePanel.tsx
 msgid "Outline"
 msgstr "Kerangka"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Outside any block"
+msgstr "Di luar blok mana pun"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
@@ -12140,6 +12156,10 @@ msgstr "Pilih blok"
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
 msgstr "Memilih semua baris pohon berkas yang terlihat ketika fokus ada di bilah sisi Berkas."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select list item"
+msgstr "Pilih item daftar"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Pilih kemunculan berikutnya"
@@ -12163,6 +12183,18 @@ msgstr "Item graf terpilih"
 #: src/components/GraphPanel.tsx
 msgid "Selected in graph"
 msgstr "Terpilih di graf"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}"
+msgstr "Dipilih: {innermostLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel} in {parentLabel}"
+msgstr "Dipilih: {innermostLabel} dalam {parentLabel}"
+
+#: src/components/editor/SelectionAnnouncer.tsx
+msgid "Selected: {innermostLabel}, {position} of {total} in {parentLabel}"
+msgstr "Dipilih: {innermostLabel}, {position} dari {total} dalam {parentLabel}"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Selection must be inside the project"

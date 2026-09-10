@@ -1,5 +1,5 @@
 diff --git a/dist/y-tiptap.cjs b/dist/y-tiptap.cjs
-index 4dd5b4df7c0c589f4781807bf775f791e216e92a..9d5c37c6e92d6db1b13c2af7946361f0d6e4058d 100644
+index 4dd5b4df7c0c589f4781807bf775f791e216e92a..f5e48a1b18d2c61f27dda46732aa0f238df7b172 100644
 --- a/dist/y-tiptap.cjs
 +++ b/dist/y-tiptap.cjs
 @@ -887,14 +887,31 @@ const createNodeFromYElement = (
@@ -167,8 +167,34 @@ index 4dd5b4df7c0c589f4781807bf775f791e216e92a..9d5c37c6e92d6db1b13c2af7946361f0
          yDomFragment.removeAttribute(key);
        }
      }
+@@ -1643,7 +1740,11 @@ const relativePositionToAbsolutePosition = (y, documentType, relPos, mapping) =>
+         if (t instanceof Y__namespace.XmlText) {
+           pos += t._length;
+         } else {
+-          pos += /** @type {any} */ (mapping.get(t)).nodeSize;
++          const mapped = mapping.get(t);
++          if (mapped == null) {
++            return null
++          }
++          pos += mapped.nodeSize;
+         }
+       }
+       n = /** @type {Y.Item} */ (n.right);
+@@ -1667,7 +1768,11 @@ const relativePositionToAbsolutePosition = (y, documentType, relPos, mapping) =>
+           if (contentType instanceof Y__namespace.XmlText) {
+             pos += contentType._length;
+           } else {
+-            pos += /** @type {any} */ (mapping.get(contentType)).nodeSize;
++            const mapped = mapping.get(contentType);
++            if (mapped == null) {
++              return null
++            }
++            pos += mapped.nodeSize;
+           }
+         }
+         n = n.right;
 diff --git a/dist/y-tiptap.js b/dist/y-tiptap.js
-index 1cddd60120846234225be3c6768fd2da8410fc5c..005101815c6207fd7ecafa0cc042067a3441a2d6 100644
+index 1cddd60120846234225be3c6768fd2da8410fc5c..eefda74f42514889b6e306e2451884a47de488ab 100644
 --- a/dist/y-tiptap.js
 +++ b/dist/y-tiptap.js
 @@ -853,14 +853,31 @@ const createNodeFromYElement = (
@@ -336,3 +362,29 @@ index 1cddd60120846234225be3c6768fd2da8410fc5c..005101815c6207fd7ecafa0cc042067a
          yDomFragment.removeAttribute(key);
        }
      }
+@@ -1609,7 +1706,11 @@ const relativePositionToAbsolutePosition = (y, documentType, relPos, mapping) =>
+         if (t instanceof Y.XmlText) {
+           pos += t._length;
+         } else {
+-          pos += /** @type {any} */ (mapping.get(t)).nodeSize;
++          const mapped = mapping.get(t);
++          if (mapped == null) {
++            return null
++          }
++          pos += mapped.nodeSize;
+         }
+       }
+       n = /** @type {Y.Item} */ (n.right);
+@@ -1633,7 +1734,11 @@ const relativePositionToAbsolutePosition = (y, documentType, relPos, mapping) =>
+           if (contentType instanceof Y.XmlText) {
+             pos += contentType._length;
+           } else {
+-            pos += /** @type {any} */ (mapping.get(contentType)).nodeSize;
++            const mapped = mapping.get(contentType);
++            if (mapped == null) {
++              return null
++            }
++            pos += mapped.nodeSize;
+           }
+         }
+         n = n.right;
