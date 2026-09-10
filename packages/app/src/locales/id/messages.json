@@ -4244,6 +4244,9 @@
       "Permintaan untuk mengaktifkan alat Open Knowledge kedaluwarsa. Utas ini berjalan tanpa alat itu."
     ],
     "mI1KPS": ["Tidak ada plugin lint yang aktif, jadi hanya tautan yang diperiksa."],
+    "mJTr6D": [
+      "Sinkronisasi Git dijeda karena ada operasi Git atau konflik yang belum terselesaikan yang perlu ditangani. Perubahan Anda tetap disimpan secara lokal. Selesaikan operasi atau konflik tersebut di terminal, lalu coba sinkronkan lagi."
+    ],
     "mPoOmg": ["instal dulu sebuah skill di sini"],
     "mPy9lS": [
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."

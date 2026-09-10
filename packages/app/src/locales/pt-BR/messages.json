@@ -4797,6 +4797,9 @@
       "O pedido para ativar as ferramentas do Open Knowledge expirou. Esta conversa funciona sem elas."
     ],
     "mI1KPS": ["Nenhum plugin de análise está ativado, então só os links são verificados."],
+    "mJTr6D": [
+      "A sincronização do Git está pausada porque uma operação do Git ou conflitos não resolvidos precisam de atenção. Suas alterações continuam sendo salvas localmente. Conclua a operação ou resolva os conflitos no terminal e tente sincronizar novamente."
+    ],
     "mPoOmg": ["instale primeiro uma habilidade aqui"],
     "mPy9lS": [
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."

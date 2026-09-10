@@ -4933,6 +4933,9 @@
       "La demande d'activation des outils Open Knowledge a expiré. Ce fil fonctionne sans eux."
     ],
     "mI1KPS": ["Aucun plugin de vérification n'est activé, donc seuls les liens sont contrôlés."],
+    "mJTr6D": [
+      "La synchronisation Git est en pause, car une opération Git ou des conflits non résolus nécessitent votre attention. Vos modifications continuent d’être enregistrées localement. Terminez l’opération ou résolvez les conflits dans votre terminal, puis réessayez la synchronisation."
+    ],
     "mPoOmg": ["installez d'abord une compétence ici"],
     "mPy9lS": [
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."

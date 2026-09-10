@@ -6546,6 +6546,10 @@ msgid "Git sync"
 msgstr "Sincronização com git"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
+msgstr "A sincronização do Git está pausada porque uma operação do Git ou conflitos não resolvidos precisam de atenção. Suas alterações continuam sendo salvas localmente. Conclua a operação ou resolva os conflitos no terminal e tente sincronizar novamente."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "Falha na autenticação com o GitHub. Tente entrar de novo."
 
