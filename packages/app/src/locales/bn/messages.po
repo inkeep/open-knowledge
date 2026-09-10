@@ -6546,6 +6546,10 @@ msgid "Git sync"
 msgstr "Git সিঙ্ক"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
+msgstr "Git-এর একটি কাজ বা অমীমাংসিত দ্বন্দ্বের সমাধান প্রয়োজন হওয়ায় Git সিঙ্ক বিরতি দেওয়া হয়েছে। আপনার সম্পাদনাগুলো এখনও স্থানীয়ভাবে সংরক্ষিত হচ্ছে। টার্মিনালে কাজটি শেষ করুন বা দ্বন্দ্বগুলো মেটান, তারপর আবার সিঙ্ক করার চেষ্টা করুন।"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub প্রমাণীকরণ ব্যর্থ। আবার সাইন ইন করে দেখুন।"
 

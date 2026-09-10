@@ -492,6 +492,54 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
   });
 
+  test.each(['full', 'follow', 'off'] as const)(
+    '%s displays an actionable Git pause and removes it after recovery',
+    async (mode) => {
+      status = {
+        ...baseStatus,
+        state: mode === 'off' ? 'disabled' : 'idle',
+        syncMode: mode,
+        pausedReason: 'git-operation-in-progress',
+      };
+      projectLocalConfig = { autoSync: { mode } };
+      await renderBadge();
+      expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
+      await openPopover();
+      const copy =
+        'Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync.';
+      expect(screen.getByText(copy)).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toBe('');
+      expect(screen.getByTestId('sync-popover-pull').hasAttribute('disabled')).toBe(false);
+      act(() => {
+        status &&= { ...status, pausedReason: undefined };
+        forceStatusRender?.();
+      });
+      expect(screen.queryByText(copy)).toBeNull();
+      const label = mode === 'off' ? 'Manual' : mode === 'follow' ? 'Up to date' : 'Synced';
+      expect(screen.getByRole('button', { name: `Sync status: ${label}` })).toBeTruthy();
+    },
+  );
+
+  test('a Git refusal takes display priority over an earlier offline state', async () => {
+    status = { ...baseStatus, state: 'offline', pausedReason: 'git-operation-in-progress' };
+    await renderBadge();
+    expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
+    act(() => {
+      status &&= { ...status, pausedReason: undefined };
+      forceStatusRender?.();
+    });
+    expect(screen.getByRole('button', { name: 'Sync status: Offline' })).toBeTruthy();
+  });
+
+  test.each([
+    ['conflict', 'Conflict', 2],
+    ['auth-error', 'Reconnect required', 0],
+  ] as const)('a Git pause preserves %s visual priority', async (state, label, conflictCount) => {
+    status = { ...baseStatus, state, conflictCount, pausedReason: 'git-operation-in-progress' };
+    await renderBadge();
+    expect(screen.getByRole('button', { name: `Sync status: ${label}` })).toBeTruthy();
+  });
+
   test('a manual (mode off) project stays visible — Manual is a resting mode, not an opt-out', async () => {
     status = {
       ...baseStatus,

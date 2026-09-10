@@ -6550,6 +6550,10 @@ msgid "Git sync"
 msgstr "Git 동기화"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
+msgstr "Git 작업이나 해결되지 않은 충돌을 처리해야 하므로 Git 동기화가 일시 중지되었습니다. 편집 내용은 계속 로컬에 저장됩니다. 터미널에서 작업을 완료하거나 충돌을 해결한 후 동기화를 다시 시도하세요."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub 인증에 실패했습니다. 다시 로그인하세요."
 

@@ -15,6 +15,7 @@ import { promisify } from 'node:util';
 import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ConflictStore } from './conflict-storage.ts';
 import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
 import type { GitHandle } from './git-handle.ts';
@@ -1990,8 +1991,7 @@ describe('SyncEngine unborn-HEAD guard', () => {
 
 describe('SyncEngine one-shot push guards', () => {
   type PushInternals = {
-    pushInFlight: boolean;
-    pullInFlight: boolean;
+    cycleInFlight: 'pull' | 'push' | null;
     conflictCount: number;
     state: string;
     hasRemote: boolean;
@@ -2019,7 +2019,7 @@ describe('SyncEngine one-shot push guards', () => {
   test('refuses while a pull is in flight rather than racing it', async () => {
     const { engine, internals, cycles } = makeOneShotEngine();
     try {
-      internals.pullInFlight = true;
+      internals.cycleInFlight = 'pull';
       await engine.pushOnce();
       expect(cycles).toEqual([]);
     } finally {
@@ -2323,9 +2323,9 @@ describe('SyncEngine contention warn threshold', () => {
   });
 });
 
-describe('SyncEngine runPushCycle pullInFlight guard', () => {
+describe('SyncEngine runPushCycle ownership guard', () => {
   type GuardInternals = {
-    pullInFlight: boolean;
+    cycleInFlight: 'pull' | 'push' | null;
     pushTimer: NodeJS.Timeout | null;
     state: SyncState;
     doPushCycle(retriesLeft?: number): Promise<void>;
@@ -2343,7 +2343,7 @@ describe('SyncEngine runPushCycle pullInFlight guard', () => {
     });
     const internals = engine as unknown as GuardInternals;
     internals.state = 'idle';
-    internals.pullInFlight = true;
+    internals.cycleInFlight = 'pull';
     const cycles: number[] = [];
     internals.doPushCycle = async (retriesLeft = 0) => {
       cycles.push(retriesLeft);
@@ -4378,8 +4378,7 @@ interface InternalState {
   pullError?: string;
   pushErrorCode?: string;
   pullErrorCode?: string;
-  pullInFlight: boolean;
-  pushInFlight: boolean;
+  cycleInFlight: 'pull' | 'push' | null;
   gitHandle: () => unknown;
   handleError: (classified: ReturnType<typeof classifyGitError>, op: 'push' | 'pull') => void;
 }
@@ -4457,6 +4456,7 @@ describe('SyncEngine auth-error recovery', () => {
   });
 
   test('a manual trigger clears the identity-ambiguous not-found park', async () => {
+    await simpleGit(projectDir).init(['--initial-branch=main']);
     const engine = makeEngine({ syncEnabled: true });
     const internal = engine as unknown as InternalState;
     internal.state = 'auth-error';
@@ -4488,6 +4488,7 @@ describe('SyncEngine auth-error recovery', () => {
   });
 
   test('a pull-side not-found park clears on manual trigger too', async () => {
+    await simpleGit(projectDir).init(['--initial-branch=main']);
     const engine = makeEngine({ syncEnabled: true });
     const internal = engine as unknown as InternalState;
     internal.state = 'auth-error';
@@ -6954,6 +6955,410 @@ describe('SyncEngine split-leg backoff, end to end', () => {
       expect(internals.consecutiveContentions).toBe(1);
     } finally {
       await engine.stop();
+    }
+  });
+});
+
+describe('SyncEngine exclusive merge ownership', () => {
+  interface CycleInternals {
+    state: SyncState;
+    hasRemote: boolean;
+    pullTimer: NodeJS.Timeout | null;
+    pushTimer: NodeJS.Timeout | null;
+    conflictCount: number;
+    pausedReason?: string;
+    pullError?: string;
+    pushError?: string;
+    gitHandle(): GitHandle;
+    commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null>;
+    doPushCycle(retriesLeft?: number): Promise<void>;
+    doPullCycle(invocation: 'explicit' | 'sync'): Promise<'up-to-date'>;
+    runPullCycle(): Promise<void>;
+    refreshAuthTier(): Promise<void>;
+    handleError(classified: ReturnType<typeof classifyGitError>, op: 'push' | 'pull'): void;
+  }
+
+  async function setup(mode: SyncMode = 'full', signal = vi.fn()) {
+    const bareDir = join(tmpDir, 'exclusive.git');
+    mkdirSync(bareDir);
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw(['symbolic-ref', 'HEAD', 'refs/heads/main']);
+    const git = await initGitWithOrigin(bareDir);
+    writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
+    await git.push(['--set-upstream', 'origin', 'main']);
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode,
+      cc1Broadcaster: { signal },
+    });
+    const internals = engine as unknown as CycleInternals;
+    internals.hasRemote = true;
+    internals.state = mode === 'off' ? 'disabled' : 'idle';
+    return { engine, internals, git, bareDir };
+  }
+
+  async function diverge(bareDir: string) {
+    const sisterDir = join(tmpDir, 'exclusive-sister');
+    await simpleGit(tmpDir).clone(bareDir, sisterDir);
+    const sister = simpleGit(sisterDir);
+    await sister.raw(['config', 'user.name', 'Sister']);
+    await sister.raw(['config', 'user.email', 'sister@test.com']);
+    writeFileSync(join(sisterDir, 'README.md'), 'theirs\n');
+    await sister.add('README.md');
+    await sister.commit('remote edit');
+    await sister.push('origin', 'main');
+    writeFileSync(join(projectDir, 'README.md'), 'ours\n');
+  }
+
+  test.each(['mine', 'theirs'] as const)(
+    'a scheduled pull cannot enter a rejected push retry and %s resolves actual side bytes',
+    async (strategy) => {
+      const { engine, internals, git, bareDir } = await setup();
+      await diverge(bareDir);
+      const enteredRetry = Promise.withResolvers<void>();
+      const releaseRetry = Promise.withResolvers<void>();
+      const commitDirty = internals.commitDirtyContentFilesToHead.bind(engine);
+      let first = true;
+      internals.commitDirtyContentFilesToHead = async (handle) => {
+        if (first) {
+          first = false;
+          enteredRetry.resolve();
+          await releaseRetry.promise;
+        }
+        return commitDirty(handle);
+      };
+      const push = engine.pushOnce();
+      try {
+        await enteredRetry.promise;
+        const headBeforeMerge = await git.revparse('HEAD');
+        await internals.runPullCycle();
+        releaseRetry.resolve();
+        await push;
+
+        expect(await git.revparse('HEAD')).toBe(headBeforeMerge);
+        expect(await git.raw(['show', 'HEAD:README.md'])).toBe('ours\n');
+        expect(await git.raw(['show', ':2:README.md'])).toBe('ours\n');
+        expect(await git.raw(['show', ':3:README.md'])).toBe('theirs\n');
+        expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
+        expect(engine.getStatus().state).toBe('conflict');
+
+        await new ConflictStore(projectDir).resolveConflict('README.md', strategy);
+        expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe(
+          strategy === 'mine' ? 'ours\n' : 'theirs\n',
+        );
+        expect(await git.raw(['diff', '--name-only', '--diff-filter=U'])).toBe('');
+        expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+      } finally {
+        releaseRetry.resolve();
+        await push;
+        await engine.destroy();
+      }
+    },
+  );
+
+  test('a scheduled pull defers, preserves its timer, and resumes after a push', async () => {
+    const { engine, internals } = await setup();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    internals.doPushCycle = async () => {
+      entered.resolve();
+      await release.promise;
+    };
+    const pull = vi.fn(async () => 'up-to-date' as const);
+    internals.doPullCycle = pull;
+    const push = engine.pushOnce();
+    try {
+      await entered.promise;
+      await internals.runPullCycle();
+      expect(pull).not.toHaveBeenCalled();
+      expect(internals.pullTimer).not.toBeNull();
+      const deferredTimer = internals.pullTimer;
+      await internals.runPullCycle();
+      expect(internals.pullTimer).toBe(deferredTimer);
+      release.resolve();
+      await push;
+      await internals.runPullCycle();
+      expect(pull).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await push;
+      await engine.destroy();
+    }
+  });
+
+  test('follow-mode auth refresh holds ownership before its await', async () => {
+    const { engine, internals } = await setup('follow');
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    internals.refreshAuthTier = async () => {
+      entered.resolve();
+      await release.promise;
+    };
+    const pull = vi.fn(async () => 'up-to-date' as const);
+    const push = vi.fn(async () => {});
+    internals.doPullCycle = pull;
+    internals.doPushCycle = push;
+    const running = internals.runPullCycle();
+    try {
+      await entered.promise;
+      await engine.pushOnce();
+      expect(await engine.pullOnce()).toBe('refused');
+      expect(push).not.toHaveBeenCalled();
+      expect(pull).not.toHaveBeenCalled();
+      release.resolve();
+      await running;
+      expect(pull).toHaveBeenCalledTimes(1);
+      await engine.pushOnce();
+      expect(push).toHaveBeenCalledTimes(1);
+    } finally {
+      release.resolve();
+      await running;
+      await engine.destroy();
+    }
+  });
+
+  test.each(['autosave', 'interim'] as const)(
+    '%s refuses an unmerged real index even without MERGE_HEAD',
+    async (writer) => {
+      const { engine, internals, git, bareDir } = await setup();
+      await diverge(bareDir);
+      await git.add('README.md');
+      await git.commit('local edit');
+      await git.fetch('origin');
+      await expect(git.merge(['origin/main'])).rejects.toThrow();
+      rmSync(join(projectDir, '.git', 'MERGE_HEAD'));
+      const head = await git.revparse('HEAD');
+      const stages = await git.raw(['ls-files', '--unmerged']);
+      const working = readFileSync(join(projectDir, 'README.md'), 'utf8');
+      try {
+        if (writer === 'autosave') {
+          await internals.doPushCycle();
+        } else {
+          await expect(
+            internals.commitDirtyContentFilesToHead(internals.gitHandle()),
+          ).rejects.toThrow('Git operation');
+        }
+        expect(await git.revparse('HEAD')).toBe(head);
+        expect(await git.raw(['ls-files', '--unmerged'])).toBe(stages);
+        expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe(working);
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
+
+  test.each(['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'])(
+    'autosave and interim commits refuse %s with a resolved index',
+    async (marker) => {
+      const { engine, internals, git } = await setup();
+      const head = await git.revparse('HEAD');
+      const markerPath = join(projectDir, '.git', marker);
+      if (marker.startsWith('rebase-')) mkdirSync(markerPath);
+      else writeFileSync(markerPath, head);
+      writeFileSync(join(projectDir, 'README.md'), 'resolved but not committed\n');
+      const stages = await git.raw(['ls-files', '--stage']);
+      try {
+        await internals.doPushCycle();
+        await expect(
+          internals.commitDirtyContentFilesToHead(internals.gitHandle()),
+        ).rejects.toThrow('Git operation');
+        expect(await git.revparse('HEAD')).toBe(head);
+        expect(await git.raw(['ls-files', '--stage'])).toBe(stages);
+        expect(existsSync(markerPath)).toBe(true);
+        expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe(
+          'resolved but not committed\n',
+        );
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
+
+  test('an unreadable real index refuses autosave without modifying the repository', async () => {
+    const { engine, internals, git } = await setup();
+    const head = await git.revparse('HEAD');
+    const stages = await git.raw(['ls-files', '--stage']);
+    writeFileSync(join(projectDir, 'README.md'), 'unsaved content\n');
+    const handle = internals.gitHandle();
+    const raw = vi.spyOn(handle.git, 'raw').mockRejectedValue(new Error('index unreadable'));
+    const gitHandle = vi.spyOn(internals, 'gitHandle').mockReturnValue(handle);
+    try {
+      await internals.doPushCycle();
+      expect(engine.getStatus().pushError).toContain('index unreadable');
+      expect(await git.revparse('HEAD')).toBe(head);
+      expect(await git.raw(['ls-files', '--stage'])).toBe(stages);
+      expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe('unsaved content\n');
+    } finally {
+      raw.mockRestore();
+      gitHandle.mockRestore();
+      await engine.destroy();
+    }
+  });
+
+  test('autosave resumes after an operation ends and preserves authored marker-like text', async () => {
+    const { engine, git } = await setup();
+    const content = '<<<<<<< example\nours\n=======\ntheirs\n>>>>>>> documentation\n';
+    const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+    writeFileSync(markerPath, await git.revparse('HEAD'));
+    writeFileSync(join(projectDir, 'README.md'), content);
+    try {
+      await engine.pushOnce();
+      expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+      expect(engine.getStatus().pushError).toBeUndefined();
+      rmSync(markerPath);
+      await engine.pushOnce();
+      expect(engine.getStatus().pushError).toBeUndefined();
+      expect(await git.raw(['show', 'HEAD:README.md'])).toBe(content);
+      expect(await git.revparse('HEAD')).toBe(await git.revparse('origin/main'));
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('an idle refusal immediately broadcasts a retryable pause without replacing other errors', async () => {
+    const signal = vi.fn();
+    const { engine, internals, git } = await setup('full', signal);
+    internals.pullError = 'unrelated pull failure';
+    const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+    writeFileSync(markerPath, await git.revparse('HEAD'));
+    try {
+      await engine.pushOnce();
+      expect(signal).toHaveBeenCalledWith('sync-status');
+      expect(engine.getStatus()).toMatchObject({
+        state: 'idle',
+        pausedReason: 'git-operation-in-progress',
+        pullError: 'unrelated pull failure',
+      });
+      expect(engine.getStatus().pushError).toBeUndefined();
+      expect(engine.getStatus().pushErrorCode).toBeUndefined();
+      expect(internals.pushTimer).not.toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test.each(['full', 'follow', 'off'] as const)(
+    '%s exposes an operation refusal and a no-op push clears it after external recovery',
+    async (mode) => {
+      const { engine, git } = await setup(mode);
+      const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+      const head = await git.revparse('HEAD');
+      writeFileSync(markerPath, head);
+      try {
+        await engine.pushOnce();
+        expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+        expect(engine.getStatus().pushError).toBeUndefined();
+        await engine.pushOnce();
+        expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+        rmSync(markerPath);
+        await engine.pushOnce();
+        expect(engine.getStatus().pausedReason).toBeUndefined();
+        expect(engine.getStatus().pushError).toBeUndefined();
+        expect(engine.getStatus().state).toBe(mode === 'off' ? 'disabled' : 'idle');
+        expect(await git.revparse('HEAD')).toBe(head);
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
+
+  test.each(['full', 'follow', 'off'] as const)(
+    '%s keeps an up-to-date pull paused until Git is ready, then clears the pause',
+    async (mode) => {
+      const { engine, internals, git } = await setup(mode);
+      const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+      writeFileSync(markerPath, await git.revparse('HEAD'));
+      internals.pausedReason = 'git-operation-in-progress';
+      internals.pushError = 'unrelated push failure';
+      try {
+        expect(await engine.pullOnce()).toBe('refused');
+        expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+        expect(engine.getStatus().pullError).toBeUndefined();
+        rmSync(markerPath);
+        expect(await engine.pullOnce()).toBe('up-to-date');
+        expect(engine.getStatus().pausedReason).toBeUndefined();
+        expect(engine.getStatus().pushError).toBe('unrelated push failure');
+        expect(engine.getStatus().state).toBe(mode === 'off' ? 'disabled' : 'idle');
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
+
+  test.each(['full', 'off'] as const)(
+    '%s preserves a newly discovered pull refusal through one-shot settlement',
+    async (mode) => {
+      const { engine, git, bareDir } = await setup(mode);
+      await diverge(bareDir);
+      const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+      const head = await git.revparse('HEAD');
+      writeFileSync(markerPath, head);
+      try {
+        expect(await engine.pullOnce('sync')).toBe('refused');
+        expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+        expect(engine.getStatus().pullError).toBeUndefined();
+        expect(engine.getStatus().pullErrorCode).toBeUndefined();
+        expect(engine.getStatus().state).toBe(mode === 'off' ? 'disabled' : 'idle');
+        expect(await git.revparse('HEAD')).toBe(head);
+        expect(existsSync(markerPath)).toBe(true);
+        expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe('ours\n');
+      } finally {
+        await engine.destroy();
+      }
+    },
+  );
+
+  test('a successful safety probe preserves an unrelated pause reason', async () => {
+    const { engine, internals } = await setup();
+    internals.pausedReason = 'diverged-local-commits';
+    try {
+      await engine.pushOnce();
+      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('an operation refusal preserves tracked-conflict guidance', async () => {
+    const { engine, internals, git } = await setup();
+    internals.state = 'conflict';
+    internals.conflictCount = 1;
+    internals.pullError = 'existing conflict guidance';
+    internals.pausedReason = 'non-content-merge-failure';
+    writeFileSync(join(projectDir, '.git', 'CHERRY_PICK_HEAD'), await git.revparse('HEAD'));
+    try {
+      await internals.doPushCycle();
+      expect(engine.getStatus()).toMatchObject({
+        state: 'conflict',
+        conflictCount: 1,
+        pausedReason: 'non-content-merge-failure',
+        pullError: 'existing conflict guidance',
+      });
+      expect(engine.getStatus().pushError).toBeUndefined();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a dirty-tree error preserves the conflict state and does not schedule autosave', async () => {
+    const { engine, internals } = await setup();
+    internals.state = 'conflict';
+    internals.conflictCount = 1;
+    try {
+      internals.handleError(
+        classifyGitError(
+          new Error('Your local changes to the following files would be overwritten by merge'),
+        ),
+        'pull',
+      );
+      expect(engine.getStatus().state).toBe('conflict');
+      expect(internals.conflictCount).toBe(1);
+      expect(internals.pushTimer).toBeNull();
+    } finally {
+      await engine.destroy();
     }
   });
 });

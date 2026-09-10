@@ -4890,6 +4890,9 @@
     "mI1KPS": [
       "No hay ningún complemento de análisis activado, así que solo se comprueban los enlaces."
     ],
+    "mJTr6D": [
+      "La sincronización de Git está en pausa porque una operación de Git o conflictos sin resolver requieren atención. Tus cambios se siguen guardando localmente. Finaliza la operación o resuelve los conflictos en tu terminal y vuelve a intentar la sincronización."
+    ],
     "mPoOmg": ["instala primero una habilidad aquí"],
     "mPy9lS": [
       "Organiza mis especificaciones existentes en un índice enlazado y agrupado por área, y señala las que se hayan desincronizado del código actual."

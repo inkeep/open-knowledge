@@ -86,6 +86,13 @@ const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
 
 const execFileAsync = promisify(execFile);
 
+class GitOperationInProgressError extends Error {
+  constructor() {
+    super('Sync paused while a Git operation is in progress or the index has unresolved conflicts');
+    this.name = 'GitOperationInProgressError';
+  }
+}
+
 class ShareableOkEnumerationError extends Error {
   constructor(relDir: string, cause: unknown) {
     super(`Shareable .ok subtree "${relDir}" could not be fully enumerated; sync staging aborted`, {
@@ -230,9 +237,10 @@ type PullInvocation = 'explicit' | 'sync';
 
 const BLOCKING_PATHS_CAP = 50;
 
-const FORWARD_ONLY_PAUSES: ReadonlySet<string | undefined> = new Set([
+const ONE_SHOT_PAUSES: ReadonlySet<string | undefined> = new Set([
   'diverged-local-commits',
   'external-changes-pending',
+  'git-operation-in-progress',
 ]);
 
 const COMMIT_BLOCKING_MESSAGE = 'Commit local changes before syncing';
@@ -393,8 +401,7 @@ export class SyncEngine {
   private blockingPaths: string[] = [];
   private currentBranch = 'main';
 
-  private pullInFlight = false;
-  private pushInFlight = false;
+  private cycleInFlight: 'pull' | 'push' | null = null;
 
   private hasRemote = false;
 
@@ -737,10 +744,10 @@ export class SyncEngine {
   private async drainInFlightCycles(): Promise<void> {
     const DRAIN_TIMEOUT_MS = 30_000;
     const drainStartMs = Date.now();
-    while (this.pullInFlight || this.pushInFlight) {
+    while (this.cycleInFlight !== null) {
       if (Date.now() - drainStartMs > DRAIN_TIMEOUT_MS) {
         log.warn(
-          { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
+          { cycleInFlight: this.cycleInFlight },
           '[sync] drain: timed out waiting for in-flight cycle',
         );
         break;
@@ -915,9 +922,9 @@ export class SyncEngine {
   }
 
   private async runOneShotPush(): Promise<void> {
-    if (this.pushInFlight || this.pullInFlight) {
+    if (this.cycleInFlight !== null) {
       log.info(
-        { pushInFlight: this.pushInFlight, pullInFlight: this.pullInFlight },
+        { cycleInFlight: this.cycleInFlight },
         '[sync] one-shot push refused — a cycle is already in flight',
       );
       return;
@@ -943,11 +950,11 @@ export class SyncEngine {
     }
 
     const restingState = this.state;
-    this.pushInFlight = true;
+    this.cycleInFlight = 'push';
     try {
       await this.doPushCycle(1);
     } finally {
-      this.pushInFlight = false;
+      this.cycleInFlight = null;
       if (this.pushCycleLanded) this.markRun();
       const settled = this.currentState();
       if (settled !== 'conflict' && settled !== 'auth-error') {
@@ -959,7 +966,7 @@ export class SyncEngine {
 
   async fetchOnly(): Promise<boolean> {
     if (!this.hasRemote || isUnbornHead(this.projectDir)) return false;
-    if (this.pullInFlight || this.pushInFlight || this.fetchOnlyInFlight) return false;
+    if (this.cycleInFlight !== null || this.fetchOnlyInFlight) return false;
 
     this.fetchOnlyInFlight = true;
     const handle = this.gitHandle();
@@ -996,9 +1003,9 @@ export class SyncEngine {
   }
 
   private async runOneShotPull(invocation: PullInvocation): Promise<PullOutcome> {
-    if (this.pullInFlight || this.pushInFlight) {
+    if (this.cycleInFlight !== null) {
       log.info(
-        { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
+        { cycleInFlight: this.cycleInFlight },
         '[sync] one-shot pull refused — a cycle is already in flight',
       );
       return this.recordPullOutcome('refused');
@@ -1021,14 +1028,14 @@ export class SyncEngine {
     const restingMode = this.mode;
     const restingState = this.state;
     const restingPausedReason = this.pausedReason;
-    this.pullInFlight = true;
+    this.cycleInFlight = 'pull';
     try {
       return this.recordPullOutcome(await this.doPullCycle(invocation));
     } finally {
-      this.pullInFlight = false;
+      this.cycleInFlight = null;
       if (restingMode === 'off') {
-        if (!FORWARD_ONLY_PAUSES.has(this.pausedReason)) {
-          if (!FORWARD_ONLY_PAUSES.has(restingPausedReason)) {
+        if (!ONE_SHOT_PAUSES.has(this.pausedReason)) {
+          if (!ONE_SHOT_PAUSES.has(restingPausedReason)) {
             this.pausedReason = restingPausedReason;
           }
         }
@@ -1479,7 +1486,10 @@ export class SyncEngine {
   }
 
   private async runPullCycle(): Promise<void> {
-    if (this.pullInFlight) return;
+    if (this.cycleInFlight !== null) {
+      if (this.cycleInFlight === 'push' && this.pullTimer === null) this.schedulePull();
+      return;
+    }
     if (this.state === 'dormant' || this.state === 'disabled' || this.state === 'auth-error')
       return;
     if (this.state === 'conflict') {
@@ -1491,18 +1501,29 @@ export class SyncEngine {
       return;
     }
 
-    if (this.mode === 'follow') await this.refreshAuthTier();
-
-    this.pullInFlight = true;
+    this.cycleInFlight = 'pull';
     try {
+      if (this.mode === 'follow') await this.refreshAuthTier();
       this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
-      this.pullInFlight = false;
+      this.cycleInFlight = null;
       this.schedulePull();
     }
   }
 
   private async doPullCycle(invocation: PullInvocation): Promise<PullOutcome> {
+    if (this.pausedReason === 'git-operation-in-progress') {
+      try {
+        await this.assertNoGitOperationInProgress();
+      } catch (e) {
+        if (e instanceof GitOperationInProgressError) {
+          this.handleGitOperationRefusal(e, 'pull');
+          return 'refused';
+        }
+        this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
+        return 'error';
+      }
+    }
     const handle = this.gitHandle();
 
     let branch: string;
@@ -1578,6 +1599,10 @@ export class SyncEngine {
         this.scheduleSaveState();
         return 'succeeded';
       } catch (e) {
+        if (e instanceof GitOperationInProgressError) {
+          this.handleGitOperationRefusal(e, 'pull');
+          return 'refused';
+        }
         const classified = classifyGitError(e instanceof Error ? e : new Error(String(e)));
         if (classified.class === 'semantic' && classified.subclass === 'merge-conflict') {
           await this.handleMergeConflict();
@@ -2024,7 +2049,6 @@ export class SyncEngine {
   }
 
   private async runPushCycle(): Promise<void> {
-    if (this.pushInFlight) return;
     if (this.mode !== 'full') return;
     if (this.state === 'dormant' || this.state === 'disabled') return;
     if (this.state === 'conflict' || this.state === 'auth-error') return;
@@ -2036,17 +2060,16 @@ export class SyncEngine {
       this.schedulePush();
       return;
     }
-    if (this.pullInFlight) {
-      log.info({ pullInFlight: true }, '[sync] push cycle deferred — a pull cycle holds the tree');
-      if (this.pushTimer === null) this.schedulePush();
+    if (this.cycleInFlight !== null) {
+      if (this.cycleInFlight === 'pull' && this.pushTimer === null) this.schedulePush();
       return;
     }
 
-    this.pushInFlight = true;
+    this.cycleInFlight = 'push';
     try {
       await this.doPushCycle(1);
     } finally {
-      this.pushInFlight = false;
+      this.cycleInFlight = null;
       if (this.pushCycleLanded) this.markRun();
       this.schedulePush();
     }
@@ -2057,11 +2080,11 @@ export class SyncEngine {
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
 
-    this.transitionTo('pushing');
-
     try {
       const contentFiles = this.gatherContentFilesSync();
       await withParentLock(async () => {
+        await this.assertNoGitOperationInProgress();
+        this.transitionTo('pushing');
         const handle = this.gitHandle(tmpIndexPath);
 
         if (isUnbornHead(this.projectDir)) {
@@ -2238,6 +2261,10 @@ export class SyncEngine {
         }
       }
     } catch (e) {
+      if (e instanceof GitOperationInProgressError) {
+        this.handleGitOperationRefusal(e, 'push');
+        return;
+      }
       const err = e instanceof Error ? e : new Error(String(e));
       if (err instanceof ShareableOkEnumerationError) {
         log.warn({ err }, '[sync] push cycle: staging error detail');
@@ -2275,6 +2302,10 @@ export class SyncEngine {
             if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
             await this.persistReconciledMcpEntries(mergePrep.reconciled);
           } catch (mergeErr) {
+            if (mergeErr instanceof GitOperationInProgressError) {
+              this.handleGitOperationRefusal(mergeErr, 'push');
+              return;
+            }
             const mc = classifyGitError(
               mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
             );
@@ -2314,6 +2345,7 @@ export class SyncEngine {
   }
 
   private async commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null> {
+    await this.assertNoGitOperationInProgress();
     const status = await handle.git.status();
     if (status.files.length === 0) return null;
 
@@ -2571,6 +2603,39 @@ export class SyncEngine {
       log.warn({ err }, '[sync] stash pop failed — stash remains on stack');
       return false;
     }
+  }
+
+  private async assertNoGitOperationInProgress(): Promise<void> {
+    if (this.hasGitOperationInProgress()) throw new GitOperationInProgressError();
+    const unmerged = await listNames(this.gitHandle().git, [
+      'diff',
+      '--name-only',
+      '--diff-filter=U',
+    ]);
+    if (unmerged.length > 0 || this.hasGitOperationInProgress()) {
+      throw new GitOperationInProgressError();
+    }
+    if (this.pausedReason === 'git-operation-in-progress') {
+      this.pausedReason = undefined;
+      this.cc1Broadcaster?.signal('sync-status');
+      this.scheduleSaveState();
+    }
+  }
+
+  private handleGitOperationRefusal(error: GitOperationInProgressError, op: 'push' | 'pull'): void {
+    if (this.state === 'conflict' || this.conflictCount > 0) {
+      this.transitionTo('conflict');
+    } else {
+      this.pausedReason = 'git-operation-in-progress';
+      if (op === 'push') this.clearPushError();
+      else this.clearPullError();
+      if (this.state === 'pushing' || this.state === 'pulling' || this.state === 'fetching') {
+        this.transitionTo('idle');
+      }
+    }
+    log.warn({ err: error, op }, '[sync] cycle refused because a Git operation holds the tree');
+    this.cc1Broadcaster?.signal('sync-status');
+    this.scheduleSaveState();
   }
 
   private hasGitOperationInProgress(): boolean {
@@ -3101,6 +3166,10 @@ export class SyncEngine {
       this.pausedReason = 'protected-branch';
       void this.onAutoDisable?.('protected-branch');
     } else if (classified.class === 'local' && classified.subclass === 'dirty-tree') {
+      if (this.state === 'conflict' || this.conflictCount > 0) {
+        this.transitionTo('conflict');
+        return;
+      }
       this.bumpFailureCount(op);
       this.transitionTo('idle');
       this.pausedReason = 'dirty-tree';

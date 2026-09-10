@@ -6550,6 +6550,10 @@ msgid "Git sync"
 msgstr "Git مطابقت پذیری"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
+msgstr "Git کی کسی کارروائی یا حل طلب تضادات پر توجہ درکار ہے، اس لیے Git کی مطابقت پذیری رکی ہوئی ہے۔ آپ کی تبدیلیاں اب بھی مقامی طور پر محفوظ ہوتی ہیں۔ اپنے ٹرمینل میں کارروائی مکمل کریں یا تضادات حل کریں، پھر مطابقت پذیری دوبارہ آزمائیں۔"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub کی توثیق ناکام رہی۔ دوبارہ سائن اِن کر کے دیکھیں۔"
 

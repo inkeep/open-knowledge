@@ -6550,6 +6550,10 @@ msgid "Git sync"
 msgstr "Git 同步"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync."
+msgstr "Git 同步已暂停，因为有 Git 操作或未解决的冲突需要处理。你的编辑仍会保存在本地。请在终端中完成该操作或解决冲突，然后重试同步。"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "GitHub authentication failed. Try signing in again."
 msgstr "GitHub 身份验证失败。请尝试重新登录。"
 
