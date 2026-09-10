@@ -1,12 +1,14 @@
 import { createServer } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { parseProblem, rawRequest } from '../composition-rig.test-helper.ts';
+import { buildIngressPolicy } from '../ingress-policy.ts';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
 import {
   type ApiRouteTable,
   createApiRequestPipeline,
   createApiRouteGroup,
 } from './api-pipeline.ts';
+import { createContentDispatch } from './content-dispatch.ts';
 import { createHttpApp, type NativeApiHandle } from './http-app.ts';
 
 const fakeLog = {
@@ -71,6 +73,7 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
   };
   const { requestListener } = createHttpApp({
     nativeApi,
+    contentDispatch: createContentDispatch({ ingressPolicy: buildIngressPolicy({}), log: fakeLog }),
     legacyDispatch: (req, res) => {
       legacyCalls.push(req.url ?? '');
       res.writeHead(299, { 'Content-Type': 'text/plain' });

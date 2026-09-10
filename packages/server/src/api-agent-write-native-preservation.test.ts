@@ -21,8 +21,6 @@ const TEST_PATHS = [
   '/api/test-rescan-files',
 ];
 const RESIDUAL = [
-  '/api/asset',
-  '/api/asset-text',
   '/api/skill/uninstall',
   '/api/agent-write',
   '/api/agent-write-batch',
@@ -56,7 +54,7 @@ afterAll(async () => {
 
 test('native ownership is exclusive and the remaining legacy registry matches its explicit owners', () => {
   for (const server of [enabled, disabled]) {
-    for (const path of [...READS, ...WRITES])
+    for (const path of [...READS, ...WRITES, '/api/asset', '/api/asset-text'])
       expect(server.serverInstance.nativeApi.paths.filter((entry) => entry === path)).toHaveLength(
         1,
       );
@@ -76,7 +74,7 @@ test('native ownership is exclusive and the remaining legacy registry matches it
 });
 
 test('ingress rejects every migrated route before method or malformed-body admission', async () => {
-  for (const path of [...READS, ...WRITES, ...TEST_PATHS]) {
+  for (const path of [...READS, ...WRITES, ...TEST_PATHS, '/api/asset', '/api/asset-text']) {
     for (const [headers, type] of [
       [{ Host: 'evil.example' }, 'urn:ok:error:host-not-allowed'],
       [{ Origin: 'https://evil.example' }, 'urn:ok:error:invalid-origin'],
