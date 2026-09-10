@@ -46,7 +46,9 @@ async function postAgentWriteMd(
   if (!apiExt?.onRequest) throw new Error('API extension (priority 100) not found on server');
   const req = makeJsonPostReq('/api/agent-write-md', body);
   const { res, captured } = makeRes();
-  await apiExt.onRequest({ request: req, response: res });
+  if (!(await server.nativeApi.dispatch(req, res))) {
+    await apiExt.onRequest({ request: req, response: res });
+  }
   return captured.status;
 }
 

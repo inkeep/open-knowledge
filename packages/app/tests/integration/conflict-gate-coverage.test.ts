@@ -156,6 +156,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleSyncResolveBlocking',
   'handleShareTargetStatus',
   'handleTestReset',
+  'handleTestFlushGit',
   'handleTestRescanBacklinks',
   'handleTestRescanFiles',
   'handleSaveVersion',

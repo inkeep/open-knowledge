@@ -4,7 +4,11 @@ import { Node, Project, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SPINE_FILES = [join(here, 'api-extension.ts'), join(here, 'acp', 'thread-manager.ts')];
+const SPINE_FILES = [
+  join(here, 'api-extension.ts'),
+  join(here, 'http', 'agent-write-routes.ts'),
+  join(here, 'acp', 'thread-manager.ts'),
+];
 
 const FULL_BODY_OVERWRITE = new Set(['replace', 'patch']);
 
