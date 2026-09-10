@@ -257,7 +257,7 @@ describe('addOkPathsToGitExclude', () => {
     if (result.kind !== 'refused-tracked') throw new Error('unreachable');
     expect(result.tracked).toEqual(['.mcp.json']);
     expect(result.remediation).toContain('Cannot switch OpenKnowledge to local-only');
-    expect(result.remediation).toContain('git rm --cached .mcp.json');
+    expect(result.remediation).toContain('git rm --cached -- .mcp.json');
     expect(readExclude(dir)).toBe('');
   });
 
@@ -515,13 +515,30 @@ describe('probeTrackedOkPaths', () => {
   });
 });
 
+function quoteForPlatform(value: string): string {
+  return process.platform === 'win32' ? `"${value}"` : `'${value}'`;
+}
+
 describe('formatTrackedRemediation', () => {
   it('lists tracked paths and emits a `git rm --cached` for each — `-r` for dirs', () => {
     const out = formatTrackedRemediation(['.mcp.json', '.claude/skills/open-knowledge/']);
     expect(out).toContain('  .mcp.json');
     expect(out).toContain('  .claude/skills/open-knowledge/');
-    expect(out).toContain('git rm --cached .mcp.json');
-    expect(out).toContain('git rm --cached -r .claude/skills/open-knowledge');
+    expect(out).toContain('git rm --cached -- .mcp.json');
+    expect(out).toContain('git rm --cached -r -- .claude/skills/open-knowledge');
+  });
+
+  it('leaves a shell- and pathspec-safe name bare, so the line pastes into any shell', () => {
+    const out = formatTrackedRemediation(['.mcp.json']);
+    const commandLine = out.split('\n').find((l) => l.includes('git rm --cached'));
+    expect(commandLine?.trim()).toBe('git rm --cached -- .mcp.json');
+  });
+
+  it('converts and quotes a name git would read as a pattern', () => {
+    const out = formatTrackedRemediation(['star*.md', ':colon.md', ':!bang.md']);
+    for (const name of ['star*.md', ':colon.md', ':!bang.md']) {
+      expect(out).toContain(`git rm --cached -- ${quoteForPlatform(`:(literal)${name}`)}`);
+    }
   });
 
   it('warns about the teammate-side-effect of `git rm --cached`', () => {
@@ -566,7 +583,7 @@ describe('shared -> local-only transition with tracked shareable .ok artifacts',
     expect(result.kind).toBe('refused-tracked');
     if (result.kind !== 'refused-tracked') throw new Error('unreachable');
     expect(result.tracked).toEqual(['.ok/']);
-    expect(result.remediation).toContain('git rm --cached -r .ok');
+    expect(result.remediation).toContain('git rm --cached -r -- .ok');
     expect(result.remediation).toContain('your teammates will see a deletion on their next pull');
     expect(readExclude(dir)).toBe('');
     expect(readSharingMode(dir)).toBe('shared');

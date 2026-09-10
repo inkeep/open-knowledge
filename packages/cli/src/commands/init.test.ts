@@ -3087,7 +3087,7 @@ describe('runInit — sharing mode', () => {
     expect(result.sharing.kind).toBe('refused-tracked');
     if (result.sharing.kind !== 'refused-tracked') throw new Error('expected refused-tracked');
     expect(result.sharing.tracked).toContain('.mcp.json');
-    expect(result.sharing.remediation).toContain('git rm --cached .mcp.json');
+    expect(result.sharing.remediation).toContain('git rm --cached -- .mcp.json');
     expect(existsSync(join(testDir, '.mcp.json'))).toBe(true);
   });
 

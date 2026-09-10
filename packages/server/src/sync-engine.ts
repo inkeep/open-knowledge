@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import {
   OK_DIR,
   type PullOutcome,
+  pathspecArgs,
   type SyncMode,
   type SyncModeChangeSource,
   tryLineLevelCombine,
@@ -1098,18 +1099,22 @@ export class SyncEngine {
     return withParentLock(async () => {
       await this.applyCommitIdentity(handle);
       try {
-        await handle.git.raw(['add', '--', ...paths]);
+        await handle.git.raw(['add', ...pathspecArgs(paths)]);
         const staged = await listNames(handle.git, [
           'diff',
           '--cached',
           '--name-only',
-          '--',
-          ...paths,
+          ...pathspecArgs(paths),
         ]);
         if (staged.length === 0) return null;
-        await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, '--', ...paths]);
+        await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, ...pathspecArgs(paths)]);
       } catch (err) {
-        await handle.git.raw(['reset', '--', ...paths]).catch(() => {});
+        await handle.git.raw(['reset', ...pathspecArgs(paths)]).catch((resetErr: unknown) => {
+          log.warn(
+            { resetErr, files: paths.length },
+            '[sync] blocking-path index reset failed; paths may remain staged',
+          );
+        });
         log.error({ err, files: paths.length }, '[sync] commit of blocking paths failed');
         throw err;
       }
@@ -1653,8 +1658,7 @@ export class SyncEngine {
             '--source=HEAD',
             '--staged',
             '--worktree',
-            '--',
-            ...overlapping,
+            ...pathspecArgs(overlapping),
           ]);
         } catch (e) {
           log.warn(
@@ -2509,8 +2513,7 @@ export class SyncEngine {
           '--source=HEAD',
           '--staged',
           '--worktree',
-          '--',
-          ...reconciled.map((item) => item.path),
+          ...pathspecArgs(reconciled.map((item) => item.path)),
         ]);
       } catch (err) {
         log.warn({ err }, '[sync] could not isolate reconciled MCP paths from pre-merge stash');
@@ -2615,7 +2618,11 @@ export class SyncEngine {
           });
           if (commitRaw === null) throw new Error(`cannot edit tracked MCP path: ${item.path}`);
 
-          const treeLine = await isolated.git.raw(['ls-tree', headSha, '--', item.path]);
+          const treeLine = await isolated.git.raw([
+            'ls-tree',
+            headSha,
+            ...pathspecArgs([item.path]),
+          ]);
           const mode = treeLine.match(/^(100644|100755)\s/)?.[1];
           if (!mode) throw new Error(`unsafe tracked MCP mode: ${item.path}`);
 
@@ -2738,8 +2745,7 @@ export class SyncEngine {
           '--others',
           '--ignored',
           '--exclude-standard',
-          '--',
-          ...batch,
+          ...pathspecArgs(batch),
         ]);
         for (const p of ignored) refused.add(p);
       } catch (err) {
@@ -2758,12 +2764,12 @@ export class SyncEngine {
     const forced = probeOk ? stageable.filter((f) => hasOkSegment(f.projectRelPath)) : [];
     const plain = probeOk ? stageable.filter((f) => !hasOkSegment(f.projectRelPath)) : stageable;
     for (const [addArgs, group] of [
-      [['add', '--'], plain],
-      [['add', '-f', '--'], forced],
+      [['add'], plain],
+      [['add', '-f'], forced],
     ] as const) {
       for (let i = 0; i < group.length; i += BATCH) {
         const batch = group.slice(i, i + BATCH).map((f) => f.projectRelPath);
-        await handle.git.raw([...addArgs, ...batch]);
+        await handle.git.raw([...addArgs, ...pathspecArgs(batch)]);
       }
     }
     return stageable;
@@ -2873,7 +2879,7 @@ export class SyncEngine {
     const BATCH = 100;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
-      await handle.git.raw(['rm', '--cached', '--', ...batch]);
+      await handle.git.raw(['rm', '--cached', ...pathspecArgs(batch)]);
     }
   }
 
@@ -2885,8 +2891,13 @@ export class SyncEngine {
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
       try {
-        await realIndexHandle.git.raw(['reset', 'HEAD', '--', ...batch]);
-      } catch {}
+        await realIndexHandle.git.raw(['reset', 'HEAD', ...pathspecArgs(batch)]);
+      } catch (resetErr: unknown) {
+        log.warn(
+          { resetErr, files: batch.length },
+          '[sync] real-index reset failed; paths may remain staged',
+        );
+      }
     }
   }
 
@@ -2940,8 +2951,8 @@ export class SyncEngine {
     );
     for (const file of nonContentConflicts) {
       try {
-        await handle.git.raw(['checkout', '--theirs', '--', file]);
-        await handle.git.raw(['add', '--', file]);
+        await handle.git.raw(['checkout', '--theirs', ...pathspecArgs([file])]);
+        await handle.git.raw(['add', ...pathspecArgs([file])]);
         if (file.toLowerCase() === projectConfigRelPath.toLowerCase()) {
           log.warn(
             { file },

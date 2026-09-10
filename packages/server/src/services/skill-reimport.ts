@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
-import { RENAMED_PACK_SKILLS, type SkillReimportSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  pathspecArgs,
+  RENAMED_PACK_SKILLS,
+  type SkillReimportSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import {
   acquiredBundleTooLarge,
   packMarkerOf,
@@ -211,7 +215,7 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
           try {
             const pg = simpleGit({ baseDir: deps.projectDir, timeout: { block: 15_000 } });
             const rel = relative(deps.projectDir, resolve(skillsRoot, name)).split(sep).join('/');
-            gitTracked = (await pg.raw('ls-files', '--', rel)).trim().length > 0;
+            gitTracked = (await pg.raw('ls-files', ...pathspecArgs([rel]))).trim().length > 0;
           } catch {
             gitTracked = undefined;
           }

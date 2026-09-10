@@ -13,6 +13,7 @@ import {
   fragmentHoldsPendingContent,
   normalizeBridge,
   type Principal,
+  pathspecArgs,
   pendingContentLines,
   prependFrontmatter,
   stripFrontmatter,
@@ -343,7 +344,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
   const projectDir = options?.projectDir ?? process.cwd();
   const shadowRef = options?.shadowRef;
-  const contentRoot = options?.contentRoot ?? (toPosix(relative(projectDir, contentDir)) || '.');
+  const contentRoot = options?.contentRoot || toPosix(relative(projectDir, contentDir)) || '.';
   const derivedDocumentIndex = options?.derivedDocumentIndex;
   const getPrincipal = options?.getPrincipal;
   const onAgentCommit = options?.onAgentCommit;
@@ -590,7 +591,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
       }
 
-      await sg.env(env).raw('add', contentRoot);
+      await sg.env(env).raw('add', ...pathspecArgs([contentRoot]));
       const treeSha = (await sg.env(env).raw('write-tree')).trim();
 
       let parentSha: string | null = null;

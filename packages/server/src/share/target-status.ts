@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
+import { pathspecArgs, type ShareTargetStatusResponse } from '@inkeep/open-knowledge-core';
 import { truncateError } from '../error-format.ts';
 import { createGitInstance } from '../git-handle.ts';
 import { listNameStatus, type NameStatusRow } from '../git-paths.ts';
@@ -90,7 +90,15 @@ export async function computeShareTargetStatus(
       return emit({ verdict: 'on-origin' });
     }
 
-    const removingCommit = (await git.raw(['log', '-1', '--format=%H', ref, '--', gitPath])).trim();
+    const removingCommit = (
+      await git.raw([
+        'log',
+        '-1',
+        '--format=%H',
+        ref,
+        ...pathspecArgs([gitPath === '' ? '.' : gitPath]),
+      ])
+    ).trim();
     if (removingCommit === '') return emit({ verdict: 'never-on-branch' });
 
     const rows = await listNameStatus(git, [

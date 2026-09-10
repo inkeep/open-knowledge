@@ -63,6 +63,7 @@ export default {
     'packages/app/src/editor/typing-burst-detector.ts': ['exports', 'types'],
     'packages/server/src/bridge-intake.ts': ['types'],
     'packages/core/src/schemas/api.type-tests.ts': ['files'],
+    'packages/core/src/git-pathspec.type-tests.ts': ['files'],
     'packages/server/src/http/request-validation.ts': ['exports', 'types'],
     'packages/server/src/http/error-response.ts': ['exports'],
     'packages/app/src/editor/http-client.ts': ['types'],

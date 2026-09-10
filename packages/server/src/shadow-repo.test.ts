@@ -174,7 +174,42 @@ describe('buildWipTree contentRoot pathspec', () => {
     writeFileSync(resolve(projectRoot, 'AGENTS.md'), '# hello\n');
     const shadow = await initShadowRepo(projectRoot);
 
-    expect(buildWipTree(shadow, 'content')).rejects.toThrow(/pathspec 'content'/);
+    await expect(buildWipTree(shadow, 'content')).rejects.toThrow(/pathspec ':\(literal\)content'/);
+  });
+
+  test('a ":"-prefixed contentRoot scopes to that subtree instead of over-matching', async () => {
+    const projectRoot = resolve(tmpDir, 'project');
+    mkdirSync(resolve(projectRoot, ':vault'), { recursive: true });
+    writeFileSync(resolve(projectRoot, ':vault', 'a.md'), '# a\n');
+    writeFileSync(resolve(projectRoot, 'sibling.md'), '# sibling\n');
+    const shadow = await initShadowRepo(projectRoot);
+
+    const sha = await buildWipTree(shadow, ':vault');
+    const listed = await simpleGit(projectRoot)
+      .env({ GIT_DIR: shadow.gitDir, GIT_WORK_TREE: projectRoot })
+      .raw(['ls-tree', '-r', '--name-only', sha]);
+    const entries = listed.trim().split('\n').filter(Boolean);
+
+    expect(entries).toContain(':vault/a.md');
+    expect(entries).not.toContain('sibling.md');
+  });
+
+  test('a wildcard-bearing contentRoot selects only its own subtree', async () => {
+    const projectRoot = resolve(tmpDir, 'project');
+    mkdirSync(resolve(projectRoot, 'star*'), { recursive: true });
+    mkdirSync(resolve(projectRoot, 'starfish'), { recursive: true });
+    writeFileSync(resolve(projectRoot, 'star*', 'a.md'), '# a\n');
+    writeFileSync(resolve(projectRoot, 'starfish', 'b.md'), '# b\n');
+    const shadow = await initShadowRepo(projectRoot);
+
+    const sha = await buildWipTree(shadow, 'star*');
+    const listed = await simpleGit(projectRoot)
+      .env({ GIT_DIR: shadow.gitDir, GIT_WORK_TREE: projectRoot })
+      .raw(['ls-tree', '-r', '--name-only', sha]);
+    const entries = listed.trim().split('\n').filter(Boolean);
+
+    expect(entries).toContain('star*/a.md');
+    expect(entries).not.toContain('starfish/b.md');
   });
 });
 

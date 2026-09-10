@@ -6,6 +6,7 @@ import {
   type ProblemType,
   type StreamingProblemEvent,
   StreamingProblemEventSchema,
+  stripPathspecMagic,
 } from '@inkeep/open-knowledge-core';
 import type { Counter } from '@opentelemetry/api';
 import { getLogger } from '../logger.ts';
@@ -89,10 +90,10 @@ export function errorResponse(
 
   const body: ProblemDetails = {
     type,
-    title,
+    title: stripPathspecMagic(title),
     status,
     instance,
-    detail: options.detail ?? undefined,
+    detail: options.detail === undefined ? undefined : stripPathspecMagic(options.detail),
   };
   const validated = ProblemDetailsSchema.safeParse(body);
   if (!validated.success) {
@@ -202,10 +203,10 @@ export function streamingProblemEvent(
   const instance = options.instance ?? `urn:uuid:${randomUUID()}`;
   const problem: ProblemDetails = {
     type,
-    title,
+    title: stripPathspecMagic(title),
     status,
     instance,
-    detail: options.detail ?? undefined,
+    detail: options.detail === undefined ? undefined : stripPathspecMagic(options.detail),
   };
   const event: StreamingProblemEvent = { type: 'error', problem };
   const validated = StreamingProblemEventSchema.safeParse(event);

@@ -278,6 +278,25 @@ describe('errorResponse — defense-in-depth branches', () => {
     expect(body.instance).not.toBe('attacker-controlled');
     expect(body.colliding).toEqual([{ existing: 'a.md', incoming: 'A.md', to: 'A.md' }]);
   });
+
+  test('the :(literal) pathspec marker is scrubbed from title and detail', () => {
+    const { res, endCalls } = makeMockRes();
+    errorResponse(
+      res,
+      500,
+      'urn:ok:error:storage-error',
+      "Failed to read version abc123: fatal: pathspec ':(literal):colon.md' did not match any files",
+      {
+        handler: 'test',
+        detail: "pathspec ':(literal)star*/SKILL.md' did not match",
+      },
+    );
+    const body = JSON.parse(endCalls[0]);
+    expect(body.title).not.toContain(':(literal)');
+    expect(body.detail).not.toContain(':(literal)');
+    expect(body.title).toContain("pathspec ':colon.md' did not match any files");
+    expect(body.detail).toContain("pathspec 'star*/SKILL.md' did not match");
+  });
 });
 
 describe('streamingProblemEvent — defense-in-depth fallback', () => {

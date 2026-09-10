@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
+import { pathspecArgs, SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
 import {
   type AutoConsolidationTrigger,
   CHECKPOINT_KIND_REGISTRY,
@@ -316,7 +316,7 @@ async function commitWipInner(
         GIT_WORK_TREE: shadow.workTree,
         GIT_INDEX_FILE: tmpIndex,
       })
-      .raw('add', gitPathspec);
+      .raw('add', ...pathspecArgs([gitPathspec]));
     const treeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
@@ -393,7 +393,7 @@ async function buildWipTreeWithIndex(
       GIT_WORK_TREE: shadow.workTree,
       GIT_INDEX_FILE: indexFile,
     })
-    .raw('add', gitPathspec);
+    .raw('add', ...pathspecArgs([gitPathspec]));
   return (
     await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: indexFile }).raw('write-tree')
   ).trim();
@@ -1444,7 +1444,7 @@ async function saveVersionInner(
         GIT_WORK_TREE: shadow.workTree,
         GIT_INDEX_FILE: shadowTmpIndex,
       })
-      .raw('add', gitPathspec);
+      .raw('add', ...pathspecArgs([gitPathspec]));
     const shadowTreeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: shadowTmpIndex }).raw('write-tree')
     ).trim();

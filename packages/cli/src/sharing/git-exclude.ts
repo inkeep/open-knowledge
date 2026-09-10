@@ -8,7 +8,9 @@ import {
   LEGACY_SKILL_STORE_ROOT,
   OK_DIR,
   parseInstalledSkills,
+  pathspecArgs,
   RESERVED_PROJECT_SKILL_NAME,
+  toPathspec,
 } from '@inkeep/open-knowledge-core';
 import { discoverGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
@@ -257,7 +259,7 @@ export function probeTrackedOkPaths(
     try {
       execFileSync(
         'git',
-        ['ls-files', '--error-unmatch', '--', p],
+        ['ls-files', '--error-unmatch', ...pathspecArgs([p])],
         withHiddenWindowsConsole({
           cwd: projectRoot,
           stdio: ['ignore', 'ignore', 'ignore'],
@@ -267,6 +269,17 @@ export function probeTrackedOkPaths(
     } catch {}
   }
   return { tracked };
+}
+
+const SHELL_AND_PATHSPEC_SAFE = /^[\w.\-/]+$/;
+
+function shellQuote(value: string): string {
+  if (process.platform === 'win32') return `"${value.replaceAll('"', '')}"`;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function remediationOperand(path: string): string {
+  return SHELL_AND_PATHSPEC_SAFE.test(path) ? path : shellQuote(toPathspec(path));
 }
 
 export function formatTrackedRemediation(tracked: readonly string[]): string {
@@ -282,7 +295,7 @@ export function formatTrackedRemediation(tracked: readonly string[]): string {
   for (const p of tracked) {
     const arg = p.replace(/\/$/, '');
     const recursive = p.endsWith('/') ? '-r ' : '';
-    lines.push(`  git rm --cached ${recursive}${arg}`);
+    lines.push(`  git rm --cached ${recursive}-- ${remediationOperand(arg)}`);
   }
   lines.push('');
   lines.push(
