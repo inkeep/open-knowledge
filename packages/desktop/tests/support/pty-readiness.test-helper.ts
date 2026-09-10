@@ -104,14 +104,14 @@ export async function waitForCondition(
   options: WaitOptions = {},
 ): Promise<void> {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-  const deadline = Date.now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const deadline = performance.now() + (options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   for (;;) {
     if (predicate()) return;
     const failure = stream.failure();
     if (failure !== null) {
       throw new Error(`shell failed before ${label}: ${failure}`);
     }
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       throw new Error(
         `timeout waiting for: ${label} (received ${describeReceived(stream.read())})`,
       );
@@ -159,13 +159,13 @@ export async function waitForEvaluatedInput(
   if (probe.input.includes(probe.marker)) {
     throw new Error(`readiness probe input must not contain its marker: ${probe.marker}`);
   }
-  const startedAt = Date.now();
+  const startedAt = performance.now();
   send(probe.input);
   await waitForCondition(stream, () => stream.read().includes(probe.marker), label, {
     timeoutMs: options.timeoutMs ?? DEFAULT_INPUT_READY_TIMEOUT_MS,
     ...(options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs }),
   });
-  return Date.now() - startedAt;
+  return performance.now() - startedAt;
 }
 
 export function buildCwdFileProofCommand(platform: NodeJS.Platform, fileName: string): string {
