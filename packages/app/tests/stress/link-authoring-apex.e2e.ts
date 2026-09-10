@@ -22,8 +22,16 @@ async function waitForYTextToContain(page: Page, needle: string): Promise<void> 
   );
 }
 
-test.describe('apex — cross-writer linkification never fires', () => {
-  test('a boundary-less URL typed by a peer stays plain on the receiver; only a client’s own boundary-typed URL converts', async ({
+async function authoredNothing(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const doc = window.__activeProvider?.document;
+    if (!doc) throw new Error('no provider document');
+    return !doc.store.clients.has(doc.clientID);
+  });
+}
+
+test.describe('apex — a receiver never writes a peer’s URL; it renders what the bytes parse to', () => {
+  test('a boundary-less URL typed by a peer stays bare in the bytes and renders as a link on the receiver; only the typist’s own view stays plain until it re-derives', async ({
     browser,
     api,
     baseURL,
@@ -49,12 +57,18 @@ test.describe('apex — cross-writer linkification never fires', () => {
       await waitForYTextToContain(pageB, 'a-side.com');
 
       expect(await pmHasLink(pageA)).toBe(false);
-      expect(await pmHasLink(pageB)).toBe(false);
       await expect(pageA.locator(LINK_CHIP)).toHaveCount(0);
-      await expect(pageB.locator(LINK_CHIP)).toHaveCount(0);
+      await expect(
+        pageB.locator(`${LINK_CHIP}[aria-label="Link: https://a-side.com"]`),
+      ).toHaveCount(1);
+      expect(await authoredNothing(pageB)).toBe(true);
+      expect(await authoredNothing(pageA)).toBe(false);
 
       await pageB.locator(EDITOR).click();
-      await pageB.evaluate(() => window.__activeEditor?.commands.focus('start'));
+      await pageB.waitForFunction(() => window.__activeEditor?.isFocused === true);
+      await pageB.evaluate(() => window.__activeEditor?.commands.setTextSelection(1));
+      await pageB.keyboard.press('Enter');
+      await pageB.keyboard.press('ArrowUp');
       await pageB.keyboard.type('https://b-own.com ');
 
       await pageB.waitForFunction(
@@ -67,13 +81,16 @@ test.describe('apex — cross-writer linkification never fires', () => {
       await expect(pageB.locator(`${LINK_CHIP}[aria-label="Link: https://b-own.com"]`)).toHaveCount(
         1,
       );
-      await expect(pageB.locator(LINK_CHIP)).toHaveCount(1);
+      await expect(pageB.locator(LINK_CHIP)).toHaveCount(2);
 
       await waitForYTextToContain(pageA, 'b-own.com');
       await expect(pageA.locator(`${LINK_CHIP}[aria-label="Link: https://b-own.com"]`)).toHaveCount(
         1,
       );
-      await expect(pageA.locator(LINK_CHIP)).toHaveCount(1);
+      await expect(
+        pageA.locator(`${LINK_CHIP}[aria-label="Link: https://a-side.com"]`),
+      ).toHaveCount(1);
+      await expect(pageA.locator(LINK_CHIP)).toHaveCount(2);
     } finally {
       await ctxA.close();
       await ctxB.close();
@@ -81,8 +98,8 @@ test.describe('apex — cross-writer linkification never fires', () => {
   });
 });
 
-test.describe('apex — backgrounded editor never linkifies', () => {
-  test('a peer’s boundary-less URL reaches a hidden Activity’s editor and stays plain', async ({
+test.describe('apex — a backgrounded editor never writes a peer’s URL', () => {
+  test('a peer’s boundary-less URL reaches a hidden Activity’s editor, stays bare in the bytes, and renders as the link it parses to', async ({
     browser,
     api,
     baseURL,
@@ -133,8 +150,10 @@ test.describe('apex — backgrounded editor never linkifies', () => {
       });
       await waitForYTextToContain(pageH, 'while-hidden.com');
 
-      expect(await pmHasLink(pageH)).toBe(false);
-      await expect(pageH.locator(LINK_CHIP)).toHaveCount(0);
+      await expect(
+        pageH.locator(`${LINK_CHIP}[aria-label="Link: https://while-hidden.com"]`),
+      ).toHaveCount(1);
+      expect(await authoredNothing(pageH)).toBe(true);
     } finally {
       await ctxH.close();
       await ctxM.close();

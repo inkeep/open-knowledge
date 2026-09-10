@@ -24,6 +24,17 @@ async function waitForSourceQuiescence(page: Page): Promise<void> {
     .toBe(true);
 }
 
+async function closeUndoStep(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const state = window.__activeEditor?.state as unknown as
+      | Record<string, { undoManager?: { stopCapturing: () => void } } | undefined>
+      | undefined;
+    const binding = state?.okProjectionBinding$;
+    if (!binding?.undoManager) throw new Error('no projection undo manager on the active editor');
+    binding.undoManager.stopCapturing();
+  });
+}
+
 async function caretAtEndOf(page: Page, locatorText: string): Promise<void> {
   const paragraph = page
     .locator('.ProseMirror:not(.composer-prosemirror) > p')
@@ -56,7 +67,7 @@ async function openDocInSourceMode(
 }
 
 test.describe('source undo after a mode flip (live app)', () => {
-  test('source-mode Cmd+Z after WYSIWYG edits must not destroy the untouched pre-flip line', async ({
+  test('source-mode Cmd+Z after WYSIWYG edits retracts them newest first and never destroys the untouched pre-flip line', async ({
     page,
     api,
   }) => {
@@ -73,10 +84,12 @@ test.describe('source undo after a mode flip (live app)', () => {
     await expect(pm).toContainText('hello bug');
 
     await caretAtEndOf(page, 'hello bug');
+    await closeUndoStep(page);
     await page.keyboard.insertText(' oops');
     await expect.poll(() => readSource(page), { timeout: 10_000 }).toContain('hello bug oops');
-
     await waitForSourceQuiescence(page);
+    await closeUndoStep(page);
+
     const blankParagraph = page
       .locator('.ProseMirror:not(.composer-prosemirror) > p')
       .filter({ hasText: /^$/ })
@@ -84,6 +97,8 @@ test.describe('source undo after a mode flip (live app)', () => {
     await blankParagraph.click();
     await page.keyboard.type('zoops', { delay: 40 });
     await expect.poll(() => readSource(page), { timeout: 10_000 }).toContain('zoops');
+    await waitForSourceQuiescence(page);
+    await closeUndoStep(page);
 
     await sourceToggle(page).click();
     await expect(cm).toBeVisible({ timeout: 10_000 });
@@ -96,17 +111,14 @@ test.describe('source undo after a mode flip (live app)', () => {
 
     await cm.click();
     await page.keyboard.press('ControlOrMeta+z');
-    await waitForSourceQuiescence(page);
-
-    expect((await readSource(page)).split('\n')).toEqual(beforeUndo.split('\n'));
-
-    await cm.click();
-    await page.keyboard.insertText('Q');
-    await expect.poll(() => readSource(page), { timeout: 10_000 }).toContain('Q');
-    await waitForSourceQuiescence(page);
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).not.toContain('zoops');
+    const afterOne = await readSource(page);
+    expect(afterOne).toContain('hello bug oops');
+    expect((afterOne.match(/hello bug/g) ?? []).length).toBe(2);
 
     await page.keyboard.press('ControlOrMeta+z');
-    await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(beforeUndo);
+    await expect.poll(() => readSource(page), { timeout: 10_000 }).not.toContain('oops');
+    expect(((await readSource(page)).match(/hello bug/g) ?? []).length).toBe(2);
   });
 
   test('guard: a casual peek at Visual editor with no edit preserves source undo history', async ({
