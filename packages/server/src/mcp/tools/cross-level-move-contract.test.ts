@@ -10,7 +10,6 @@ const repoFile = (...segments: string[]) =>
 const PROJECT_SKILL = repoFile('assets', 'skills', 'project', 'SKILL.md');
 const MCP_REFERENCE = repoFile('../../docs/content/reference/mcp.mdx');
 const SKILLS_REFERENCE = repoFile('../../docs/content/features/skills/reference.mdx');
-const CHANGESET = repoFile('../../.changeset/fluffy-clouds-report.md');
 
 function mcpReferenceRow(tool: string): string {
   const row = MCP_REFERENCE.split('\n').find((line) => line.startsWith(`| \`${tool}\` |`));
@@ -33,7 +32,6 @@ const SURFACES: ReadonlyArray<readonly [string, string]> = [
   ['project SKILL.md router bullet', PROJECT_SKILL],
   ['docs mcp.mdx `move` row', mcpReferenceRow('move')],
   ['docs features/skills/reference.mdx scope-move paragraph', SKILLS_REFERENCE],
-  ['the changeset release note', CHANGESET],
 ];
 
 const ENUMERATING: ReadonlyArray<readonly [string, string]> = SURFACES.filter(
