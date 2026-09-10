@@ -8,8 +8,10 @@ import {
   FolderConfigGetSuccessSchema,
   FolderConfigPutRequestSchema,
   FolderConfigPutSuccessSchema,
+  type FolderConfigWarningCode,
   instantiateDoc,
   type Principal,
+  type ProblemType,
   parseTemplateFile,
   stripFrontmatter,
   TEMPLATE_NAME_REGEX,
@@ -30,7 +32,10 @@ import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import { DocInConflictError, isDocInConflict, respondDocInConflict } from '../conflict-errors.ts';
 import { enrichDirectory } from '../content/enrichment.ts';
-import { applyFolderFrontmatterPatch } from '../content/folder-frontmatter-write.ts';
+import {
+  applyFolderFrontmatterPatch,
+  type FolderFrontmatterErrorCode,
+} from '../content/folder-frontmatter-write.ts';
 import {
   applyTemplateDelete,
   applyTemplateMove,
@@ -41,6 +46,7 @@ import {
 import type { StoreFailure } from '../document-durability-state.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import type { DiskEvent } from '../file-watcher.ts';
+import { assertNoSymlinkEscape, checkSymlinkLeaf, isContainmentRejection } from '../fs-safety.ts';
 import { tracedUnlinkSync } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { extractPageTitle } from '../page-identity.ts';
@@ -69,8 +75,9 @@ export interface FolderTemplateRouteDeps {
   validateFolderRel: (
     raw: string,
     res: ServerResponse,
-    label?: 'path' | 'folder',
-    handler?: string,
+    label: 'path' | 'folder',
+    handler: string,
+    components: 'ok' | 'ok-and-templates',
   ) => { folderRel: string; resolvedContentDir: string } | null;
   extractAgentIdentity: (body: Record<string, unknown>) => {
     agentId: string;
@@ -119,6 +126,13 @@ export interface FolderTemplateRouteDeps {
   splitContentPath: (path: string) => { parent: string; basename: string };
   mutateFileIndex: ((event: DiskEvent) => void) | undefined;
 }
+
+const FOLDER_FRONTMATTER_ERROR_META = {
+  BAD_CONTENT_DIR: { status: 400, urn: 'urn:ok:error:invalid-request' },
+  PATH_ESCAPE: { status: 400, urn: 'urn:ok:error:path-escape' },
+  SYMLINK_REFUSED: { status: 400, urn: 'urn:ok:error:symlink-refused' },
+  WRITE_ERROR: { status: 500, urn: 'urn:ok:error:internal-server-error' },
+} as const satisfies Record<FolderFrontmatterErrorCode, { status: 400 | 500; urn: ProblemType }>;
 
 export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRouteGroup {
   const {
@@ -171,7 +185,11 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     resolvedContentDir: string,
     folderRel: string,
     name: string,
-  ): { abs: string; folder: string; scope: 'local' | 'inherited' } | null {
+  ):
+    | { kind: 'found'; abs: string; folder: string; scope: 'local' | 'inherited' }
+    | { kind: 'refused'; folder: string }
+    | { kind: 'unverifiable'; folder: string; code: string | undefined }
+    | { kind: 'absent' } {
     const segments = folderRel === '' ? [] : folderRel.split('/');
     for (let depth = segments.length; depth >= 0; depth--) {
       const ancestorFolder = depth === 0 ? '' : segments.slice(0, depth).join('/');
@@ -183,16 +201,44 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
       ) {
         continue;
       }
-      const candidate = resolve(ancestorAbs, '.ok', 'templates', `${name}.md`);
+      /* STOP: identity, not containment — an IN-ROOT symlinked ancestor
+         `.ok` / `.ok/templates` realpaths inside the content root and defeats
+         every root-anchored check, exactly like the leaf case. The invariant
+         is one-directional: this walk must never SERVE what the menu
+         (`collectFromFolder` in templates-resolver.ts) hides; refusing more
+         than the menu is permitted. A symlink aborts loudly (400). ENOTDIR is
+         treated as absent and the walk continues — a non-directory `.ok` or
+         `templates` provably holds no templates, matching the menu's skip.
+         Every OTHER lstat errno (EACCES/ELOOP) aborts loudly (500): an
+         unreadable ancestor COULD hold a shadowing name, so resolving past it
+         from a higher folder would be a silent wrong answer. */
+      const okAbs = resolve(ancestorAbs, '.ok');
+      const okCheck = checkSymlinkLeaf(okAbs);
+      if (okCheck.kind === 'symlink') {
+        return { kind: 'refused', folder: ancestorFolder };
+      }
+      if (okCheck.kind === 'unverifiable' && okCheck.code !== 'ENOTDIR') {
+        return { kind: 'unverifiable', folder: ancestorFolder, code: okCheck.code };
+      }
+      const templatesAbs = resolve(okAbs, 'templates');
+      const templatesCheck = checkSymlinkLeaf(templatesAbs);
+      if (templatesCheck.kind === 'symlink') {
+        return { kind: 'refused', folder: ancestorFolder };
+      }
+      if (templatesCheck.kind === 'unverifiable' && templatesCheck.code !== 'ENOTDIR') {
+        return { kind: 'unverifiable', folder: ancestorFolder, code: templatesCheck.code };
+      }
+      const candidate = resolve(templatesAbs, `${name}.md`);
       if (existsSync(candidate)) {
         return {
+          kind: 'found',
           abs: candidate,
           folder: ancestorFolder,
           scope: depth === segments.length ? 'local' : 'inherited',
         };
       }
     }
-    return null;
+    return { kind: 'absent' };
   }
 
   function pickFrontmatterFields(raw: unknown): Record<string, unknown> {
@@ -219,15 +265,76 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           res,
           'path',
           'folder-config-get',
+          'ok',
         );
         if (!validated) return;
-        const meta = await enrichDirectory(validated.folderRel, {
-          projectDir: validated.resolvedContentDir,
-        });
         const folderOkDir = resolve(validated.resolvedContentDir, validated.folderRel, '.ok');
         const localFmPath = resolve(folderOkDir, 'frontmatter.yml');
+        const warnings: string[] = [];
+        const warningCodes: FolderConfigWarningCode[] = [];
+        const addWarning = (code: FolderConfigWarningCode, text: string): void => {
+          warnings.push(text);
+          warningCodes.push(code);
+        };
+        const meta = await enrichDirectory(
+          validated.folderRel,
+          { projectDir: validated.resolvedContentDir },
+          {
+            onTemplateRefused: (refusal) => {
+              const where = `${refusal.folder || '.'}/${refusal.component}`;
+              const path = resolve(validated.resolvedContentDir, refusal.folder, refusal.component);
+              switch (refusal.kind) {
+                case 'symlink':
+                  addWarning(
+                    'templates-symlink-refused',
+                    `${where} is a symlink — its templates are not enumerated. Replace the symlink with a real file or directory and retry.`,
+                  );
+                  log.warn(
+                    { path, folder: validated.folderRel || '.' },
+                    `[folder-config:get] ${where} is a symlink — templates_available skips it.`,
+                  );
+                  break;
+                case 'unverifiable':
+                  addWarning(
+                    'templates-unverifiable',
+                    `${where} could not be inspected (${refusal.code ?? 'unknown errno'}) — its templates are not enumerated. The errno may come from ${refusal.folder || '.'}/.ok itself; check its permissions.`,
+                  );
+                  log.warn(
+                    { path, folder: validated.folderRel || '.', code: refusal.code },
+                    `[folder-config:get] cannot lstat ${where} (${refusal.code ?? 'unknown errno'}) — templates_available skips it.`,
+                  );
+                  break;
+                default: {
+                  const _exhaustive: never = refusal;
+                  throw new Error(
+                    `Unhandled template refusal kind in handleFolderConfigGet: ${String((_exhaustive as { kind?: unknown }).kind)}`,
+                  );
+                }
+              }
+            },
+          },
+        );
         let frontmatterLocal: Record<string, unknown> | null = null;
-        if (existsSync(localFmPath)) {
+        const leafCheck = checkSymlinkLeaf(localFmPath);
+        if (leafCheck.kind === 'symlink') {
+          addWarning(
+            'symlink-refused',
+            `${validated.folderRel || '.'}/.ok/frontmatter.yml is a symlink — refusing to read through it. Replace the symlink with a real file or directory and retry.`,
+          );
+          log.warn(
+            { path: localFmPath, folder: validated.folderRel || '.' },
+            `[folder-config:get] ${validated.folderRel || '.'}/.ok/frontmatter.yml is a symlink — refusing to read through it.`,
+          );
+        } else if (leafCheck.kind === 'unverifiable') {
+          addWarning(
+            'unverifiable',
+            `${validated.folderRel || '.'}/.ok/frontmatter.yml could not be inspected (${leafCheck.code ?? 'unknown errno'}) — folder properties skipped.`,
+          );
+          log.warn(
+            { path: localFmPath, code: leafCheck.code },
+            `[folder-config:get] cannot lstat ${localFmPath} (${leafCheck.code ?? 'unknown errno'}) — frontmatter_local skipped.`,
+          );
+        } else if (existsSync(localFmPath)) {
           try {
             const raw = await readFile(localFmPath, 'utf-8');
             const parsed = parseYaml(raw);
@@ -238,6 +345,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             }
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
+            addWarning(
+              'malformed-yaml',
+              `${validated.folderRel || '.'}/.ok/frontmatter.yml has malformed YAML.`,
+            );
             log.warn(
               { path: localFmPath, reason },
               `[folder-config:get] malformed YAML in ${localFmPath}: ${reason}`,
@@ -253,6 +364,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           {
             folder: meta,
             frontmatter_local: frontmatterLocal,
+            ...(warningCodes.length > 0 ? { warnings, warningCodes } : {}),
           },
           { handler: 'folder-config-get' },
         );
@@ -293,7 +405,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           });
           return;
         }
-        const validated = validateFolderRel(body.path, res, 'path', 'folder-config-put');
+        const validated = validateFolderRel(body.path, res, 'path', 'folder-config-put', 'ok');
         if (!validated) return;
 
         const allApplied: Array<{ path: string; action: 'written' | 'deleted' | 'noop' }> = [];
@@ -304,11 +416,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             patch: body.frontmatter,
           });
           if (!result.ok) {
-            const status = result.error.code === 'WRITE_ERROR' ? 500 : 400;
-            const urn =
-              status === 500
-                ? 'urn:ok:error:internal-server-error'
-                : 'urn:ok:error:invalid-request';
+            const { status, urn } = FOLDER_FRONTMATTER_ERROR_META[result.error.code];
             const title = status === 500 ? 'Failed to write folder config.' : result.error.message;
             errorResponse(res, status, urn, title, {
               handler: 'folder-config-put',
@@ -379,12 +487,33 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           res,
           'folder',
           'template-get',
+          'ok-and-templates',
         );
         if (!validated) return;
         const { folderRel, resolvedContentDir } = validated;
 
         const found = findTemplateLeafToRoot(resolvedContentDir, folderRel, name);
-        if (!found) {
+        if (found.kind === 'refused') {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:symlink-refused',
+            `"${found.folder || '.'}/.ok" or its templates directory is a symlink — refusing to resolve templates through it. Replace the symlink with a real file or directory and retry.`,
+            { handler: 'template-get', detail: found.folder || '.' },
+          );
+          return;
+        }
+        if (found.kind === 'unverifiable') {
+          errorResponse(
+            res,
+            500,
+            'urn:ok:error:internal-server-error',
+            `Cannot inspect "${found.folder || '.'}/.ok" (${found.code ?? 'unknown errno'}) — refusing to resolve templates through it.`,
+            { handler: 'template-get', detail: found.code ?? 'unknown-errno' },
+          );
+          return;
+        }
+        if (found.kind === 'absent') {
           errorResponse(res, 404, 'urn:ok:error:template-not-found', 'Template not found.', {
             handler: 'template-get',
             detail: `Template "${name}" not found for folder "${folderRel || '.'}". Walked leaf → root.`,
@@ -392,6 +521,38 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
         const { abs: foundAbs, folder: foundFolder, scope: foundScope } = found;
+
+        /* STOP: the walk above refuses symlinked ancestor `.ok` /
+           `.ok/templates` dirs BY IDENTITY (in-root included); the two checks
+           below cover the remaining shapes — a symlinked `<name>.md` leaf,
+           and (defence in depth) a resolved path escaping the content root.
+           The fetch-by-name arm bypasses the resolver's guarded enumeration
+           (`collectFromFolder`), so all three must live here. */
+        if (checkSymlinkLeaf(foundAbs).kind === 'symlink') {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:symlink-refused',
+            `Template "${name}" at "${foundFolder || '.'}/.ok/templates/${name}.md" is a symlink — refusing to read through it. Replace the symlink with a real file or directory and retry.`,
+            { handler: 'template-get', detail: foundFolder || '.' },
+          );
+          return;
+        }
+        try {
+          assertNoSymlinkEscape(foundAbs, resolvedContentDir);
+        } catch (err) {
+          if (isContainmentRejection(err)) {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:symlink-refused',
+              `Template "${name}" resolves through a symlink outside the content directory — refusing to read through it. Replace the symlink with a real file or directory and retry.`,
+              { handler: 'template-get', detail: foundFolder || '.' },
+            );
+            return;
+          }
+          throw err;
+        }
 
         const raw = await readFile(foundAbs, 'utf-8');
         const model = parseTemplateFile(raw);
@@ -455,8 +616,37 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }
         const name = body.name;
         if (!validateTemplateName(name, res, 'template-put')) return;
-        const validated = validateFolderRel(body.folder, res, 'folder', 'template-put');
+        const validated = validateFolderRel(
+          body.folder,
+          res,
+          'folder',
+          'template-put',
+          'ok-and-templates',
+        );
         if (!validated) return;
+
+        const templateFilePath = resolve(
+          validated.resolvedContentDir,
+          validated.folderRel,
+          '.ok',
+          'templates',
+          `${name}.md`,
+        );
+        /* STOP: the persistence plane realpaths this leaf and renames onto
+           the TARGET, so a committed in-root symlink here lets a template
+           save overwrite any in-root `.md` — including paths the content
+           plane refuses to serve (`.claude/`, `.agents/`). The leaf is
+           refused on GET; the write arms must refuse it too. */
+        if (checkSymlinkLeaf(templateFilePath).kind === 'symlink') {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:symlink-refused',
+            `${validated.folderRel || '.'}/.ok/templates/${name}.md is a symlink — refusing to write through it. Replace the symlink with a real file or directory and retry.`,
+            { handler: 'template-put', detail: validated.folderRel || '.' },
+          );
+          return;
+        }
 
         if (
           checkTemplateConflictGate(
@@ -481,13 +671,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
         const templateCreated = !existsSync(templateFilePath);
         const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
           .split(/[\\/]/)
@@ -562,6 +745,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           res,
           'folder',
           'template-delete',
+          'ok-and-templates',
         );
         if (!validated) return;
 
@@ -655,9 +839,21 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         }
         if (!validateTemplateName(body.fromName, res, 'template-move')) return;
         if (!validateTemplateName(body.toName, res, 'template-move')) return;
-        const fromValidated = validateFolderRel(body.fromFolder, res, 'folder', 'template-move');
+        const fromValidated = validateFolderRel(
+          body.fromFolder,
+          res,
+          'folder',
+          'template-move',
+          'ok-and-templates',
+        );
         if (!fromValidated) return;
-        const toValidated = validateFolderRel(body.toFolder, res, 'folder', 'template-move');
+        const toValidated = validateFolderRel(
+          body.toFolder,
+          res,
+          'folder',
+          'template-move',
+          'ok-and-templates',
+        );
         if (!toValidated) return;
 
         if (
@@ -695,7 +891,27 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
               fromValidated.folderRel,
               body.fromName,
             );
-            if (found?.scope === 'inherited') {
+            if (found.kind === 'refused') {
+              errorResponse(
+                res,
+                400,
+                'urn:ok:error:symlink-refused',
+                `"${found.folder || '.'}/.ok" or its templates directory is a symlink — refusing to resolve templates through it. Replace the symlink with a real file or directory and retry.`,
+                { handler: 'template-move', detail: found.folder || '.' },
+              );
+              return;
+            }
+            if (found.kind === 'unverifiable') {
+              errorResponse(
+                res,
+                500,
+                'urn:ok:error:internal-server-error',
+                `Cannot inspect "${found.folder || '.'}/.ok" (${found.code ?? 'unknown errno'}) — refusing to resolve templates through it.`,
+                { handler: 'template-move', detail: found.code ?? 'unknown-errno' },
+              );
+              return;
+            }
+            if (found.kind === 'found' && found.scope === 'inherited') {
               errorResponse(
                 res,
                 400,
@@ -736,6 +952,43 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
 
         recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
 
+        const movedAbs = resolve(toValidated.resolvedContentDir, result.toPath);
+        const movedIsSymlink = checkSymlinkLeaf(movedAbs).kind === 'symlink';
+
+        attributeOkArtifactWrite(
+          actor,
+          okArtifactKey('template', toValidated.folderRel, body.toName),
+          `template-rename: ${result.fromPath} -> ${result.toPath}`,
+          [{ from: result.fromPath, to: result.toPath }],
+        );
+        scheduleOkArtifactFlush('template-move');
+        signalChannel?.('files');
+
+        if (movedIsSymlink) {
+          log.warn(
+            { path: movedAbs, folder: toValidated.folderRel || '.' },
+            `[template-move] moved template "${result.toPath}" is a symlink — skipping content read-back and index registration.`,
+          );
+          if (body.body !== undefined || body.frontmatter !== undefined) {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:symlink-refused',
+              `Template moved to "${result.toPath}", but it is a symlink — refusing to read or rewrite through it. Replace it with a regular file and retry the edit.`,
+              { handler: 'template-move', detail: toValidated.folderRel || '.' },
+            );
+            return;
+          }
+          successResponse(
+            res,
+            200,
+            TemplateMoveSuccessSchema,
+            { from: result.fromPath, to: result.toPath, committed: result.committed },
+            { handler: 'template-move' },
+          );
+          return;
+        }
+
         let contentEditError: { code: string; message: string } | null = null;
         if (body.body !== undefined || body.frontmatter !== undefined) {
           let writeBody: string | null;
@@ -743,9 +996,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             writeBody = body.body;
           } else {
             try {
-              writeBody = instantiateDoc(
-                readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
-              );
+              writeBody = instantiateDoc(readFileSync(movedAbs, 'utf-8'));
             } catch {
               writeBody = null;
             }
@@ -771,18 +1022,9 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         try {
           registerWrittenDocInFileIndex(
             templateDocNameFor(toValidated.folderRel, body.toName),
-            readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
+            readFileSync(movedAbs, 'utf-8'),
           );
         } catch {}
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', toValidated.folderRel, body.toName),
-          `template-rename: ${result.fromPath} -> ${result.toPath}`,
-          [{ from: result.fromPath, to: result.toPath }],
-        );
-        scheduleOkArtifactFlush('template-move');
-        signalChannel?.('files');
 
         if (contentEditError) {
           const isServerError =
@@ -941,8 +1183,32 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
 
         if (!validateTemplateName(name, res, 'template-import')) return;
 
-        const validated = validateFolderRel(body.targetFolder, res, 'folder', 'template-import');
+        const validated = validateFolderRel(
+          body.targetFolder,
+          res,
+          'folder',
+          'template-import',
+          'ok-and-templates',
+        );
         if (!validated) return;
+
+        const templateFilePath = resolve(
+          validated.resolvedContentDir,
+          validated.folderRel,
+          '.ok',
+          'templates',
+          `${name}.md`,
+        );
+        if (checkSymlinkLeaf(templateFilePath).kind === 'symlink') {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:symlink-refused',
+            `${validated.folderRel || '.'}/.ok/templates/${name}.md is a symlink — refusing to write through it. Replace the symlink with a real file or directory and retry.`,
+            { handler: 'template-import', detail: validated.folderRel || '.' },
+          );
+          return;
+        }
 
         if (
           checkTemplateConflictGate(
@@ -997,13 +1263,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
         const templateCreated = !existsSync(templateFilePath);
         const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
           .split(/[\\/]/)

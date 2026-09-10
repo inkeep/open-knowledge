@@ -54,6 +54,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:storage-error',
   'urn:ok:error:no-file-received',
   'urn:ok:error:path-escape',
+  'urn:ok:error:symlink-refused',
   'urn:ok:error:method-not-allowed',
   'urn:ok:error:invalid-request',
   'urn:ok:error:payload-too-large',

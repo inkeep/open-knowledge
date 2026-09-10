@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,6 +39,34 @@ describe('readFolderFrontmatter — self-only (no cascade)', () => {
       description: 'Meeting notes',
       tags: ['meeting'],
     });
+  });
+
+  test('treats a symlinked frontmatter.yml leaf as absent', () => {
+    const secret = join(projectDir, 'secret.yml');
+    writeFileSync(secret, 'title: Stolen\ndescription: exfiltrated\n');
+    mkdirSync(join(projectDir, 'linked', '.ok'), { recursive: true });
+    symlinkSync(secret, join(projectDir, 'linked', '.ok', 'frontmatter.yml'));
+    expect(readFolderFrontmatter(projectDir, 'linked')).toEqual({});
+  });
+
+  test('treats a leaf behind an IN-ROOT symlinked .ok as absent', () => {
+    mkdirSync(join(projectDir, 'secretdir'), { recursive: true });
+    writeFileSync(join(projectDir, 'secretdir', 'frontmatter.yml'), 'title: AliasedInRoot\n');
+    mkdirSync(join(projectDir, 'aliased'), { recursive: true });
+    symlinkSync('../secretdir', join(projectDir, 'aliased', '.ok'), 'dir');
+    expect(readFolderFrontmatter(projectDir, 'aliased')).toEqual({});
+  });
+
+  test('treats a leaf behind an out-of-root symlinked .ok ancestor as absent', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'folder-frontmatter-outside-'));
+    try {
+      writeFileSync(join(outside, 'frontmatter.yml'), 'title: OutsideSecret\n');
+      mkdirSync(join(projectDir, 'escaped'), { recursive: true });
+      symlinkSync(outside, join(projectDir, 'escaped', '.ok'), 'dir');
+      expect(readFolderFrontmatter(projectDir, 'escaped')).toEqual({});
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 
   test('does NOT inherit from ancestor folders (self-only)', () => {

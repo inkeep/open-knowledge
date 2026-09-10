@@ -42,10 +42,27 @@ export const TagsForNameSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type TagsForNameSuccess = z.infer<typeof TagsForNameSuccessSchema>;
 
+export const FOLDER_CONFIG_WARNING_CODES = [
+  'symlink-refused',
+  'malformed-yaml',
+  'unverifiable',
+  'templates-symlink-refused',
+  'templates-unverifiable',
+] as const;
+export type FolderConfigWarningCode = (typeof FOLDER_CONFIG_WARNING_CODES)[number];
+
 export const FolderConfigGetSuccessSchema = z
   .object({
     folder: z.unknown(),
     frontmatter_local: z.record(z.string(), z.unknown()).nullable(),
+    warnings: z.array(z.string()).optional().meta({
+      description:
+        'Non-fatal degradations of this response, one per entry; the field each affects is absent, null, or incomplete — the aligned `warningCodes` entry names which field and how.',
+    }),
+    warningCodes: z.array(z.enum(FOLDER_CONFIG_WARNING_CODES)).optional().meta({
+      description:
+        "Machine-readable codes aligned 1:1 with `warnings`; switch on these, never on the English. `symlink-refused` / `malformed-yaml` / `unverifiable`: this folder's own `.ok/frontmatter.yml` (a symlink, malformed YAML, or an lstat failure) — `frontmatter_local` is null. `templates-symlink-refused` / `templates-unverifiable`: the `.ok/templates` directory on this folder, or a `.ok` or `.ok/templates` directory on an ancestor it inherits from — a symlink (wherever it points, dangling included), or a non-ENOTDIR `lstat` failure — `folder.templates_available` omits that directory's templates and may still list others. A non-directory `.ok` / `.ok/templates` (ENOTDIR) is treated as empty and yields no `templates-*` code. This folder's own symlinked `.ok` is a 400, never a warning.",
+    }),
   })
   .loose() satisfies StandardSchemaV1;
 export type FolderConfigGetSuccess = z.infer<typeof FolderConfigGetSuccessSchema>;

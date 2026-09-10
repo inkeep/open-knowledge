@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,6 +53,22 @@ describe('applySeed — nested .ok/ era', () => {
       ).toBe(true);
     }
     expect(existsSync(join(projectDir, 'log.md'))).toBe(true);
+  });
+
+  test('refuses to write through a committed dangling symlinked leaf (no write-through)', async () => {
+    const plan = await planSeed({ projectDir });
+    const fileEntry = plan.created.find((e) => e.kind === 'file');
+    expect(fileEntry).toBeDefined();
+    const leafAbs = join(projectDir, (fileEntry as { path: string }).path);
+    const outsideTarget = join(tmpdir(), `seed-symlink-target-${process.pid}.yml`);
+    mkdirSync(join(leafAbs, '..'), { recursive: true });
+    symlinkSync(outsideTarget, leafAbs);
+
+    const result = await applySeed(plan, { projectDir });
+
+    expect(result.errors.some((e) => e.path === (fileEntry as { path: string }).path)).toBe(true);
+    expect(existsSync(outsideTarget)).toBe(false);
+    expect(lstatSync(leafAbs).isSymbolicLink()).toBe(true);
   });
 
   test('frontmatter.yml carries the folder defaults verbatim from STARTER_FOLDERS', async () => {

@@ -236,7 +236,7 @@ async function writeOneDoc(
 
   let templateHint: readonly { name: string; description?: string }[] | undefined;
   if (spec.template === undefined && !docExists) {
-    const available = resolveTemplatesAvailable(cwd, parentFolderOf(docName), { depth: 1 });
+    const available = resolveTemplatesAvailable(cwd, parentFolderOf(docName));
     if (available.length > 0) {
       templateHint = available.map((t) => ({
         name: t.name,
@@ -247,7 +247,7 @@ async function writeOneDoc(
 
   if (spec.template !== undefined) {
     const parentFolder = parentFolderOf(docName);
-    const available = resolveTemplatesAvailable(cwd, parentFolder, { depth: 1 });
+    const available = resolveTemplatesAvailable(cwd, parentFolder);
     const matched = available.find((t) => t.name === spec.template);
     if (!matched) {
       return {

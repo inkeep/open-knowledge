@@ -36,6 +36,7 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:payload-too-large',
   'urn:ok:error:request-timeout',
   'urn:ok:error:internal-server-error',
+  'urn:ok:error:symlink-refused',
   'urn:ok:error:derived-index-unavailable',
   'urn:ok:error:loopback-required',
   'urn:ok:error:invalid-origin',
