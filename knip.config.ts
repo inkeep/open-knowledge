@@ -152,6 +152,7 @@ export default {
         'src/utility/server-entry.ts',
         'src/utility/pty-host.ts',
         'src/**/*.test.ts',
+        'src/**/*.typelock.ts',
         'scripts/*.mjs',
         'tests/**/*.test.ts',
         'tests/**/*.test.mjs',

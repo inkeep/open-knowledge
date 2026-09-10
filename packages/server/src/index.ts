@@ -314,6 +314,7 @@ export {
   type DeviceCompleteEvent,
   type DeviceErrorEvent,
   type DeviceVerificationEvent,
+  type LocalOpCliInvocation,
   type RawCloneEvent,
   type RepoEntry,
   type RunAuthQueryOptions,

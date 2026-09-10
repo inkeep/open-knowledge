@@ -82,6 +82,7 @@ import {
   getMeter,
   initContent,
   isProcessAlive,
+  type LocalOpCliInvocation,
   normalizeFsPath,
   ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
@@ -316,6 +317,7 @@ import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
 } from './linux-install-fallback.ts';
+import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
 import {
@@ -1145,11 +1147,14 @@ function isDebugKeyringSmokeAllowed(): boolean {
   return !app.isPackaged || process.env.OK_DEBUG_KEYRING_SMOKE === '1';
 }
 
-function resolveLocalOpCliArgs(): string[] {
-  if (app.isPackaged) {
-    return [wrapperPathInBundle(app.getPath('exe'))];
-  }
-  return ['open-knowledge'];
+function resolveLocalOpCli(): LocalOpCliInvocation {
+  return resolveLocalOpCliInvocation({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    execPath: app.getPath('exe'),
+    resourcesPath: process.resourcesPath,
+    parentEnv: process.env,
+  });
 }
 
 function runDriverBootSmokeInProduction(): void {
@@ -1937,7 +1942,7 @@ async function openProject(
     pendingShareBranchSwitch,
     didEnsureGit,
     consentVersion: 1,
-    localOpCliArgs: resolveLocalOpCliArgs(),
+    localOpCliInvocation: resolveLocalOpCli(),
     freshlyCreated: entryPoint === 'create-new',
   });
   getLogger('project').info(
@@ -4885,7 +4890,7 @@ function registerIpcHandlers() {
     try {
       const senderWindow = BrowserWindow.fromWebContents(event.sender);
       const outcome = await wm.restartServerForWindow(senderWindow, projectPath, {
-        localOpCliArgs: resolveLocalOpCliArgs(),
+        localOpCliInvocation: resolveLocalOpCli(),
       });
       if (outcome.ok === false) {
         logIpcError({
@@ -5153,7 +5158,8 @@ function registerIpcHandlers() {
   });
 
   const localOpDeps: LocalOpDeps = {
-    resolveCliArgs: resolveLocalOpCliArgs,
+    resolveCliInvocation: resolveLocalOpCli,
+    logFailure: logIpcError,
     state: createLocalOpState(),
   };
   handle('ok:local-op:auth:start', async (event) => {
@@ -5918,7 +5924,7 @@ function bootPrimaryInstance(): void {
       let authenticated = false;
       try {
         const status = await runAuthStatusSubprocess({
-          cliArgs: resolveLocalOpCliArgs(),
+          ...resolveLocalOpCli(),
           host,
         });
         authenticated = status.authenticated;

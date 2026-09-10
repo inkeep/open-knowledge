@@ -692,7 +692,7 @@ export interface OkLocalOpRepoEntry {
 
 export type OkLocalOpAuthReposResponse =
   | { ok: true; host: string; repos: OkLocalOpRepoEntry[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; authenticated?: false };
 
 export type OkEditorActiveTargetSnapshot =
   | { readonly kind: 'doc'; readonly identifier: string }

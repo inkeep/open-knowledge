@@ -87,14 +87,30 @@ describe('classifyCloneError', () => {
         "fatal: unable to access 'https://x-access-token:ghp_abc123XYZ@github.com/acme/x.git/': 404";
       const result = classifyCloneError(stderr);
       expect(result.detail).not.toContain('ghp_abc123XYZ');
-      expect(result.detail).toContain('***');
+      expect(result.detail).toContain('https://[REDACTED]@github.com');
     });
 
     test('bare basic-auth credentials in URL are redacted', () => {
       const stderr = "fatal: unable to access 'https://alice:s3cret@github.com/x.git/': 403";
       const result = classifyCloneError(stderr);
       expect(result.detail).not.toContain('s3cret');
-      expect(result.detail).toContain('***');
+      expect(result.detail).not.toContain('alice');
+      expect(result.detail).toContain('https://[REDACTED]@github.com');
+    });
+
+    test('a bare PAT outside a URL is redacted (auth.yml parse errors echo the token line)', () => {
+      const token = `ghp_${'e'.repeat(36)}`;
+      const stderr = `[auth] Failed to parse auth.yml: bad indentation at line 2:\n  token: ${token}`;
+      const result = classifyCloneError(stderr);
+      expect(result.detail).not.toContain(token);
+      expect(result.detail).toContain('[REDACTED-GH-PAT]');
+    });
+
+    test('a bare fine-grained PAT outside a URL is redacted', () => {
+      const token = `github_pat_${'F'.repeat(24)}`;
+      const result = classifyCloneError(`fatal: bad credentials: ${token}`);
+      expect(result.detail).not.toContain(token);
+      expect(result.detail).toContain('[REDACTED-GH-PAT]');
     });
   });
 

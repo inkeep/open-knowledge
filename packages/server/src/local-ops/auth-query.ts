@@ -1,6 +1,21 @@
-import { runSubprocess } from './subprocess.ts';
+import { redactedStderrDetail } from './clone-error-classify.ts';
+import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+const SIGNED_OUT_SENTENCE = /^not logged in to /i;
+const BENIGN_TOKEN_STORAGE_BANNER = /^\[auth\] token storage: /;
+
+function isSignedOutOnlyStderr(stderr: string): boolean {
+  const lines = stderr
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return (
+    lines.some((line) => SIGNED_OUT_SENTENCE.test(line)) &&
+    lines.every((line) => SIGNED_OUT_SENTENCE.test(line) || BENIGN_TOKEN_STORAGE_BANNER.test(line))
+  );
+}
 
 export type AuthStatusResponse =
   | {
@@ -21,10 +36,9 @@ export interface RepoEntry {
 
 export type AuthReposResponse =
   | { ok: true; host: string; repos: RepoEntry[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; authenticated?: false };
 
-export interface RunAuthQueryOptions {
-  cliArgs: readonly string[];
+export interface RunAuthQueryOptions extends LocalOpCliInvocation {
   host?: string;
   timeoutMs?: number;
 }
@@ -36,6 +50,7 @@ export async function runAuthStatusSubprocess(
   const lines: Record<string, unknown>[] = [];
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
+    cliEnv: opts.cliEnv,
     trailingArgs: ['auth', 'status', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     onLine: ({ parsed }) => {
@@ -71,7 +86,7 @@ export async function runAuthStatusSubprocess(
     error: result.timedOut
       ? 'auth status timed out'
       : result.code !== 0
-        ? result.stderr || `auth status exited with code ${result.code ?? -1}`
+        ? redactedStderrDetail(result.stderr) || `auth status exited with code ${result.code ?? -1}`
         : undefined,
   };
 }
@@ -83,6 +98,7 @@ export async function runAuthReposSubprocess(
   const lines: Record<string, unknown>[] = [];
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
+    cliEnv: opts.cliEnv,
     trailingArgs: ['auth', 'repos', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     onLine: ({ parsed }) => {
@@ -92,9 +108,13 @@ export async function runAuthReposSubprocess(
   const result = await proc.done;
   if (result.timedOut) return { ok: false, error: 'auth repos timed out' };
   if (result.code !== 0) {
+    const detail = redactedStderrDetail(result.stderr);
+    if (isSignedOutOnlyStderr(result.stderr)) {
+      return { ok: false, error: detail, authenticated: false };
+    }
     return {
       ok: false,
-      error: result.stderr || `auth repos exited with code ${result.code ?? -1}`,
+      error: detail || `auth repos exited with code ${result.code ?? -1}`,
     };
   }
   for (let i = lines.length - 1; i >= 0; i--) {

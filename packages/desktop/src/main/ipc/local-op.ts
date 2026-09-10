@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   type AuthReposResponse,
   type AuthStatusResponse,
+  type LocalOpCliInvocation,
   type RunCloneController,
   type RunDeviceFlowController,
   runAuthReposSubprocess,
@@ -40,8 +41,16 @@ export function createLocalOpState(): LocalOpHandlerState {
   };
 }
 
+interface LocalOpFailure {
+  readonly event: 'ipc.error';
+  readonly channel: string;
+  readonly reason: string;
+  readonly handler: string;
+}
+
 export interface LocalOpDeps {
-  resolveCliArgs: () => readonly string[];
+  resolveCliInvocation: () => LocalOpCliInvocation;
+  logFailure: (failure: LocalOpFailure) => void;
   state: LocalOpHandlerState;
 }
 
@@ -63,9 +72,11 @@ export function handleAuthStart(
       }),
     );
   }
+  let terminalError: string | null = null;
   const controller = runDeviceFlowSubprocess({
-    cliArgs: deps.resolveCliArgs(),
+    ...deps.resolveCliInvocation(),
     onEvent: (event) => {
+      if (event.type === 'error') terminalError = event.message;
       if (!sender.isDestroyed?.()) {
         sendToRenderer(sender, 'ok:local-op:auth:event', { streamId, event });
       }
@@ -75,6 +86,14 @@ export function handleAuthStart(
   void controller.done.finally(() => {
     if (deps.state.authInFlight?.streamId === streamId) {
       deps.state.authInFlight = null;
+    }
+    if (terminalError !== null) {
+      deps.logFailure({
+        event: 'ipc.error',
+        channel: 'ok:local-op:auth:start',
+        reason: terminalError,
+        handler: 'handleAuthStart',
+      });
     }
   });
   return { ok: true, streamId };
@@ -116,12 +135,14 @@ export function handleCloneStart(
       }),
     );
   }
+  let terminalError: string | null = null;
   const controller = runCloneSubprocess({
-    cliArgs: deps.resolveCliArgs(),
+    ...deps.resolveCliInvocation(),
     url: request.url,
     dir: request.dir,
     branch: request.branch,
     onEvent: (event) => {
+      if (event.type === 'error') terminalError = event.message;
       if (sender.isDestroyed?.()) return;
       sendToRenderer(sender, 'ok:local-op:clone:event', { streamId, event });
     },
@@ -130,6 +151,14 @@ export function handleCloneStart(
   void controller.done.finally(() => {
     if (deps.state.cloneInFlight?.streamId === streamId) {
       deps.state.cloneInFlight = null;
+    }
+    if (terminalError !== null) {
+      deps.logFailure({
+        event: 'ipc.error',
+        channel: 'ok:local-op:clone:start',
+        reason: terminalError,
+        handler: 'handleCloneStart',
+      });
     }
   });
   return { ok: true, streamId };
@@ -172,19 +201,31 @@ export function handleAuthStatus(
   request?: { host?: string },
 ): Promise<AuthStatusResponse> {
   const host = request?.host ?? DEFAULT_AUTH_QUERY_HOST;
+  const logged = (response: AuthStatusResponse): AuthStatusResponse => {
+    if (!response.authenticated && response.error !== undefined) {
+      deps.logFailure({
+        event: 'ipc.error',
+        channel: 'ok:local-op:auth:status',
+        reason: response.error,
+        handler: 'handleAuthStatus',
+      });
+    }
+    return response;
+  };
   return runCoalescedAuthQuery(
     deps.state.authStatusInFlight,
     host,
     () =>
       runAuthStatusSubprocess({
-        cliArgs: deps.resolveCliArgs(),
+        ...deps.resolveCliInvocation(),
         host: request?.host,
+      }).then(logged),
+    (h) =>
+      logged({
+        authenticated: false,
+        host: h,
+        error: 'too many concurrent auth status queries',
       }),
-    (h) => ({
-      authenticated: false,
-      host: h,
-      error: 'too many concurrent auth status queries',
-    }),
   );
 }
 
@@ -193,17 +234,29 @@ export function handleAuthRepos(
   request?: { host?: string },
 ): Promise<AuthReposResponse> {
   const host = request?.host ?? DEFAULT_AUTH_QUERY_HOST;
+  const logged = (response: AuthReposResponse): AuthReposResponse => {
+    if (!response.ok && response.authenticated !== false) {
+      deps.logFailure({
+        event: 'ipc.error',
+        channel: 'ok:local-op:auth:repos',
+        reason: response.error,
+        handler: 'handleAuthRepos',
+      });
+    }
+    return response;
+  };
   return runCoalescedAuthQuery(
     deps.state.authReposInFlight,
     host,
     () =>
       runAuthReposSubprocess({
-        cliArgs: deps.resolveCliArgs(),
+        ...deps.resolveCliInvocation(),
         host: request?.host,
+      }).then(logged),
+    () =>
+      logged({
+        ok: false,
+        error: 'too many concurrent auth repos queries',
       }),
-    () => ({
-      ok: false,
-      error: 'too many concurrent auth repos queries',
-    }),
   );
 }

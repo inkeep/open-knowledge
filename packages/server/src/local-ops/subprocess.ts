@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { delimiter as PATH_DELIMITER } from 'node:path';
+import { posix, win32 } from 'node:path';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
 
 interface ParsedLine {
@@ -7,8 +7,14 @@ interface ParsedLine {
   parsed: Record<string, unknown> | null;
 }
 
-interface SubprocessRunOptions {
-  cliArgs: readonly string[];
+type LocalOpCliEnv = Readonly<Record<string, string | undefined>>;
+
+export interface LocalOpCliInvocation {
+  readonly cliArgs: readonly string[];
+  readonly cliEnv?: LocalOpCliEnv;
+}
+
+interface SubprocessRunOptions extends LocalOpCliInvocation {
   trailingArgs: readonly string[];
   cwd?: string;
   extraPathDirs?: readonly string[];
@@ -16,6 +22,7 @@ interface SubprocessRunOptions {
   onLine: (line: ParsedLine) => void;
   onStderr?: (chunk: Buffer) => void;
   stdinData?: string;
+  platform?: NodeJS.Platform;
 }
 
 interface SubprocessRunResult {
@@ -28,6 +35,74 @@ interface SubprocessRunResult {
 interface SubprocessController {
   done: Promise<SubprocessRunResult>;
   cancel(): void;
+}
+
+function overlayEnvEntry(
+  env: NodeJS.ProcessEnv,
+  key: string,
+  value: string | undefined,
+  platform: NodeJS.Platform,
+): void {
+  if (platform === 'win32') {
+    const folded = key.toLowerCase();
+    for (const existing of Object.keys(env)) {
+      if (existing !== key && existing.toLowerCase() === folded) delete env[existing];
+    }
+  }
+  if (value === undefined) delete env[key];
+  else env[key] = value;
+}
+
+function pathDelimiterFor(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? win32.delimiter : posix.delimiter;
+}
+
+function readPathEntry(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
+  if (env.PATH !== undefined) return env.PATH;
+  if (platform === 'win32') {
+    for (const key of Object.keys(env)) {
+      if (key.toLowerCase() === 'path') return env[key] ?? '';
+    }
+  }
+  return '';
+}
+
+export function buildOverlaidEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  overlay: LocalOpCliEnv | undefined,
+  extraPathDirs: readonly string[] | undefined,
+  platform: NodeJS.Platform,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...baseEnv };
+  for (const [key, value] of Object.entries(overlay ?? {})) {
+    overlayEnvEntry(env, key, value, platform);
+  }
+  if (extraPathDirs && extraPathDirs.length > 0) {
+    overlayEnvEntry(
+      env,
+      'PATH',
+      [...extraPathDirs, readPathEntry(env, platform)]
+        .filter(Boolean)
+        .join(pathDelimiterFor(platform)),
+      platform,
+    );
+  }
+  return env;
+}
+
+const SPAWN_ERROR_FACT_KEYS = ['code', 'errno', 'syscall'] as const;
+
+function describeSpawnError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (err === null || typeof err !== 'object') return message;
+  const facts: string[] = [];
+  for (const key of SPAWN_ERROR_FACT_KEYS) {
+    const value = (err as Record<string, unknown>)[key];
+    if (typeof value === 'number' || (typeof value === 'string' && value !== '')) {
+      facts.push(`${key}=${value}`);
+    }
+  }
+  return facts.length === 0 ? message : `${message} (${facts.join(' ')})`;
 }
 
 export function runSubprocess(opts: SubprocessRunOptions): SubprocessController {
@@ -50,24 +125,33 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
   let stdoutBuffer = '';
   const stderrChunks: Buffer[] = [];
 
-  const childEnv: NodeJS.ProcessEnv = { ...process.env };
-  if (opts.extraPathDirs && opts.extraPathDirs.length > 0) {
-    childEnv.PATH = [...opts.extraPathDirs, process.env.PATH ?? '']
-      .filter(Boolean)
-      .join(PATH_DELIMITER);
-  }
+  const platform = opts.platform ?? process.platform;
+  const childEnv = buildOverlaidEnv(process.env, opts.cliEnv, opts.extraPathDirs, platform);
 
   const stdio: ['ignore' | 'pipe', 'pipe', 'pipe'] =
     opts.stdinData !== undefined ? ['pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'];
-  const child = spawn(
-    cmd,
-    argv,
-    withHiddenWindowsConsole({
-      stdio,
-      cwd: opts.cwd,
-      env: childEnv,
-    }),
-  );
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(
+      cmd,
+      argv,
+      withHiddenWindowsConsole({
+        stdio,
+        cwd: opts.cwd,
+        env: childEnv,
+      }),
+    );
+  } catch (err) {
+    return {
+      done: Promise.resolve({
+        code: -1,
+        stderr: describeSpawnError(err),
+        timedOut: false,
+        cancelled: false,
+      }),
+      cancel: () => {},
+    };
+  }
 
   if (opts.stdinData !== undefined && child.stdin) {
     child.stdin.on('error', () => {});
@@ -118,7 +202,7 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
     });
     child.on('error', (err) => {
       clearTimeout(killTimer);
-      stderrChunks.push(Buffer.from(err.message, 'utf-8'));
+      stderrChunks.push(Buffer.from(describeSpawnError(err), 'utf-8'));
       resolve({
         code: -1,
         stderr: Buffer.concat(stderrChunks).toString('utf-8').trim(),

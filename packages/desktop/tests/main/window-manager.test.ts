@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { resolveLocalOpCliInvocation } from '../../src/main/local-op-cli-invocation.ts';
 import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
@@ -278,12 +279,12 @@ describe('WindowManager', () => {
     await promise;
   });
 
-  test('createProjectWindow forwards localOpCliArgs into the utility init IPC payload', async () => {
+  test('createProjectWindow forwards the resolved local-op CLI argv into the utility init IPC payload', async () => {
     const wm = new WindowManager(env.deps);
     const expectedCliArgs = ['/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh'];
     const promise = wm.createProjectWindow({
       projectPath: '/tmp/cli-args-plumbed',
-      localOpCliArgs: expectedCliArgs,
+      localOpCliInvocation: { cliArgs: expectedCliArgs },
     });
 
     const utility = env.utilities[0];
@@ -3913,5 +3914,102 @@ describe('boot heartbeats (the unpackaged path CI runs)', () => {
     expect(renderer).toBeDefined();
     expect(renderer?.ms).toBe(SPAWN_WAIT_HEARTBEAT_MS);
     expect(intervals.every((i) => i.cleared)).toBe(true);
+  });
+});
+
+describe('WindowManager — local-op CLI invocation threading', () => {
+  const WIN_EXE = 'C:\\Program Files\\OpenKnowledge\\OpenKnowledge.exe';
+  const WIN_RESOURCES = 'C:\\Program Files\\OpenKnowledge\\resources';
+
+  const spawnedLock: ServerLockMetadataLike = {
+    pid: 88001,
+    hostname: 'my-host',
+    port: 60111,
+    startedAt: '2026-05-21T00:00:00.000Z',
+    worktreeRoot: '/tmp/spawned-project',
+    kind: 'interactive',
+    capabilities: ['http', 'ws'],
+  };
+
+  function packagedWin32Invocation() {
+    return resolveLocalOpCliInvocation({
+      platform: 'win32',
+      isPackaged: true,
+      execPath: WIN_EXE,
+      resourcesPath: WIN_RESOURCES,
+      parentEnv: {},
+    });
+  }
+
+  let env: TestEnv;
+
+  beforeEach(() => {
+    env = buildEnv();
+  });
+
+  function enableDetachedSpawn(): void {
+    env.deps.setTimeout = (cb: () => void, _ms: number) => {
+      cb();
+      return null;
+    };
+    let readCount = 0;
+    env.deps.readServerLock = () => {
+      readCount++;
+      return readCount === 1 ? null : spawnedLock;
+    };
+    env.deps.isProcessAlive = () => true;
+    env.deps.hostname = () => 'my-host';
+    env.deps.probeWsUpgrade = () => Promise.resolve(true);
+    env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+  }
+
+  test('a packaged win32 host opens a project window on the detached-spawn path it actually takes', async () => {
+    enableDetachedSpawn();
+    const wm = new WindowManager(env.deps);
+
+    const ctx = await wm.createProjectWindow({
+      projectPath: '/tmp/spawned-project',
+      localOpCliInvocation: packagedWin32Invocation(),
+    });
+
+    expect(ctx.ownsServer).toBe(false);
+    expect(env.utilities.length).toBe(0);
+    expect(env.windows.length).toBe(1);
+  });
+
+  test('an invocation carrying a cliEnv overlay fails loudly when it reaches the utility fork', async () => {
+    const wm = new WindowManager(env.deps);
+
+    await expect(
+      wm.createProjectWindow({
+        projectPath: '/tmp/fork-with-overlay',
+        localOpCliInvocation: packagedWin32Invocation(),
+      }),
+    ).rejects.toThrow(/cliEnv/);
+  });
+
+  test('the cliEnv overlay rejection acquires no utility child, heartbeat, or init timer', async () => {
+    const intervals: { ms: number; cleared: boolean }[] = [];
+    env.deps.setInterval = ((_cb: () => void, ms: number) => {
+      const rec = { ms, cleared: false };
+      intervals.push(rec);
+      return rec;
+    }) as unknown as WindowManagerDeps['setInterval'];
+    env.deps.clearInterval = ((handle: unknown) => {
+      (handle as { cleared: boolean }).cleared = true;
+    }) as unknown as WindowManagerDeps['clearInterval'];
+    const wm = new WindowManager(env.deps);
+
+    await expect(
+      wm.createProjectWindow({
+        projectPath: '/tmp/fork-with-overlay-clean',
+        localOpCliInvocation: packagedWin32Invocation(),
+      }),
+    ).rejects.toThrow(/cliEnv/);
+
+    expect(env.utilities).toEqual([]);
+    expect(env.forkUtilityArgs).toEqual([]);
+    expect(env.timers).toEqual([]);
+    expect(intervals.filter((rec) => !rec.cleared)).toEqual([]);
   });
 });
