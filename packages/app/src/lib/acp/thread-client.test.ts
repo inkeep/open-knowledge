@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import type {
-  ThreadEvent,
-  ThreadInfo,
-  ThreadServerFrame,
+import {
+  THREAD_REOPEN_OP_TIMEOUT_MS,
+  type ThreadEvent,
+  type ThreadInfo,
+  type ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
   type: 'json',
 };
@@ -554,5 +555,221 @@ describe('render-model agent identity', () => {
       live.getThreadModel('ident-1')?.items,
     );
     expect(replayed.getThreadModel('ident-1')?.items).toHaveLength(2);
+  });
+});
+
+describe('a refused resume keeps the archived thread open', () => {
+  const archivedInfo: ThreadInfo = {
+    threadId: 't1',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'A',
+    status: 'exited',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: 3,
+    archived: true,
+    resumable: false,
+  };
+
+  const ev = (i: number): ThreadEvent => ({ kind: 'user_message', content: `m${i}`, ts: i });
+  const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+  function openedFromHistory(): {
+    client: AgentThreadClient;
+    sent: Array<Record<string, unknown>>;
+    frame: (f: ThreadServerFrame) => void;
+  } {
+    const client = new AgentThreadClient();
+    const sent: Array<Record<string, unknown>> = [];
+    const internals = client as unknown as {
+      ws: unknown;
+      handleFrame: (f: ThreadServerFrame) => void;
+    };
+    internals.ws = {
+      readyState: 1,
+      send: (raw: string) => sent.push(JSON.parse(raw) as Record<string, unknown>),
+    };
+    const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
+    frame({ op: 'threads', threads: [archivedInfo] });
+    client.openArchivedThread('t1');
+    frame({ op: 'events', threadId: 't1', fromSeq: 0, events: [ev(0), ev(1), ev(2), ev(3)] });
+    return { client, sent, frame };
+  }
+
+  test('the tab and its transcript survive the server re-archiving the thread', async () => {
+    const { client, sent, frame } = openedFromHistory();
+    expect(client.getOpenTabs().map((info) => info.threadId)).toEqual(['t1']);
+
+    const pending = client.resumeThread('t1');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'resume')?.reqId as string;
+
+    frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'installing' } });
+    frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+    frame({
+      op: 'events',
+      threadId: 't1',
+      fromSeq: 4,
+      events: [
+        { kind: 'status', status: 'installing', ts: 4 },
+        { kind: 'status', status: 'exited', detail: 'resume failed', ts: 5 },
+      ],
+    });
+    frame({
+      op: 'error',
+      code: 'resume-unsupported',
+      message: "the agent doesn't support resuming",
+      reqId,
+      threadId: 't1',
+    });
+
+    await expect(pending).rejects.toThrow(/resuming/);
+    expect(client.getOpenTabs().map((info) => info.threadId)).toEqual(['t1']);
+    const state = client.getThread('t1');
+    expect(state?.lastSeq).toBe(5);
+    expect(state?.events).toHaveLength(6);
+    expect(
+      state?.events.some(
+        (event) => event.kind === 'agent_stderr' && /missing log/.test(event.line),
+      ),
+    ).toBe(false);
+  });
+
+  test('an archive that no resume asked for still closes the tab', () => {
+    const { client, frame } = openedFromHistory();
+    frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'ready' } });
+    expect(client.getOpenTabs().map((info) => info.threadId)).toEqual(['t1']);
+
+    frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+    expect(client.getOpenTabs()).toEqual([]);
+  });
+
+  test('a late archive still finds the guard up after the client has given up waiting', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, frame } = openedFromHistory();
+      const settled = client.resumeThread('t1').then(
+        () => null,
+        (err: Error) => err,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'installing' } });
+
+      await vi.advanceTimersByTimeAsync(THREAD_REOPEN_OP_TIMEOUT_MS + 1);
+      expect((await settled)?.message).toMatch(/timed out/);
+
+      frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+      expect(client.getOpenTabs().map((info) => info.threadId)).toEqual(['t1']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a resume that timed out locally still lets a later refusal bring the guard down', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, sent, frame } = openedFromHistory();
+      const settled = client.resumeThread('t1').then(
+        () => null,
+        (err: Error) => err,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      const reqId = sent.find((f) => f.op === 'resume')?.reqId as string;
+      frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'installing' } });
+
+      await vi.advanceTimersByTimeAsync(THREAD_REOPEN_OP_TIMEOUT_MS + 1);
+      expect((await settled)?.message).toMatch(/timed out/);
+
+      frame({
+        op: 'error',
+        code: 'resume-unsupported',
+        message: "the agent doesn't support resuming",
+        reqId,
+        threadId: 't1',
+      });
+      frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+      expect(client.getOpenTabs()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a socket that drops mid-resume leaves no guard behind for the next archive', async () => {
+    const { client, frame } = openedFromHistory();
+    const settled = client.resumeThread('t1').then(
+      () => null,
+      (err: Error) => err,
+    );
+    await flush();
+    frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'installing' } });
+
+    (client as unknown as { url: string | null }).url = 'ws://example.invalid';
+    client.setUrl(null);
+    expect(await settled).toBeInstanceOf(ThreadChannelUnavailableError);
+
+    frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+    expect(client.getOpenTabs()).toEqual([]);
+  });
+
+  test('an archive arriving after the server answered the resume still closes the tab', async () => {
+    const { client, sent, frame } = openedFromHistory();
+    const pending = client.resumeThread('t1');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'resume')?.reqId as string;
+
+    frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'installing' } });
+    frame({
+      op: 'error',
+      code: 'resume-unsupported',
+      message: "the agent doesn't support resuming",
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toThrow(/resuming/);
+
+    frame({ op: 'info', info: { ...archivedInfo, archived: false, status: 'ready' } });
+    frame({ op: 'info', info: { ...archivedInfo, archived: true, status: 'exited' } });
+    expect(client.getOpenTabs()).toEqual([]);
+  });
+});
+
+describe('what the server says about resuming', () => {
+  const archivedInfo: ThreadInfo = {
+    threadId: 't1',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'A',
+    status: 'exited',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: -1,
+    archived: true,
+  };
+
+  function makeClient(): { client: AgentThreadClient; frame: (f: ThreadServerFrame) => void } {
+    const client = new AgentThreadClient();
+    const internals = client as unknown as {
+      ws: unknown;
+      handleFrame: (f: ThreadServerFrame) => void;
+    };
+    internals.ws = { readyState: 1, send: () => {} };
+    return { client, frame: (f) => internals.handleFrame.call(client, f) };
+  }
+
+  test('a thread the server calls unresumable reads back that way without anyone asking', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [{ ...archivedInfo, resumable: false }] });
+    expect(client.getThread('t1')?.info.resumable).toBe(false);
+  });
+
+  test('a thread that opens a session reads back as resumable again', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [{ ...archivedInfo, archived: false, resumable: false }] });
+    expect(client.getThread('t1')?.info.resumable).toBe(false);
+
+    frame({
+      op: 'info',
+      info: { ...archivedInfo, archived: false, status: 'ready', resumable: true },
+    });
+    expect(client.getThread('t1')?.info.resumable).toBe(true);
   });
 });

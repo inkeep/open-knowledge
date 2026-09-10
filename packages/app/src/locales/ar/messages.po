@@ -304,11 +304,6 @@ msgstr "تمت إضافة {0}، وإزالة {1}"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} لا يمكنه متابعة هذه المحادثة — النص محفوظ، لكن جلسة الوكيل لم تعد موجودة."
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} لا يوفر أي إعدادات للضبط"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "مخزن المهارات المركزي لـ {agent} غير موجود بعد؛ شغّل {agent} مرة واحدة لينشئه، ثم أعد المحاولة."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "لا يمكن لـ {agentName} استئناف هذه المحادثة. يُحتفظ بنص المحادثة، لذا ابدأ محادثة جديدة للمتابعة."
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "تعذّر على {agentName} بدء محادثة."
 
@@ -562,9 +561,29 @@ msgstr "تعذّر تشغيل {agentName}."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} لا يقبل مرفقات الصور."
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName} لا يعمل. ابدأ محادثة جديدة لتسجيل الدخول."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "كان {agentName} بحاجة إلى تسجيل دخولك."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "كان {agentName} بحاجة إلى تسجيل دخولك. استأنف هذه المحادثة لإعادة المحاولة."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "يحتاج {agentName} إلى تسجيل دخولك."
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} أبلغ: {headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "توقّف {agentName} بسبب خطأ."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4312,11 +4331,10 @@ msgstr "تعذّر إرسال تعليقاتك — مساحة العمل غير 
 msgid "Couldn't send your prompt — please try again."
 msgstr "تعذّر إرسال موجّهك — يرجى المحاولة مرة أخرى."
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "تعذّر تشغيل {0}: {1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "تعذّر تشغيل {agentName}: {0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8677,10 +8695,10 @@ msgstr "سيُنشأ الفرع الجديد <0>{trimmed}</0> من الإيدا�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "تظهر التغييرات الجديدة من مستودعك البعيد في نسختك تلقائيًا."
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "محادثة جديدة مع {0}"
+msgid "New chat with {agentName}"
+msgstr "محادثة جديدة مع {agentName}"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9721,6 +9739,10 @@ msgstr "فتح المصدر: {mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "فتح الطرفية"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "افتح الطرفية لتسجيل الدخول"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11653,6 +11675,10 @@ msgstr "تمت الاستعادة إلى نسخة {0}"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "النتائج محدودة — تحتوي مساحة العمل هذه على ملفات أكثر مما يستطيع البحث فهرسته. قد يكون الملف المفقود أثرًا للحد، لا خطأً إملائيًا."
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "استئناف المحادثة"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "جارٍ استئناف المحادثة"
@@ -11661,6 +11687,7 @@ msgstr "جارٍ استئناف المحادثة"
 msgid "Retrieving…"
 msgstr "يجري الاسترجاع…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11676,6 +11703,7 @@ msgstr "إعادة المحاولة"
 msgid "Retry push"
 msgstr "إعادة محاولة الدفع"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "تجري إعادة المحاولة"
@@ -12672,6 +12700,7 @@ msgstr "يظهر فوق متن الكود. يُحفظ ويُستعاد كـ `tit
 msgid "Sifting…"
 msgstr "يجري الغربلة…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12683,7 +12712,7 @@ msgstr "تسجيل الدخول"
 msgid "Sign in to {agentName} first"
 msgstr "سجّل الدخول إلى {agentName} أولًا"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "سجّل الدخول إلى {agentName} للمتابعة."
 

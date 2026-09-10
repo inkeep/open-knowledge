@@ -127,6 +127,41 @@ describe('ThreadPersistenceStore', () => {
     expect(metas[0]?.cwd).toBe('/tmp/x');
   });
 
+  test('a meta with no usable session id keeps its transcript and reads as unresumable', async () => {
+    const store = await makeStore();
+    store.queueMetaWrite('t1', meta('t1'));
+    await store.whenIdle('t1');
+    const { sessionId: _sessionId, ...withoutSessionId } = meta('nosession');
+    writeFileSync(store.metaPath('nosession'), JSON.stringify(withoutSessionId));
+    writeFileSync(store.metaPath('numeric'), JSON.stringify({ ...meta('numeric'), sessionId: 7 }));
+    writeFileSync(store.metaPath('never'), JSON.stringify({ ...meta('never'), sessionId: null }));
+
+    const metas = await store.scan();
+    expect(metas.map((m) => m.info.threadId).sort()).toEqual([
+      'never',
+      'nosession',
+      'numeric',
+      't1',
+    ]);
+    for (const threadId of ['never', 'nosession', 'numeric']) {
+      expect(metas.find((m) => m.info.threadId === threadId)?.sessionId).toBeNull();
+    }
+    expect(metas.find((m) => m.info.threadId === 't1')?.sessionId).toBe('sess-1');
+  });
+
+  test('a meta missing a field with no safe substitute is still skipped', async () => {
+    const store = await makeStore();
+    store.queueMetaWrite('t1', meta('t1'));
+    await store.whenIdle('t1');
+    const { cwd: _cwd, ...withoutCwd } = meta('nocwd');
+    writeFileSync(store.metaPath('nocwd'), JSON.stringify(withoutCwd));
+    const { agentRef: _agentRef, ...withoutAgent } = meta('noagent');
+    writeFileSync(store.metaPath('noagent'), JSON.stringify(withoutAgent));
+
+    const metas = await store.scan();
+    expect(metas.map((m) => m.info.threadId)).toEqual(['t1']);
+  });
+
   test('an unparseable middle line is substituted, preserving later seqs', async () => {
     const store = await makeStore();
     store.appendEvents('t1', [ev(0)]);

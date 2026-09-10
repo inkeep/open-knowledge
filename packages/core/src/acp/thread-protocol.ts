@@ -125,6 +125,7 @@ export interface ThreadInfo {
   availableCommands?: AvailableCommand[] | null;
   lastSeq: number;
   archived?: boolean;
+  resumable?: boolean;
   queue?: QueuedMessage[];
   steer?: SteerMessage;
   signInOutput?: string[];

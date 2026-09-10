@@ -304,11 +304,6 @@ msgstr "{0}개 추가, {1}개 제거"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} 이 채팅을 계속할 수 없습니다. 대화 기록은 남아 있지만 에이전트 세션이 종료되었습니다."
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0}에서 조정할 설정을 제공하지 않습니다"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "{agent}의 중앙 스킬 저장소가 아직 없습니다. {agent}을(를) 한 번 시작해 저장소를 만들게 한 뒤 다시 시도하세요."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "{agentName}이(가) 이 채팅을 이어갈 수 없습니다. 대화 기록은 유지되므로 새 채팅을 시작하세요."
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 대화 시작 실패."
 
@@ -562,9 +561,29 @@ msgstr "{agentName} 시작 실패."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName}: 이미지 첨부 미지원"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName}이(가) 실행 중이 아닙니다. 로그인하려면 새 채팅을 시작하세요."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "{agentName}에 로그인이 필요했습니다."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "{agentName}에 로그인이 필요했습니다. 다시 시도하려면 이 채팅을 재개하세요."
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "{agentName}에 로그인이 필요합니다."
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} 보고: {headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "{agentName}이(가) 오류로 중지되었습니다."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4312,11 +4331,10 @@ msgstr "댓글 전송에 실패했습니다. 워크스페이스 준비 전입니
 msgid "Couldn't send your prompt — please try again."
 msgstr "프롬프트 전송 실패. 다시 시도하세요."
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "{0} 시작 실패: {1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "{agentName} 시작 실패: {0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8677,10 +8695,10 @@ msgstr "새 브랜치 <0>{trimmed}</0>는 현재 커밋에서 생성되며 <1>.o
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "원격의 새 변경 사항이 사본에 자동으로 표시됩니다."
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "{0}와 새 채팅"
+msgid "New chat with {agentName}"
+msgstr "{agentName}와 새 채팅"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9721,6 +9739,10 @@ msgstr "소스 열기: {mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "터미널 열기"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "터미널을 열어 로그인"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11653,6 +11675,10 @@ msgstr "{0} 버전으로 복원했습니다"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "결과가 제한되었습니다. 이 워크스페이스에는 검색에서 색인할 수 있는 파일보다 더 많은 파일이 있습니다. 누락된 파일은 오타가 아니라 제한으로 인해 빠진 것일 수 있습니다."
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "채팅 재개"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "채팅 재개 중"
@@ -11661,6 +11687,7 @@ msgstr "채팅 재개 중"
 msgid "Retrieving…"
 msgstr "가져오는 중…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11676,6 +11703,7 @@ msgstr "다시 시도"
 msgid "Retry push"
 msgstr "푸시 재시도"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "다시 시도 중"
@@ -12672,6 +12700,7 @@ msgstr "코드 본문 위에 표시됩니다. Markdown에서 `title=\"...\"` 형
 msgid "Sifting…"
 msgstr "선별 중…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12683,7 +12712,7 @@ msgstr "로그인"
 msgid "Sign in to {agentName} first"
 msgstr "먼저 {agentName} 로그인"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "계속하려면 {agentName} 로그인."
 

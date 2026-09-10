@@ -17,6 +17,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     deleteThread: vi.fn(),
     markThreadViewed: vi.fn(),
   }),
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
 
 vi.doMock('@/lib/acp/registered-agents', () => ({

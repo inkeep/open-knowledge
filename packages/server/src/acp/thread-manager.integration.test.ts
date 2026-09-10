@@ -92,6 +92,7 @@ function internals(manager: AcpThreadManager): {
   pendingPermissionCount: (threadId: string) => number;
   turnActive: (threadId: string) => boolean;
   child: (threadId: string) => ChildProcess | null | undefined;
+  sessionId: (threadId: string) => string | null | undefined;
 } {
   const m = manager as unknown as {
     reapIdleThreads: () => void;
@@ -101,6 +102,7 @@ function internals(manager: AcpThreadManager): {
         pendingPermissions: Map<unknown, unknown>;
         turnActive: boolean;
         child: ChildProcess | null;
+        sessionId: string | null;
       }
     >;
   };
@@ -109,6 +111,7 @@ function internals(manager: AcpThreadManager): {
     pendingPermissionCount: (threadId) => m.threads.get(threadId)?.pendingPermissions.size ?? 0,
     turnActive: (threadId) => m.threads.get(threadId)?.turnActive ?? false,
     child: (threadId) => m.threads.get(threadId)?.child,
+    sessionId: (threadId) => m.threads.get(threadId)?.sessionId,
   };
 }
 
@@ -1345,6 +1348,29 @@ describe('AcpThreadManager persistence + resume', () => {
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
     expect(agentChunks(replayed)).toContain(notedEcho('first message'));
+  }, 45_000);
+
+  test('an agent that drops its resume capability retires the offer instead of repeating it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'fake-flip', { FAKE_CAPS: 'resume' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-flip', 'first message');
+    await manager.closeThread(threadId);
+    expect(manager.getInfo(threadId)?.resumable).toBe(true);
+
+    writeResumableAgentEntry(localDir, 'fake-flip', { FAKE_CAPS: '' });
+    await expect(manager.resumeThread(threadId, 'again')).rejects.toMatchObject({
+      code: 'resume-unsupported',
+    });
+    expect(manager.getInfo(threadId)?.archived).toBe(true);
+    expect(manager.getInfo(threadId)?.resumable).toBe(false);
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    const rehydrated = manager2.listThreads().find((t) => t.threadId === threadId);
+    expect(rehydrated?.resumable).toBe(false);
   }, 45_000);
 
   test('delete refuses live threads, removes archived ones and their files', async () => {
@@ -2747,6 +2773,36 @@ describe('AcpThreadManager retry', () => {
     await manager.closeThread(info.threadId);
   }, 40_000);
 
+  test('retries a thread that opened a session before the agent demanded sign-in', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const marker = join(tmp(), 'prompt-auth-cleared');
+    writeSessionThenPromptAuthAgentEntry(localDir, 'session-then-auth', marker);
+
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'session-then-auth' },
+    });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    expect(internals(manager).sessionId(info.threadId)).toBe('session-before-auth');
+
+    manager.sendPrompt(info.threadId, 'anything');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'the prompt to park on sign-in',
+    );
+    expect(internals(manager).sessionId(info.threadId)).toBe('session-before-auth');
+
+    writeFileSync(marker, '');
+    const retried = await manager.retryThread(info.threadId);
+    expect(retried.status).toBe('ready');
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
   test('refuses a thread that started fine', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -3080,6 +3136,60 @@ process.stdin.on('data', (chunk) => {
       }
     } else if (msg.method === 'session/prompt') {
       write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+function writeSessionThenPromptAuthAgentEntry(
+  localDir: string,
+  id: string,
+  markerPath: string,
+): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { existsSync } from 'node:fs';
+const MARKER = ${JSON.stringify(markerPath)};
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: { protocolVersion: 1, agentCapabilities: {}, authMethods: [] },
+      });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'session-before-auth' } });
+    } else if (msg.method === 'session/prompt') {
+      if (existsSync(MARKER)) {
+        write({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } });
+      } else {
+        write({
+          jsonrpc: '2.0',
+          id: msg.id,
+          error: { code: -32000, message: 'Authentication required' },
+        });
+      }
     } else if (msg.id !== undefined) {
       write({ jsonrpc: '2.0', id: msg.id, result: {} });
     }
@@ -3621,6 +3731,109 @@ describe('AcpThreadManager auth classification', () => {
 
     await manager.closeThread(info.threadId);
   }, 30_000);
+});
+
+describe('AcpThreadManager resumability signal', () => {
+  test('a thread parked on sign-in never opened a session, and says so', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(localDir, 'auth-agent', {
+      code: -32000,
+      message: 'Authentication required',
+      data: { detail: 'x' },
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'auth-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'auth_required',
+    );
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    const rehydrated = manager2.listThreads().find((t) => t.threadId === info.threadId);
+    expect(rehydrated?.archived).toBe(true);
+    expect(rehydrated?.resumable).toBe(false);
+  }, 45_000);
+
+  test('an agent that advertises no resume capability leaves its session unresumable', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeAuthenticatingAgentEntry(localDir, 'signin-agent');
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'signin-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'auth_required',
+    );
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    const signedIn = await manager.authenticateThread(info.threadId, 'test_login');
+    expect(signedIn.status).toBe('ready');
+    expect(signedIn.resumable).toBe(false);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 10_000, 'turn ended');
+
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(false);
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    const rehydrated = manager2.listThreads().find((t) => t.threadId === info.threadId);
+    expect(rehydrated?.archived).toBe(true);
+    expect(rehydrated?.resumable).toBe(false);
+  }, 45_000);
+
+  test('an agent that advertises resume reports its thread resumable, on disk too', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'resume-agent', { FAKE_CAPS: 'resume' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'resume-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(true);
+
+    manager.sendPrompt(info.threadId, 'hello');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 10_000, 'turn ended');
+
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(true);
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    const rehydrated = manager2.listThreads().find((t) => t.threadId === info.threadId);
+    expect(rehydrated?.archived).toBe(true);
+    expect(rehydrated?.resumable).toBe(true);
+  }, 45_000);
+
+  test('an agent that only loads sessions counts as resumable too', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'load-agent', { FAKE_CAPS: 'load' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'load-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.resumable).toBe(true);
+  }, 45_000);
 });
 
 describe('AcpThreadManager agent presence', () => {

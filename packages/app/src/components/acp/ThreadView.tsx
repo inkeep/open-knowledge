@@ -66,6 +66,7 @@ import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
+import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -110,6 +111,7 @@ import {
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
+import { useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
   attachmentBudgetKb,
   collectAllFiles,
@@ -163,6 +165,17 @@ import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './Pen
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
+import {
+  clickableAuthMethods,
+  isThreadResumable,
+  manualAuthMethods,
+  type ThreadAuthActionKind,
+  type ThreadAuthOffer,
+  type ThreadAuthOfferWithoutSignIn,
+  threadAuthHistoryOffer,
+  threadAuthOffer,
+  threadAuthOfferWithoutSignInMethods,
+} from './thread-auth-offer';
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
@@ -408,10 +421,12 @@ export function ThreadView({
 
   const model = useAgentThreadModel(info.threadId);
   const status = info.status;
+  const agentName = agentDisplayName(info.agent.name);
   const archived = info.archived === true;
   const turnActive = model?.turnActive === true && !archived;
   const thinkingLine = useThinkingLine(turnActive);
   const [resumePending, setResumePending] = useState(false);
+  const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const hasRecoverablePromptFailure =
     !archived &&
@@ -420,12 +435,14 @@ export function ThreadView({
       (item) =>
         item.kind === 'notice' && item.superseded !== true && item.failure?.reason === 'prompt',
     );
+  const resumable = isThreadResumable(info);
   const canPrompt = archived
-    ? !resumePending
+    ? !resumePending && resumable
     : (status === 'ready' || hasRecoverablePromptFailure) && !turnActive;
   const signingIn = status === 'authenticating';
   const awaitingSignIn = status === 'auth_required' || signingIn;
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
+  const terminalCli = useHarnessTerminalCli(info.agent.id);
   const [retryPending, setRetryPending] = useState(false);
   const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   const canQueue = !archived && turnActive;
@@ -558,23 +575,17 @@ export function ThreadView({
   const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
   useEffect(() => subscribeCommentPosted(() => setCommentsAttached(true)), []);
 
-  const sendText = (
-    text: string,
-    failureText: string | null = text,
-    attachments: readonly AttachmentPart[] = [],
+  const resumeThreadNow = (
+    text?: string,
+    failureText: string | null = null,
+    attachments?: readonly AttachmentPart[],
   ): Promise<boolean> => {
-    const parts = attachments.length > 0 ? attachments : undefined;
-    if (!archived) {
-      client.prompt(info.threadId, text, parts);
-      scrollApiRef.current?.scrollToEnd();
-      return Promise.resolve(true);
-    }
     setResumePending(true);
     setResumeError(null);
     setFailedPrompt(null);
     scrollApiRef.current?.scrollToEnd();
     return client
-      .resumeThread(info.threadId, text, parts)
+      .resumeThread(info.threadId, text, attachments)
       .then(() => true)
       .catch((err) => {
         setResumeError(
@@ -586,6 +597,20 @@ export function ThreadView({
         return false;
       })
       .finally(() => setResumePending(false));
+  };
+
+  const sendText = (
+    text: string,
+    failureText: string | null = text,
+    attachments: readonly AttachmentPart[] = [],
+  ): Promise<boolean> => {
+    const parts = attachments.length > 0 ? attachments : undefined;
+    if (!archived) {
+      client.prompt(info.threadId, text, parts);
+      scrollApiRef.current?.scrollToEnd();
+      return Promise.resolve(true);
+    }
+    return resumeThreadNow(text, failureText, parts);
   };
 
   const resendMessage = async (
@@ -673,7 +698,7 @@ export function ThreadView({
     void client
       .retryThread(info.threadId)
       .catch((err: unknown) => {
-        toast.error(t`Couldn't start ${info.agent.name}: ${errorText(err)}`);
+        toast.error(t`Couldn't start ${agentName}: ${errorText(err)}`);
       })
       .finally(() => setRetryPending(false));
   };
@@ -683,23 +708,74 @@ export function ThreadView({
   };
 
   const startFreshThread = (): void => {
+    if (newChatPending) return;
+    const bannerBeforeNewChat = resumeError;
+    const promptBeforeNewChat = failedPrompt;
     const draftText = composerText();
-    const prompt = failedPrompt ?? (draftText === '' ? undefined : draftText);
+    setNewChatPending(true);
     setResumeError(null);
     setFailedPrompt(null);
-    void client
-      .createThread({
-        agent: { source: info.agent.source, id: info.agent.id },
-        prompt,
+    void launchAgentThread(
+      { source: info.agent.source, id: info.agent.id },
+      promptBeforeNewChat,
+      null,
+      null,
+      promptBeforeNewChat === null && draftText !== '' ? draftText : null,
+    )
+      .then((outcome) => {
+        if (outcome === 'started') return;
+        if (outcome === 'deduped') {
+          toast.error(t`Already starting a chat with this agent — try again in a moment.`);
+        }
+        setResumeError((current) => current ?? bannerBeforeNewChat);
+        setFailedPrompt((current) => current ?? promptBeforeNewChat);
       })
-      .catch((err) => {
-        setResumeError(
-          err instanceof ThreadResumeError
-            ? err
-            : new ThreadResumeError('internal', err instanceof Error ? err.message : String(err)),
-        );
-        setFailedPrompt(prompt ?? null);
-      });
+      .finally(() => setNewChatPending(false));
+  };
+
+  const runningAuthAction: ThreadAuthActionKind | null = resumePending
+    ? 'resume'
+    : retryPending
+      ? 'retry'
+      : newChatPending
+        ? 'new-chat'
+        : null;
+  const authActionAnnouncement = (kind: ThreadAuthActionKind): string => {
+    switch (kind) {
+      case 'resume':
+        return t`Resuming the chat`;
+      case 'retry':
+        return t`Retrying`;
+      case 'new-chat':
+        return t`Starting ${agentName}…`;
+      case 'terminal-sign-in':
+        return '';
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+        return '';
+      }
+    }
+  };
+  const runAuthAction = (kind: ThreadAuthActionKind): void => {
+    switch (kind) {
+      case 'resume':
+        void resumeThreadNow();
+        return;
+      case 'retry':
+        retryThread();
+        return;
+      case 'new-chat':
+        startFreshThread();
+        return;
+      case 'terminal-sign-in':
+        if (terminalCli !== null) requestTerminalLaunch('', terminalCli);
+        return;
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+      }
+    }
   };
 
   const foldedEntries =
@@ -727,11 +803,31 @@ export function ThreadView({
       }
     }
   }
+  const authHistoryOffer = threadAuthHistoryOffer(agentName);
+  const authOffer: ThreadAuthOfferWithoutSignIn = threadAuthOfferWithoutSignInMethods({
+    archived,
+    resumable,
+    status,
+    agentName,
+    terminalCli,
+  });
+  let authOfferNoticeIndex = -1;
+  if (authOffer.actionLabel !== null) {
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
+      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
+        authOfferNoticeIndex = index;
+        break;
+      }
+    }
+  }
   let restoreNoticeIndex = -1;
   if (!archived && status !== 'exited') {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
       const item = visibleItems[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'prompt') {
+      if (item?.kind !== 'notice') continue;
+      const reason = item.failure?.reason;
+      if (reason === 'prompt' || (reason === 'auth-required' && canPrompt)) {
         restoreNoticeIndex = index;
         break;
       }
@@ -775,6 +871,14 @@ export function ThreadView({
       break;
     }
   }
+
+  const resumeFailureMessage = !archived
+    ? ''
+    : !resumable
+      ? t`${agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue.`
+      : resumeError !== null
+        ? t`Couldn't resume this chat: ${resumeError.message}`
+        : '';
 
   const items = visibleItems;
   let authPrompt: ThreadFailureDetail | null = null;
@@ -837,7 +941,7 @@ export function ThreadView({
           {}
           <AgentNoticeAnnouncer
             notices={agentNotices}
-            agentName={agentDisplayName(info.agent.name)}
+            agentName={agentName}
             replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
           />
           {model !== null && model.plan.length > 0 ? (
@@ -879,18 +983,32 @@ export function ThreadView({
                 <div className="flex min-h-full items-center justify-center">
                   <ThreadAuthPrompt
                     failure={authPrompt}
+                    offer={threadAuthOffer({
+                      authMethods: authPrompt.authMethods ?? [],
+                      agentName,
+                      terminalCli,
+                    })}
                     agent={info.agent}
-                    agentName={agentDisplayName(info.agent.name)}
+                    agentName={agentName}
                     signingIn={signingIn}
                     signInOutput={info.signInOutput}
                     showRetry={canRetry}
                     retryPending={retryPending}
                     onRetry={retryThread}
+                    onAuthAction={runAuthAction}
+                    runningAuthAction={runningAuthAction}
                     onAuthenticate={authenticateThread}
                   />
                 </div>
               ) : (
-                <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+                <ThreadEmptyState
+                  status={status}
+                  archived={archived}
+                  agent={info.agent}
+                  authOffer={authOffer}
+                  onAuthAction={runAuthAction}
+                  runningAuthAction={runningAuthAction}
+                />
               )}
             </div>
           ) : (
@@ -926,6 +1044,11 @@ export function ThreadView({
                             onRetry={retryThread}
                             showRestore={index === restoreNoticeIndex}
                             onRestore={() => restoreFailedPromptToComposer(index)}
+                            authOffer={
+                              index === authOfferNoticeIndex ? authOffer : authHistoryOffer
+                            }
+                            onAuthAction={runAuthAction}
+                            runningAuthAction={runningAuthAction}
                             onResend={resendMessage}
                             canSendHere={canPrompt || canQueue}
                             isLatestUserTurn={index === lastUserTurnIndex}
@@ -1014,25 +1137,42 @@ export function ThreadView({
               </Button>
             </div>
           ) : null}
-          {archived && resumeError !== null ? (
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            data-testid="agent-thread-auth-status"
+          >
+            {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
+          </span>
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            data-testid="agent-thread-resume-status"
+          >
+            {resumeFailureMessage}
+          </span>
+          {resumeFailureMessage !== '' ? (
             <div
               className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
               data-testid="agent-thread-resume-failed"
             >
-              <span className="flex-1">
-                {resumeError.code === 'resume-unsupported'
-                  ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
-                  : t`Couldn't resume this chat: ${resumeError.message}`}
-              </span>
+              <span className="flex-1">{resumeFailureMessage}</span>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="h-6 shrink-0 text-xs"
+                disabled={runningAuthAction !== null}
+                aria-busy={runningAuthAction === 'new-chat'}
                 onClick={startFreshThread}
                 data-testid="agent-thread-resume-fallback-new"
               >
-                {t`New chat with ${info.agent.name}`}
+                {runningAuthAction === 'new-chat' ? (
+                  <Spinner className="size-3" aria-hidden="true" />
+                ) : null}
+                {t`New chat with ${agentName}`}
               </Button>
             </div>
           ) : null}
@@ -1526,14 +1666,49 @@ function ThreadTranscriptSkeleton(): ReactNode {
   );
 }
 
+function ThreadAuthOfferButton({
+  offer,
+  runningAuthAction,
+  onAction,
+}: {
+  offer: ThreadAuthOfferWithoutSignIn;
+  runningAuthAction: ThreadAuthActionKind | null;
+  onAction: (kind: ThreadAuthActionKind) => void;
+}): ReactNode {
+  if (offer.actionLabel === null) return null;
+  const busy = runningAuthAction === offer.kind;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-6 text-xs"
+      disabled={runningAuthAction !== null}
+      aria-busy={busy}
+      onClick={() => onAction(offer.kind)}
+      data-testid="agent-thread-auth-action"
+      data-auth-offer-kind={offer.kind}
+    >
+      {busy ? <Spinner className="size-3" aria-hidden="true" /> : null}
+      {offer.actionLabel}
+    </Button>
+  );
+}
+
 function ThreadEmptyState({
   status,
   archived,
   agent,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
 }: {
   status: ThreadInfo['status'];
   archived: boolean;
   agent: ThreadInfo['agent'];
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const agentName = agentDisplayName(agent.name);
@@ -1555,7 +1730,7 @@ function ThreadEmptyState({
     );
   }
 
-  if (status === 'auth_required') {
+  if (authOffer.actionLabel !== null) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <RegisteredAgentIcon
@@ -1563,7 +1738,12 @@ function ThreadEmptyState({
           iconUrl={agent.iconUrl}
           className="size-12 opacity-25 grayscale"
         />
-        <p className="text-muted-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
+        <p className="text-muted-foreground text-sm">{authOffer.headline}</p>
+        <ThreadAuthOfferButton
+          offer={authOffer}
+          runningAuthAction={runningAuthAction}
+          onAction={onAuthAction}
+        />
       </div>
     );
   }
@@ -1616,6 +1796,9 @@ function ThreadItem({
   onRetry,
   showRestore,
   onRestore,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
   onResend,
   canSendHere,
   isLatestUserTurn,
@@ -1632,6 +1815,9 @@ function ThreadItem({
   onRetry: () => void;
   showRestore: boolean;
   onRestore: () => void;
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
   onResend: (
     text: string,
     target: ResendTarget,
@@ -1678,6 +1864,9 @@ function ThreadItem({
           onRetry={onRetry}
           showRestore={showRestore}
           onRestore={onRestore}
+          authOffer={authOffer}
+          onAuthAction={onAuthAction}
+          runningAuthAction={runningAuthAction}
         />
       );
     case 'agent_notice':
@@ -1820,6 +2009,7 @@ function SignInOutput({ output }: { output?: string[] }): ReactNode {
 
 function ThreadAuthPrompt({
   failure,
+  offer,
   agent,
   agentName,
   signingIn,
@@ -1828,8 +2018,11 @@ function ThreadAuthPrompt({
   retryPending,
   onRetry,
   onAuthenticate,
+  onAuthAction,
+  runningAuthAction,
 }: {
   failure: ThreadFailureDetail;
+  offer: ThreadAuthOffer;
   agent: ThreadInfo['agent'];
   agentName: string;
   signingIn: boolean;
@@ -1838,16 +2031,22 @@ function ThreadAuthPrompt({
   retryPending: boolean;
   onRetry: () => void;
   onAuthenticate: (methodId: string) => Promise<void>;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
   const [authPending, setAuthPending] = useState<string | null>(null);
   const authMethods = failure.authMethods ?? [];
-  const signInMethods = authMethods.filter((m) => m.kind !== 'terminal' && m.kind !== 'env_var');
-  const manualMethods = authMethods.filter((m) => m.kind === 'terminal' || m.kind === 'env_var');
+  const signInMethods = clickableAuthMethods(authMethods);
+  const manualMethods = manualAuthMethods(authMethods);
   const agentMessage = failure.agentMessage ?? '';
   const machineDetail = failure.machineDetail ?? '';
-  const framedRetry = showRetry && machineDetail === '' && !signingIn;
+  const framedRetry =
+    showRetry &&
+    machineDetail === '' &&
+    !signingIn &&
+    (signInMethods.length > 0 || manualMethods.length > 0);
   const signIn = (methodId: string): void => {
     setAuthPending(methodId);
     void onAuthenticate(methodId)
@@ -1878,7 +2077,7 @@ function ThreadAuthPrompt({
           </>
         ) : (
           <>
-            <p className="font-medium text-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
+            <p className="font-medium text-foreground text-sm">{offer.headline}</p>
             {agentMessage !== '' ? (
               <p className="text-muted-foreground text-1sm">{agentMessage}</p>
             ) : null}
@@ -1907,6 +2106,13 @@ function ThreadAuthPrompt({
             </Button>
           ))}
         </div>
+      ) : null}
+      {!signingIn && signInMethods.length === 0 && offer.kind === 'terminal-sign-in' ? (
+        <ThreadAuthOfferButton
+          offer={offer}
+          runningAuthAction={runningAuthAction}
+          onAction={onAuthAction}
+        />
       ) : null}
       {!signingIn && manualMethods.length > 0 ? (
         <ul className="flex flex-col gap-1 text-muted-foreground text-xs">
@@ -1979,6 +2185,9 @@ function ThreadNotice({
   onRetry,
   showRestore,
   onRestore,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
 }: {
   item: Extract<RenderedItem, { kind: 'notice' }>;
   agentName: string;
@@ -1987,6 +2196,9 @@ function ThreadNotice({
   onRetry: () => void;
   showRestore: boolean;
   onRestore: () => void;
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
@@ -1994,7 +2206,7 @@ function ThreadNotice({
   const failureHeadline = (reason: ThreadFailureDetail['reason']): string => {
     switch (reason) {
       case 'auth-required':
-        return t`Sign in to ${agentName} to continue.`;
+        return authOffer.headline;
       case 'connect':
         return t`${agentName} couldn't start.`;
       case 'session-setup':
@@ -2068,6 +2280,15 @@ function ThreadNotice({
                 </pre>
               ) : null}
             </>
+          ) : null}
+          {failure.reason === 'auth-required' && !showRetry ? (
+            <div className="mt-1.5">
+              <ThreadAuthOfferButton
+                offer={authOffer}
+                runningAuthAction={runningAuthAction}
+                onAction={onAuthAction}
+              />
+            </div>
           ) : null}
           {showRetry ? (
             <div className="mt-1.5">

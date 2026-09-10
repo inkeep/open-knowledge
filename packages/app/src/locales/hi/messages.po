@@ -304,11 +304,6 @@ msgstr "{0} जोड़े गए, {1} हटाए गए"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
-msgid "{0} can't continue this chat — the transcript is kept, but the agent session is gone."
-msgstr "{0} इस चैट को जारी नहीं रख सकता — ट्रांसक्रिप्ट सुरक्षित है, लेकिन एजेंट सत्र समाप्त हो गया है।"
-
-#. placeholder {0}: info.agent.name
-#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} समायोजित करने के लिए कोई सेटिंग नहीं देता"
 
@@ -550,6 +545,10 @@ msgid "troubleshooting.openclaw.central-store-missing"
 msgstr "{agent} का केंद्रीय स्किल स्टोर अभी मौजूद नहीं है; {agent} को एक बार शुरू करें ताकि वह इसे बना ले, फिर दोबारा कोशिश करें।"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
+msgstr "{agentName} इस चैट को आगे नहीं बढ़ा सकता। ट्रांसक्रिप्ट सुरक्षित है, इसलिए जारी रखने के लिए नई चैट शुरू करें।"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} बातचीत शुरू नहीं कर सका।"
 
@@ -562,9 +561,29 @@ msgstr "{agentName} शुरू नहीं हो सका।"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} छवि अनुलग्नक स्वीकार नहीं करता।"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} isn't running. Start a new chat to sign in."
+msgstr "{agentName} नहीं चल रहा है। साइन इन करने के लिए नई चैट शुरू करें।"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in."
+msgstr "{agentName} को आपके साइन इन करने की ज़रूरत थी।"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needed you to sign in. Resume this chat to try again."
+msgstr "{agentName} को आपके साइन इन करने की ज़रूरत थी। दोबारा कोशिश करने के लिए यह चैट फिर से शुरू करें।"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} needs you to sign in."
+msgstr "{agentName} को आपके साइन इन करने की ज़रूरत है।"
+
 #: src/components/acp/AgentNoticeAnnouncer.tsx
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} ने बताया: {headline}"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "{agentName} stopped with an error."
+msgstr "{agentName} एक त्रुटि के साथ रुक गया।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
@@ -4308,11 +4327,10 @@ msgstr "आपकी टिप्पणियाँ नहीं भेजी �
 msgid "Couldn't send your prompt — please try again."
 msgstr "आपका प्रॉम्प्ट नहीं भेजा जा सका — कृपया फिर कोशिश करें।"
 
-#. placeholder {0}: info.agent.name
-#. placeholder {1}: errorText(err)
+#. placeholder {0}: errorText(err)
 #: src/components/acp/ThreadView.tsx
-msgid "Couldn't start {0}: {1}"
-msgstr "{0} शुरू नहीं हो सका: {1}"
+msgid "Couldn't start {agentName}: {0}"
+msgstr "{agentName} शुरू नहीं हो सका: {0}"
 
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't start Slidev."
@@ -8673,10 +8691,10 @@ msgstr "नई ब्रांच <0>{trimmed}</0> मौजूदा कमि�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "आपके रिमोट के नए बदलाव आपकी प्रति में अपने आप आ जाते हैं।"
 
-#. placeholder {0}: info.agent.name
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
-msgid "New chat with {0}"
-msgstr "{0} के साथ नई चैट"
+msgid "New chat with {agentName}"
+msgstr "{agentName} के साथ नई चैट"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -9717,6 +9735,10 @@ msgstr "स्रोत खोलें: {mirrorSrc}"
 #: src/components/TerminalRevealTab.tsx
 msgid "Open terminal"
 msgstr "टर्मिनल खोलें"
+
+#: src/components/acp/thread-auth-offer.ts
+msgid "Open terminal to sign in"
+msgstr "साइन इन करने के लिए टर्मिनल खोलें"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Open that worktree instead"
@@ -11649,6 +11671,10 @@ msgstr "{0} वाले संस्करण पर बहाल किया 
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "परिणाम सीमित — इस कार्यक्षेत्र में खोज के अनुक्रमण से ज़्यादा फ़ाइलें हैं। कोई अनुपस्थित फ़ाइल इस सीमा का नतीजा हो सकती है, वर्तनी की ग़लती नहीं।"
 
+#: src/components/acp/thread-auth-offer.ts
+msgid "Resume chat"
+msgstr "चैट फिर से शुरू करें"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "चैट फिर से शुरू हो रही है"
@@ -11657,6 +11683,7 @@ msgstr "चैट फिर से शुरू हो रही है"
 msgid "Retrieving…"
 msgstr "लाया जा रहा है…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/BugReportHistory.tsx
@@ -11672,6 +11699,7 @@ msgstr "फिर कोशिश करें"
 msgid "Retry push"
 msgstr "भेजना फिर आज़माएँ"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retrying"
 msgstr "फिर कोशिश की जा रही है"
@@ -12668,6 +12696,7 @@ msgstr "कोड के मुख्य भाग के ऊपर दिखत
 msgid "Sifting…"
 msgstr "छाना जा रहा है…"
 
+#: src/components/acp/thread-auth-offer.ts
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SyncSection.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
@@ -12679,7 +12708,7 @@ msgstr "साइन इन करें"
 msgid "Sign in to {agentName} first"
 msgstr "पहले {agentName} में साइन इन करें"
 
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/thread-auth-offer.ts
 msgid "Sign in to {agentName} to continue."
 msgstr "जारी रखने के लिए {agentName} में साइन इन करें।"
 

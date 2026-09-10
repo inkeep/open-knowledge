@@ -1132,6 +1132,7 @@
     "ApeA0n": [["dropCount"], " modifications annulées sur ", ["docName"]],
     "Aq-O0x": ["statut"],
     "AqnqMJ": ["Clé API définie"],
+    "Arr7LU": ["Impossible de démarrer ", ["agentName"], " : ", ["0"]],
     "AsqRE_": ["Emplacement par défaut des nouvelles pièces jointes"],
     "AtBdnD": ["Impossible de supprimer la compétence : ", ["error"]],
     "AvqEDl": ["Certains fichiers déposés n’ont pas pu être insérés en toute sécurité."],
@@ -2123,6 +2124,7 @@
       ]
     ],
     "LKOLNn": ["Aucun agent IA installé"],
+    "LMVNT6": [["agentName"], " a besoin que vous vous connectiez."],
     "LPAv9E": ["il y a ", ["days"], " j"],
     "LPLWpO": ["Le contenu du tableau n'est pas une scène Excalidraw valide."],
     "LQdLio": ["Nouveau schéma"],
@@ -2380,6 +2382,7 @@
     "O0Z2Xr": ["Sortants"],
     "O2UpM1": ["Parcourir"],
     "O3oNi5": ["E-mail"],
+    "O4rQ4h": [["agentName"], " avait besoin que vous vous connectiez."],
     "O6H89R": ["Résolu"],
     "O6yEPk": ["Créez un nouveau projet OpenKnowledge dans le dossier de votre choix."],
     "O7_W_a": ["Ouvrir avec l'IA"],
@@ -2942,7 +2945,6 @@
       ]
     ],
     "UIjjFa": ["Voir ce qui est ajouté"],
-    "UJEFJY": ["Impossible de démarrer ", ["0"], " : ", ["1"]],
     "UL-9ej": ["OpenKnowledge a ouvert l'aperçu en direct"],
     "UL8A9w": ["Étiquette"],
     "UMT9C9": ["Comment utiliser OpenKnowledge et ses outils MCP."],
@@ -3170,6 +3172,10 @@
       " éléments sélectionnés ? Les dossiers et tous les fichiers qu'ils contiennent seront supprimés. Cette action est irréversible."
     ],
     "WMsoIm": ["Déjà connecté ?"],
+    "WOY8rV": [
+      ["agentName"],
+      " avait besoin que vous vous connectiez. Reprenez ce chat pour réessayer."
+    ],
     "WOfp4H": ["Échec de la mise à jour de l'intervalle de synchronisation — ", ["detail"]],
     "WOr-hW": ["tokens"],
     "WPwDin": ["Ouvrir le dossier sur le disque"],
@@ -3539,6 +3545,7 @@
     "_9rYSZ": ["intégration MCP de ", ["names"], " réparée"],
     "_Bix3-": ["Occurrences de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Création…"],
+    "_FqAty": ["Reprendre le chat"],
     "_G7A92": ["Maintenir index.md"],
     "_GRWOJ": ["Changer de fournisseur d'embeddings ?"],
     "_HgF9q": ["Trier par"],
@@ -3601,6 +3608,7 @@
     "_tekeB": ["propriétés du dossier mises à jour"],
     "_tjopj": ["Coller le duplicata"],
     "_uxBz5": ["Ajouter MCP et la compétence pour ", ["rowLabel"]],
+    "_xWxLt": [["agentName"], " s'est arrêté sur une erreur."],
     "_yB-24": ["tout ce qui se trouve sous n'importe quel dossier ", ["0"], "/"],
     "a-cKXz": ["Sélectionner toute la source"],
     "a3LDKx": ["Sécurité"],
@@ -4402,7 +4410,6 @@
     "hFmYGU": ["Les fichiers de thème liés ne sont pas pris en charge"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
-    "hHR0tt": ["Nouveau chat avec ", ["0"]],
     "hItdtk": ["Parcourir le dossier"],
     "hLKfZe": ["Utiliser plutôt un jeton"],
     "hLod4_": ["Convertir en modèle"],
@@ -4517,6 +4524,7 @@
     "iSLIjg": ["Connecter"],
     "iSQTsg": ["Liste numérotée"],
     "iSWh95": ["La cible de l’image « ", ["shown"], " » ne correspond à aucun fichier existant."],
+    "iSguIe": ["Nouveau chat avec ", ["agentName"]],
     "iSnkwB": ["Échec de l'ouverture du projet cloné."],
     "iTylMl": ["Modèles"],
     "iUwpZI": ["Pas d'espaces — utilisez <0>-</0> à la place."],
@@ -4721,6 +4729,7 @@
     "kNGLX6": ["Nouvelle tentative…"],
     "kNiQp6": ["Épinglés"],
     "kNqMMd": ["Dossier"],
+    "kNvMl7": ["Ouvrir le terminal pour se connecter"],
     "kPOw9O": ["Copier le message"],
     "kRTXGw": [
       "Dirigez la recherche sémantique vers n'importe quel point de terminaison d'embeddings compatible OpenAI — un serveur auto-hébergé ou un autre fournisseur. La clé API ci-dessus vaut pour le point de terminaison que vous définissez ici."
@@ -4937,6 +4946,10 @@
       "La synchronisation Git est en pause, car une opération Git ou des conflits non résolus nécessitent votre attention. Vos modifications continuent d’être enregistrées localement. Terminez l’opération ou résolvez les conflits dans votre terminal, puis réessayez la synchronisation."
     ],
     "mPoOmg": ["installez d'abord une compétence ici"],
+    "mPwwPl": [
+      ["agentName"],
+      " ne peut pas reprendre ce chat. La transcription est conservée, alors démarrez un nouveau chat pour continuer."
+    ],
     "mPy9lS": [
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
     ],
@@ -5011,10 +5024,6 @@
       "</1> n'existe dans <2>",
       ["src"],
       "</2>."
-    ],
-    "ms4r8V": [
-      ["0"],
-      " ne peut pas poursuivre ce chat — la transcription est conservée, mais la session de l'agent n'existe plus."
     ],
     "msOK6I": [
       "Les dépôts que vous avez déjà clonés peuvent continuer à se synchroniser via les identifiants enregistrés par git, même après votre déconnexion."
@@ -5721,6 +5730,10 @@
       "\\\" à la ",
       ["trashNoun"],
       ". Voulez-vous le supprimer définitivement ?"
+    ],
+    "txGF-X": [
+      ["agentName"],
+      " n'est pas en cours d'exécution. Démarrez un nouveau chat pour vous connecter."
     ],
     "txUHO8": [["localizedMessage"], " à la ligne ", ["displayLine"]],
     "txmRmK": ["Redimensionner le panneau Compétences"],
