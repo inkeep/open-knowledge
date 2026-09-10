@@ -1093,10 +1093,12 @@ describe('restartServerForWindow (IPC routing seam)', () => {
       .mockResolvedValue({ ok: false, reason: 'eperm' });
 
     const outcome = await wm.restartServerForWindow(projectWindow, '/some/project', {
-      localOpCliArgs: ['--y'],
+      localOpCliInvocation: { cliArgs: ['--y'] },
     });
 
-    expect(attached).toHaveBeenCalledWith('/some/project', { localOpCliArgs: ['--y'] });
+    expect(attached).toHaveBeenCalledWith('/some/project', {
+      localOpCliInvocation: { cliArgs: ['--y'] },
+    });
     expect(outcome).toEqual({ ok: false, reason: 'eperm' });
   });
 

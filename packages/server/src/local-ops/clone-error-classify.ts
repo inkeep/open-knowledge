@@ -1,3 +1,4 @@
+import { scrubSecrets } from '@inkeep/open-knowledge-core';
 import { redactShareSubprocessStderr } from '../share/publish.ts';
 
 export interface CloneErrorClassification {
@@ -7,10 +8,19 @@ export interface CloneErrorClassification {
 
 const GENERIC_TITLE = 'Clone subprocess reported an error.';
 
-export const MAX_DETAIL_LEN = 500;
+const MAX_DETAIL_LEN = 500;
+
+export function redactedStderrDetail(rawStderr: string): string {
+  return scrubSecrets(redactShareSubprocessStderr(rawStderr)).trim().slice(0, MAX_DETAIL_LEN);
+}
+
+export function stderrDetailSuffix(rawStderr: string): string {
+  const detail = redactedStderrDetail(rawStderr);
+  return detail.length > 0 ? ` — ${detail}` : '';
+}
 
 export function classifyCloneError(rawStderr: string): CloneErrorClassification {
-  const detail = redactShareSubprocessStderr(rawStderr).trim().slice(0, MAX_DETAIL_LEN);
+  const detail = redactedStderrDetail(rawStderr);
 
   if (detail.length === 0) {
     return { title: GENERIC_TITLE, detail: '' };

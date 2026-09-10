@@ -8,9 +8,8 @@ import {
 import { emitPreflightFailureSpan } from '../git-preflight-telemetry.ts';
 import { expandTilde, isAllowedGitUrl, isSafeLocalPath } from '../local-op-security.ts';
 import { getLogger } from '../logger.ts';
-import { redactShareSubprocessStderr } from '../share/publish.ts';
-import { MAX_DETAIL_LEN } from './clone-error-classify.ts';
-import { runSubprocess } from './subprocess.ts';
+import { redactedStderrDetail, stderrDetailSuffix } from './clone-error-classify.ts';
+import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
 
 const log = getLogger('clone-flow');
 
@@ -20,8 +19,7 @@ export type RawCloneEvent =
   | { type: 'branch-fallback'; branch: string }
   | { type: 'error'; message: string };
 
-export interface RunCloneOptions {
-  cliArgs: readonly string[];
+export interface RunCloneOptions extends LocalOpCliInvocation {
   url: string;
   dir: string;
   branch?: string | null;
@@ -65,10 +63,8 @@ function asRawCloneEvent(parsed: Record<string, unknown>): RawCloneEvent | null 
     return null;
   }
   if (type === 'error') {
-    return {
-      type: 'error',
-      message: typeof parsed.message === 'string' ? parsed.message : 'Unknown error',
-    };
+    const message = typeof parsed.message === 'string' ? redactedStderrDetail(parsed.message) : '';
+    return { type: 'error', message: message || 'Unknown error' };
   }
   return null;
 }
@@ -116,6 +112,7 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
     typeof opts.branch === 'string' && opts.branch.length > 0 ? ['-b', opts.branch] : [];
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
+    cliEnv: opts.cliEnv,
     trailingArgs: ['clone', '--json', ...branchArgs, opts.url, targetDir],
     extraPathDirs,
     timeoutMs,
@@ -136,14 +133,11 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
       opts.onEvent({ type: 'error', message: 'Clone timed out after 10 minutes' });
       return;
     }
+    if (result.cancelled) return;
     if (result.code !== 0) {
-      const redacted = redactShareSubprocessStderr(result.stderr ?? '')
-        .trim()
-        .slice(0, MAX_DETAIL_LEN);
-      const detail = redacted.length > 0 ? ` — ${redacted}` : '';
       opts.onEvent({
         type: 'error',
-        message: `Clone process exited with code ${result.code ?? -1}${detail}`,
+        message: `Clone process exited with code ${result.code ?? -1}${stderrDetailSuffix(result.stderr)}`,
       });
       return;
     }

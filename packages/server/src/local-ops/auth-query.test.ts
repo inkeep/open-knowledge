@@ -94,6 +94,34 @@ describe('runAuthStatusSubprocess', () => {
     }
   });
 
+  test('redacts a bare PAT out of the status error before it is persisted', async () => {
+    const token = `ghp_${'c'.repeat(36)}`;
+    const result = await runAuthStatusSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${token}\\n");
+        process.exit(1);
+      `),
+    });
+    expect(result.authenticated).toBe(false);
+    if (!result.authenticated) {
+      expect(result.error).not.toContain(token);
+      expect(result.error).toContain('[REDACTED-GH-PAT]');
+    }
+  });
+
+  test('caps an overlong status stderr at the shared detail cap', async () => {
+    const result = await runAuthStatusSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('x'.repeat(3000));
+        process.exit(1);
+      `),
+    });
+    expect(result.authenticated).toBe(false);
+    if (!result.authenticated) {
+      expect(result.error?.length).toBe(500);
+    }
+  });
+
   test('reports a timeout-marker error when the subprocess hangs past timeoutMs', async () => {
     const result = await runAuthStatusSubprocess({
       cliArgs: fixtureCli(`setInterval(() => {}, 1000)`),
@@ -126,6 +154,19 @@ describe('runAuthStatusSubprocess', () => {
     expect(result.authenticated).toBe(true);
     if (result.authenticated) {
       expect(result.tier).toBeUndefined();
+    }
+  });
+
+  test('forwards cliEnv through to the spawned CLI', async () => {
+    const result = await runAuthStatusSubprocess({
+      cliArgs: fixtureCli(`
+        console.log(JSON.stringify({type:'status', host:'github.com', authenticated:true, login: process.env.OK_AUTH_STATUS_ENV_MARKER || 'unset'}));
+      `),
+      cliEnv: { OK_AUTH_STATUS_ENV_MARKER: 'marker-from-cli-env' },
+    });
+    expect(result.authenticated).toBe(true);
+    if (result.authenticated) {
+      expect(result.login).toBe('marker-from-cli-env');
     }
   });
 
@@ -196,6 +237,96 @@ describe('runAuthReposSubprocess', () => {
     }
   });
 
+  test('flags the signed-out CLI exit as unauthenticated, not a command failure', async () => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('[auth] token storage: OS keychain\\nNot logged in to github.com\\n');
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.authenticated).toBe(false);
+      expect(result.error).toContain('Not logged in to github.com');
+    }
+  });
+
+  test.each([
+    ['a bare signed-out sentence', 'Not logged in to github.com\\n'],
+    [
+      'a file-backend storage banner ahead of the signed-out sentence',
+      '[auth] token storage: file (~/.ok/auth.yml) — OS keychain unavailable: keyring init failed\\nNot logged in to github.com\\n',
+    ],
+  ])('still flags %s as unauthenticated', async (_label, stderr) => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('${stderr}');
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.authenticated).toBe(false);
+      expect(result.error).toContain('Not logged in to github.com');
+    }
+  });
+
+  test('an auth.yml parse error beside the signed-out sentence stays a loggable failure', async () => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('[auth] token storage: file (~/.ok/auth.yml) — OS keychain unavailable: keyring init failed\\n[auth] Failed to parse ~/.ok/auth.yml: bad indentation at line 2. Starting with empty credentials.\\nNot logged in to github.com\\n');
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.authenticated).toBeUndefined();
+      expect(result.error).toContain('Failed to parse ~/.ok/auth.yml');
+    }
+  });
+
+  test('a genuine command failure carries no unauthenticated flag', async () => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('spawn EINVAL\\n');
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.authenticated).toBeUndefined();
+      expect(result.error).toContain('spawn EINVAL');
+    }
+  });
+
+  test('redacts a bare PAT out of the repos error before it is persisted', async () => {
+    const token = `ghp_${'d'.repeat(36)}`;
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write("[auth] Failed to parse auth.yml: bad indentation at line 2:\\n  token: ${token}\\n");
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).not.toContain(token);
+      expect(result.error).toContain('[REDACTED-GH-PAT]');
+    }
+  });
+
+  test('caps an overlong repos stderr at the shared detail cap', async () => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('x'.repeat(3000));
+        process.exit(1);
+      `),
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.length).toBe(500);
+    }
+  });
+
   test('returns an error when the CLI emits no repos line on clean exit', async () => {
     const result = await runAuthReposSubprocess({
       cliArgs: fixtureCli(`process.exit(0)`),
@@ -214,6 +345,21 @@ describe('runAuthReposSubprocess', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toMatch(/timed out/i);
+    }
+  });
+
+  test('forwards cliEnv through to the spawned CLI', async () => {
+    const result = await runAuthReposSubprocess({
+      cliArgs: fixtureCli(`
+        console.log(JSON.stringify({type:'repos', host:'github.com', repos:[
+          {full_name: process.env.OK_AUTH_REPOS_ENV_MARKER || 'unset', clone_url:'https://github.com/octo/repo1.git', private:false},
+        ]}));
+      `),
+      cliEnv: { OK_AUTH_REPOS_ENV_MARKER: 'marker/from-cli-env' },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.repos.map((r) => r.full_name)).toEqual(['marker/from-cli-env']);
     }
   });
 });

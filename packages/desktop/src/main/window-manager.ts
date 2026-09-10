@@ -8,7 +8,7 @@ import {
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
-import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { getLocalDir, type LocalOpCliInvocation } from '@inkeep/open-knowledge-server';
 import {
   BOOT_HEARTBEAT_EVENTS,
   SPAWN_STARTUP_DEADLINE_MS,
@@ -21,6 +21,7 @@ import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { startBootHeartbeat } from './boot-heartbeat.ts';
+import { resolveLocalOpCliArgsForUtilityFork } from './local-op-cli-invocation.ts';
 import type { ServerExitInfo } from './server-exit-record.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
@@ -213,7 +214,7 @@ interface CreateProjectWindowOpts {
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
   didEnsureGit?: boolean;
   consentVersion?: number;
-  localOpCliArgs?: string[];
+  localOpCliInvocation?: LocalOpCliInvocation;
   pendingServerRestartedToast?: boolean;
   freshlyCreated?: boolean;
 }
@@ -696,7 +697,7 @@ export class WindowManager {
 
   async restartAttachedServer(
     projectPath: string,
-    opts?: { localOpCliArgs?: string[] },
+    opts?: { localOpCliInvocation?: LocalOpCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     const resolved = resolve(projectPath);
     const canonicalKey = this.canonicalizeKey(resolved);
@@ -751,7 +752,7 @@ export class WindowManager {
         recreated = await this.createProjectWindow({
           projectPath: resolved,
           pendingServerRestartedToast: true,
-          localOpCliArgs: opts?.localOpCliArgs,
+          localOpCliInvocation: opts?.localOpCliInvocation,
         });
       } catch (err) {
         this.deps.log?.warn(
@@ -861,7 +862,7 @@ export class WindowManager {
   async restartServerForWindow(
     sender: BrowserWindowLike | null,
     projectPath: string,
-    opts: { localOpCliArgs?: string[] },
+    opts: { localOpCliInvocation?: LocalOpCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     if (sender !== null) {
       const ephemeralIdentity = this.getEphemeralIdentityForWindow(sender);
@@ -1204,6 +1205,9 @@ export class WindowManager {
     }
 
     const INIT_TIMEOUT_MS = this.deps.utilityInitTimeoutMs ?? UTILITY_INIT_TIMEOUT_MS;
+    const localOpCliArgs = opts.localOpCliInvocation
+      ? resolveLocalOpCliArgsForUtilityFork(opts.localOpCliInvocation)
+      : null;
 
     const utility = this.deps.forkUtility(
       this.deps.utilityEntryPath,
@@ -1276,7 +1280,7 @@ export class WindowManager {
         didEnsureGit: opts.didEnsureGit === true,
         consentVersion: opts.consentVersion ?? 1,
         ...(reactShellDistDir !== null ? { reactShellDistDir } : {}),
-        ...(opts.localOpCliArgs ? { localOpCliArgs: opts.localOpCliArgs } : {}),
+        ...(localOpCliArgs ? { localOpCliArgs } : {}),
       },
     });
 
