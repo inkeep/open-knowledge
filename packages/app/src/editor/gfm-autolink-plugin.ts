@@ -12,7 +12,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit';
 import { detectGfmLinkToken } from './gfm-link-detector';
 import { isCodeTextblock, rangeHasCodeMark } from './literal-text-context';
-import { dispatchAsOwnUndoStep } from './undo-isolation';
+import { dispatchClosingUndoStep } from './undo-isolation';
 
 const WHITESPACE_CLASS = '\\u0000-\\u0020\\u00A0\\u1680\\u180E\\u2000-\\u2029\\u205F\\u3000';
 const WHITESPACE_SPLIT = new RegExp(`[${WHITESPACE_CLASS}]`);
@@ -125,7 +125,7 @@ function gfmAutolinkPlugin(options: GfmAutolinkPluginOptions = {}): Plugin {
     tr = tr.setMeta(PREVENT_AUTOLINK_META, true);
 
     try {
-      dispatchAsOwnUndoStep(view, tr);
+      dispatchClosingUndoStep(view, tr);
     } catch (err) {
       console.warn(
         '[gfm-autolink] linkify dispatch failed',

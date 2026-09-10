@@ -1,8 +1,6 @@
 import { LinkFidelity, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type Extensions, isiOS, isMacOS } from '@tiptap/core';
-import Collaboration from '@tiptap/extension-collaboration';
 import StarterKit from '@tiptap/starter-kit';
-import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { sharedExtensions } from './extensions/shared';
 import { createProjectionBinding } from './projection-binding';
@@ -27,20 +25,6 @@ export function mountAppEditor(): Editor {
   const editor = new Editor({ element: host, extensions: sharedExtensions, editable: true });
   editor.view.focus();
   return editor;
-}
-
-export function mountCollabEditor(ydoc: Y.Doc, extensions: Extensions): Editor {
-  const host = document.createElement('div');
-  document.body.appendChild(host);
-  return new Editor({
-    element: host,
-    extensions: [
-      StarterKit.configure({ link: false, undoRedo: false }),
-      LinkFidelity.configure({ autolink: false }),
-      Collaboration.configure({ document: ydoc }),
-      ...extensions,
-    ],
-  });
 }
 
 const projectionMd = new MarkdownManager({
@@ -101,13 +85,6 @@ export function mountProjectionEditorOn(
 
 export function insertLocal(editor: Editor, text: string, at: number): void {
   editor.view.dispatch(editor.state.tr.insertText(text, at, at));
-}
-
-export function readUndoManager(editor: Editor): Y.UndoManager | null {
-  const pluginState: { undoManager?: Y.UndoManager } | undefined = yUndoPluginKey.getState(
-    editor.state,
-  );
-  return pluginState?.undoManager ?? null;
 }
 
 export function firstLinkHref(editor: Editor): string | null {
