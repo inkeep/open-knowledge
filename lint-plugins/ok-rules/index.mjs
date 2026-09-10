@@ -16,6 +16,7 @@ import { noResolvedValueThemeSource } from './rules/no-resolved-value-theme-sour
 import { noRoundtripIdentityOracle } from './rules/no-roundtrip-identity-oracle.mjs';
 import { noSplitSuggestionDispatch } from './rules/no-split-suggestion-dispatch.mjs';
 import { noThemelessPierreDiff } from './rules/no-themeless-pierre-diff.mjs';
+import { noUnconvertedGitPathspec } from './rules/no-unconverted-git-pathspec.mjs';
 import { noUninstallForbiddenImport } from './rules/no-uninstall-forbidden-import.mjs';
 import { noUnportaledEditorContent } from './rules/no-unportaled-editor-content.mjs';
 import { noUnwrappedUserFacingString } from './rules/no-unwrapped-user-facing-string.mjs';
@@ -46,6 +47,7 @@ const declared = {
   'no-roundtrip-identity-oracle': noRoundtripIdentityOracle,
   'no-split-suggestion-dispatch': noSplitSuggestionDispatch,
   'no-themeless-pierre-diff': noThemelessPierreDiff,
+  'no-unconverted-git-pathspec': noUnconvertedGitPathspec,
   'no-uninstall-forbidden-import': noUninstallForbiddenImport,
   'no-unportaled-editor-content': noUnportaledEditorContent,
   'no-unwrapped-user-facing-string': noUnwrappedUserFacingString,

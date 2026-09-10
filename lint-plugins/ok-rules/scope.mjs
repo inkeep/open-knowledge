@@ -96,6 +96,16 @@ export const RULE_SCOPES = {
     '!packages/app/src/uninstall/**/*.dom.test.tsx',
     'lint-plugins/ok-rules/__fixtures__/no-uninstall-forbidden-import.fixture.tsx',
   ],
+  'no-unconverted-git-pathspec': [
+    'packages/core/src/**/*.ts',
+    'packages/server/src/**/*.ts',
+    'packages/cli/src/**/*.ts',
+    'packages/desktop/src/**/*.ts',
+    '!packages/core/src/git-pathspec.ts',
+    '!**/*.test.ts',
+    '!**/*.test-helper.ts',
+    'lint-plugins/ok-rules/__fixtures__/no-unconverted-git-pathspec.fixture.tsx',
+  ],
   'no-raw-html-interactive-element': [
     'packages/app/src/**/*.tsx',
     'packages/desktop/src/**/*.tsx',

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
+import { pathspecArgs } from '@inkeep/open-knowledge-core';
 import { tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
 import { type ShadowHandle, shadowGit } from './shadow-repo.ts';
@@ -49,8 +50,7 @@ export async function restoreSkillVersion(opts: {
         '-r',
         '--name-only',
         version,
-        '--',
-        candidatePath,
+        ...pathspecArgs([candidatePath]),
       ]);
       if (found.length > 0) {
         files = found;

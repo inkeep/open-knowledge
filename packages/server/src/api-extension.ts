@@ -59,6 +59,7 @@ import {
   type Principal,
   type ProblemType,
   parseFrontmatterRecord,
+  pathspecArgs,
   type ReLintFailure,
   readFmMap,
   SKILL_NAME_REGEX,
@@ -1194,7 +1195,7 @@ function renamePathOnDisk(sourcePath: string, destinationPath: string): void {
   }
 }
 
-async function renameTrackedPathInGit(
+export async function renameTrackedPathInGit(
   projectDir: string | undefined,
   sourcePath: string,
   destinationPath: string,
@@ -1208,7 +1209,7 @@ async function renameTrackedPathInGit(
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
     let tracked = '';
     try {
-      tracked = (await pg.raw('ls-files', '--', sourceRel)).trim();
+      tracked = (await pg.raw('ls-files', ...pathspecArgs([sourceRel]))).trim();
     } catch (err) {
       log.warn({ err }, '[renameTrackedPathInGit] git ls-files failed, falling back to fs rename');
       return false;
@@ -4384,7 +4385,7 @@ export function createApiExtension(
         return (await sg.raw('rev-parse', mine)).trim();
       };
       const treeHas = async (sha: string, rel: string): Promise<boolean> => {
-        const out = await sg.raw('ls-tree', '-r', '--name-only', sha, '--', rel);
+        const out = await sg.raw('ls-tree', '-r', '--name-only', sha, ...pathspecArgs([rel]));
         return out.trim().length > 0;
       };
       let sha = await readMine();

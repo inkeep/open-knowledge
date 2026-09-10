@@ -1,5 +1,6 @@
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathspecArgs } from '@inkeep/open-knowledge-core';
 import simpleGit, { type SimpleGit } from 'simple-git';
 
 export interface GitCommit {
@@ -45,8 +46,7 @@ export async function readProjectGitLog(
       `-${Math.max(1, limit)}`,
       '--format=%H|%aI|%an|%s',
       '--follow',
-      '--',
-      relPath,
+      ...pathspecArgs([relPath]),
     );
   } catch {
     return { commits: [], source: 'git' };

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import type { EntryType, TimelineEntry } from '@inkeep/open-knowledge-core';
+import { type EntryType, pathspecArgs, type TimelineEntry } from '@inkeep/open-knowledge-core';
 import {
   isSurfacedCheckpointKind,
   parseCheckpoint,
@@ -548,7 +548,7 @@ export async function getDocumentHistory(
         '-n',
         String(walkCap),
         ...allStartRefs,
-        ...(docPath ? ['--', docPath] : []),
+        ...(docPath ? pathspecArgs([docPath]) : []),
       );
       wipEntries = parseGitLogOutput(currentRaw);
       if (wipEntries.length >= walkCap) windowSaturated = true;
@@ -700,8 +700,7 @@ export async function getFolderTimeline(
       '-n',
       String(walkCap),
       ...startRefs,
-      '--',
-      okPath,
+      ...pathspecArgs([okPath]),
     );
     const parsedFolderEntries = parseGitLogOutput(raw);
     const windowSaturated = parsedFolderEntries.length >= walkCap;

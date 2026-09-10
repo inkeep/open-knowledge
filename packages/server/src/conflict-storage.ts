@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { pathspecArgs } from '@inkeep/open-knowledge-core';
 import { getLocalDir } from './config/paths.ts';
 import { NoConflictTrackedError } from './conflict-errors.ts';
 import { requireConflictResolutionContent } from './conflict-resolution-input.ts';
@@ -158,13 +159,13 @@ export class ConflictStore {
 
     switch (strategy) {
       case 'mine':
-        await handle.git.raw(['checkout', '--ours', '--', file]);
-        await handle.git.raw(['add', '--', file]);
+        await handle.git.raw(['checkout', '--ours', ...pathspecArgs([file])]);
+        await handle.git.raw(['add', ...pathspecArgs([file])]);
         break;
 
       case 'theirs':
-        await handle.git.raw(['checkout', '--theirs', '--', file]);
-        await handle.git.raw(['add', '--', file]);
+        await handle.git.raw(['checkout', '--theirs', ...pathspecArgs([file])]);
+        await handle.git.raw(['add', ...pathspecArgs([file])]);
         break;
 
       case 'content': {
@@ -178,12 +179,12 @@ export class ConflictStore {
           allowShareableOkArtifact: isShareableOkArtifact,
         });
         tracedWriteFileSync(target, resolved, 'utf-8');
-        await handle.git.raw(['add', '--', file]);
+        await handle.git.raw(['add', ...pathspecArgs([file])]);
         break;
       }
 
       case 'delete': {
-        await handle.git.raw(['rm', '--', file]);
+        await handle.git.raw(['rm', ...pathspecArgs([file])]);
         break;
       }
 

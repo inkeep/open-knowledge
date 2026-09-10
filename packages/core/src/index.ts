@@ -684,6 +684,12 @@ export {
   type WorktreeSelectorModel,
 } from './git/worktree-selector-model.ts';
 export {
+  type Pathspec,
+  pathspecArgs,
+  stripPathspecMagic,
+  toPathspec,
+} from './git-pathspec.ts';
+export {
   type AssembleHandoffPromptInput,
   assembleHandoffPrompt,
   assertNeverUrnIpcLookup,
