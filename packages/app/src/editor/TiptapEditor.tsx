@@ -85,6 +85,7 @@ import {
   createProjectionBinding,
   liveProjection,
   type ProjectionBinding,
+  setProjectionHidden,
 } from './projection-binding';
 import { blockRangeToPmRange, createFullPrecisionResolver } from './projection-coordinates';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
@@ -1121,8 +1122,10 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
 
   useEffect(() => {
     setEditorSourceMode(editor, isSourceMode);
+    if (!editor.isDestroyed) setProjectionHidden(editor.state, isSourceMode);
     return () => {
       setEditorSourceMode(editor, false);
+      if (!editor.isDestroyed) setProjectionHidden(editor.state, false);
     };
   }, [editor, isSourceMode]);
 

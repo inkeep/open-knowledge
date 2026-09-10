@@ -11,6 +11,7 @@ import {
   narrowDelta,
   narrowSplice,
   type ProjectionBinding,
+  setProjectionHidden,
 } from './projection-binding';
 import { sharedUndoManagerFor } from './shared-undo-manager';
 import { buildExtensionList, buildPatternDConstructorOptions } from './TiptapEditor';
@@ -411,6 +412,61 @@ describe('projection binding — a keystroke does not re-parse the document', ()
     const before = rig.stats.rebuilds;
     rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
     expect(rig.stats.rebuilds).toBe(before + 1);
+    rig.destroy();
+  });
+});
+
+describe('projection binding — a hidden editor defers re-projection until it is shown', () => {
+  it('pays no parse for outside writes while hidden, and exactly one when shown', () => {
+    const rig = createRig(DOC);
+    const before = rig.stats.rebuilds;
+    setProjectionHidden(rig.editor.state, true);
+    for (let i = 0; i < 5; i++) {
+      rig.ydoc.transact(() => rig.ytext.insert(0, `Chunk ${i}.\n\n`), 'paste');
+    }
+    expect(rig.stats.rebuilds).toBe(before);
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Heading');
+
+    setProjectionHidden(rig.editor.state, false);
+    expect(rig.stats.rebuilds).toBe(before + 1);
+    expect(rig.editor.state.doc.childCount).toBe(9);
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Chunk 4.');
+    rig.destroy();
+  });
+
+  it('showing an editor nothing changed under pays no parse', () => {
+    const rig = createRig(DOC);
+    const before = rig.stats.rebuilds;
+    setProjectionHidden(rig.editor.state, true);
+    setProjectionHidden(rig.editor.state, false);
+    expect(rig.stats.rebuilds).toBe(before);
+    rig.destroy();
+  });
+
+  it('a local edit against a stale doc is not written: the source wins and the doc re-derives', () => {
+    const rig = createRig(DOC);
+    setProjectionHidden(rig.editor.state, true);
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
+    const source = rig.ytext.toString();
+
+    appendToBlock(rig.editor, 0, '!');
+
+    expect(rig.ytext.toString()).toBe(source);
+    expect(rig.stats.staleLocalEdits).toBe(1);
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Preamble.');
+    rig.destroy();
+  });
+
+  it('typing after it is shown again writes against the current source', () => {
+    const rig = createRig(DOC);
+    setProjectionHidden(rig.editor.state, true);
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
+    setProjectionHidden(rig.editor.state, false);
+
+    appendToBlock(rig.editor, 1, '!');
+
+    expect(rig.ytext.toString()).toContain('Preamble.\n\n# Heading!');
+    expect(rig.stats.staleLocalEdits).toBe(0);
     rig.destroy();
   });
 });

@@ -29,10 +29,18 @@ const REBASE_DECLINED_EVENT = 'ok-projection-rebase-declined';
 const REPROJECT_MISMATCH_EVENT = 'ok-projection-reproject-mismatch';
 const ALIGN_DECLINED_EVENT = 'ok-projection-align-declined';
 const DOC_REDERIVED_EVENT = 'ok-projection-doc-rederived';
+const STALE_LOCAL_EDIT_EVENT = 'ok-projection-stale-local-edit';
+
+interface ProjectionVisibility {
+  hidden: boolean;
+  stale: boolean;
+  show: (() => void) | null;
+}
 
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
   binding: ProjectionBindingState;
+  visibility: ProjectionVisibility;
 }
 
 export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
@@ -45,6 +53,16 @@ export function projectionUndoManager(state: EditorState): Y.UndoManager | null 
 
 export function liveProjection(state: EditorState): Projection | null {
   return projectionBindingKey.getState(state)?.binding.projection ?? null;
+}
+
+/* STOP: while hidden, liveProjection and the doc lag Y.Text. Nothing may read either for
+   placement until the editor is shown again, and showing it re-projects synchronously so a
+   reader queued behind the switch sees the current document. */
+export function setProjectionHidden(state: EditorState, hidden: boolean): void {
+  const visibility = projectionBindingKey.getState(state)?.visibility;
+  if (visibility === undefined) return;
+  visibility.hidden = hidden;
+  if (!hidden) visibility.show?.();
 }
 
 interface ProjectionBindingOptions {
@@ -222,6 +240,7 @@ interface ProjectionBindingState {
   alignDeclines: number;
   docRederives: number;
   unchangedUpdates: number;
+  staleLocalEdits: number;
 }
 
 function newBindingState(projection: Projection): ProjectionBindingState {
@@ -236,17 +255,19 @@ function newBindingState(projection: Projection): ProjectionBindingState {
     alignDeclines: 0,
     docRederives: 0,
     unchangedUpdates: 0,
+    staleLocalEdits: 0,
   };
 }
 
 function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   const { ytext, md, origin } = options;
   const stats: ProjectionBindingState = options.stats ?? newBindingState(options.initial);
+  const visibility: ProjectionVisibility = { hidden: false, stale: false, show: null };
 
   return new Plugin<ProjectionBindingPluginState>({
     key: projectionBindingKey,
     state: {
-      init: () => ({ undoManager: options.undoManager, binding: stats }),
+      init: () => ({ undoManager: options.undoManager, binding: stats, visibility }),
       apply: (_tr, value) => value,
     },
     view(view) {
@@ -336,11 +357,21 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
         if (transaction.origin === origin) return;
+        if (visibility.hidden) {
+          visibility.stale = true;
+          return;
+        }
         const carried = mapOffsetThroughDelta(
           narrowDelta(event.changes.delta as never, projection.source),
           caretOffset(),
         );
         project(ytext.toString(), carried, true);
+      };
+
+      visibility.show = () => {
+        if (destroyed || !visibility.stale) return;
+        visibility.stale = false;
+        project(ytext.toString(), null, true);
       };
 
       ytext.observe(onYText);
@@ -362,6 +393,18 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           if (applyingRemote || settling) return;
           const after = updatedView.state.doc;
           if (after === projection.doc) return;
+
+          if (visibility.stale) {
+            visibility.stale = false;
+            stats.staleLocalEdits++;
+            emitDiagnosticBreadcrumb(
+              STALE_LOCAL_EDIT_EVENT,
+              { children: after.childCount, staleLocalEdits: stats.staleLocalEdits },
+              'warn',
+            );
+            project(ytext.toString(), null, true);
+            return;
+          }
 
           const changed = changedProjectionBlocks(projection.doc, after);
           if (changed === null) {
