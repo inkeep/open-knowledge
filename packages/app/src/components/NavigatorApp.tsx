@@ -24,6 +24,7 @@ import {
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { seedClient } from '@/lib/seed-client';
 import { createCloneController } from '@/lib/share/clone-controller';
+import { useThemeColorTransitions } from '@/lib/theme-color-transitions';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { ipcAuthTransport } from '@/lib/transports/auth-transport';
 import { ipcCloneTransport } from '@/lib/transports/clone-transport';
@@ -93,6 +94,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const { theme: themeValue } = useTheme();
   const { t } = useLingui();
 
+  useThemeColorTransitions(true);
   useThemeBridge(bridge, themeValue ?? 'system');
 
   useApplyConfigLanguage({

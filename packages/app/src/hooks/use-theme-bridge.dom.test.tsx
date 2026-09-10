@@ -252,11 +252,11 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     await waitFor(
       () => {
         expect(stubBridge.setThemeSourceCalls.length).toBe(2);
+        expect(stubBridge.signalThemeAppliedCalls.length).toBe(2);
       },
       { timeout: ASYNC_EFFECT_TIMEOUT_MS },
     );
     expect(stubBridge.setThemeSourceCalls[1]).toBe('dark');
-    expect(stubBridge.signalThemeAppliedCalls.length).toBe(2);
   });
 
   test('reports chrome as hex even when the token is authored in a syntax Electron cannot parse', async () => {
@@ -321,6 +321,40 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     );
   });
 
+  test('waits for the final transition sample without rerendering its owner', async () => {
+    let active = true;
+    let renders = 0;
+    const getAnimations = document.documentElement.getAnimations;
+    document.documentElement.getAnimations = () =>
+      active ? ([{ transitionProperty: '--background' }] as unknown as Animation[]) : [];
+    const stubBridge = makeStubBridge();
+    function Owner() {
+      renders += 1;
+      useThemeBridge(stubBridge as unknown as OkDesktopBridge, 'dark');
+      return null;
+    }
+    const view = render(<Owner />);
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+      expect(stubBridge.signalThemeAppliedCalls).toHaveLength(0);
+      const rendersBeforeSettlement = renders;
+      active = false;
+      await waitFor(() => expect(stubBridge.signalThemeAppliedCalls).toHaveLength(1));
+      expect(renders).toBe(rendersBeforeSettlement);
+      await act(async () => {
+        document.head.appendChild(document.createElement('style')).remove();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+      expect(stubBridge.signalThemeAppliedCalls).toHaveLength(1);
+    } finally {
+      view.unmount();
+      document.documentElement.getAnimations = getAnimations;
+    }
+  });
+
   test('rejection path: signalThemeApplied still fires via .finally so the show-gate releases', async () => {
     const rejectionError = new Error('ipc-teardown: setThemeSource bridge unreachable');
     const stubBridge = makeRejectingBridge(rejectionError);
@@ -377,6 +411,41 @@ describe('useThemeBridge (Tier-3 mount)', () => {
       media.dispatchChange(false);
       expect(stubBridge.signalThemeAppliedCalls).toHaveLength(2);
     } finally {
+      media.restore();
+    }
+  });
+
+  test('coalesces reduced-transparency changes until the theme fade settles', async () => {
+    const media = installControllableMatchMedia(false);
+    let active = false;
+    const getAnimations = document.documentElement.getAnimations;
+    document.documentElement.getAnimations = () =>
+      active ? ([{ transitionProperty: '--background' }] as unknown as Animation[]) : [];
+    const stubBridge = makeStubBridge();
+    const view = render(
+      <HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="dark" />,
+    );
+    try {
+      await waitFor(() => expect(stubBridge.signalThemeAppliedCalls).toHaveLength(1));
+      await act(async () => {
+        active = true;
+        const event = new Event('transitionrun');
+        Object.defineProperty(event, 'propertyName', { value: '--background' });
+        document.documentElement.dispatchEvent(event);
+        media.dispatchChange(true);
+        media.dispatchChange(false);
+        media.dispatchChange(true);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+      expect(stubBridge.signalThemeAppliedCalls).toHaveLength(1);
+      active = false;
+      await waitFor(() => expect(stubBridge.signalThemeAppliedCalls).toHaveLength(2));
+      expect(stubBridge.signalThemeAppliedCalls.at(-1)).toEqual({ reducedTransparency: true });
+      media.dispatchChange(true);
+      expect(stubBridge.signalThemeAppliedCalls).toHaveLength(2);
+    } finally {
+      view.unmount();
+      document.documentElement.getAnimations = getAnimations;
       media.restore();
     }
   });

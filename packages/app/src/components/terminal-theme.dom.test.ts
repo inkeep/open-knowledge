@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { computeLiveXtermTheme } from './terminal-theme';
+import { computeLiveXtermTheme, liveTokenReaderForEpoch } from './terminal-theme';
 
 describe('computeLiveXtermTheme default token reader', () => {
   afterEach(() => {
@@ -27,5 +27,31 @@ describe('computeLiveXtermTheme default token reader', () => {
   it('removes every probe once the batch is read', () => {
     computeLiveXtermTheme('dark');
     expect(spansInBody()).toBe(0);
+  });
+
+  it('shares one token read across terminal consumers in a frame', async () => {
+    let reads = 0;
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(((el: Element) => {
+      reads += 1;
+      return real(el);
+    }) as typeof window.getComputedStyle);
+
+    const reader = liveTokenReaderForEpoch(10_001);
+    computeLiveXtermTheme('dark', reader);
+    const readsForEpoch = reads;
+    computeLiveXtermTheme('dark', liveTokenReaderForEpoch(10_001));
+
+    expect(readsForEpoch).toBeGreaterThan(0);
+    expect(reads).toBe(readsForEpoch);
+    const paletteStyle = document.createElement('style');
+    document.head.appendChild(paletteStyle);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    paletteStyle.remove();
+    computeLiveXtermTheme('dark', liveTokenReaderForEpoch(10_001));
+    expect(reads).toBeGreaterThan(readsForEpoch);
+    const readsAfterFrame = reads;
+    computeLiveXtermTheme('dark', liveTokenReaderForEpoch(10_002));
+    expect(reads).toBeGreaterThan(readsAfterFrame);
   });
 });

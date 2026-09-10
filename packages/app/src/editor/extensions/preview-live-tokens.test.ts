@@ -25,6 +25,15 @@ describe('readLivePreviewTokens', () => {
     expect(tokens?.['--background']).toBe('#282a36');
   });
 
+  test('forwards default-theme values while a root transition is active', () => {
+    const tokens = readLivePreviewTokens({
+      paletteActive: false,
+      transitionActive: true,
+      readToken: (name) => (name === '--background' ? 'oklab(0.4 0 0)' : null),
+    });
+    expect(tokens?.['--background']).toBe('oklab(0.4 0 0)');
+  });
+
   test('forwards tokens beyond the baked snapshot set', () => {
     const tokens = readLivePreviewTokens(withPalette({ '--syntax-string': '#50fa7b' }));
     expect(tokens?.['--syntax-string']).toBe('#50fa7b');

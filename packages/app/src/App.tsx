@@ -512,10 +512,10 @@ function NewItemShortcutHandler() {
 }
 
 function ConfigProviderHost({ children }: { children: ReactNode }) {
-  const { collabUrl } = useDocumentContext();
+  const { collabUrl, collabTerminal } = useDocumentContext();
   useServerKeepalive(collabUrl);
   return (
-    <ConfigProvider collabUrl={collabUrl}>
+    <ConfigProvider collabUrl={collabUrl} collabTerminal={collabTerminal}>
       <EditorLifecycleFlush />
       <BackgroundThrottleReporter />
       {children}

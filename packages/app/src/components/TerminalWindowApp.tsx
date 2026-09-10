@@ -14,7 +14,7 @@ interface TerminalWindowAppProps {
 export function TerminalWindowApp({ bridge }: TerminalWindowAppProps) {
   const collabUrl = bridge.config.collabUrl ? bridge.config.collabUrl : null;
   return (
-    <ConfigProvider collabUrl={collabUrl}>
+    <ConfigProvider collabUrl={collabUrl} collabTerminal={collabUrl === null}>
       <TerminalWindowBody bridge={bridge} />
       {}
       <ReportBugMenuTrigger systemWide={collabUrl === null} />

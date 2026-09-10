@@ -7,6 +7,9 @@ vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
+const useThemeColorTransitions = vi.fn();
+vi.doMock('./theme-color-transitions', () => ({ useThemeColorTransitions }));
+
 const { ConfigProvider, useConfigContext } = await import('./config-provider');
 
 const EXPECTED_NULL_KEYS = [
@@ -39,6 +42,23 @@ function Consumer() {
 describe('ConfigProvider runtime (Tier-3)', () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
+    useThemeColorTransitions.mockClear();
+  });
+
+  test('arms color transitions only once collaboration resolution has settled', () => {
+    const view = render(
+      <ConfigProvider collabUrl={null}>
+        <Consumer />
+      </ConfigProvider>,
+    );
+    expect(useThemeColorTransitions).toHaveBeenLastCalledWith(false);
+    view.rerender(
+      <ConfigProvider collabUrl={null} collabTerminal>
+        <Consumer />
+      </ConfigProvider>,
+    );
+    expect(useThemeColorTransitions).toHaveBeenLastCalledWith(true);
   });
 
   test('propagates the all-null value when collabUrl is null (cold-start window)', () => {

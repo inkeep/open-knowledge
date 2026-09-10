@@ -70,13 +70,33 @@ test.describe('uninstall renderer chrome smoke', () => {
     );
     expect(rendererIsDark).toBe(mainWantsDark);
 
-    const readPrimary = (page: Page) =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+    await editorWindow.emulateMedia({ colorScheme: mainWantsDark ? 'dark' : 'light' });
+    await expect
+      .poll(() => editorWindow.evaluate(() => document.documentElement.classList.contains('dark')))
+      .toBe(mainWantsDark);
+    await editorWindow.evaluate(async () => {
+      await Promise.all(
+        document.documentElement.getAnimations().map((animation) => animation.finished),
       );
+    });
+
+    const readPrimary = (page: Page) =>
+      page.evaluate(() => {
+        const token = getComputedStyle(document.documentElement)
+          .getPropertyValue('--primary')
+          .trim();
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--primary)';
+        document.body.appendChild(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return { token, color };
+      });
     const uninstallPrimary = await readPrimary(uninstallWindow);
-    expect(uninstallPrimary).not.toBe('');
-    expect(uninstallPrimary).toBe(await readPrimary(editorWindow));
+    const editorPrimary = await readPrimary(editorWindow);
+    expect(uninstallPrimary.token).not.toBe('');
+    expect(editorPrimary.token).not.toBe('');
+    expect(uninstallPrimary.color).toBe(editorPrimary.color);
 
     await expect(uninstallWindow.locator('#root')).not.toBeEmpty();
   });

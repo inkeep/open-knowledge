@@ -1,36 +1,8 @@
 import { useEffect } from 'react';
+import { subscribeColorThemeEpoch } from '@/lib/color-theme-epoch';
+import { cssColorToHex } from '@/lib/css-color-to-hex';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
-
-function rgbToHex(value: string): string | null {
-  const body = /^rgba?\(([^)]*)\)$/i.exec(value.trim())?.[1];
-  if (body === undefined) return null;
-  const parts = body.split(/[\s,/]+/).filter(Boolean);
-  if (parts.length < 3) return null;
-  let hex = '#';
-  for (let i = 0; i < 3; i++) {
-    const n = Math.round(Number(parts[i]));
-    if (!Number.isFinite(n) || n < 0 || n > 255) return null;
-    hex += n.toString(16).padStart(2, '0');
-  }
-  return hex;
-}
-
-function canvasHex(value: string): string | null {
-  if (typeof document === 'undefined') return null;
-  const ctx = document.createElement('canvas').getContext('2d');
-  if (!ctx) return null;
-  ctx.fillStyle = '#000000';
-  ctx.fillStyle = value;
-  const first = ctx.fillStyle;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillStyle = value;
-  if (ctx.fillStyle !== first) return null;
-  return typeof first === 'string' && /^#[0-9a-f]{6}$/i.test(first) ? first.toLowerCase() : null;
-}
-
-export function cssColorToHex(value: string): string | null {
-  return canvasHex(value) ?? rgbToHex(value);
-}
+import { themeColorTransitionsActive } from '@/lib/theme-color-transitions';
 
 function resolveTokenHex(token: string): string | null {
   const probe = document.createElement('span');
@@ -63,11 +35,27 @@ export function useThemeBridge(
   themeValue: string | undefined,
   colorThemeKey?: string,
 ): void {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeKey is a signal-only dependency — a palette switch (e.g. Dracula -> Monokai, both dark) must re-run this effect to re-read + re-report chrome even though themeValue is unchanged; it is intentionally not referenced in the body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeKey requests a fresh settled report for same-mode palette changes
   useEffect(() => {
     if (themeValue !== 'light' && themeValue !== 'dark' && themeValue !== 'system') return;
     if (!bridge) return;
     let cancelled = false;
+    let applied = false;
+    let reported: string | undefined;
+    const mql = window.matchMedia('(prefers-reduced-transparency: reduce)');
+    const signalSettledTheme = () => {
+      if (cancelled || !applied || themeColorTransitionsActive()) return;
+      const payload = {
+        reducedTransparency: mql.matches,
+        chrome: readChromeColors(),
+      };
+      const signature = JSON.stringify(payload);
+      if (signature === reported) return;
+      bridge.signalThemeApplied(payload);
+      reported = signature;
+    };
+    const unsubscribe = subscribeColorThemeEpoch(signalSettledTheme);
+    mql.addEventListener('change', signalSettledTheme);
     bridge
       .setThemeSource(themeValue)
       .catch((err: unknown) => {
@@ -81,28 +69,13 @@ export function useThemeBridge(
       })
       .finally(() => {
         if (cancelled) return;
-        const reducedTransparency = window.matchMedia(
-          '(prefers-reduced-transparency: reduce)',
-        ).matches;
-        bridge.signalThemeApplied({ reducedTransparency, chrome: readChromeColors() });
+        applied = true;
+        signalSettledTheme();
       });
     return () => {
       cancelled = true;
+      unsubscribe();
+      mql.removeEventListener('change', signalSettledTheme);
     };
-  }, [bridge, themeValue, colorThemeKey]);
-
-  useEffect(() => {
-    if (!bridge) return;
-    const mql = window.matchMedia('(prefers-reduced-transparency: reduce)');
-    const handler = (event: MediaQueryListEvent) => {
-      bridge.signalThemeApplied({
-        reducedTransparency: event.matches,
-        chrome: readChromeColors(),
-      });
-    };
-    mql.addEventListener('change', handler);
-    return () => {
-      mql.removeEventListener('change', handler);
-    };
-  }, [bridge]);
+  }, [bridge, colorThemeKey, themeValue]);
 }

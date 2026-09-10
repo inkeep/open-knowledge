@@ -3287,15 +3287,15 @@ button:active:not(:disabled) {
    * override would introduce a sibling `--selection` token at higher alpha
    * for body prose. */
   --selection-soft: oklch(0.66 0.18 259 / 0.18);
-  /* Comment-highlight hue, as `r,g,b` for interpolation into `rgba()` by the
-     anchor decorations (`comments/anchor-layers.ts`) and the property-value
+  /* Comment-highlight hue, as a color for interpolation by the anchor
+     decorations (`comments/anchor-layers.ts`) and the property-value
      `::selection` twin. It lives here rather than in TS because it is the one
      part of the mark that must differ per theme: the decoration paints the same
      alpha ladder on both canvases, so a single hue cannot clear the 3:1 non-text
      floor at both ends — blue-600 does it on white, and washes out to 2.4:1 on
      the dark canvas. Dark takes blue-400. Gated by comment-hue-contrast.test.ts;
      the Tailwind mirrors on the rail marker and thread card are hand-kept. */
-  --ok-comment-hue: 37, 99, 235;
+  --ok-comment-hue: rgb(37 99 235);
   /* Categorical chart palette for `html preview` embeds — five
      perceptually-distinct hues aligned with the callout color system
      (--chart-1 anchors to the brand azure, the rest track the
@@ -3417,7 +3417,7 @@ button:active:not(:disabled) {
   --selection-soft: oklch(0.72 0.16 259 / 0.32);
   /* Dark-canvas comment hue — blue-400. See the :root declaration for why this
      is the one token in the mark that has to move with the theme. */
-  --ok-comment-hue: 96, 165, 250;
+  --ok-comment-hue: rgb(96 165 250);
   /* Dark-mode chart palette — same hue family as the :root block above,
      lightness lifted for legibility on the dark --background. Keep in sync
      with :root --chart-* and PREVIEW_THEME_TOKENS (preview-theme-tokens.test.ts). */

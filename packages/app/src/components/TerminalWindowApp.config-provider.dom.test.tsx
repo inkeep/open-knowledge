@@ -1,8 +1,9 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useConfigContext } from '@/lib/config-provider';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { TRANSITION_ATTRIBUTE, TRANSITION_STYLE_ID } from '@/lib/theme-color-transitions';
 
 vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
@@ -39,6 +40,24 @@ function bridgeWithCollabUrl(collabUrl: string): OkDesktopBridge {
 describe('TerminalWindowApp ConfigProvider wiring', () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
+    document.documentElement.removeAttribute(TRANSITION_ATTRIBUTE);
+    document.getElementById(TRANSITION_STYLE_ID)?.remove();
+  });
+
+  test('arms theme colors through its provider in a project-less window', async () => {
+    const registerProperty = vi.fn();
+    vi.stubGlobal('CSS', { registerProperty });
+    render(
+      <TooltipProvider>
+        <TerminalWindowApp bridge={bridgeWithCollabUrl('')} />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
+    expect(registerProperty).toHaveBeenCalled();
+    expect(document.documentElement.hasAttribute(TRANSITION_ATTRIBUTE)).toBe(true);
   });
 
   test('provides ConfigProvider context to its terminal subtree (project-less / empty collabUrl)', () => {

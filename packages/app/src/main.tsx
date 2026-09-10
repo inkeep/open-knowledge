@@ -147,7 +147,6 @@ createRoot(root).render(
           attribute="class"
           defaultTheme="system"
           enableSystem
-          disableTransitionOnChange
           storageKey="ok-theme-v1"
         >
           <RegisteredAgentHydrator />
