@@ -11,11 +11,20 @@ ignorePatchFailures: false
 # (4320 = 3 days). Own-org packages (@inkeep/*) are exempt. This replaces the
 # retired bunfig.toml posture (which expressed the same window in seconds:
 # minimumReleaseAge = 259200). Emergency reproduction escape hatch (bypass the
-# cooldown for a single install): `pnpm install --config.minimum-release-age=0`.
+# cooldown for a single install): `pnpm install --config.minimumReleaseAge=0`.
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - '@inkeep/*'
   - '@visimer/*'
+  # The four packages the electron-builder 26.16.1 train bumped; the keychain
+  # fix itself is in app-builder-lib and the others pin it exactly. Published
+  # 2026-09-07T18:24Z, so these stop having any effect at 2026-09-10T18:24Z
+  # (publish + minimumReleaseAge) — delete all four then. Version-qualified,
+  # so every later release stays gated.
+  - 'electron-builder@26.16.1'
+  - 'electron-builder-squirrel-windows@26.16.1'
+  - 'app-builder-lib@26.16.1'
+  - 'dmg-builder@26.16.1'
 
 # Dependency build scripts are blocked by default under pnpm; only these run.
 # electron ships no install script of its own as of 43 — it fetches its platform

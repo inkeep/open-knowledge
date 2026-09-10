@@ -40,7 +40,7 @@ describe('readRemovalProcessStart', () => {
         '-NonInteractive',
         expect.stringContaining('(Get-Process -Id 123).StartTime.ToUniversalTime()'),
       ]),
-      expect.objectContaining({ timeout: 5000, windowsHide: true }),
+      expect.objectContaining({ timeout: 15_000, windowsHide: true }),
     );
   });
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# UPSTREAM(electron-builder@26.9.0): rpm runs the new package's %post BEFORE the
+# UPSTREAM(electron-builder@26.16.1): rpm runs the new package's %post BEFORE the
 #   old package's %postun, so an unguarded teardown deletes the symlinks the
 #   upgrade just installed. $1 is an rpm instance count or a dpkg action word.
 case "$1" in

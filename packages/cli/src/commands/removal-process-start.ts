@@ -20,7 +20,7 @@ export function readRemovalProcessStart(
     const commandOptions: ExecFileSyncOptionsWithStringEncoding = {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 5000,
+      timeout: platform === 'win32' ? 15_000 : 5000,
       windowsHide: true,
       env: { ...env, LC_ALL: 'C', TZ: 'UTC0' },
     };

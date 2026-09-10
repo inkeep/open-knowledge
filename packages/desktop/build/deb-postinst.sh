@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# UPSTREAM(electron-builder@26.9.0): FpmTarget runs this file through its macro
+# UPSTREAM(electron-builder@26.16.1): FpmTarget runs this file through its macro
 #   templater before packaging, so every dollar-brace sequence is a macro and an
 #   unknown name throws at build time. Bash variables here use the $NAME form.
 

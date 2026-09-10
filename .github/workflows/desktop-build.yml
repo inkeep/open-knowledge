@@ -171,7 +171,9 @@ jobs:
       # the keychain's own (electron-userland/electron-builder#10066), which
       # macOS 26.6 (macos-26 image 20260831 onward) rejects with
       # `SecKeychainUnlock: The user name or passphrase you entered is not
-      # correct`. The v26 backport (#10172) is merged but unreleased.
+      # correct`. The v26 backport (#10172) shipped in 26.16.1. Keep this twin
+      # staged-keychain path until a stable tag carries that fixed dependency;
+      # desktop-release.yml documents the tag-tree rescue constraint.
       - name: Prepare signing keychain (CSC_KEYCHAIN)
         if: steps.signmode.outputs.mode == 'signed'
         env:

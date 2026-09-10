@@ -635,10 +635,10 @@ jobs:
       # slide on an already-unlocked keychain; macOS 26.6 (GitHub's macos-26
       # image 20260831 onward) verifies it, and every signed build on that
       # image died with `SecKeychainUnlock: The user name or passphrase you
-      # entered is not correct`. The v26 backport (#10172) is merged but
-      # unreleased, and a dependency bump would not reach already-cut tags
-      # anyway: this job builds the TAG's tree while the workflow file is read
-      # from main, so the fix has to live here. With CSC_KEYCHAIN set and
+      # entered is not correct`. The v26 backport (#10172) shipped in 26.16.1,
+      # but a dependency bump does not reach already-cut tags: this job builds
+      # the TAG's tree while the workflow file is read from main, so the fix
+      # still has to live here. With CSC_KEYCHAIN set and
       # CSC_LINK unset, electron-builder skips its keychain setup entirely and
       # reads identities from the keychain it is handed (macPackager.ts).
       #
@@ -650,12 +650,20 @@ jobs:
       # app-builder-lib's bundled Apple certs nor exports CSC_KEYCHAIN, and it
       # would add a marketplace dependency on the release path for ~20 lines.
       #
-      # REMOVAL, once electron-builder >= 26.16.1 is pinned: delete this step
-      # and its desktop-build.yml twin, restore CSC_LINK + CSC_KEY_PASSWORD on
-      # both packager steps (desktop-build.yml in its signed-mode conditional
-      # form), drop desktop-build.yml's "Remove signing keychain", and drop
-      # the "macOS signing stays on the workflow-staged keychain" block in
-      # release-cascade-shape.test.mjs. Keep "Attest the signed macOS app".
+      # REMOVAL, only after electron-builder >= 26.16.1 is pinned and a stable
+      # tag has been cut from a tree carrying that pin: delete this step and
+      # its desktop-build.yml twin; delete BOTH "Remove signing keychain"
+      # steps (this file's and desktop-build.yml's — the staging step is the
+      # only writer of CSC_KEYCHAIN, so both guards go dead); restore
+      # CSC_LINK + CSC_KEY_PASSWORD on both packager steps (desktop-build.yml
+      # in its signed-mode conditional form) and rewrite the "must NOT be set"
+      # notes on those two steps, which forbid exactly that restoration;
+      # rewrite both "Attest the signed macOS app" rationales, which state
+      # their reason for existing in terms of CSC_KEYCHAIN; and drop the
+      # "macOS signing stays on the workflow-staged keychain" block in
+      # release-cascade-shape.test.mjs. Keep the attestation steps themselves.
+      # Removal ends rescue-dispatch support for every older tag whose own
+      # lockfile still selects the buggy electron-builder release.
       - name: Prepare signing keychain (CSC_KEYCHAIN)
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
