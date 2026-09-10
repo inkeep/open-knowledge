@@ -11,15 +11,18 @@ import {
   isGuidanceKey,
 } from './guidance.ts';
 import type { GuidanceRef } from './schema.ts';
-import { CONSENT_CLASSES } from './vocabulary.ts';
+import { CONSENT_CLASSES, type ConsentClass, FOLLOWUP_CONSENT_CLASSES } from './vocabulary.ts';
 
 function allGuidanceRefs(): { site: string; ref: GuidanceRef }[] {
   const found: { site: string; ref: GuidanceRef }[] = [];
   for (const agent of Object.values(AGENT_REGISTRY)) {
     for (const satisfier of agent.satisfiers) {
-      for (const slot of ['guidance', 'followup', 'troubleshooting'] as const) {
+      for (const slot of ['guidance', 'followup'] as const) {
         const ref = satisfier[slot];
         if (ref) found.push({ site: `${satisfier.id}#${slot}`, ref });
+      }
+      for (const ref of satisfier.troubleshooting) {
+        found.push({ site: `${satisfier.id}#troubleshooting`, ref });
       }
     }
     for (const [mode, record] of Object.entries(agent.modes)) {
@@ -57,10 +60,23 @@ describe('the guidance manifest', () => {
   });
 
   test('carries a follow-up key for exactly the consent classes that owe the user a step', () => {
-    const owed = CONSENT_CLASSES.filter((consentClass) => consentClass !== 'none');
     const declared = GUIDANCE_KEYS.filter((key) => guidanceNamespaceOf(key) === 'followup');
     expect([...declared].sort()).toEqual(
-      owed.map((consentClass) => `followup.${consentClass}`).sort(),
+      FOLLOWUP_CONSENT_CLASSES.map((consentClass) => `followup.${consentClass}`).sort(),
+    );
+    expect(declared).toEqual(['followup.enable-manually']);
+  });
+
+  test('gives every consent class a deliberate follow-up verdict', () => {
+    const verdict: Record<ConsentClass, boolean> = {
+      none: false,
+      'approve-once': false,
+      'enable-manually': true,
+      'trust-gated': false,
+    };
+    expect(Object.keys(verdict).sort()).toEqual([...CONSENT_CLASSES].sort());
+    expect([...FOLLOWUP_CONSENT_CLASSES].sort()).toEqual(
+      CONSENT_CLASSES.filter((consentClass) => verdict[consentClass]).sort(),
     );
   });
 

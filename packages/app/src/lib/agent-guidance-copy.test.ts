@@ -10,7 +10,7 @@ import { guidanceText, troubleshootingText } from '@/lib/agent-guidance-copy';
 
 const registryRefs = Object.values(AGENT_REGISTRY).flatMap((agent) =>
   agent.satisfiers.flatMap((satisfier) =>
-    [satisfier.guidance, satisfier.followup, satisfier.troubleshooting].filter(
+    [satisfier.guidance, satisfier.followup, ...satisfier.troubleshooting].filter(
       (ref) => ref !== undefined,
     ),
   ),
@@ -51,6 +51,34 @@ describe('guidance and troubleshooting copy', () => {
     expect(
       troubleshootingText({ ...base, params: { agent: 'codex', honoredByDesktop: true } }),
     ).toBeNull();
+  });
+
+  test("Codex's folder-trust note names the run that cannot ask and the whole layer trust loads", () => {
+    const text = troubleshootingText({
+      id: guidanceId('troubleshooting.codex.folder-trust'),
+      params: { agent: 'codex' },
+    });
+    expect(text).toContain('codex exec');
+    expect(text).toContain('hooks and rules');
+    expect(text).toContain('~/.codex/config.toml');
+  });
+
+  test("Copilot's note names folder trust and the mode that cannot prompt", () => {
+    const text = troubleshootingText({
+      id: guidanceId('troubleshooting.copilot.shared-workspace-config'),
+      params: { agent: 'copilot', sourceAgent: 'claude' },
+    });
+    expect(text).toContain('confirm folder trust');
+    expect(text).toContain('copilot -p');
+  });
+
+  test("Cursor's note names the server as Cursor lists it and where to switch it on", () => {
+    const text = troubleshootingText({
+      id: guidanceId('troubleshooting.cursor.project-entry-not-loaded'),
+      params: { agent: 'cursor' },
+    });
+    expect(text).toContain('pick open-knowledge');
+    expect(text).toContain('Customize → MCPs');
   });
 
   test('a ref without an agent or with an unknown id renders nothing', () => {

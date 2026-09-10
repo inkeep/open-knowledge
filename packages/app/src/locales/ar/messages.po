@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr "يحصل {agent} على أدوات OpenKnowledge في كل مرة يشغّله فيها OpenKnowledge؛ ولا يُكتب شيء في إعداداته."
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "يترك {agent} خوادم MCP الخاصة بالمشروع معطّلة حتى تفعّلها من Customize → MCPs. ولا يستطيع OpenKnowledge رؤية هذا الإعداد."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr "لا يحمّل {agent} إدخال مشروع إلا في مجلد وثقت به. يسأل سطر الأوامر عند أول تشغيل في مجلد جديد، لكن codex exec لا يستطيع السؤال وقد لا تتذكر الإصدارات الأقدم إجابتك، لذا إن لم تظهر الأدوات فعلّم المشروع موثوقًا في ~/.codex/config.toml. والوثوق بمشروع يحمّل طبقة .codex/ الخاصة به بالكامل، بما فيها الـ hooks والقواعد."
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr "لا يحمّل {agent} امتدادات المشروع إلا في المجلدات التي وثقت بها؛ إذا لم تظهر الأدوات، فثق بهذا المجلد في {agent}."
@@ -532,7 +542,7 @@ msgstr "لا يحمّل {agent} امتدادات المشروع إلا في ال
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.copilot.shared-workspace-config"
-msgstr "يقرأ {agent} إعدادات MCP لمساحة العمل التي يكتبها OpenKnowledge لصالح {sourceAgent}؛ وإزالتها لأحدهما تزيلها لكليهما."
+msgstr "يقرأ {agent} إعدادات MCP لمساحة العمل التي يكتبها OpenKnowledge لصالح {sourceAgent}؛ وإزالتها لأحدهما تزيلها لكليهما. ولا يحمّلها {agent} إلا بعد أن تؤكّد الثقة بالمجلد عند أول تشغيل، ويتخطاها بصمت في مجلد لم تثق به، بما في ذلك مع copilot -p الذي لا يستطيع عرض طلب الثقة."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -3445,11 +3455,6 @@ msgstr "خطأ في الاتصال — أعد المحاولة"
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "فُقد الاتصال — أبقِ هذا التبويب مفتوحًا، وستُزامَن تعديلاتك عند إعادة الاتصال"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
-msgstr "يتصل تلقائيًا في المرة التالية التي تفتح فيها هذا المشروع في جلسة {agent} موثوقة."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Connects the agent to OpenKnowledge in every project on this machine."
@@ -6986,13 +6991,13 @@ msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، فتحقق من 
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
-msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، فشغّله في هذا المشروع ووافق على خادم OpenKnowledge مرة واحدة."
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، فافتح Customize → MCPs واختر open-knowledge وفعّل مصدره .cursor/mcp.json؛ إذ يترك {agent} خوادم المشروع معطّلة حتى تفعّلها."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، ففعّل الخادم من Settings → Tools & MCP؛ إذ يترك {agent} خوادم المشروع معطّلة حتى تفعّلها."
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، فشغّله في هذا المشروع ووافق على خادم OpenKnowledge مرة واحدة."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -9326,16 +9331,6 @@ msgstr "على النص المحدد في <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "في الفهرس الجذري، تتم كتابة okf_version كسلسلة مقتبسة مثل \"0.2\". بدون اقتباس، يقرأه YAML كرقم ويصبح 0.10 بصمت 0.1."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr "خطوة أخيرة: فعّله في {agent} ← الإعدادات ← الأدوات وMCP (يترك {agent} خوادم المشروع معطّلة حتى تشغّلها)."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
-msgstr "خطوة أخيرة: شغّل {agent} في هذا المشروع ووافق على OpenKnowledge مرة واحدة."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."

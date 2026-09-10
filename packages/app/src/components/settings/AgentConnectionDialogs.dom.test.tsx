@@ -1369,3 +1369,60 @@ describe('the save button says when it will replace something', () => {
     expect(within(dialog).queryByRole('button', { name: 'Save changes' })).toBeNull();
   });
 });
+
+describe('the troubleshooting note under an installed part', () => {
+  test("Copilot's project MCP row names the folder-trust precondition", async () => {
+    const snapshot = snapshotWith(diskSatisfierIds('copilot'));
+    await renderConfigureDialog(async () => result(snapshot), 'copilot');
+    const dialog = await screen.findByRole('dialog', { name: 'GitHub Copilot' });
+
+    const note = within(dialog).getByTestId('copilot-projectMcp-troubleshooting');
+    expect(note.textContent).toContain('confirm folder trust');
+  });
+
+  test("Codex's project MCP row names the trust gate and the desktop carve-out together", async () => {
+    const snapshot = snapshotWith(diskSatisfierIds('codex'));
+    await renderConfigureDialog(async () => result(snapshot), 'codex');
+    const dialog = await screen.findByRole('dialog', { name: 'Codex' });
+
+    const note = within(dialog).getByTestId('codex-projectMcp-troubleshooting');
+    expect(note.textContent).toContain('folder you have trusted');
+    expect(note.textContent).toContain('desktop app ignores');
+  });
+
+  test('a note shared by two rows in one group is printed once, on the first row', async () => {
+    const snapshot = snapshotWith(diskSatisfierIds('codex'));
+    await renderConfigureDialog(async () => result(snapshot), 'codex');
+    const dialog = await screen.findByRole('dialog', { name: 'Codex' });
+
+    const trust = 'folder you have trusted';
+    expect(within(dialog).getByTestId('codex-projectMcp-troubleshooting').textContent).toContain(
+      trust,
+    );
+    expect(
+      within(dialog).queryByTestId('codex-projectSkill-troubleshooting')?.textContent ?? '',
+    ).not.toContain(trust);
+    expect((dialog.textContent ?? '').split(trust)).toHaveLength(2);
+  });
+
+  test('when the project MCP entry is absent, the trust note falls through to the project skill', async () => {
+    const skillOnly = diskSatisfierIds('codex').filter(
+      (id) => id !== satisfierId('codex', 'mcp', 'project'),
+    );
+    await renderConfigureDialog(async () => result(snapshotWith(skillOnly)), 'codex');
+    const dialog = await screen.findByRole('dialog', { name: 'Codex' });
+
+    expect(within(dialog).queryByTestId('codex-projectMcp-troubleshooting')).toBeNull();
+    expect(within(dialog).getByTestId('codex-projectSkill-troubleshooting').textContent).toContain(
+      'folder you have trusted',
+    );
+  });
+
+  test('a part that is not installed carries no troubleshooting note', async () => {
+    const snapshot = snapshotWith();
+    await renderConfigureDialog(async () => result(snapshot), 'copilot');
+    const dialog = await screen.findByRole('dialog', { name: 'GitHub Copilot' });
+
+    expect(within(dialog).queryByTestId('copilot-projectMcp-troubleshooting')).toBeNull();
+  });
+});

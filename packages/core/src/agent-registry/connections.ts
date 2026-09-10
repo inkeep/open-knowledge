@@ -56,7 +56,7 @@ export interface ConnectionCell {
   readonly installability: Installability;
   readonly guidance?: GuidanceRef;
   readonly followup?: GuidanceRef;
-  readonly troubleshooting?: GuidanceRef;
+  readonly troubleshooting: readonly GuidanceRef[];
 }
 
 export interface ConnectionScopeGroup {
@@ -141,9 +141,7 @@ function buildCells(
       installability: satisfier.installability,
       ...(satisfier.guidance === undefined ? {} : { guidance: satisfier.guidance }),
       ...(satisfier.followup === undefined ? {} : { followup: satisfier.followup }),
-      ...(satisfier.troubleshooting === undefined
-        ? {}
-        : { troubleshooting: satisfier.troubleshooting }),
+      troubleshooting: satisfier.troubleshooting,
     });
   }
 

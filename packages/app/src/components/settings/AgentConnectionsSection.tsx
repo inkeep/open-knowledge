@@ -488,8 +488,7 @@ export function AgentConnectionsSection({
           <ConnectionStatusLine status={rowStatus} enabled={enabled} />
           {followup === null ? null : (
             <span
-              role="status"
-              className="mt-0.5 block text-amber-700 text-xs dark:text-amber-400"
+              className="mt-0.5 block text-muted-foreground text-xs"
               data-testid={`${rowTestId}-followup`}
             >
               {followup}

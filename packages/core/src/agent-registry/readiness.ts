@@ -54,7 +54,7 @@ export interface SatisfierAssessment {
   readonly consentClass: ConsentClass;
   readonly guidance?: GuidanceRef;
   readonly followup?: GuidanceRef;
-  readonly troubleshooting?: GuidanceRef;
+  readonly troubleshooting: readonly GuidanceRef[];
 }
 
 export interface RequirementAssessment {
@@ -120,6 +120,7 @@ function assessSatisfier(
       confidence: 'unverified',
       exception: STATE_POLICY.absent.exception,
       consentClass: 'none',
+      troubleshooting: [],
     };
   }
 
@@ -144,7 +145,7 @@ function assessSatisfier(
     consentClass: record.consentClass,
     ...(record.guidance === undefined ? {} : { guidance: record.guidance }),
     ...(record.followup === undefined ? {} : { followup: record.followup }),
-    ...(record.troubleshooting === undefined ? {} : { troubleshooting: record.troubleshooting }),
+    troubleshooting: record.troubleshooting,
   };
 }
 

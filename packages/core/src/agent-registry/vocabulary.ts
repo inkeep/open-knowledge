@@ -56,6 +56,11 @@ export const CONSENT_CLASSES = ['none', 'approve-once', 'enable-manually', 'trus
 export const ConsentClassSchema = z.enum(CONSENT_CLASSES);
 export type ConsentClass = z.infer<typeof ConsentClassSchema>;
 
+export const FOLLOWUP_CONSENT_CLASSES = [
+  'enable-manually',
+] as const satisfies readonly ConsentClass[];
+export type FollowupConsentClass = (typeof FOLLOWUP_CONSENT_CLASSES)[number];
+
 export const APPLY_ACTIONS = [
   'written',
   'overwritten',

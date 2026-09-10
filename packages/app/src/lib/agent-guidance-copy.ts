@@ -69,7 +69,12 @@ export function troubleshootingText(ref: GuidanceRef | undefined): string | null
     case 'troubleshooting.cursor.project-entry-not-loaded':
       return t({
         id: 'troubleshooting.cursor.project-entry-not-loaded',
-        message: `If ${agent} shows no OpenKnowledge tools, turn the server on under Settings → Tools & MCP; ${agent} leaves project servers off until you do.`,
+        message: `If ${agent} shows no OpenKnowledge tools, open Customize → MCPs, pick open-knowledge and switch on its .cursor/mcp.json source; ${agent} leaves project servers off until you do.`,
+      });
+    case 'troubleshooting.codex.folder-trust':
+      return t({
+        id: 'troubleshooting.codex.folder-trust',
+        message: `${agent} loads a project entry only in a folder you have trusted. The CLI asks on first run in a new folder, but codex exec cannot ask and older builds may not remember the answer, so if the tools do not appear, mark the project trusted in ~/.codex/config.toml. Trusting a project loads its whole .codex/ layer, including hooks and rules.`,
       });
     case 'troubleshooting.codex.desktop-project-config':
       if (ref.params?.honoredByDesktop === true) return null;
@@ -81,7 +86,7 @@ export function troubleshootingText(ref: GuidanceRef | undefined): string | null
       const sourceAgent = labelOf(ref.params?.sourceAgent) ?? '';
       return t({
         id: 'troubleshooting.copilot.shared-workspace-config',
-        message: `${agent} reads the workspace MCP config OpenKnowledge writes for ${sourceAgent}; removing it for one removes it for both.`,
+        message: `${agent} reads the workspace MCP config OpenKnowledge writes for ${sourceAgent}; removing it for one removes it for both. ${agent} loads it only after you confirm folder trust on first launch, and skips it silently in a folder you have not trusted, including under copilot -p, which cannot show the trust prompt.`,
       });
     }
     case 'troubleshooting.openclaw.central-store-missing':

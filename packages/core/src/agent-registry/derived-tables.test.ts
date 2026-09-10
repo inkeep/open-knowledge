@@ -189,15 +189,22 @@ describe('project MCP consent classes', () => {
     expect(projectMcpConsentClass('not-an-editor')).toBe('none');
   });
 
-  it('gives every trust-gated project entry a follow-up that names its own agent', () => {
-    const trustGated = ALL_EDITOR_IDS.filter((id) => projectMcpConsentClass(id) === 'trust-gated');
-    expect(trustGated).toEqual(['codex', 'copilot']);
-    for (const id of trustGated) {
+  it('gives a follow-up to exactly the project entries that need a manual enable', () => {
+    const enableManually = ALL_EDITOR_IDS.filter(
+      (id) => projectMcpConsentClass(id) === 'enable-manually',
+    );
+    expect(enableManually).toEqual(['cursor']);
+    for (const id of ALL_EDITOR_IDS) {
       const record = Object.values(AGENT_REGISTRY).find((candidate) => candidate.id === id);
       const projectMcp = record?.satisfiers.find(
         (satisfier) => satisfier.piece === 'mcp' && satisfier.scope === 'project',
       );
-      expect(projectMcp?.followup).toEqual({ id: 'followup.trust-gated', params: { agent: id } });
+      if (projectMcp === undefined) continue;
+      expect(projectMcp.followup, id).toEqual(
+        enableManually.includes(id)
+          ? { id: 'followup.enable-manually', params: { agent: id } }
+          : undefined,
+      );
     }
   });
 

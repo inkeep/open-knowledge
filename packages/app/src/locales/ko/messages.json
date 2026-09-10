@@ -3385,22 +3385,9 @@
     "fj5YiP": ["GitHub에서 최신 사본을 다운로드합니다."],
     "fnlBN4": ["자동 승인 설정을 아직 불러오지 못했습니다. 잠시 후 다시 시도합니다."],
     "fo6CCk": ["패널 ", ["0"]],
-    "followup.approve-once": [
-      "한 단계 더 필요합니다. 이 프로젝트에서 ",
-      ["agent"],
-      "를 실행하고 OpenKnowledge를 한 번 승인합니다."
-    ],
     "followup.enable-manually": [
-      "한 단계 더 필요합니다. ",
       ["agent"],
-      " → 설정 → Tools & MCP에서 활성화합니다(",
-      ["agent"],
-      "는 프로젝트 서버를 직접 켜기 전까지 꺼 둡니다)."
-    ],
-    "followup.trust-gated": [
-      "다음에 신뢰할 수 있는 ",
-      ["agent"],
-      " 세션에서 이 프로젝트를 열면 자동으로 연결됩니다."
+      "은(는) Customize → MCPs에서 직접 켜기 전까지 프로젝트 MCP 서버를 꺼 둡니다. OpenKnowledge는 그 설정을 볼 수 없습니다."
     ],
     "fqSfXY": ["바꾸기"],
     "frREUl": ["셸이 시작되기 전에 터미널 백그라운드 서비스가 중지되었습니다."],
@@ -4647,15 +4634,21 @@
       ["agent"],
       " CLI만 이 설정을 읽습니다."
     ],
+    "troubleshooting.codex.folder-trust": [
+      ["agent"],
+      "은(는) 신뢰한 폴더에서만 프로젝트 항목을 불러옵니다. CLI는 새 폴더에서 처음 실행할 때 묻지만 codex exec는 물을 수 없고 이전 빌드는 답을 기억하지 못할 수 있으므로, 도구가 보이지 않으면 ~/.codex/config.toml에서 해당 프로젝트를 신뢰함으로 표시하세요. 프로젝트를 신뢰하면 hooks와 규칙을 포함한 .codex/ 계층 전체가 로드됩니다."
+    ],
     "troubleshooting.copilot.shared-workspace-config": [
       ["agent"],
       "은(는) OpenKnowledge가 ",
       ["sourceAgent"],
-      "을(를) 위해 작성한 워크스페이스 MCP 설정을 읽습니다. 한쪽에서 제거하면 양쪽 모두에서 제거됩니다."
+      "을(를) 위해 작성한 워크스페이스 MCP 설정을 읽습니다. 한쪽에서 제거하면 양쪽 모두에서 제거됩니다. ",
+      ["agent"],
+      "은(는) 처음 실행할 때 폴더 신뢰를 확인한 뒤에만 이를 불러오며, 신뢰하지 않은 폴더에서는 조용히 건너뜁니다. 신뢰 요청을 표시할 수 없는 copilot -p에서도 마찬가지입니다."
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       ["agent"],
-      "에 OpenKnowledge 도구가 보이지 않으면 Settings → Tools & MCP에서 서버를 켜세요. ",
+      "에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 open-knowledge를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. ",
       ["agent"],
       "은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
     ],

@@ -9,22 +9,23 @@ function projectMcpFollowup(agent: keyof typeof AGENT_REGISTRY): GuidanceRef | u
 }
 
 describe('followupHintText', () => {
-  test("Claude's approve-once hint names the agent and the one-time approval", () => {
-    expect(followupHintText(projectMcpFollowup('claude'))).toBe(
-      'One more step: run Claude in this project and approve OpenKnowledge once.',
-    );
-  });
-
-  test("Cursor's enable-manually hint names the agent in both places", () => {
+  test("Cursor's enable-manually hint names the agent and the setting OpenKnowledge cannot see", () => {
     expect(followupHintText(projectMcpFollowup('cursor'))).toBe(
-      'One more step: enable it in Cursor → Settings → Tools & MCP (Cursor leaves project servers off until you turn them on).',
+      "Cursor keeps project MCP servers off until you turn them on under Customize → MCPs. OpenKnowledge can't see that setting.",
     );
   });
 
-  test("Codex's trust-gated hint names the agent", () => {
-    expect(followupHintText(projectMcpFollowup('codex'))).toBe(
-      'Connects automatically the next time you open this project in a trusted Codex session.',
-    );
+  test('the agents that prompt on their own declare no follow-up to render', () => {
+    for (const agent of ['claude', 'codex', 'copilot'] as const) {
+      expect(projectMcpFollowup(agent), agent).toBeUndefined();
+      expect(followupHintText(projectMcpFollowup(agent)), agent).toBeNull();
+    }
+  });
+
+  test('the retired approve-once and trust-gated ids render nothing', () => {
+    for (const id of ['followup.approve-once', 'followup.trust-gated']) {
+      expect(followupHintText({ id: guidanceId(id), params: { agent: 'claude' } }), id).toBeNull();
+    }
   });
 
   test('every follow-up the registry declares resolves to copy', () => {
@@ -40,8 +41,8 @@ describe('followupHintText', () => {
   test('an unknown id, a missing ref, or a ref without an agent renders nothing', () => {
     expect(followupHintText(undefined)).toBeNull();
     expect(
-      followupHintText({ id: guidanceId('followup.unwritten'), params: { agent: 'claude' } }),
+      followupHintText({ id: guidanceId('followup.unwritten'), params: { agent: 'cursor' } }),
     ).toBeNull();
-    expect(followupHintText({ id: guidanceId('followup.approve-once') })).toBeNull();
+    expect(followupHintText({ id: guidanceId('followup.enable-manually') })).toBeNull();
   });
 });

@@ -29,23 +29,51 @@ import type {
   VERIFIED_POSTURES,
   VerifiedAgainst,
 } from './schema.ts';
-import type { ConsentClass, ProbeStrictness, SatisfierKind } from './vocabulary.ts';
+import {
+  type ConsentClass,
+  FOLLOWUP_CONSENT_CLASSES,
+  type ProbeStrictness,
+  type SatisfierKind,
+} from './vocabulary.ts';
 
 type SatisfierInput = Omit<
   SatisfierRecord,
-  'id' | 'sharedWith' | 'prerequisites' | 'consentClass' | 'installability' | 'preferred'
+  | 'id'
+  | 'sharedWith'
+  | 'prerequisites'
+  | 'consentClass'
+  | 'installability'
+  | 'preferred'
+  | 'troubleshooting'
 > & {
   sharedWith?: AgentId[];
   prerequisites?: SatisfierId[];
   consentClass?: ConsentClass;
   installability?: Installability;
   preferred?: boolean;
+  troubleshooting?: TroubleshootingInput;
+};
+
+type TroubleshootingInput = GuidanceRef | readonly GuidanceRef[];
+
+const troubleshootingList = (input: TroubleshootingInput | undefined): GuidanceRef[] => {
+  if (input === undefined) return [];
+  return Array.isArray(input) ? [...input] : [input as GuidanceRef];
 };
 
 function defineSatisfier(input: SatisfierInput): SatisfierRecord {
-  const { sharedWith, prerequisites, consentClass, installability, preferred, ...rest } = input;
+  const {
+    sharedWith,
+    prerequisites,
+    consentClass,
+    installability,
+    preferred,
+    troubleshooting,
+    ...rest
+  } = input;
   return {
     ...rest,
+    troubleshooting: troubleshootingList(troubleshooting),
     id: satisfierId({
       agent: input.agent,
       piece: input.piece,
@@ -131,8 +159,10 @@ const guide = (
   ...(params === undefined ? {} : { params }),
 });
 
-const followupFor = (consentClass: ConsentClass, agent: AgentId): GuidanceRef | undefined =>
-  consentClass === 'none' ? undefined : guide(`followup.${consentClass}`, { agent });
+const followupFor = (consentClass: ConsentClass, agent: AgentId): GuidanceRef | undefined => {
+  const owed = FOLLOWUP_CONSENT_CLASSES.find((candidate) => candidate === consentClass);
+  return owed === undefined ? undefined : guide(`followup.${owed}`, { agent });
+};
 
 const read = (ref: string, note?: string): EvidenceRef => ({
   kind: 'source-read',
@@ -209,7 +239,7 @@ function userMcpEntry(input: {
   attestation: Attestation;
   installability?: Installability;
   notInstallableReason?: (typeof NOT_INSTALLABLE_REASONS)[number];
-  troubleshooting?: GuidanceRef;
+  troubleshooting?: TroubleshootingInput;
 }): SatisfierRecord {
   return defineSatisfier({
     agent: input.agent,
@@ -234,7 +264,7 @@ function projectMcpEntry(input: {
   consentClass: ConsentClass;
   strictness: EntryStrictness;
   attestation: Attestation;
-  troubleshooting?: GuidanceRef;
+  troubleshooting?: TroubleshootingInput;
 }): SatisfierRecord {
   return defineSatisfier({
     agent: input.agent,
@@ -257,7 +287,7 @@ function projectSkill(input: {
   agent: EditorId;
   prerequisites: SatisfierId[];
   attestation: Attestation;
-  troubleshooting?: GuidanceRef;
+  troubleshooting?: TroubleshootingInput;
 }): SatisfierRecord {
   return defineSatisfier({
     agent: input.agent,
@@ -460,7 +490,18 @@ const cursor = defineAgent({
       agent: 'cursor',
       consentClass: 'enable-manually',
       strictness: ['reclaim-permissive'],
-      attestation: attestVerified([read(CODE.cliEditors), read(CODE.coreEditors)]),
+      attestation: attestVerified(
+        [
+          read(CODE.cliEditors),
+          read(CODE.coreEditors),
+          {
+            kind: 'observation',
+            ref: 'cursor-3.19.19-project-server-default-off',
+            note: 'project .cursor/mcp.json server listed Disabled under Customize → MCPs with no prompt; enabled via the per-source toggle in its Configure dialog; with a same-named user-level entry present, the user entry connected and the disabled project entry did not shadow it',
+          },
+        ],
+        { version: '3.19.19', observedAt: '2026-09-09' },
+      ),
       troubleshooting: guide('troubleshooting.cursor.project-entry-not-loaded', {
         agent: 'cursor',
       }),
@@ -563,6 +604,16 @@ const codex = defineAgent({
             note: 'open, reproduced on builds newer than the one OK checked',
           },
           {
+            kind: 'upstream-issue',
+            ref: 'openai/codex#36960',
+            note: "requires an explicit trust decision in rust-v0.147.0, reverting #36935's automatic trust from the same release; builds from 0.113 asked but did not reliably persist the answer (#14547); codex exec never asks",
+          },
+          {
+            kind: 'vendor-doc',
+            ref: 'OpenAI Codex: Advanced configuration',
+            note: 'project-scoped config loads only for a trusted project',
+          },
+          {
             kind: 'observation',
             ref: 'codex-desktop-project-config-load',
             note: 'single non-repro on 26.623.81905; the CLI honors it only for a trusted project',
@@ -570,15 +621,19 @@ const codex = defineAgent({
         ],
         { version: '26.707.72221', observedAt: '2026-07-15' },
       ),
-      troubleshooting: guide('troubleshooting.codex.desktop-project-config', {
-        agent: 'codex',
-        honoredByDesktop: false,
-      }),
+      troubleshooting: [
+        guide('troubleshooting.codex.desktop-project-config', {
+          agent: 'codex',
+          honoredByDesktop: false,
+        }),
+        guide('troubleshooting.codex.folder-trust', { agent: 'codex' }),
+      ],
     }),
     projectSkill({
       agent: 'codex',
       prerequisites: [sid('codex', 'mcp', 'project', 'config-entry')],
       attestation: attestVerified([read(CODE.coreEditors), read(CODE.repairSkills)]),
+      troubleshooting: guide('troubleshooting.codex.folder-trust', { agent: 'codex' }),
     }),
     userSkill({
       agent: 'codex',
@@ -677,6 +732,11 @@ const copilot = defineAgent({
             kind: 'vendor-doc',
             ref: 'GitHub Copilot CLI — MCP configuration',
             note: 'reads workspace `.mcp.json` or `.github/mcp.json`',
+          },
+          {
+            kind: 'vendor-doc',
+            ref: 'GitHub Docs: Adding MCP servers for Copilot CLI',
+            note: 'project-level servers load only after folder-trust confirmation; skipped silently in untrusted folders; under copilot -p they load only in an already-trusted folder unless GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true',
           },
           read(CODE.coreEditors, 'OK deliberately writes no second copy for copilot'),
         ],

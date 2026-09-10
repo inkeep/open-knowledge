@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr "{agent} menerima alat OpenKnowledge setiap kali OpenKnowledge menjalankannya; tidak ada yang ditulis ke konfigurasinya."
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "{agent} membiarkan server MCP proyek mati sampai Anda menyalakannya di Customize → MCPs. OpenKnowledge tidak bisa melihat pengaturan itu."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr "{agent} memuat entri proyek hanya di folder yang sudah Anda percayai. CLI menanyakannya saat pertama kali dijalankan di folder baru, tetapi codex exec tidak bisa bertanya dan versi lama mungkin tidak mengingat jawabannya, jadi jika alatnya tidak muncul, tandai proyek itu sebagai tepercaya di ~/.codex/config.toml. Memercayai sebuah proyek akan memuat seluruh lapisan .codex/ miliknya, termasuk hook dan aturan."
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr "{agent} hanya memuat ekstensi proyek di folder yang Anda percayai; percayai folder ini di {agent} jika alat tidak muncul."
@@ -532,7 +542,7 @@ msgstr "{agent} hanya memuat ekstensi proyek di folder yang Anda percayai; perca
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.copilot.shared-workspace-config"
-msgstr "{agent} membaca konfigurasi MCP ruang kerja yang ditulis OpenKnowledge untuk {sourceAgent}; menghapusnya untuk satu berarti menghapusnya untuk keduanya."
+msgstr "{agent} membaca konfigurasi MCP ruang kerja yang ditulis OpenKnowledge untuk {sourceAgent}; menghapusnya untuk satu berarti menghapusnya untuk keduanya. {agent} memuatnya hanya setelah Anda mengonfirmasi kepercayaan folder saat peluncuran pertama, dan melewatinya diam-diam di folder yang belum Anda percayai, termasuk di bawah copilot -p, yang tidak bisa menampilkan permintaan kepercayaan."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -3441,11 +3451,6 @@ msgstr "Galat koneksi — coba lagi"
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "Koneksi hilang — biarkan tab ini terbuka, suntingan Anda akan tersinkron saat tersambung kembali"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
-msgstr "Terhubung otomatis lain kali Anda membuka proyek ini di sesi {agent} tepercaya."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Connects the agent to OpenKnowledge in every project on this machine."
@@ -6982,13 +6987,13 @@ msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, periksa apakah jalur 
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
-msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, jalankan di proyek ini dan setujui server OpenKnowledge sekali."
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, buka Customize → MCPs, pilih open-knowledge dan nyalakan sumber .cursor/mcp.json miliknya; {agent} membiarkan server proyek mati sampai Anda melakukannya."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, nyalakan server di Settings → Tools & MCP; {agent} membiarkan server proyek mati sampai Anda melakukannya."
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "Jika {agent} tidak menampilkan alat OpenKnowledge, jalankan di proyek ini dan setujui server OpenKnowledge sekali."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -9322,16 +9327,6 @@ msgstr "Pada teks terpilih di <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr "Satu langkah lagi: aktifkan di {agent} → Settings → Tools & MCP ({agent} membiarkan server proyek mati sampai Anda menyalakannya)."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
-msgstr "Satu langkah lagi: jalankan {agent} di proyek ini dan setujui OpenKnowledge sekali."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."

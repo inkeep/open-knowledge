@@ -267,10 +267,11 @@ describe('consent classes', () => {
     }
   });
 
-  it('pairs every non-none class with the follow-up it implies', () => {
+  it('carries a follow-up only for the class that owes a manual enable', () => {
     for (const satisfier of ALL_SATISFIERS) {
-      if (satisfier.consentClass === 'none') continue;
-      expect(satisfier.followup?.id).toBe(`followup.${satisfier.consentClass}`);
+      expect(satisfier.followup?.id, satisfier.id).toBe(
+        satisfier.consentClass === 'enable-manually' ? 'followup.enable-manually' : undefined,
+      );
     }
   });
 });
@@ -281,7 +282,38 @@ describe('Codex desktop project config', () => {
       (satisfier) => satisfier.piece === 'mcp' && satisfier.scope === 'project',
     );
     expect(projectMcp?.attestation.confidence).toBe('contested');
-    expect(projectMcp?.troubleshooting?.params?.honoredByDesktop).toBe(false);
+    expect(projectMcp?.troubleshooting[0]?.params?.honoredByDesktop).toBe(false);
+  });
+});
+
+describe('folder trust', () => {
+  const trustRef = { id: 'troubleshooting.codex.folder-trust', params: { agent: 'codex' } };
+  const codexProjectSatisfier = (piece: 'mcp' | 'skill') =>
+    AGENT_REGISTRY.codex.satisfiers.find(
+      (satisfier) => satisfier.piece === piece && satisfier.scope === 'project',
+    );
+
+  it('names the trust gate on both project-scoped Codex satisfiers, the way Pi does', () => {
+    expect(codexProjectSatisfier('mcp')?.troubleshooting).toContainEqual(trustRef);
+    expect(codexProjectSatisfier('skill')?.troubleshooting).toEqual([trustRef]);
+  });
+
+  it("keeps the desktop note beside the trust note on Codex's project entry", () => {
+    expect(codexProjectSatisfier('mcp')?.troubleshooting.map((ref) => ref.id)).toEqual([
+      'troubleshooting.codex.desktop-project-config',
+      'troubleshooting.codex.folder-trust',
+    ]);
+  });
+
+  it('carries every trust note on a satisfier, never on a mode caveat', () => {
+    for (const record of agents()) {
+      for (const [mode, modeRecord] of Object.entries(record.modes)) {
+        expect(
+          modeRecord.caveats,
+          `${record.id}/${mode}: mode caveats have no renderer; put the ref on a satisfier's troubleshooting slot`,
+        ).toEqual([]);
+      }
+    }
   });
 });
 

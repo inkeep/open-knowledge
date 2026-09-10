@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr "{agent} recibe las herramientas de OpenKnowledge cada vez que OpenKnowledge lo inicia; no se escribe nada en su configuración."
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "{agent} deja apagados los servidores MCP de proyecto hasta que los enciendes en Customize → MCPs. OpenKnowledge no puede ver ese ajuste."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr "{agent} carga una entrada de proyecto solo en una carpeta en la que confías. La CLI lo pregunta la primera vez que la ejecutas en una carpeta nueva, pero codex exec no puede preguntar y las versiones antiguas quizá no recuerden la respuesta, así que si las herramientas no aparecen, marca el proyecto como de confianza en ~/.codex/config.toml. Confiar en un proyecto carga toda su capa .codex/, incluidos los hooks y las reglas."
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr "{agent} solo carga extensiones de proyecto en carpetas en las que has confiado; confía en esta carpeta en {agent} si las herramientas no aparecen."
@@ -532,7 +542,7 @@ msgstr "{agent} solo carga extensiones de proyecto en carpetas en las que has co
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.copilot.shared-workspace-config"
-msgstr "{agent} lee la configuración MCP del espacio de trabajo que OpenKnowledge escribe para {sourceAgent}; quitarla para uno la quita para ambos."
+msgstr "{agent} lee la configuración MCP del espacio de trabajo que OpenKnowledge escribe para {sourceAgent}; quitarla para uno la quita para ambos. {agent} la carga solo después de que confirmes la confianza en la carpeta al iniciarlo por primera vez, y la omite en silencio en una carpeta en la que no confías, incluso con copilot -p, que no puede mostrar el aviso de confianza."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -3445,11 +3455,6 @@ msgstr "Error de conexión: inténtalo de nuevo"
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "Conexión perdida: deja esta pestaña abierta, tus ediciones se sincronizarán al reconectar"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
-msgstr "Se conectará automáticamente la próxima vez que abras este proyecto en una sesión de {agent} de confianza."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Connects the agent to OpenKnowledge in every project on this machine."
@@ -6986,13 +6991,13 @@ msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, comprueba que l
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
-msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, ejecútalo en este proyecto y aprueba el servidor de OpenKnowledge una vez."
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, abre Customize → MCPs, elige open-knowledge y activa su origen .cursor/mcp.json; {agent} deja apagados los servidores de proyecto hasta que lo hagas."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, activa el servidor en Settings → Tools & MCP; {agent} deja apagados los servidores de proyecto hasta que lo hagas."
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, ejecútalo en este proyecto y aprueba el servidor de OpenKnowledge una vez."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -9326,16 +9331,6 @@ msgstr "Sobre el texto seleccionado en <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "En el índice raíz, okf_version se escribe como una cadena entrecomillada como \"0.2\". Sin comillas, YAML lo lee como un número y 0.10 silenciosamente se convierte en 0.1."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr "Falta un paso: actívalo en {agent} → Settings → Tools & MCP ({agent} deja apagados los servidores de proyecto hasta que los enciendes)."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
-msgstr "Falta un paso: ejecuta {agent} en este proyecto y aprueba OpenKnowledge una vez."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."

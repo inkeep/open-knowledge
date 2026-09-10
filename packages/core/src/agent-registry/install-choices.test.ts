@@ -31,6 +31,7 @@ function choiceFor(result: InstallChoices, satisfierId: string): InstallChoice {
 }
 
 const CLAUDE_PROJECT_MCP = 'claude/mcp/project/config-entry';
+const CURSOR_PROJECT_MCP = 'cursor/mcp/project/config-entry';
 const CLAUDE_USER_MCP = 'claude/mcp/user/config-entry';
 const COPILOT_PROJECT_SKILL = 'copilot/skill/project/skill-bundle-copy';
 const GEMINI_SESSION_MCP = 'gemini/mcp/session/session-injection';
@@ -56,11 +57,20 @@ describe('what a choice carries', () => {
   });
 
   it('carries the caveat guidance for what the user still owes and what to try', () => {
-    const project = choiceFor(listInstallChoices('claude', 'mcp'), CLAUDE_PROJECT_MCP);
+    const cursor = choiceFor(listInstallChoices('cursor', 'mcp'), CURSOR_PROJECT_MCP);
 
-    expect(project.consentClass).toBe('approve-once');
-    expect(project.caveats.map((ref) => ref.id)).toEqual([
-      'followup.approve-once',
+    expect(cursor.consentClass).toBe('enable-manually');
+    expect(cursor.caveats.map((ref) => ref.id)).toEqual([
+      'followup.enable-manually',
+      'troubleshooting.cursor.project-entry-not-loaded',
+    ]);
+  });
+
+  it('leaves the follow-up caveat off an entry whose agent prompts on its own', () => {
+    const claude = choiceFor(listInstallChoices('claude', 'mcp'), CLAUDE_PROJECT_MCP);
+
+    expect(claude.consentClass).toBe('approve-once');
+    expect(claude.caveats.map((ref) => ref.id)).toEqual([
       'troubleshooting.claude.project-entry-not-approved',
     ]);
   });

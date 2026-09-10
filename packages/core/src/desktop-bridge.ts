@@ -408,12 +408,6 @@ export type OkIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkIntegrationsStatus };
 
-export type OkProjectIntegrationsFollowUp =
-  | 'approve-once'
-  | 'enable-manually'
-  | 'trust-gated'
-  | 'none';
-
 export interface OkProjectIntegrationsStatus {
   readonly available: boolean;
   readonly hasProject: boolean;
@@ -425,7 +419,6 @@ export interface OkProjectIntegrationsStatus {
     readonly state: OkIntegrationsEditorState;
     readonly configPath: string;
     readonly entryLocator: string;
-    readonly followUp: OkProjectIntegrationsFollowUp;
   }[];
   readonly skill: {
     readonly installed: boolean;

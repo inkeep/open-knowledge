@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr "OpenKnowledge যখনই {agent} চালু করে, তখন OpenKnowledge-এর টুলগুলো তাকে দেওয়া হয়; তার কনফিগে কিছু লেখা হয় না।"
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "{agent} প্রকল্পের MCP সার্ভার বন্ধ রাখে যতক্ষণ না আপনি Customize → MCPs-তে সেগুলো চালু করেন। OpenKnowledge ওই সেটিং দেখতে পারে না।"
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr "{agent} কেবল আপনি বিশ্বাস করেছেন এমন ফোল্ডারেই প্রকল্পের এন্ট্রি লোড করে। CLI নতুন ফোল্ডারে প্রথমবার চালানোর সময় জিজ্ঞাসা করে, কিন্তু codex exec জিজ্ঞাসা করতে পারে না এবং পুরোনো বিল্ড উত্তরটি মনে না-ও রাখতে পারে, তাই টুল না দেখালে ~/.codex/config.toml-এ প্রকল্পটিকে বিশ্বস্ত হিসেবে চিহ্নিত করুন। কোনো প্রকল্পকে বিশ্বাস করলে তার পুরো .codex/ স্তর লোড হয়, যার মধ্যে hooks ও নিয়মও থাকে।"
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr "{agent} শুধু আপনার বিশ্বাস করা ফোল্ডারেই প্রকল্প এক্সটেনশন লোড করে; টুল না দেখালে {agent}-এ এই ফোল্ডারটিকে বিশ্বাস করুন।"
@@ -532,7 +542,7 @@ msgstr "{agent} শুধু আপনার বিশ্বাস করা ফ
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.copilot.shared-workspace-config"
-msgstr "{agent} সেই ওয়ার্কস্পেস MCP কনফিগ পড়ে যা OpenKnowledge {sourceAgent}-এর জন্য লেখে; একজনের জন্য সরালে দুজনের জন্যই সরে যায়।"
+msgstr "{agent} সেই ওয়ার্কস্পেস MCP কনফিগ পড়ে যা OpenKnowledge {sourceAgent}-এর জন্য লেখে; একজনের জন্য সরালে দুজনের জন্যই সরে যায়। {agent} এটি তখনই লোড করে যখন আপনি প্রথম চালুর সময় ফোল্ডারের বিশ্বাস নিশ্চিত করেন, এবং আপনি বিশ্বাস করেননি এমন ফোল্ডারে নীরবে এড়িয়ে যায়, copilot -p-এও, যেখানে বিশ্বাসের অনুরোধ দেখানোই যায় না।"
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -3441,11 +3451,6 @@ msgstr "সংযোগ ত্রুটি — আবার চেষ্টা �
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "সংযোগ হারিয়েছে — এই ট্যাব খোলা রাখুন, পুনরায় যুক্ত হলে আপনার সম্পাদনা সিঙ্ক হবে"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
-msgstr "পরের বার কোনো বিশ্বস্ত {agent} সেশনে এই প্রকল্প খুললে এটি নিজে থেকেই যুক্ত হয়।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Connects the agent to OpenKnowledge in every project on this machine."
@@ -6982,13 +6987,13 @@ msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, দেখ
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
-msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, এটি এই প্রকল্পে চালান এবং OpenKnowledge সার্ভারটি একবার অনুমোদন দিন।"
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, Customize → MCPs খুলুন, open-knowledge বেছে নিন এবং তার .cursor/mcp.json উৎসটি চালু করুন; আপনি চালু না করা পর্যন্ত {agent} প্রকল্পের সার্ভার বন্ধ রাখে।"
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, Settings → Tools & MCP-তে সার্ভারটি চালু করুন; আপনি চালু না করা পর্যন্ত {agent} প্রকল্পের সার্ভার বন্ধ রাখে।"
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, এটি এই প্রকল্পে চালান এবং OpenKnowledge সার্ভারটি একবার অনুমোদন দিন।"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -9322,16 +9327,6 @@ msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপ�
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "রুট ইনডেক্সে, okf_version একটি উদ্ধৃত স্ট্রিং হিসাবে লেখা হয় যেমন \"0.2\"। উদ্ধৃতিহীন, YAML এটিকে একটি সংখ্যা হিসাবে পড়ে এবং 0.10 নিঃশব্দে 0.1 হয়ে যায়।"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr "আরও একটি ধাপ: এটি {agent} → Settings → Tools & MCP-তে চালু করুন ({agent} আপনি চালু না করা পর্যন্ত প্রকল্পের সার্ভার বন্ধ রাখে)।"
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
-msgstr "আরও একটি ধাপ: এই প্রকল্পে {agent} চালান এবং OpenKnowledge-কে একবার অনুমোদন দিন।"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."

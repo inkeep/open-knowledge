@@ -3503,22 +3503,9 @@
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo6CCk": ["pane ", ["0"]],
-    "followup.approve-once": [
-      "One more step: run ",
-      ["agent"],
-      " in this project and approve OpenKnowledge once."
-    ],
     "followup.enable-manually": [
-      "One more step: enable it in ",
       ["agent"],
-      " → Settings → Tools & MCP (",
-      ["agent"],
-      " leaves project servers off until you turn them on)."
-    ],
-    "followup.trust-gated": [
-      "Connects automatically the next time you open this project in a trusted ",
-      ["agent"],
-      " session."
+      " keeps project MCP servers off until you turn them on under Customize → MCPs. OpenKnowledge can't see that setting."
     ],
     "fqSfXY": ["Replace"],
     "frREUl": ["The terminal background service stopped before the shell could start."],
@@ -4844,16 +4831,22 @@
       ["agent"],
       " CLI reads it."
     ],
+    "troubleshooting.codex.folder-trust": [
+      ["agent"],
+      " loads a project entry only in a folder you have trusted. The CLI asks on first run in a new folder, but codex exec cannot ask and older builds may not remember the answer, so if the tools do not appear, mark the project trusted in ~/.codex/config.toml. Trusting a project loads its whole .codex/ layer, including hooks and rules."
+    ],
     "troubleshooting.copilot.shared-workspace-config": [
       ["agent"],
       " reads the workspace MCP config OpenKnowledge writes for ",
       ["sourceAgent"],
-      "; removing it for one removes it for both."
+      "; removing it for one removes it for both. ",
+      ["agent"],
+      " loads it only after you confirm folder trust on first launch, and skips it silently in a folder you have not trusted, including under copilot -p, which cannot show the trust prompt."
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       "If ",
       ["agent"],
-      " shows no OpenKnowledge tools, turn the server on under Settings → Tools & MCP; ",
+      " shows no OpenKnowledge tools, open Customize → MCPs, pick open-knowledge and switch on its .cursor/mcp.json source; ",
       ["agent"],
       " leaves project servers off until you do."
     ],

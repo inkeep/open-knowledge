@@ -4,14 +4,12 @@ import type {
   McpEntryClassification,
   McpRemoveOutcome,
 } from '@inkeep/open-knowledge';
-import { projectMcpConsentClass } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   IntegrationsEditorState,
   McpWiringEditorId,
   ProjectIntegrationsComponentRef,
   ProjectIntegrationsEditorStatus,
-  ProjectIntegrationsFollowUp,
   ProjectIntegrationsSetRequest,
   ProjectIntegrationsSetResult,
   ProjectIntegrationsStatus,
@@ -24,10 +22,6 @@ import {
   safeDetectedEditors,
 } from './integrations-settings.ts';
 import { logIpcError } from './ipc-log.ts';
-
-function followUpFor(id: McpWiringEditorId): ProjectIntegrationsFollowUp {
-  return projectMcpConsentClass(id);
-}
 
 export interface ProjectIntegrationsCliSurface {
   allEditorIds: readonly McpWiringEditorId[];
@@ -146,7 +140,6 @@ export function registerProjectIntegrationsSettings(
         state,
         configPath: relative(projectDir, projectPath),
         entryLocator: cli.entryLocator(id),
-        followUp: followUpFor(id),
       });
     }
     return statuses;

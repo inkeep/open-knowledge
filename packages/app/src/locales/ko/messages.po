@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr "OpenKnowledge가 {agent}을(를) 실행할 때마다 OpenKnowledge 도구를 전달합니다. 설정에는 아무것도 기록되지 않습니다."
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr "{agent}은(는) Customize → MCPs에서 직접 켜기 전까지 프로젝트 MCP 서버를 꺼 둡니다. OpenKnowledge는 그 설정을 볼 수 없습니다."
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr "{agent}은(는) 신뢰한 폴더에서만 프로젝트 항목을 불러옵니다. CLI는 새 폴더에서 처음 실행할 때 묻지만 codex exec는 물을 수 없고 이전 빌드는 답을 기억하지 못할 수 있으므로, 도구가 보이지 않으면 ~/.codex/config.toml에서 해당 프로젝트를 신뢰함으로 표시하세요. 프로젝트를 신뢰하면 hooks와 규칙을 포함한 .codex/ 계층 전체가 로드됩니다."
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr "{agent}은(는) 신뢰한 폴더에서만 프로젝트 확장을 불러옵니다. 도구가 나타나지 않으면 {agent}에서 이 폴더를 신뢰하세요."
@@ -532,7 +542,7 @@ msgstr "{agent}은(는) 신뢰한 폴더에서만 프로젝트 확장을 불러�
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.copilot.shared-workspace-config"
-msgstr "{agent}은(는) OpenKnowledge가 {sourceAgent}을(를) 위해 작성한 워크스페이스 MCP 설정을 읽습니다. 한쪽에서 제거하면 양쪽 모두에서 제거됩니다."
+msgstr "{agent}은(는) OpenKnowledge가 {sourceAgent}을(를) 위해 작성한 워크스페이스 MCP 설정을 읽습니다. 한쪽에서 제거하면 양쪽 모두에서 제거됩니다. {agent}은(는) 처음 실행할 때 폴더 신뢰를 확인한 뒤에만 이를 불러오며, 신뢰하지 않은 폴더에서는 조용히 건너뜁니다. 신뢰 요청을 표시할 수 없는 copilot -p에서도 마찬가지입니다."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
@@ -3445,11 +3455,6 @@ msgstr "연결 오류. 다시 시도하세요."
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
 msgstr "연결 끊김. 이 탭을 열어 두면 다시 연결된 뒤 편집 내용도 동기화됩니다."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
-msgstr "다음에 신뢰할 수 있는 {agent} 세션에서 이 프로젝트를 열면 자동으로 연결됩니다."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Connects the agent to OpenKnowledge in every project on this machine."
@@ -6986,13 +6991,13 @@ msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 설정에 있는 
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
-msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 이 프로젝트에서 실행한 뒤 OpenKnowledge 서버를 한 번 승인하세요."
+msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Customize → MCPs를 열고 open-knowledge를 선택한 뒤 해당 .cursor/mcp.json 소스를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
-msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 Settings → Tools & MCP에서 서버를 켜세요. {agent}은(는) 직접 켜기 전까지 프로젝트 서버를 꺼 둡니다."
+msgid "troubleshooting.claude.project-entry-not-approved"
+msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 이 프로젝트에서 실행한 뒤 OpenKnowledge 서버를 한 번 승인하세요."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -9326,16 +9331,6 @@ msgstr "선택 텍스트: <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "루트 인덱스에서 okf_version은 \"0.2\"와 같은 따옴표 문자열로 작성됩니다. 따옴표가 없으면 YAML이 숫자로 읽어 0.10이 조용히 0.1로 바뀝니다."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr "한 단계 더 필요합니다. {agent} → 설정 → Tools & MCP에서 활성화합니다({agent}는 프로젝트 서버를 직접 켜기 전까지 꺼 둡니다)."
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
-msgstr "한 단계 더 필요합니다. 이 프로젝트에서 {agent}를 실행하고 OpenKnowledge를 한 번 승인합니다."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "One pattern per line — appended to <0>.okignore</0>."

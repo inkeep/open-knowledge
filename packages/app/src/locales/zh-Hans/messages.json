@@ -3065,19 +3065,10 @@
     "fj5YiP": ["从 GitHub 下载一份全新的副本。"],
     "fnlBN4": ["自动批准设置尚未加载——请稍后再试"],
     "fo6CCk": ["窗格 ", ["0"]],
-    "followup.approve-once": [
-      "还差一步：在这个项目中运行 ",
-      ["agent"],
-      "，并批准 OpenKnowledge 一次。"
-    ],
     "followup.enable-manually": [
-      "还差一步：在 ",
       ["agent"],
-      " → Settings → Tools & MCP 中启用它（",
-      ["agent"],
-      " 默认关闭项目服务器，需要你手动开启）。"
+      " 会保持项目 MCP 服务器关闭，直到你在 Customize → MCPs 中开启它们。OpenKnowledge 无法看到这项设置。"
     ],
-    "followup.trust-gated": ["下次你在受信任的 ", ["agent"], " 会话中打开这个项目时会自动连接。"],
     "fqSfXY": ["替换"],
     "frREUl": ["终端后台服务在 shell 启动前就已停止。"],
     "ft-BOm": ["报告问题…"],
@@ -4215,16 +4206,22 @@
       ["agent"],
       " 命令行会读取它。"
     ],
+    "troubleshooting.codex.folder-trust": [
+      ["agent"],
+      " 只在你信任过的文件夹中加载项目条目。命令行会在你首次进入新文件夹运行时询问，但 codex exec 无法询问，较旧的版本也可能记不住你的回答，所以如果工具没有出现，请在 ~/.codex/config.toml 中把该项目标记为受信任。信任一个项目会加载它整个 .codex/ 层，其中包括 hooks 和规则。"
+    ],
     "troubleshooting.copilot.shared-workspace-config": [
       ["agent"],
       " 读取 OpenKnowledge 为 ",
       ["sourceAgent"],
-      " 写入的工作区 MCP 配置；为其中一方移除就等于为双方移除。"
+      " 写入的工作区 MCP 配置；为其中一方移除就等于为双方移除。",
+      ["agent"],
+      " 只有在你首次启动时确认文件夹信任之后才会加载它；在你未信任的文件夹中它会静默跳过，包括在 copilot -p 下，因为那里无法显示信任提示。"
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       "如果 ",
       ["agent"],
-      " 没有显示 OpenKnowledge 工具，请在 Settings → Tools & MCP 中开启该服务器；在你开启之前，",
+      " 没有显示 OpenKnowledge 工具，请打开 Customize → MCPs，选择 open-knowledge 并开启它的 .cursor/mcp.json 来源；在你开启之前，",
       ["agent"],
       " 会保持项目服务器关闭。"
     ],

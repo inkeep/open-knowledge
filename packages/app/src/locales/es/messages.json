@@ -4103,22 +4103,9 @@
       "Los ajustes de aprobación automática aún no se han cargado; inténtalo de nuevo en un momento"
     ],
     "fo6CCk": ["panel ", ["0"]],
-    "followup.approve-once": [
-      "Falta un paso: ejecuta ",
-      ["agent"],
-      " en este proyecto y aprueba OpenKnowledge una vez."
-    ],
     "followup.enable-manually": [
-      "Falta un paso: actívalo en ",
       ["agent"],
-      " → Settings → Tools & MCP (",
-      ["agent"],
-      " deja apagados los servidores de proyecto hasta que los enciendes)."
-    ],
-    "followup.trust-gated": [
-      "Se conectará automáticamente la próxima vez que abras este proyecto en una sesión de ",
-      ["agent"],
-      " de confianza."
+      " deja apagados los servidores MCP de proyecto hasta que los enciendes en Customize → MCPs. OpenKnowledge no puede ver ese ajuste."
     ],
     "fqSfXY": ["Reemplazar"],
     "frREUl": [
@@ -5587,16 +5574,22 @@
       ["agent"],
       " la lee."
     ],
+    "troubleshooting.codex.folder-trust": [
+      ["agent"],
+      " carga una entrada de proyecto solo en una carpeta en la que confías. La CLI lo pregunta la primera vez que la ejecutas en una carpeta nueva, pero codex exec no puede preguntar y las versiones antiguas quizá no recuerden la respuesta, así que si las herramientas no aparecen, marca el proyecto como de confianza en ~/.codex/config.toml. Confiar en un proyecto carga toda su capa .codex/, incluidos los hooks y las reglas."
+    ],
     "troubleshooting.copilot.shared-workspace-config": [
       ["agent"],
       " lee la configuración MCP del espacio de trabajo que OpenKnowledge escribe para ",
       ["sourceAgent"],
-      "; quitarla para uno la quita para ambos."
+      "; quitarla para uno la quita para ambos. ",
+      ["agent"],
+      " la carga solo después de que confirmes la confianza en la carpeta al iniciarlo por primera vez, y la omite en silencio en una carpeta en la que no confías, incluso con copilot -p, que no puede mostrar el aviso de confianza."
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Si ",
       ["agent"],
-      " no muestra las herramientas de OpenKnowledge, activa el servidor en Settings → Tools & MCP; ",
+      " no muestra las herramientas de OpenKnowledge, abre Customize → MCPs, elige open-knowledge y activa su origen .cursor/mcp.json; ",
       ["agent"],
       " deja apagados los servidores de proyecto hasta que lo hagas."
     ],

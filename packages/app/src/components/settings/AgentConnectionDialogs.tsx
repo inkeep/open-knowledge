@@ -6,6 +6,7 @@ import {
   CONNECTION_ROW_AGENT_IDS,
   type ConnectionCell,
   EDITOR_LABELS,
+  type GuidanceId,
   type HostSnapshot,
   type PlanConflict,
   type ConnectionRow as RegistryConnectionRow,
@@ -90,6 +91,33 @@ function presentParts(
   });
 }
 
+type PartNote = { readonly id: GuidanceId; readonly text: string };
+
+function isPartDisabled(cell: ConnectionCell): boolean {
+  return cell.disabledReason !== null;
+}
+
+function firstShowingRow(
+  parts: readonly (readonly [ConnectionPart, ConnectionCell])[],
+): Map<ConnectionPart, readonly PartNote[]> {
+  const claimed = new Set<GuidanceId>();
+  const byPart = new Map<ConnectionPart, readonly PartNote[]>();
+  for (const [part, cell] of parts) {
+    const notes: PartNote[] = [];
+    if (cell.checked && !isPartDisabled(cell)) {
+      for (const ref of cell.troubleshooting) {
+        if (claimed.has(ref.id)) continue;
+        const text = troubleshootingText(ref);
+        if (text === null) continue;
+        claimed.add(ref.id);
+        notes.push({ id: ref.id, text });
+      }
+    }
+    byPart.set(part, notes);
+  }
+  return byPart;
+}
+
 type VisibleAgentId = (typeof CONNECTION_ROW_AGENT_IDS)[number];
 
 export interface AgentConnection {
@@ -169,7 +197,7 @@ function defaultPartsForConnection(connection: AgentConnection): ConnectionParts
       const cell = connection.cells[part];
       return [
         part,
-        cell !== undefined && cell.disabledReason === null && !requiresExplicitConsent(cell.state),
+        cell !== undefined && !isPartDisabled(cell) && !requiresExplicitConsent(cell.state),
       ];
     }),
   ) as unknown as ConnectionParts;
@@ -180,7 +208,7 @@ export function installedCount(parts: ConnectionParts): number {
 }
 
 export function hasConfigurableCell(connection: AgentConnection): boolean {
-  return Object.values(connection.cells).some((cell) => cell.disabledReason === null);
+  return Object.values(connection.cells).some((cell) => !isPartDisabled(cell));
 }
 
 export function allAvailableCellsChecked(connection: AgentConnection): boolean {
@@ -249,7 +277,7 @@ function PartCheckbox({
   path,
   sharedPaths,
   alsoAffects,
-  note,
+  notes,
   onCheckedChange,
 }: {
   id: string;
@@ -259,7 +287,7 @@ function PartCheckbox({
   state: SurfaceState;
   title: ReactNode;
   description: ReactNode;
-  note: string | null;
+  notes: readonly PartNote[];
   info: ReactNode;
   path: string | null;
   sharedPaths: readonly string[];
@@ -320,13 +348,14 @@ function PartCheckbox({
           )}
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
-        {note === null ? null : (
-          <p
-            className="text-sm leading-relaxed text-muted-foreground"
-            data-testid={`${id}-troubleshooting`}
-          >
-            {note}
-          </p>
+        {notes.length === 0 ? null : (
+          <div className="flex flex-col gap-1.5" data-testid={`${id}-troubleshooting`}>
+            {notes.map((note) => (
+              <p key={note.id} className="text-sm leading-relaxed text-muted-foreground">
+                {note.text}
+              </p>
+            ))}
+          </div>
         )}
         {}
         {alsoAffects === null ? null : (
@@ -347,22 +376,24 @@ function PartCheckbox({
 function canChangePart(connection: AgentConnection, part: ConnectionPart): boolean {
   const cell = connection.cells[part];
   if (cell === undefined) return false;
-  return cell.disabledReason === null;
+  return !isPartDisabled(cell);
 }
 
 function PartControl({
   part,
   cell,
+  notes,
   draft,
   setPart,
 }: {
   part: ConnectionPart;
   cell: ConnectionCell;
+  notes: readonly PartNote[];
   draft: ConnectionParts;
   setPart: (part: ConnectionPart, checked: boolean) => void;
 }) {
   const { i18n, t } = useLingui();
-  const disabled = cell.disabledReason !== null;
+  const disabled = isPartDisabled(cell);
   const titles: Record<ConnectionPart, string> = {
     projectMcp: t`Project MCP server`,
     projectSkill: t`Project skill`,
@@ -402,7 +433,7 @@ function PartControl({
     disabled,
     exception,
     state: cell.state,
-    note: cell.checked && !disabled ? troubleshootingText(cell.troubleshooting) : null,
+    notes,
     path: disabled && !isWarning ? null : (cell.resolvedPath ?? connectionPathDisplay(cell.pathId)),
     sharedPaths: disabled && !isWarning ? [] : sharedPaths,
     alsoAffects: disabled ? null : alsoAffects,
@@ -723,6 +754,8 @@ export function ConfigureConnectionDialog({
     connection !== null && !draft.projectSkill && canChangePart(connection, 'projectSkill');
   const projectParts = connection === null ? [] : presentParts(connection, 'project');
   const machineParts = connection === null ? [] : presentParts(connection, 'machine');
+  const projectNotes = firstShowingRow(projectParts);
+  const machineNotes = firstShowingRow(machineParts);
   const removingCount = CONNECTION_PARTS.filter(
     (part) => connection?.cells[part]?.checked === true && !draft[part],
   ).length;
@@ -785,7 +818,14 @@ export function ConfigureConnectionDialog({
                 </Badge>
               </FieldLegend>
               {projectParts.map(([part, cell]) => (
-                <PartControl key={part} part={part} cell={cell} draft={draft} setPart={setPart} />
+                <PartControl
+                  key={part}
+                  part={part}
+                  cell={cell}
+                  notes={projectNotes.get(part) ?? []}
+                  draft={draft}
+                  setPart={setPart}
+                />
               ))}
               {suggestSkill ? <SkillSuggestion /> : null}
             </FieldSet>
@@ -797,7 +837,14 @@ export function ConfigureConnectionDialog({
                 <Trans>This machine</Trans>
               </FieldLegend>
               {machineParts.map(([part, cell]) => (
-                <PartControl key={part} part={part} cell={cell} draft={draft} setPart={setPart} />
+                <PartControl
+                  key={part}
+                  part={part}
+                  cell={cell}
+                  notes={machineNotes.get(part) ?? []}
+                  draft={draft}
+                  setPart={setPart}
+                />
               ))}
             </FieldSet>
           ) : null}

@@ -203,6 +203,21 @@ function terminalRow(cli: string): HTMLElement {
   return row;
 }
 
+function desktopRow(target: string): HTMLElement {
+  const row = screen.getByTestId(`configure-agents-desktop-${target}`).parentElement?.parentElement;
+  if (!row) throw new Error(`no desktop row for ${target}`);
+  return row;
+}
+
+function accessibleDescription(control: HTMLElement): string {
+  const ids = (control.getAttribute('aria-describedby') ?? '').split(/\s+/).filter(Boolean);
+  return ids
+    .map((id) => document.getElementById(id)?.textContent ?? '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function renderSection(
   applyConnections: (
     intents: readonly ApplyIntent[],
@@ -670,48 +685,82 @@ describe('AgentConnectionsSection — connection status and action', () => {
     expect(within(terminalRow('claude')).getByRole('button', { name: /^Manage\b/ })).toBeTruthy();
   });
 
-  test('a connected Claude row carries its one-more-step hint in a live region', async () => {
+  test('a connected Claude row carries no follow-up hint, because Claude asks on its own', async () => {
     const snapshot = snapshotWith([satisfierId('claude', 'mcp', 'project')]);
     renderSection(async () => result(snapshot));
 
     const row = await waitFor(() => terminalRow('claude'));
     await waitFor(() => expect(within(row).getByText('Connected')).toBeTruthy());
-    const hint = within(row).getByTestId('configure-agents-terminal-row-claude-followup');
-    expect(hint.getAttribute('role')).toBe('status');
-    expect(hint.textContent).toBe(
-      'One more step: run Claude in this project and approve OpenKnowledge once.',
-    );
+    expect(within(row).queryByTestId('configure-agents-terminal-row-claude-followup')).toBeNull();
     expect(screen.queryByTestId('configure-agents-desktop-row-claude-code-followup')).toBeNull();
   });
 
-  test("Cursor's enable-in-settings hint sits on the desktop row, not the CLI row", async () => {
+  test('a connected Codex row carries no follow-up hint either', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, codex: true } };
+    reloadEnabledAgentsFromStorage();
+    renderSection(async () => result(snapshotWith([satisfierId('codex', 'mcp', 'project')])));
+
+    const row = await waitFor(() => terminalRow('codex'));
+    await waitFor(() => expect(within(row).getByText('Connected')).toBeTruthy());
+    expect(within(row).queryByTestId('configure-agents-terminal-row-codex-followup')).toBeNull();
+  });
+
+  test("Cursor's enable-in-settings hint sits on the desktop row as plain text, not a live region", async () => {
     terminalLaunchValue = { installedClis: { claude: true, cursor: true } };
     states = { ...states, cursor: { installed: true } } as Record<string, InstallState>;
     reloadEnabledAgentsFromStorage();
     renderSection(async () => result(snapshotWith([satisfierId('cursor', 'mcp', 'project')])));
 
     const desktopHint = await screen.findByTestId('configure-agents-desktop-row-cursor-followup');
-    expect(desktopHint.textContent).toContain('One more step: enable it in Cursor');
+    expect(desktopHint.getAttribute('role')).toBeNull();
+    expect(desktopHint.textContent).toBe(
+      "Cursor keeps project MCP servers off until you turn them on under Customize → MCPs. OpenKnowledge can't see that setting.",
+    );
     expect(screen.queryByTestId('configure-agents-terminal-row-cursor-followup')).toBeNull();
   });
 
-  test('no hint when the machine-wide entry already carries the requirement', async () => {
-    const snapshot = snapshotWith([
-      satisfierId('claude', 'mcp', 'project'),
-      satisfierId('claude', 'mcp', 'user'),
-    ]);
-    renderSection(async () => result(snapshot));
+  test("a connected Cursor row's toggle is described by its follow-up hint", async () => {
+    terminalLaunchValue = { installedClis: { claude: true, cursor: true } };
+    states = { ...states, cursor: { installed: true } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
+    renderSection(async () => result(snapshotWith([satisfierId('cursor', 'mcp', 'project')])));
 
-    const row = await waitFor(() => terminalRow('claude'));
+    await screen.findByTestId('configure-agents-desktop-row-cursor-followup');
+    const toggle = screen.getByTestId('configure-agents-desktop-cursor');
+    expect(accessibleDescription(toggle)).toContain(
+      'Cursor keeps project MCP servers off until you turn them on under Customize → MCPs.',
+    );
+  });
+
+  test('no hint when the machine-wide entry already carries the requirement', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, cursor: true } };
+    states = { ...states, cursor: { installed: true } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
+    renderSection(async () =>
+      result(
+        snapshotWith([
+          satisfierId('cursor', 'mcp', 'project'),
+          satisfierId('cursor', 'mcp', 'user'),
+        ]),
+      ),
+    );
+
+    await screen.findByTestId('configure-agents-desktop-cursor');
+    const row = desktopRow('cursor');
     await waitFor(() => expect(within(row).getByText('Connected')).toBeTruthy());
-    expect(within(row).queryByTestId('configure-agents-terminal-row-claude-followup')).toBeNull();
+    expect(within(row).queryByTestId('configure-agents-desktop-row-cursor-followup')).toBeNull();
   });
 
   test('a row with nothing installed carries no follow-up hint', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, cursor: true } };
+    states = { ...states, cursor: { installed: true } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
     renderSection(async () => result(snapshotWith([])));
 
-    const row = await waitFor(() => terminalRow('claude'));
-    expect(within(row).queryByTestId('configure-agents-terminal-row-claude-followup')).toBeNull();
+    await screen.findByTestId('configure-agents-desktop-cursor');
+    const row = desktopRow('cursor');
+    await waitFor(() => expect(within(row).getByText('Not connected')).toBeTruthy());
+    expect(within(row).queryByTestId('configure-agents-desktop-row-cursor-followup')).toBeNull();
   });
 
   test('Not connected shows only when the row is on', async () => {

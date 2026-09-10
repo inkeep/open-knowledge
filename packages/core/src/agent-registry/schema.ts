@@ -118,7 +118,7 @@ export const SatisfierRecordSchema = z.object({
   preferred: z.boolean().default(false),
   guidance: GuidanceRefSchema.optional(),
   followup: GuidanceRefSchema.optional(),
-  troubleshooting: GuidanceRefSchema.optional(),
+  troubleshooting: z.array(GuidanceRefSchema).default([]),
 });
 export type SatisfierRecord = z.infer<typeof SatisfierRecordSchema>;
 

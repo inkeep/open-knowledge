@@ -525,6 +525,16 @@ msgid "guidance.mcp.session-injection"
 msgstr ""
 
 #. js-lingui-explicit-id
+#: src/lib/agent-followup-hint.ts
+msgid "followup.enable-manually"
+msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/agent-guidance-copy.ts
+msgid "troubleshooting.codex.folder-trust"
+msgstr ""
+
+#. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
 msgid "troubleshooting.pi.folder-trust"
 msgstr ""
@@ -3440,11 +3450,6 @@ msgstr ""
 
 #: src/presence/use-sync-toasts.ts
 msgid "Connection lost — keep this tab open, your edits will sync when reconnected"
-msgstr ""
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.trust-gated"
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -6982,12 +6987,12 @@ msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.claude.project-entry-not-approved"
+msgid "troubleshooting.cursor.project-entry-not-loaded"
 msgstr ""
 
 #. js-lingui-explicit-id
 #: src/lib/agent-guidance-copy.ts
-msgid "troubleshooting.cursor.project-entry-not-loaded"
+msgid "troubleshooting.claude.project-entry-not-approved"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -9321,16 +9326,6 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
-msgstr ""
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.enable-manually"
-msgstr ""
-
-#. js-lingui-explicit-id
-#: src/lib/agent-followup-hint.ts
-msgid "followup.approve-once"
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx

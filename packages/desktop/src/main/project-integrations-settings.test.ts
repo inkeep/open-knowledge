@@ -158,7 +158,7 @@ function register(
 }
 
 describe('registerProjectIntegrationsSettings — status', () => {
-  test('omits editors with no project surface; relativizes paths; carries followUp', async () => {
+  test('omits editors with no project surface; relativizes paths', async () => {
     const { status } = register(makeCli());
     const s = await status();
     expect(s.hasProject).toBe(true);
@@ -167,8 +167,6 @@ describe('registerProjectIntegrationsSettings — status', () => {
     const claude = s.editors.find((e) => e.id === 'claude');
     expect(claude?.configPath).toBe('.mcp.json');
     expect(claude?.detected).toBe(false);
-    expect(claude?.followUp).toBe('approve-once');
-    expect(s.editors.find((e) => e.id === 'codex')?.followUp).toBe('trust-gated');
   });
 
   test('marks project rows detected from the shared machine-level probes', async () => {

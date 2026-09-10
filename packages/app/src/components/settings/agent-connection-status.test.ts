@@ -249,31 +249,31 @@ describe('resolvePresence', () => {
 });
 
 describe('deriveRowFollowup', () => {
-  const projectCell = (snap: HostSnapshot) =>
-    connectionsFromSnapshot(snap).find((c) => c.id === 'claude')?.cells.projectMcp;
+  const projectCell = (snap: HostSnapshot, agentId: AgentId) =>
+    connectionsFromSnapshot(snap).find((c) => c.id === agentId)?.cells.projectMcp;
 
   test('returns the project follow-up when the project entry alone meets the requirement', () => {
     const snap = snapshot({
       states: {
-        [mcpSatisfierId('claude', 'project')]: 'satisfied',
-        [mcpSatisfierId('claude', 'user')]: 'absent',
+        [mcpSatisfierId('cursor', 'project')]: 'satisfied',
+        [mcpSatisfierId('cursor', 'user')]: 'absent',
       },
-      detected: ['claude'],
+      detected: ['cursor'],
     });
     const ref = deriveRowFollowup({
-      agentId: 'claude',
-      mode: 'terminal',
+      agentId: 'cursor',
+      mode: 'external',
       snapshot: snap,
-      projectMcp: projectCell(snap),
+      projectMcp: projectCell(snap, 'cursor'),
     });
-    expect(ref).toEqual({ id: 'followup.approve-once', params: { agent: 'claude' } });
+    expect(ref).toEqual({ id: 'followup.enable-manually', params: { agent: 'cursor' } });
   });
 
-  test('stays silent when the machine-wide entry already carries the requirement', () => {
+  test('stays silent for an agent whose project entry declares no follow-up', () => {
     const snap = snapshot({
       states: {
         [mcpSatisfierId('claude', 'project')]: 'satisfied',
-        [mcpSatisfierId('claude', 'user')]: 'satisfied',
+        [mcpSatisfierId('claude', 'user')]: 'absent',
       },
       detected: ['claude'],
     });
@@ -282,7 +282,25 @@ describe('deriveRowFollowup', () => {
         agentId: 'claude',
         mode: 'terminal',
         snapshot: snap,
-        projectMcp: projectCell(snap),
+        projectMcp: projectCell(snap, 'claude'),
+      }),
+    ).toBeUndefined();
+  });
+
+  test('stays silent when the machine-wide entry already carries the requirement', () => {
+    const snap = snapshot({
+      states: {
+        [mcpSatisfierId('cursor', 'project')]: 'satisfied',
+        [mcpSatisfierId('cursor', 'user')]: 'satisfied',
+      },
+      detected: ['cursor'],
+    });
+    expect(
+      deriveRowFollowup({
+        agentId: 'cursor',
+        mode: 'external',
+        snapshot: snap,
+        projectMcp: projectCell(snap, 'cursor'),
       }),
     ).toBeUndefined();
   });
@@ -290,23 +308,23 @@ describe('deriveRowFollowup', () => {
   test('stays silent when the row does not read connected', () => {
     const snap = snapshot({
       states: {
-        [mcpSatisfierId('claude', 'project')]: 'absent',
-        [mcpSatisfierId('claude', 'user')]: 'absent',
+        [mcpSatisfierId('cursor', 'project')]: 'absent',
+        [mcpSatisfierId('cursor', 'user')]: 'absent',
       },
-      detected: ['claude'],
+      detected: ['cursor'],
     });
     expect(
       deriveRowFollowup({
-        agentId: 'claude',
-        mode: 'terminal',
+        agentId: 'cursor',
+        mode: 'external',
         snapshot: snap,
-        projectMcp: projectCell(snap),
+        projectMcp: projectCell(snap, 'cursor'),
       }),
     ).toBeUndefined();
     expect(
       deriveRowFollowup({
-        agentId: 'claude',
-        mode: 'terminal',
+        agentId: 'cursor',
+        mode: 'external',
         snapshot: null,
         projectMcp: undefined,
       }),

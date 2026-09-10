@@ -102,7 +102,7 @@ function toChoice(
     consentClass: satisfier.consentClass,
     unmetPrerequisites: unmet,
     sharedWith: satisfier.sharedWith,
-    caveats: [satisfier.followup, satisfier.troubleshooting].filter(
+    caveats: [satisfier.followup, ...satisfier.troubleshooting].filter(
       (ref): ref is GuidanceRef => ref !== undefined,
     ),
     ...(satisfier.guidance === undefined ? {} : { guidance: satisfier.guidance }),

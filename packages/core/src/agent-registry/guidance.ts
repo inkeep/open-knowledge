@@ -1,19 +1,17 @@
 import { z } from 'zod';
 import { AgentIdSchema } from './ids.ts';
-import type { ConsentClass } from './vocabulary.ts';
+import type { FollowupConsentClass } from './vocabulary.ts';
 
 export interface GuidanceEntry {
   readonly params: z.ZodObject;
 }
 
-export type FollowupGuidanceKey = `followup.${Exclude<ConsentClass, 'none'>}`;
+export type FollowupGuidanceKey = `followup.${FollowupConsentClass}`;
 
 const agentParam = { agent: AgentIdSchema };
 
 export const GUIDANCE_IDS = {
-  'followup.approve-once': { params: z.strictObject(agentParam) },
   'followup.enable-manually': { params: z.strictObject(agentParam) },
-  'followup.trust-gated': { params: z.strictObject(agentParam) },
 
   'guidance.mcp.user-config': { params: z.strictObject(agentParam) },
   'guidance.mcp.project-config': { params: z.strictObject(agentParam) },
@@ -29,6 +27,7 @@ export const GUIDANCE_IDS = {
   'troubleshooting.codex.desktop-project-config': {
     params: z.strictObject({ ...agentParam, honoredByDesktop: z.boolean() }),
   },
+  'troubleshooting.codex.folder-trust': { params: z.strictObject(agentParam) },
   'troubleshooting.copilot.shared-workspace-config': {
     params: z.strictObject({ ...agentParam, sourceAgent: AgentIdSchema }),
   },

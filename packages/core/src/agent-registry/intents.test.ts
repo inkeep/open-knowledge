@@ -165,7 +165,7 @@ describe('ordering by prerequisite', () => {
     expect(ids(plan)).not.toContain(COPILOT_USER_MCP);
   });
 
-  it('ranks an owned entry that needs no follow-up first, then declaration order', () => {
+  it('ranks an owned entry that needs no consent first, then declaration order', () => {
     const cell = (satisfierId: string, sharedWith: string[], consentClass: string) =>
       ({ satisfierId, sharedWith, consentClass }) as unknown as ConnectionCell;
     const borrowedTrustGated = cell('a', ['claude'], 'trust-gated');

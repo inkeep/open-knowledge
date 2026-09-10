@@ -419,8 +419,8 @@ class Planner {
 
 function prerequisiteRank(cell: ConnectionCell): number {
   const borrowed = cell.sharedWith.length > 0 ? 2 : 0;
-  const needsFollowup = cell.consentClass === 'none' ? 0 : 1;
-  return borrowed + needsFollowup;
+  const needsConsent = cell.consentClass === 'none' ? 0 : 1;
+  return borrowed + needsConsent;
 }
 
 export function preferredPrerequisite(

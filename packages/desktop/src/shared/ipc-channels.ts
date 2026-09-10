@@ -299,12 +299,6 @@ export type IntegrationsSetResult =
   | { readonly ok: true; readonly status: IntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: IntegrationsStatus };
 
-export type ProjectIntegrationsFollowUp =
-  | 'approve-once'
-  | 'enable-manually'
-  | 'trust-gated'
-  | 'none';
-
 export interface ProjectIntegrationsEditorStatus {
   readonly id: McpWiringEditorId;
   readonly label: string;
@@ -312,7 +306,6 @@ export interface ProjectIntegrationsEditorStatus {
   readonly state: IntegrationsEditorState;
   readonly configPath: string;
   readonly entryLocator: string;
-  readonly followUp: ProjectIntegrationsFollowUp;
 }
 
 export interface ProjectIntegrationsSkillStatus {

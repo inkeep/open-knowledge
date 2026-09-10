@@ -10,9 +10,13 @@ OpenKnowledge works with Cursor through MCP plus an installed skill.
 
 <McpInstall editor="Cursor" />
 
-## Approve the server
+## Enable the project server
 
-Cursor prompts you to approve a new MCP server when you next open the project. Approve `open-knowledge`. Until you do, the agent can't see the tools.
+Cursor lists a project-level `.cursor/mcp.json` server as **Disabled** until you turn it on, and it never prompts. A user-level registration (`~/.cursor/mcp.json`, which `ok init` writes by default) starts on its own, so with the default setup the agent already sees the tools and the disabled project entry changes nothing.
+
+If you registered OpenKnowledge project-level only, or want the project entry active: open **Customize → MCPs**, pick `open-knowledge`, and switch on its `.cursor/mcp.json` source.
+
+Described as of September 2026 (Cursor 3.19); Cursor renames this settings area often.
 
 ## Open with AI
 
@@ -28,4 +32,4 @@ Ask the agent:
 
 <VerifyExec />
 
-If it still doesn't see the tool after approval, restart Cursor so it picks up the new MCP entry. If it's still missing and `ok init` reported your config was `left unchanged`, OpenKnowledge couldn't safely edit `~/.cursor/mcp.json` for the reason shown in parentheses (unreadable, too large, or a duplicate server block) — fix the config and re-run `ok init`.
+If it still doesn't see the tool, after enabling the project entry or while relying on the user-level entry, restart Cursor so it picks up the new MCP entry. If it's still missing and `ok init` reported your config was `left unchanged`, OpenKnowledge couldn't safely edit `~/.cursor/mcp.json` for the reason shown in parentheses (unreadable, too large, or a duplicate server block) — fix the config and re-run `ok init`.

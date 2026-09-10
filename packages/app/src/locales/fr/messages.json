@@ -4142,22 +4142,9 @@
       "Les paramètres d'approbation automatique ne sont pas encore chargés — réessayez dans un instant"
     ],
     "fo6CCk": ["volet ", ["0"]],
-    "followup.approve-once": [
-      "Encore une étape : exécutez ",
-      ["agent"],
-      " dans ce projet et approuvez OpenKnowledge une fois."
-    ],
     "followup.enable-manually": [
-      "Encore une étape : activez-le dans ",
       ["agent"],
-      " → Settings → Tools & MCP (",
-      ["agent"],
-      " laisse les serveurs de projet désactivés tant que vous ne les activez pas)."
-    ],
-    "followup.trust-gated": [
-      "Se connecte automatiquement la prochaine fois que vous ouvrez ce projet dans une session ",
-      ["agent"],
-      " de confiance."
+      " laisse les serveurs MCP de projet désactivés tant que vous ne les activez pas dans Customize → MCPs. OpenKnowledge ne peut pas voir ce réglage."
     ],
     "fqSfXY": ["Remplacer"],
     "frREUl": [
@@ -5651,16 +5638,22 @@
       ["agent"],
       " la lit."
     ],
+    "troubleshooting.codex.folder-trust": [
+      ["agent"],
+      " ne charge une entrée de projet que dans un dossier auquel vous avez fait confiance. La CLI vous le demande au premier lancement dans un nouveau dossier, mais codex exec ne peut pas le demander et les versions anciennes ne retiennent pas toujours la réponse, donc si les outils n'apparaissent pas, marquez le projet comme fiable dans ~/.codex/config.toml. Faire confiance à un projet charge toute sa couche .codex/, y compris les hooks et les règles."
+    ],
     "troubleshooting.copilot.shared-workspace-config": [
       ["agent"],
       " lit la configuration MCP de l'espace de travail qu'OpenKnowledge écrit pour ",
       ["sourceAgent"],
-      " ; la retirer pour l'un la retire pour les deux."
+      " ; la retirer pour l'un la retire pour les deux. ",
+      ["agent"],
+      " ne la charge qu'après que vous avez confirmé la confiance du dossier au premier lancement, et l'ignore silencieusement dans un dossier auquel vous n'avez pas fait confiance, y compris sous copilot -p, qui ne peut pas afficher la demande de confiance."
     ],
     "troubleshooting.cursor.project-entry-not-loaded": [
       "Si ",
       ["agent"],
-      " n'affiche aucun outil OpenKnowledge, activez le serveur dans Settings → Tools & MCP ; ",
+      " n'affiche aucun outil OpenKnowledge, ouvrez Customize → MCPs, sélectionnez open-knowledge et activez sa source .cursor/mcp.json ; ",
       ["agent"],
       " laisse les serveurs de projet désactivés tant que vous ne le faites pas."
     ],
