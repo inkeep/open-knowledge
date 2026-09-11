@@ -38,6 +38,7 @@ import { getSchema } from '@tiptap/core';
 import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
 import { EditorState, type Transaction } from '@tiptap/pm/state';
 import * as Y from 'yjs';
+import { narrowSplice } from '../../src/editor/projection-binding';
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
@@ -500,9 +501,12 @@ function writeProjectionSplice(
   if (splice === null) {
     throw new Error('applyProjectionEdit: the mutation produced no source splice');
   }
+  const narrowed = narrowSplice(projection.source, splice);
   target.doc.transact(() => {
-    if (splice.to > splice.from) target.ytext.delete(splice.from, splice.to - splice.from);
-    if (splice.text.length > 0) target.ytext.insert(splice.from, splice.text);
+    if (narrowed.to > narrowed.from) {
+      target.ytext.delete(narrowed.from, narrowed.to - narrowed.from);
+    }
+    if (narrowed.text.length > 0) target.ytext.insert(narrowed.from, narrowed.text);
   }, origin);
 }
 
