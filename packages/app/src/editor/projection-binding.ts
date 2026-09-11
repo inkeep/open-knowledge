@@ -11,15 +11,26 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Extension, type JSONContent } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { type EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import {
+  AllSelection,
+  type EditorState,
+  NodeSelection,
+  Plugin,
+  PluginKey,
+  type Selection,
+  TextSelection,
+} from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
 import {
-  caretPmPosToSourceOffset,
   caretSourceOffsetToPmPos,
   fullPrecisionProjection,
+  liveCaretPmPosToSourceOffset,
+  liveToFullPos,
+  pmPosToSourceOffset,
+  sourceOffsetToPmPos,
 } from './projection-coordinates';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
@@ -214,7 +225,33 @@ function intoEditorSchema(view: EditorView, doc: PmNode): PmNode {
   return doc.type.schema === view.state.schema ? doc : view.state.schema.nodeFromJSON(doc.toJSON());
 }
 
-function replaceDoc(view: EditorView, doc: PmNode, at: number | null, remote: boolean): void {
+interface CarriedSelection {
+  kind: 'text' | 'node' | 'all';
+  anchor: number;
+  head: number;
+  nodeType: string | null;
+}
+
+function restoreSelection(doc: PmNode, at: CarriedSelection): Selection {
+  if (at.kind === 'all') return new AllSelection(doc);
+  const clamp = (pos: number): number => Math.max(0, Math.min(pos, doc.content.size));
+  const anchor = clamp(at.anchor);
+  if (at.kind === 'node') {
+    const node = doc.nodeAt(anchor);
+    if (node !== null && node.type.name === at.nodeType) return NodeSelection.create(doc, anchor);
+    return TextSelection.near(doc.resolve(anchor));
+  }
+  const head = clamp(at.head);
+  if (anchor === head) return TextSelection.near(doc.resolve(anchor));
+  return TextSelection.between(doc.resolve(anchor), doc.resolve(head));
+}
+
+function replaceDoc(
+  view: EditorView,
+  doc: PmNode,
+  at: CarriedSelection | null,
+  remote: boolean,
+): void {
   const tr = view.state.tr.replaceWith(
     0,
     view.state.doc.content.size,
@@ -222,10 +259,7 @@ function replaceDoc(view: EditorView, doc: PmNode, at: number | null, remote: bo
   );
   tr.setMeta('addToHistory', false);
   if (remote) tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
-  if (at !== null) {
-    const pos = Math.max(0, Math.min(at, tr.doc.content.size));
-    tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
-  }
+  if (at !== null) tr.setSelection(restoreSelection(tr.doc, at));
   view.dispatch(tr);
 }
 
@@ -339,13 +373,35 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         return full;
       };
 
-      const caretOffset = (): number =>
-        caretPmPosToSourceOffset(fullPrecision(), view.state.selection.from);
+      const liveSelection = (): CarriedSelection => {
+        const { selection, doc } = view.state;
+        if (selection instanceof AllSelection) {
+          return { kind: 'all', anchor: 0, head: 0, nodeType: null };
+        }
+        const full = fullPrecision();
+        if (selection instanceof NodeSelection) {
+          const at = pmPosToSourceOffset(full, liveToFullPos(full, doc, selection.from));
+          return { kind: 'node', anchor: at, head: at, nodeType: selection.node.type.name };
+        }
+        return {
+          kind: 'text',
+          anchor: liveCaretPmPosToSourceOffset(full, doc, selection.anchor),
+          head: liveCaretPmPosToSourceOffset(full, doc, selection.head),
+          nodeType: null,
+        };
+      };
 
-      const project = (source: string, caretAt: number | null, remote: boolean): void => {
+      const project = (source: string, carried: CarriedSelection | null, remote: boolean): void => {
         const next = buildProjection(source, md);
         stats.rebuilds++;
-        const at = caretAt === null ? null : caretSourceOffsetToPmPos(next, caretAt);
+        const toPm = (offset: number): number =>
+          carried?.kind === 'node'
+            ? sourceOffsetToPmPos(next, offset)
+            : caretSourceOffsetToPmPos(next, offset);
+        const at =
+          carried === null
+            ? null
+            : { ...carried, anchor: toPm(carried.anchor), head: toPm(carried.head) };
         applyingRemote = true;
         try {
           replaceDoc(view, next.doc, at, remote);
@@ -361,11 +417,17 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           visibility.stale = true;
           return;
         }
-        const carried = mapOffsetThroughDelta(
-          narrowDelta(event.changes.delta as never, projection.source),
-          caretOffset(),
+        const delta = narrowDelta(event.changes.delta as never, projection.source);
+        const before = liveSelection();
+        project(
+          ytext.toString(),
+          {
+            ...before,
+            anchor: mapOffsetThroughDelta(delta, before.anchor),
+            head: mapOffsetThroughDelta(delta, before.head),
+          },
+          true,
         );
-        project(ytext.toString(), carried, true);
       };
 
       visibility.show = () => {

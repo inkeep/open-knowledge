@@ -5,6 +5,7 @@ import {
   type PmSourceSpan,
   type Projection,
 } from '@inkeep/open-knowledge-core';
+import type { Node as PmNode } from '@tiptap/pm/model';
 
 /* STOP: `precision` is a contract, not a hint. A rebased map answers at block granularity and
    interpolates inside a block, so a consumer placing a character-accurate position must ask
@@ -122,17 +123,136 @@ export function caretPmPosToSourceOffset(projection: Projection, pos: number): n
   return pmPosToSourceOffset(projection, pos);
 }
 
+/* STOP: a block's source span runs to the end of its line, trailing whitespace included, while
+   its text span stops at the last character the parser kept. An offset in that trailing run
+   belongs at the end of the block's text: resolving it through the block's own span puts it
+   after the block's closing token, and TextSelection.near then carries it into the NEXT block. */
+function trailingTextEnd(
+  spans: readonly PmSourceSpan[],
+  node: PmSourceSpan,
+  value: number,
+): number | null {
+  if (node.type === 'text') return null;
+  let last: PmSourceSpan | null = null;
+  for (const span of spans) {
+    if (span.depth <= node.depth || span.from < node.from || span.to > node.to) continue;
+    if (span.sourceEnd > value) return null;
+    if (span.type === 'text' && (last === null || span.to > last.to)) last = span;
+  }
+  return last === null ? null : last.to;
+}
+
 export function caretSourceOffsetToPmPos(projection: Projection, sourceOffset: number): number {
   const body = Math.max(0, sourceOffset - projection.bodyOffset);
+  const { spans } = projection.map;
   const pick = pickSpans(
-    projection.map.spans,
+    spans,
     body,
     (span) => span.sourceStart,
     (span) => span.sourceEnd,
   );
-  if (endWins(pick) && pick.ending !== null) return caretEndOfSpan(pick.ending);
-  if (pick.containing === null && pick.lastBefore !== null) return caretEndOfSpan(pick.lastBefore);
+  if (endWins(pick) && pick.ending !== null) {
+    return trailingTextEnd(spans, pick.ending, body) ?? caretEndOfSpan(pick.ending);
+  }
+  if (pick.containing !== null) {
+    const trailing = trailingTextEnd(spans, pick.containing, body);
+    if (trailing !== null) return trailing;
+  }
+  if (pick.containing === null && pick.lastBefore !== null) {
+    return trailingTextEnd(spans, pick.lastBefore, body) ?? caretEndOfSpan(pick.lastBefore);
+  }
   return sourceOffsetToPmPos(projection, sourceOffset);
+}
+
+interface UnwrittenRun {
+  start: number;
+  endLive: number;
+  endFull: number;
+}
+
+const unwrittenRuns = new WeakMap<PmNode, { full: PmNode; run: UnwrittenRun | null }>();
+
+function samePositions(a: PmNode, b: PmNode): boolean {
+  if (a.type.name !== b.type.name || a.nodeSize !== b.nodeSize) return false;
+  if (a.isTextblock) return a.textContent === b.textContent;
+  if (a.childCount !== b.childCount) return false;
+  for (let i = 0; i < a.childCount; i++) {
+    if (!samePositions(a.child(i), b.child(i))) return false;
+  }
+  return true;
+}
+
+/* STOP: the live document and a rebuild from the source are built in DIFFERENT schemas (the
+   editor's and the MarkdownManager's), so ProseMirror's findDiffStart, which compares node types
+   by identity, reports a difference at position 0 for identical documents. Compared here by type
+   name, size and text. */
+function unwrittenRun(live: PmNode, full: PmNode): UnwrittenRun | null {
+  const found: Array<{ live: PmNode; full: PmNode; at: number }> = [];
+  const walk = (a: PmNode, b: PmNode, contentStart: number): boolean => {
+    if (a.childCount !== b.childCount) return false;
+    let at = contentStart;
+    for (let i = 0; i < a.childCount; i++) {
+      const childA = a.child(i);
+      const childB = b.child(i);
+      if (!samePositions(childA, childB)) {
+        if (childA.type.name !== childB.type.name || childA.isLeaf) return false;
+        if (childA.isTextblock) {
+          if (found.length > 0) return false;
+          found.push({ live: childA, full: childB, at: at + 1 });
+        } else if (!walk(childA, childB, at + 1)) {
+          return false;
+        }
+      }
+      at += childA.nodeSize;
+    }
+    return true;
+  };
+  const hit = walk(live, full, 0) ? found[0] : undefined;
+  if (hit === undefined) return null;
+  const leaf = '￼';
+  const textLive = hit.live.textBetween(0, hit.live.content.size, undefined, leaf);
+  const textFull = hit.full.textBetween(0, hit.full.content.size, undefined, leaf);
+  if (textLive.length !== hit.live.content.size || textFull.length !== hit.full.content.size) {
+    return null;
+  }
+  const shorter = Math.min(textLive.length, textFull.length);
+  let prefix = 0;
+  while (prefix < shorter && textLive[prefix] === textFull[prefix]) prefix++;
+  let suffix = 0;
+  while (
+    suffix < shorter - prefix &&
+    textLive[textLive.length - 1 - suffix] === textFull[textFull.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  return {
+    start: hit.at + prefix,
+    endLive: hit.at + textLive.length - suffix,
+    endFull: hit.at + textFull.length - suffix,
+  };
+}
+
+/* STOP: a keystroke the source cannot spell yet -- a trailing space -- writes no bytes, so the
+   live document holds characters that a full-precision rebuild from the source does not, and a
+   live position read through that rebuild lands one block too far or one character too far
+   right. The position is carried across the difference first. Only a difference inside one
+   textblock is carried; anything wider keeps the plain mapping rather than guess. */
+export function liveToFullPos(full: Projection, live: PmNode, pos: number): number {
+  if (live === full.doc) return pos;
+  let cached = unwrittenRuns.get(live);
+  if (cached === undefined || cached.full !== full.doc) {
+    cached = { full: full.doc, run: unwrittenRun(live, full.doc) };
+    unwrittenRuns.set(live, cached);
+  }
+  const { run } = cached;
+  if (run === null) return pos;
+  if (pos >= run.endLive) return pos - run.endLive + run.endFull;
+  if (pos > run.start) return run.start;
+  return pos;
+}
+
+export function liveCaretPmPosToSourceOffset(full: Projection, live: PmNode, pos: number): number {
+  return caretPmPosToSourceOffset(full, liveToFullPos(full, live, pos));
 }
 
 export interface PmRange {

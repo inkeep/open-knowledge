@@ -13,6 +13,7 @@ import {
   caretSourceOffsetToPmPos,
   createFullPrecisionResolver,
   fullPrecisionProjection,
+  liveCaretPmPosToSourceOffset,
   pmPosToSourceOffset,
   sourceEndOffsetToPmPos,
   sourceOffsetToPmPos,
@@ -184,6 +185,7 @@ describe('a caret round trips at every position a user can put one', () => {
     withList: 'intro\n\n- one item\n- two item\n\nafter\n',
     withHeading: '# Heading here\n\nbody text.\n',
     withBlankRun: 'one\n\n\n\ntwo\n',
+    withTrailingSpace: 'Alpha paragraph zero. \n\nBravo paragraph one.\n',
   })) {
     it(`is its own inverse across ${name}`, () => {
       const projection = buildProjection(source, md);
@@ -239,6 +241,8 @@ describe('a caret round trips at every position a user can put one', () => {
     withList: 'intro\n\n- one item\n- two item\n\nafter\n',
     withBlankRun: 'one\n\n\n\ntwo\n',
     withHeading: '# Heading here\n\nbody text.\n',
+    withTrailingSpace: 'Alpha paragraph zero. \n\nBravo paragraph one.\n',
+    withTrailingSpaceHeading: '# Heading here \n\nbody text.\n',
   })) {
     it(`never resolves a source offset onto a top-level block boundary in ${name}`, () => {
       const projection = buildProjection(source, md);
@@ -251,4 +255,99 @@ describe('a caret round trips at every position a user can put one', () => {
       expect(landed).toEqual([]);
     });
   }
+});
+
+describe('a caret after trailing whitespace stays at the end of its own block', () => {
+  for (const [name, source, text] of [
+    ['a paragraph', 'Alpha paragraph zero. \n\nBravo paragraph one.\n', 'Alpha paragraph zero.'],
+    ['two spaces', 'Alpha paragraph zero.  \n\nBravo paragraph one.\n', 'Alpha paragraph zero.'],
+    ['three spaces', 'Alpha paragraph zero.   \n\nBravo paragraph one.\n', 'Alpha paragraph zero.'],
+    ['a tab', 'Alpha paragraph zero.\t\n\nBravo paragraph one.\n', 'Alpha paragraph zero.'],
+    ['a heading', '# Heading here \n\nbody text.\n', 'Heading here'],
+    ['a list item', 'intro\n\n- one item \n- two item\n\nafter\n', 'one item'],
+    ['the last list item', 'intro\n\n- one item\n- two item \n\nafter\n', 'two item'],
+  ] as const) {
+    it(`in ${name}`, () => {
+      const projection = buildProjection(source, md);
+      const textEnd = source.indexOf(text) + text.length;
+      const lineEnd = source.indexOf('\n', textEnd);
+      const expected = `${JSON.stringify(text)}@${text.length}`;
+      const landed: string[] = [];
+      for (let offset = textEnd; offset <= lineEnd; offset++) {
+        const $pos = projection.doc.resolve(caretSourceOffsetToPmPos(projection, offset));
+        const at = `${JSON.stringify($pos.parent.textContent)}@${$pos.parentOffset}`;
+        if (at !== expected) landed.push(`src=${offset} -> ${at}`);
+      }
+      expect(landed).toEqual([]);
+    });
+  }
+
+  it('still sends a caret before a list marker into the item it starts', () => {
+    const source = 'intro\n\n- one item \n- two item\n\nafter\n';
+    const projection = buildProjection(source, md);
+    const $pos = projection.doc.resolve(
+      caretSourceOffsetToPmPos(projection, source.indexOf('- two')),
+    );
+    expect($pos.parent.isTextblock ? $pos.parent.textContent : $pos.parent.type.name).not.toBe(
+      'one item',
+    );
+  });
+});
+
+describe('a caret after characters the source does not spell yet', () => {
+  const SOURCE = 'Alpha paragraph zero.\n\nBravo paragraph one.\n';
+
+  const editorMd = new MarkdownManager({ extensions: sharedExtensions });
+
+  function withTrailingSpace(projection: Projection): Projection['doc'] {
+    const { doc } = buildProjection(projection.source, editorMd);
+    const first = doc.child(0);
+    const spaced = first.type.create(first.attrs, doc.type.schema.text(`${first.textContent} `));
+    return doc.copy(doc.content.replaceChild(0, spaced));
+  }
+
+  it('builds the live document in a schema of its own, as the editor does', () => {
+    const full = buildProjection(SOURCE, md);
+    expect(withTrailingSpace(full).type.schema).not.toBe(full.doc.type.schema);
+  });
+
+  it('maps a caret after an unwritten trailing space to the end of the bytes its block has', () => {
+    const full = buildProjection(SOURCE, md);
+    const live = withTrailingSpace(full);
+    const afterSpace = live.child(0).nodeSize - 1;
+    const offset = liveCaretPmPosToSourceOffset(full, live, afterSpace);
+    expect(SOURCE.slice(0, offset)).toBe('Alpha paragraph zero.');
+  });
+
+  it('maps a caret in a later block by the bytes, not one to the right per unwritten character', () => {
+    const full = buildProjection(SOURCE, md);
+    const live = withTrailingSpace(full);
+    const start = live.child(0).nodeSize + 1;
+    const text = 'Bravo paragraph one.';
+    const wrong: string[] = [];
+    for (let k = 0; k <= text.length; k++) {
+      const offset = liveCaretPmPosToSourceOffset(full, live, start + k);
+      if (offset !== SOURCE.indexOf(text) + k) wrong.push(`k=${k} -> ${offset}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('is the plain caret mapping when the live document is the parse', () => {
+    const full = buildProjection(SOURCE, md);
+    for (let pos = 1; pos < full.doc.content.size; pos++) {
+      expect(liveCaretPmPosToSourceOffset(full, full.doc, pos)).toBe(
+        caretPmPosToSourceOffset(full, pos),
+      );
+    }
+  });
+
+  it('keeps the plain caret mapping when the documents differ by more than one block', () => {
+    const full = buildProjection(SOURCE, md);
+    const live = full.doc.copy(full.doc.content.addToEnd(full.doc.child(1)));
+    for (let pos = 1; pos < full.doc.content.size; pos++) {
+      expect(liveCaretPmPosToSourceOffset(full, live, pos)).toBe(
+        caretPmPosToSourceOffset(full, pos),
+      );
+    }
+  });
 });

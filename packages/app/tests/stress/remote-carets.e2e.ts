@@ -330,6 +330,223 @@ test('a peer caret never renders as a paragraph the document does not have', asy
   }
 });
 
+async function awarenessBarrier(
+  writer: import('@playwright/test').Page,
+  reader: import('@playwright/test').Page,
+  tag: string,
+): Promise<void> {
+  await writer.evaluate((value: string) => {
+    window.__activeProvider?.awareness?.setLocalStateField('testBarrier', value);
+  }, tag);
+  await expect
+    .poll(
+      async () =>
+        reader.evaluate((value: string) => {
+          const awareness = window.__activeProvider?.awareness;
+          if (!awareness) return false;
+          for (const [id, state] of awareness.getStates()) {
+            if (id === awareness.clientID) continue;
+            if ((state as { testBarrier?: string }).testBarrier === value) return true;
+          }
+          return false;
+        }, tag),
+      { timeout: 10_000, message: 'the reader never saw the writer awareness after the edit' },
+    )
+    .toBe(true);
+}
+
+async function remoteCaretBlock(page: import('@playwright/test').Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const caret = document.querySelector('.collaboration-cursor__caret');
+    const editor = window.__activeEditor;
+    if (!caret || !editor) return null;
+    return editor.state.doc.resolve(editor.view.posAtDOM(caret, 0)).index(0);
+  });
+}
+
+async function sourceText(page: import('@playwright/test').Page): Promise<string> {
+  return page.evaluate(
+    () => window.__activeProvider?.document?.getText('source')?.toString() ?? '',
+  );
+}
+
+test('a caret after a trailing space renders in its own paragraph, not the next one', async ({
+  browser,
+  api,
+  baseURL,
+}) => {
+  const docName = `remote-carets-trailing-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, SEED);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+
+    const endOfFirst = await pageA.evaluate(() => {
+      const doc = window.__activeEditor?.state.doc;
+      if (!doc) throw new Error('no editor');
+      return doc.child(0).content.size + 1;
+    });
+    await placeCaretAt(pageA, endOfFirst);
+    await expect.poll(async () => remoteCaretBlock(pageB), { timeout: 10_000 }).toBe(0);
+
+    await pageA.keyboard.type(' ');
+    await expect
+      .poll(async () => pageA.evaluate(() => window.__activeEditor?.state.doc.child(0).textContent))
+      .toBe('Alpha paragraph zero. ');
+    await awarenessBarrier(pageA, pageB, 'after-space');
+
+    expect(
+      await remoteCaretBlock(pageB),
+      'the peer drew the caret at the start of the next paragraph',
+    ).toBe(0);
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('a source-mode caret after a trailing space renders in its own paragraph', async ({
+  browser,
+  api,
+  baseURL,
+}) => {
+  const docName = `remote-carets-trailing-src-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, SEED);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+    await toggleMode(pageA, 'source');
+
+    const lineEnd = SEED.indexOf('\n');
+    expect(await setSourceCaret(pageA, lineEnd)).toBe(lineEnd);
+    await pageA.keyboard.type(' ');
+    await expect
+      .poll(async () => sourceText(pageB), { timeout: 10_000 })
+      .toContain('Alpha paragraph zero. \n');
+    await awarenessBarrier(pageA, pageB, 'after-source-space');
+
+    await expect
+      .poll(async () => remoteCaretBlock(pageB), {
+        timeout: 5_000,
+        message: 'the peer drew the source caret at the start of the next paragraph',
+      })
+      .toBe(0);
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('typing after a trailing space stays in its paragraph when a peer edits elsewhere', async ({
+  browser,
+  api,
+  baseURL,
+}) => {
+  const docName = `remote-carets-trailing-peer-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, SEED);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+
+    const endOfFirst = await pageA.evaluate(() => {
+      const doc = window.__activeEditor?.state.doc;
+      if (!doc) throw new Error('no editor');
+      return doc.child(0).content.size + 1;
+    });
+    await placeCaretAt(pageA, endOfFirst);
+    await pageA.keyboard.type(' ');
+    await expect
+      .poll(async () => pageA.evaluate(() => window.__activeEditor?.state.doc.child(0).textContent))
+      .toBe('Alpha paragraph zero. ');
+
+    await placeCaretAtEnd(pageB);
+    await pageB.keyboard.type('Q');
+    await expect.poll(async () => sourceText(pageA), { timeout: 10_000 }).toContain('Q');
+
+    await pageA.keyboard.type('x');
+    await expect.poll(async () => sourceText(pageA), { timeout: 10_000 }).toContain('x');
+    const [first, second] = (await sourceText(pageA)).split('\n\n');
+    expect(first, 'the typing left its paragraph').toMatch(/^Alpha paragraph zero\. ?x$/);
+    expect(second, 'the typing landed in the next paragraph').toBe('Bravo paragraph one.');
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('a selected range survives a peer typing elsewhere', async ({ browser, api, baseURL }) => {
+  const docName = `remote-carets-range-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, SEED);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+
+    await pageA.locator('.ProseMirror:not(.composer-prosemirror)').click();
+    await pageA.waitForFunction(() => window.__activeEditor?.isFocused === true, null, {
+      timeout: 10_000,
+    });
+    const range = await pageA.evaluate(() => {
+      const editor = window.__activeEditor;
+      if (!editor) throw new Error('no editor');
+      const doc = editor.state.doc;
+      const from = doc.child(0).nodeSize + 1 + doc.child(1).textContent.indexOf('paragraph');
+      const to = from + 'paragraph'.length;
+      editor.commands.setTextSelection({ from, to });
+      return { from, to };
+    });
+
+    await placeCaretAtEnd(pageB);
+    await pageB.keyboard.type('Q');
+    await expect.poll(async () => sourceText(pageA), { timeout: 10_000 }).toContain('Q');
+
+    const after = await pageA.evaluate(() => {
+      const state = window.__activeEditor?.state;
+      if (!state) return null;
+      const { from, to } = state.selection;
+      return { from, to, text: state.doc.textBetween(from, to) };
+    });
+    expect(after, 'the peer keystroke collapsed the selection').toEqual({
+      ...range,
+      text: 'paragraph',
+    });
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
 declare global {
   interface Window {
     __cursorCleared?: number;

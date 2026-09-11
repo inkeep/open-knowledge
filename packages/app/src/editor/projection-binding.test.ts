@@ -1,7 +1,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -743,6 +743,191 @@ describe('projection binding — an agent rewrites the paragraph the caret sits 
       const { selection, doc } = rig.editor.state;
       expect(doc.resolve(selection.from).index(0)).toBe(2);
       expect(selection.from).toBe(before + (NEW_BLOCK.length - OLD_BLOCK.length));
+    } finally {
+      rig.destroy();
+    }
+  });
+});
+
+describe('projection binding — a trailing space the source does not spell yet', () => {
+  const SEED = 'Alpha paragraph zero.\n\nBravo paragraph one.\n';
+
+  function typeTrailingSpaceInFirstBlock(rig: Rig): void {
+    const doc = rig.editor.state.doc;
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.setSelection(TextSelection.create(doc, doc.child(0).nodeSize - 1)),
+    );
+    rig.editor.view.dispatch(rig.editor.state.tr.insertText(' '));
+  }
+
+  function peerAppendsToLastBlock(rig: Rig): void {
+    rig.ydoc.transact(() => rig.ytext.insert(rig.ytext.length - 1, 'Q'), 'peer');
+  }
+
+  it('keeps the caret in its paragraph when a peer edits elsewhere', () => {
+    const rig = createRig(SEED);
+    try {
+      typeTrailingSpaceInFirstBlock(rig);
+      expect(
+        rig.ytext.toString(),
+        'the space reached the bytes, so this no longer pins an unwritten one',
+      ).toBe(SEED);
+
+      peerAppendsToLastBlock(rig);
+      const { selection, doc } = rig.editor.state;
+      expect(doc.resolve(selection.from).index(0)).toBe(0);
+
+      rig.editor.view.dispatch(rig.editor.state.tr.insertText('x'));
+      expect(rig.ytext.toString()).toMatch(
+        /^Alpha paragraph zero\. ?x\n\nBravo paragraph one\.Q\n$/,
+      );
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('carries a caret in a later paragraph by the bytes, not by the unwritten space', () => {
+    const rig = createRig(SEED);
+    try {
+      typeTrailingSpaceInFirstBlock(rig);
+      const doc = rig.editor.state.doc;
+      rig.editor.view.dispatch(
+        rig.editor.state.tr.setSelection(TextSelection.create(doc, doc.child(0).nodeSize + 1 + 5)),
+      );
+
+      peerAppendsToLastBlock(rig);
+      const $from = rig.editor.state.doc.resolve(rig.editor.state.selection.from);
+      expect($from.index(0)).toBe(1);
+      expect($from.parentOffset).toBe(5);
+    } finally {
+      rig.destroy();
+    }
+  });
+});
+
+describe('projection binding — a remote edit keeps a selection it did not touch', () => {
+  const SEED = 'Alpha paragraph zero.\n\nBravo paragraph one.\n\nCharlie paragraph two.\n';
+
+  function peerAppendsToLastBlock(rig: Rig): void {
+    rig.ydoc.transact(() => rig.ytext.insert(rig.ytext.length - 1, 'Q'), 'peer');
+  }
+
+  function wordIn(rig: Rig, blockIndex: number, word: string): { from: number; to: number } {
+    const doc = rig.editor.state.doc;
+    let start = 0;
+    for (let i = 0; i < blockIndex; i++) start += doc.child(i).nodeSize;
+    const from = start + 1 + doc.child(blockIndex).textContent.indexOf(word);
+    return { from, to: from + word.length };
+  }
+
+  function select(rig: Rig, anchor: number, head: number): void {
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.setSelection(TextSelection.create(rig.editor.state.doc, anchor, head)),
+    );
+  }
+
+  it('keeps a text range inside a paragraph', () => {
+    const rig = createRig(SEED);
+    try {
+      const { from, to } = wordIn(rig, 1, 'paragraph');
+      select(rig, from, to);
+      peerAppendsToLastBlock(rig);
+      const { selection, doc } = rig.editor.state;
+      expect(doc.textBetween(selection.from, selection.to)).toBe('paragraph');
+      expect([selection.from, selection.to]).toEqual([from, to]);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps a range across two paragraphs, and which end is the head', () => {
+    const rig = createRig(SEED);
+    try {
+      const anchor = wordIn(rig, 1, 'one').to;
+      const head = wordIn(rig, 0, 'paragraph').from;
+      select(rig, anchor, head);
+      peerAppendsToLastBlock(rig);
+      const { selection } = rig.editor.state;
+      expect([selection.anchor, selection.head]).toEqual([anchor, head]);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('moves a range with the text a peer inserts before it', () => {
+    const rig = createRig(SEED);
+    try {
+      const { from, to } = wordIn(rig, 1, 'paragraph');
+      select(rig, from, to);
+      rig.ydoc.transact(
+        () => rig.ytext.insert(rig.ytext.toString().indexOf('Bravo'), 'New '),
+        'peer',
+      );
+      const { selection, doc } = rig.editor.state;
+      expect(doc.textBetween(selection.from, selection.to)).toBe('paragraph');
+      expect(selection.from).toBe(from + 'New '.length);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps a selected component selected', () => {
+    const source = [
+      '# Title',
+      '',
+      '<Callout type="info">',
+      'Callout text.',
+      '</Callout>',
+      '',
+      'Trailing paragraph.',
+      '',
+    ].join('\n');
+    const rig = createRig(source);
+    try {
+      expect(rig.editor.state.doc.child(1).type.name).toBe('jsxComponent');
+      const at = rig.editor.state.doc.child(0).nodeSize;
+      rig.editor.view.dispatch(
+        rig.editor.state.tr.setSelection(NodeSelection.create(rig.editor.state.doc, at)),
+      );
+      peerAppendsToLastBlock(rig);
+      const { selection } = rig.editor.state;
+      expect(selection).toBeInstanceOf(NodeSelection);
+      expect((selection as NodeSelection).node.type.name).toBe('jsxComponent');
+      expect(selection.from).toBe(at);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps a selected image selected', () => {
+    const rig = createRig('Before ![alt](a.png) after.\n\nTail.\n');
+    try {
+      let at = -1;
+      rig.editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'image') at = pos;
+      });
+      expect(at, 'the fixture holds no image node').toBeGreaterThanOrEqual(0);
+      rig.editor.view.dispatch(
+        rig.editor.state.tr.setSelection(NodeSelection.create(rig.editor.state.doc, at)),
+      );
+      peerAppendsToLastBlock(rig);
+      const { selection } = rig.editor.state;
+      expect(selection).toBeInstanceOf(NodeSelection);
+      expect((selection as NodeSelection).node.type.name).toBe('image');
+      expect(selection.from).toBe(at);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps a select-all', () => {
+    const rig = createRig(SEED);
+    try {
+      rig.editor.view.dispatch(
+        rig.editor.state.tr.setSelection(new AllSelection(rig.editor.state.doc)),
+      );
+      peerAppendsToLastBlock(rig);
+      expect(rig.editor.state.selection).toBeInstanceOf(AllSelection);
     } finally {
       rig.destroy();
     }

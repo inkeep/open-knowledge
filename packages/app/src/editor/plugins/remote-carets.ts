@@ -5,9 +5,9 @@ import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { liveProjection } from '../projection-binding';
 import {
-  caretPmPosToSourceOffset,
   caretSourceOffsetToPmPos,
   createFullPrecisionResolver,
+  liveCaretPmPosToSourceOffset,
 } from '../projection-coordinates';
 
 const remoteCaretsKey = new PluginKey<DecorationSet>('okRemoteCarets');
@@ -184,8 +184,8 @@ export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<D
         if (projection === null) return;
         const full = resolveFullPrecision(projection);
         const { anchor, head } = view.state.selection;
-        const anchorOffset = caretPmPosToSourceOffset(full, anchor);
-        const headOffset = caretPmPosToSourceOffset(full, head);
+        const anchorOffset = liveCaretPmPosToSourceOffset(full, view.state.doc, anchor);
+        const headOffset = liveCaretPmPosToSourceOffset(full, view.state.doc, head);
         /* STOP: an unchanged offset is not an unchanged anchor. A write is one delete plus one
            insert, so the item a relative position is pinned to is destroyed by any edit that
            spans it, and a peer then resolves it to nothing and drops the caret. Re-pinning on
