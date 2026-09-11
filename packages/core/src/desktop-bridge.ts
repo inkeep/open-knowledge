@@ -878,6 +878,7 @@ export type SlidevOpenFailureReason =
   | 'not-available'
   | 'invalid-path'
   | 'spawn-error'
+  | 'port-error'
   | 'exited-early'
   | 'cancelled'
   | 'load-failed'

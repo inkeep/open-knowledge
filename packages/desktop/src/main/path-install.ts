@@ -20,6 +20,7 @@ import {
   type PathInstallMarker,
   pathInstallMarkerPath,
 } from '@inkeep/open-knowledge';
+import { posixOkManagedBinDir } from '@inkeep/open-knowledge-core';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
@@ -148,7 +149,7 @@ function writeMarker(home: string, marker: PathInstallMarker, fs: PathInstallFsO
 }
 
 function okBin(home: string): string {
-  return join(home, '.ok', 'bin');
+  return posixOkManagedBinDir(home);
 }
 
 function envShim(home: string): string {

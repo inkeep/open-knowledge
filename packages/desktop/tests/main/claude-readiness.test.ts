@@ -301,8 +301,11 @@ describe('windows probe verdict observability (an UNKNOWN must leave a trace)', 
     const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
     fireTimeout();
     expect(await p).toBe(null);
-    const messages = operatorVisibleRecords().map((call) => call.map(String).join(' '));
-    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+    expect(
+      operatorVisibleRecords().some((call) =>
+        call.some((arg) => (arg as { timedOut?: unknown })?.timedOut === true),
+      ),
+    ).toBe(true);
   });
 
   test("an async where.exe 'error' emits an operator-visible record carrying the cause", async () => {
@@ -349,7 +352,15 @@ describe('windows probe verdict observability (an UNKNOWN must leave a trace)', 
       .find((arg): arg is Record<string, unknown> => typeof arg === 'object' && arg !== null);
     expect(attrs).toBeDefined();
     expect(attrs?.bin).toBe('claude');
-    expect(Object.keys(attrs ?? {}).sort()).toEqual(['args', 'bin', 'timeoutMs', 'whereExe']);
+    expect(Object.keys(attrs ?? {}).sort()).toEqual([
+      'args',
+      'bin',
+      'exitCode',
+      'label',
+      'outcome',
+      'timedOut',
+      'timeoutMs',
+    ]);
   });
 });
 
@@ -366,8 +377,11 @@ describe('probe verdict observability (an UNKNOWN must leave a trace)', () => {
     expect(await p).toBe(null);
     const records = operatorVisibleRecords();
     expect(records.length).toBeGreaterThan(0);
-    const messages = records.map((call) => call.map(String).join(' '));
-    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+    expect(
+      records.some((call) =>
+        call.some((arg) => (arg as { timedOut?: unknown })?.timedOut === true),
+      ),
+    ).toBe(true);
   });
 
   test("an async spawn 'error' emits an operator-visible log record carrying the cause", async () => {

@@ -106,6 +106,7 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
       { kind: 'open', ok: false, reason: 'renderer-failed' },
       { kind: 'open', ok: false, reason: 'unsupported-server' },
       { kind: 'open', ok: false, reason: 'spawn-error' },
+      { kind: 'open', ok: false, reason: 'port-error' },
     ];
     for (const f of failures) recordDeckOpen(f);
     expect(createCounterCalls).toBe(1);
@@ -116,6 +117,7 @@ describe('recordDeckOpen — lazily-cached instrument', () => {
       { value: 1, attributes: { 'ok.slides.reason': 'renderer-failed' } },
       { value: 1, attributes: { 'ok.slides.reason': 'unsupported-server' } },
       { value: 1, attributes: { 'ok.slides.reason': 'spawn-error' } },
+      { value: 1, attributes: { 'ok.slides.reason': 'port-error' } },
     ]);
   });
 });

@@ -429,23 +429,26 @@ describe('SlidesToolbarControls — activation', () => {
     );
   });
 
-  test('a spawn failure surfaces a message distinct from a hung or crashed boot', async () => {
-    const user = userEvent.setup();
-    installBridge({
-      status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
-      open: () => Promise.resolve({ kind: 'open', ok: false, reason: 'spawn-error' }),
-    });
-    await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
+  test.each(['spawn-error', 'port-error'] as const)(
+    '%s surfaces a message distinct from a hung or crashed boot',
+    async (reason) => {
+      const user = userEvent.setup();
+      installBridge({
+        status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
+        open: () => Promise.resolve({ kind: 'open', ok: false, reason }),
+      });
+      await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
 
-    await user.click(await screen.findByTestId('slides-toolbar-action'));
+      await user.click(await screen.findByTestId('slides-toolbar-action'));
 
-    await waitFor(() =>
-      expect(toastErrorSpy).toHaveBeenCalledWith(
-        "Couldn't start Slidev.",
-        expect.objectContaining({ id: 'slides-opening' }),
-      ),
-    );
-  });
+      await waitFor(() =>
+        expect(toastErrorSpy).toHaveBeenCalledWith(
+          "Couldn't start Slidev.",
+          expect.objectContaining({ id: 'slides-opening' }),
+        ),
+      );
+    },
+  );
 
   test('an open that rejects at the IPC boundary surfaces an error and logs the cause', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});

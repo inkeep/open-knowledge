@@ -1,6 +1,18 @@
-import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
+import { homedir } from 'node:os';
+
+import {
+  OK_DESKTOP_TERMINAL_ENV,
+  OK_HOSTED_AGENT_ENV,
+  posixOkManagedBinDir,
+} from '@inkeep/open-knowledge-core';
 import { TERMINAL_SHELL_NOTICE_REASONS } from '@inkeep/open-knowledge-core/desktop-bridge';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
+
 import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
 import {
   buildShellArgs,
@@ -246,15 +258,56 @@ describe('setupPtyHost — create', () => {
   });
 
   test('bakes a launch command into a non-history `-c` spawn with an interactive exec tail', () => {
-    const h = makeHarness({ env: { SHELL: '/bin/zsh', PATH: '/usr/bin' } });
+    const env = { SHELL: '/bin/zsh', PATH: '/usr/bin' };
+    const h = makeHarness({ env });
     h.fire(CREATE({ launchCommand: "claude 'do the thing'" }));
+    const [managedBinDir] = buildShellEnv(env, { platform: 'darwin' }).managedBinDirs;
+    expect(managedBinDir).toBeDefined();
     expect(h.spawnCalls[0]?.file).toBe('/bin/zsh');
     expect(h.spawnCalls[0]?.args).toEqual([
       '-l',
       '-i',
       '-c',
-      "claude 'do the thing'; exec '/bin/zsh' -l -i",
+      `case ":$PATH:" in *:'${managedBinDir}':*) ;; *) PATH='${managedBinDir}'"\${PATH:+:$PATH}" ;; esac; export PATH; claude 'do the thing'; exec '/bin/zsh' -l -i`,
     ]);
+  });
+
+  test('handleCreate threads the logger, so a POSIX terminal with no home leaves a trace', () => {
+    vi.mocked(homedir).mockReturnValueOnce('');
+    const warnings: Record<string, unknown>[] = [];
+    const h = makeHarness({
+      platform: 'linux',
+      env: { SHELL: '/bin/bash', PATH: '/usr/bin' },
+      shellExists: (path) => path === '/bin/bash',
+      logger: { warn: (entry) => warnings.push(entry) },
+    });
+    h.fire(CREATE());
+    expect(
+      warnings,
+      'buildShellEnv warns through an injected logger, so dropping `logger: deps.logger` at the handleCreate call site would silently lose the terminal-side missing-home diagnostic',
+    ).toContainEqual({ event: 'pty-host-no-ok-managed-home', platform: 'linux' });
+  });
+
+  test('records the resolved shell command family on POSIX, the platform where the question has an answer', () => {
+    const entries: Record<string, unknown>[] = [];
+    const h = makeHarness({
+      platform: 'linux',
+      env: { SHELL: '/usr/bin/fish', PATH: '/usr/bin' },
+      shellExists: (path) => path === '/usr/bin/fish',
+      logger: { warn: () => {}, info: (entry) => entries.push(entry) },
+    });
+
+    h.fire(CREATE());
+
+    expect(
+      entries,
+      'the win32 sibling of this assertion cannot see this field (it is undefined there by construction, and toContainEqual reads an undefined-valued key as absent), so without this test the non-win32 path the field exists for is unasserted from both directions',
+    ).toContainEqual({
+      event: 'pty-host-shell-resolved',
+      platform: 'linux',
+      rung: 'env-shell',
+      shellCommandFamily: 'fish',
+    });
   });
 
   test('falls back to /bin/zsh when SHELL is unset', () => {
@@ -274,15 +327,18 @@ describe('setupPtyHost — create', () => {
       env: {
         SHELL: '/bin/zsh',
         PATH: '/usr/bin',
+        HOME: '/Users/alice',
         OK_ELECTRON_PROTOCOL_HOST: '1',
         OK_LOCK_KIND: 'interactive',
+        [OK_HOSTED_AGENT_ENV]: '1',
       },
     });
     h.fire(CREATE());
     const env = h.spawnCalls[0]?.options.env ?? {};
     expect(env.OK_ELECTRON_PROTOCOL_HOST).toBeUndefined();
     expect(env.OK_LOCK_KIND).toBeUndefined();
-    expect(env.PATH).toBe('/usr/bin');
+    expect(env[OK_HOSTED_AGENT_ENV]).toBeUndefined();
+    expect(env.PATH).toBe('/Users/alice/.ok/bin:/usr/bin');
   });
 
   test('marks the shell as the OK Desktop terminal (OK_DESKTOP_TERMINAL=1)', () => {
@@ -314,11 +370,14 @@ describe('setupPtyHost — create', () => {
     expect(env.PATH).toBe('/opt/x:/Users/alice/.ok/bin:/usr/bin');
   });
 
-  test('leaves PATH untouched when HOME is absent (nothing to resolve against)', () => {
+  test('falls back to the home the CLI installer used when the env carries no HOME', () => {
     const h = makeHarness({ env: { SHELL: '/bin/zsh', PATH: '/usr/bin' } });
     h.fire(CREATE());
     const env = h.spawnCalls[0]?.options.env ?? {};
-    expect(env.PATH).toBe('/usr/bin');
+    expect(
+      env.PATH,
+      'index.ts installs the CLI under osHomedir(), not process.env.HOME, so a terminal that skipped the grant here would omit a directory that exists on disk, and would disagree with the probe children that do resolve it',
+    ).toBe(`${posixOkManagedBinDir(homedir())}:/usr/bin`);
   });
 });
 
@@ -837,7 +896,14 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
       launchCommand: "x 'y'",
     });
     expect(h.spawnCalls).toHaveLength(1);
-    expect(h.spawnCalls[0]?.args).toEqual(['-l', '-i', '-c', "x 'y'; exec '/bin/zsh' -l -i"]);
+    const [managedBinDir] = buildShellEnv({}, { platform: 'darwin' }).managedBinDirs;
+    expect(managedBinDir).toBeDefined();
+    expect(h.spawnCalls[0]?.args).toEqual([
+      '-l',
+      '-i',
+      '-c',
+      `case ":$PATH:" in *:'${managedBinDir}':*) ;; *) PATH='${managedBinDir}'"\${PATH:+:$PATH}" ;; esac; export PATH; x 'y'; exec '/bin/zsh' -l -i`,
+    ]);
   });
 
   test('accepts a structured Windows launch and composes it after shell resolution', () => {
@@ -1025,14 +1091,14 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
 
 describe('buildShellArgs', () => {
   test('a plain tab follows the platform interactive-shell convention', () => {
-    expect(buildShellArgs('darwin', '/bin/zsh')).toEqual(['-l', '-i']);
-    expect(buildShellArgs('darwin', '/bin/zsh', '')).toEqual(['-l', '-i']);
-    expect(buildShellArgs('linux', '/bin/bash')).toEqual(['-i']);
-    expect(buildShellArgs('linux', '/bin/bash', '')).toEqual(['-i']);
+    expect(buildShellArgs('darwin', '/bin/zsh', undefined, [])).toEqual(['-l', '-i']);
+    expect(buildShellArgs('darwin', '/bin/zsh', '', [])).toEqual(['-l', '-i']);
+    expect(buildShellArgs('linux', '/bin/bash', undefined, [])).toEqual(['-i']);
+    expect(buildShellArgs('linux', '/bin/bash', '', [])).toEqual(['-i']);
   });
 
   test('a macOS launch keeps login flags in the launcher and exec tail', () => {
-    expect(buildShellArgs('darwin', '/bin/zsh', "codex 'hi'")).toEqual([
+    expect(buildShellArgs('darwin', '/bin/zsh', "codex 'hi'", [])).toEqual([
       '-l',
       '-i',
       '-c',
@@ -1041,20 +1107,61 @@ describe('buildShellArgs', () => {
   });
 
   test('a Linux launch is interactive without forcing login semantics', () => {
-    expect(buildShellArgs('linux', '/bin/bash', "codex 'hi'")).toEqual([
+    expect(buildShellArgs('linux', '/bin/bash', "codex 'hi'", [])).toEqual([
       '-i',
       '-c',
       "codex 'hi'; exec '/bin/bash' -i",
     ]);
   });
 
+  test('reasserts the managed bin dir in the launched CLI command on macOS', () => {
+    expect(buildShellArgs('darwin', '/bin/zsh', "codex 'hi'", ['/managed/bin'])).toEqual([
+      '-l',
+      '-i',
+      '-c',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion in an expected command string, not a JS template placeholder
+      "case \":$PATH:\" in *:'/managed/bin':*) ;; *) PATH='/managed/bin'\"${PATH:+:$PATH}\" ;; esac; export PATH; codex 'hi'; exec '/bin/zsh' -l -i",
+    ]);
+  });
+
+  test('reasserts the managed bin dir in the launched CLI command on Linux', () => {
+    expect(buildShellArgs('linux', '/bin/bash', 'claude', ['/managed/bin'])).toEqual([
+      '-i',
+      '-c',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion in an expected command string, not a JS template placeholder
+      "case \":$PATH:\" in *:'/managed/bin':*) ;; *) PATH='/managed/bin'\"${PATH:+:$PATH}\" ;; esac; export PATH; claude; exec '/bin/bash' -i",
+    ]);
+  });
+
+  test('uses fish list syntax for the reassert when the terminal shell is fish', () => {
+    expect(buildShellArgs('linux', '/usr/bin/fish', 'claude', ['/managed/bin'])).toEqual([
+      '-i',
+      '-c',
+      "if not contains '/managed/bin' $PATH; set -gx PATH '/managed/bin' $PATH; end; claude; exec '/usr/bin/fish' -i",
+    ]);
+  });
+
+  test('a host with no grantable managed dir composes exactly the pre-reassert argv', () => {
+    expect(buildShellArgs('darwin', '/bin/zsh', "codex 'hi'", [])).toEqual([
+      '-l',
+      '-i',
+      '-c',
+      "codex 'hi'; exec '/bin/zsh' -l -i",
+    ]);
+  });
+
+  test('a plain interactive tab is never reasserted, so typed commands keep the user PATH order', () => {
+    expect(buildShellArgs('darwin', '/bin/zsh', undefined, ['/managed/bin'])).toEqual(['-l', '-i']);
+    expect(buildShellArgs('linux', '/bin/bash', undefined, ['/managed/bin'])).toEqual(['-i']);
+  });
+
   test('single-quotes the shell path in the exec tail (space/quote-safe)', () => {
-    expect(buildShellArgs('linux', "/odd path/o'sh", "claude 'x'")).toEqual([
+    expect(buildShellArgs('linux', "/odd path/o'sh", "claude 'x'", [])).toEqual([
       '-i',
       '-c',
       "claude 'x'; exec '/odd path/o'\\''sh' -i",
     ]);
-    expect(buildShellArgs('darwin', "/odd path/o'sh", "claude 'x'")).toEqual([
+    expect(buildShellArgs('darwin', "/odd path/o'sh", "claude 'x'", [])).toEqual([
       '-l',
       '-i',
       '-c',
@@ -1065,7 +1172,7 @@ describe('buildShellArgs', () => {
 
 describe('buildShellEnv', () => {
   test('strips markers, drops undefined, preserves the rest, marks the desktop terminal', () => {
-    const env = buildShellEnv({
+    const { env } = buildShellEnv({
       PATH: '/usr/bin',
       HOME: '/Users/x',
       OK_ELECTRON_PROTOCOL_HOST: '1',
@@ -1087,7 +1194,7 @@ describe('buildShellEnv', () => {
   });
 
   test('win32 prepends the packaged CLI bin using the inherited PATH key casing', () => {
-    const env = buildShellEnv(
+    const { env } = buildShellEnv(
       {
         Path: 'C:\\Windows\\System32;C:\\Tools',
         HOME: 'C:\\Users\\alice',
@@ -1394,17 +1501,26 @@ describe('resolveShell', () => {
 });
 
 test('buildShellArgs uses empty argv for every win32 shell rung', () => {
-  expect(buildShellArgs('win32', 'C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toEqual([]);
-  expect(buildShellArgs('win32', 'C:\\Windows\\System32\\cmd.exe')).toEqual([]);
-  expect(buildShellArgs('win32', 'C:\\Program Files\\Git\\bin\\bash.exe')).toEqual([]);
+  expect(
+    buildShellArgs('win32', 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', undefined, []),
+  ).toEqual([]);
+  expect(buildShellArgs('win32', 'C:\\Windows\\System32\\cmd.exe', undefined, [])).toEqual([]);
+  expect(buildShellArgs('win32', 'C:\\Program Files\\Git\\bin\\bash.exe', undefined, [])).toEqual(
+    [],
+  );
 });
 
 describe('buildShellArgs Windows launch composition', () => {
   test('PowerShell uses -NoExit + EncodedCommand and preserves structured JSON', () => {
-    const args = buildShellArgs('win32', 'C:\\Program Files\\PowerShell\\7\\pwsh.exe', {
-      executable: 'native.exe',
-      args: ['--settings', '{"nested":"a\'b"}'],
-    });
+    const args = buildShellArgs(
+      'win32',
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      {
+        executable: 'native.exe',
+        args: ['--settings', '{"nested":"a\'b"}'],
+      },
+      [],
+    );
     expect(Array.isArray(args)).toBe(true);
     if (!Array.isArray(args)) throw new Error('expected PowerShell argv');
     expect(args.slice(0, 2)).toEqual(['-NoExit', '-EncodedCommand']);
@@ -1415,10 +1531,15 @@ describe('buildShellArgs Windows launch composition', () => {
 
   test('cmd uses node-pty string mode so CRT quote remarshal is bypassed', () => {
     expect(
-      buildShellArgs('win32', 'C:\\Windows\\System32\\cmd.exe', {
-        executable: 'claude',
-        args: [],
-      }),
+      buildShellArgs(
+        'win32',
+        'C:\\Windows\\System32\\cmd.exe',
+        {
+          executable: 'claude',
+          args: [],
+        },
+        [],
+      ),
     ).toBe('/K claude');
   });
 
@@ -1430,10 +1551,15 @@ describe('buildShellArgs Windows launch composition', () => {
       'mcp_servers.open-knowledge.default_tools_approval_mode=approve',
       "apostrophe'and space",
     ];
-    const args = buildShellArgs('win32', shell, {
-      executable: launchTokens[0] ?? '',
-      args: launchTokens.slice(1),
-    });
+    const args = buildShellArgs(
+      'win32',
+      shell,
+      {
+        executable: launchTokens[0] ?? '',
+        args: launchTokens.slice(1),
+      },
+      [],
+    );
     expect(Array.isArray(args)).toBe(true);
     if (!Array.isArray(args)) throw new Error('expected Git Bash argv');
 

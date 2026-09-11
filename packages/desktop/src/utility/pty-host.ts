@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, delimiter, join, win32 } from 'node:path';
+import { basename, win32 } from 'node:path';
 import {
   composeWindowsShellLaunchArgs,
   launchWithoutSupportFile,
   OK_DESKTOP_TERMINAL_ENV,
   resolveWindowsShellFamily,
+  shellSingleQuote,
   type TerminalLaunchCommand,
   type WindowsShellFamily,
   WindowsShellLaunchError,
@@ -17,8 +18,19 @@ import type {
   TerminalShellNoticeReason,
   TerminalSupportFileNoticeReason,
 } from '../shared/bridge-contract.ts';
-import { interactiveShellArgs } from '../shared/terminal-shell.ts';
-import { getWindowsEnvValue, windowsPathKey, windowsWherePathArgs } from '../shared/windows-env.ts';
+import {
+  composeOkChildEnv,
+  hasNoResolvableOkHome,
+  okChildEnvOptions,
+  okManagedBinDirs,
+  okPackagedCliBinDir,
+} from '../shared/ok-child-env.ts';
+import {
+  commandWithManagedPath,
+  interactiveShellArgs,
+  shellCommandFamily,
+} from '../shared/terminal-shell.ts';
+import { getWindowsEnvValue, windowsWherePathArgs } from '../shared/windows-env.ts';
 import {
   materializeSupportFileSync,
   TERMINAL_SUPPORT_FILE_ESCAPE_CODE,
@@ -26,12 +38,6 @@ import {
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 const KILL_ESCALATE_MS = 250;
-
-const STRIPPED_ENV_MARKERS = [
-  'OK_ELECTRON_PROTOCOL_HOST',
-  'OK_LOCK_KIND',
-  'ELECTRON_RUN_AS_NODE',
-] as const;
 
 export interface PtyCreateMessage {
   type: 'create';
@@ -497,7 +503,8 @@ export function resolveShell(
 export function buildShellArgs(
   platform: NodeJS.Platform,
   shell: string,
-  launchCommand?: string | TerminalLaunchCommand,
+  launchCommand: string | TerminalLaunchCommand | undefined,
+  managedBinDirs: readonly string[],
 ): string[] | string {
   if (platform === 'win32') {
     return typeof launchCommand === 'object'
@@ -506,43 +513,36 @@ export function buildShellArgs(
   }
   const interactiveArgs = [...interactiveShellArgs(platform)];
   if (typeof launchCommand !== 'string' || launchCommand.length === 0) return interactiveArgs;
-  const quotedShell = `'${shell.replace(/'/g, "'\\''")}'`;
+  const quotedShell = shellSingleQuote(shell);
   return [
     ...interactiveArgs,
     '-c',
-    `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+    commandWithManagedPath(
+      shell,
+      `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+      managedBinDirs,
+    ),
   ];
 }
 
 export function buildShellEnv(
   parentEnv: Record<string, string | undefined>,
-  options: { platform?: NodeJS.Platform; cliBinDir?: string } = {},
-): Record<string, string> {
-  const stripped = new Set<string>(STRIPPED_ENV_MARKERS);
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parentEnv)) {
-    if (value === undefined) continue;
-    if (stripped.has(key) || key.startsWith('GDK_PIXBUF_')) continue;
-    out[key] = value;
+  options: {
+    platform?: NodeJS.Platform;
+    cliBinDir?: string;
+    logger?: { warn: (data: Record<string, unknown>) => void };
+  } = {},
+): { env: Record<string, string>; managedBinDirs: readonly string[] } {
+  const childOptions = okChildEnvOptions(parentEnv, {
+    platform: options.platform,
+    cliBinDir: options.cliBinDir,
+  });
+  if (hasNoResolvableOkHome(childOptions)) {
+    options.logger?.warn({ event: 'pty-host-no-ok-managed-home', platform: childOptions.platform });
   }
-  const platform = options.platform ?? process.platform;
-  const pathKey = windowsPathKey(out);
-  if (platform === 'win32' && options.cliBinDir) {
-    const entries = (out[pathKey] ?? '').split(';').filter(Boolean);
-    if (!entries.some((entry) => entry.toLowerCase() === options.cliBinDir?.toLowerCase())) {
-      out[pathKey] = [options.cliBinDir, ...entries].join(';');
-    }
-  }
-  const home = out.HOME;
-  if (platform !== 'win32' && home) {
-    const okBin = join(home, '.ok', 'bin');
-    const entries = (out[pathKey] ?? '').split(delimiter).filter(Boolean);
-    if (!entries.includes(okBin)) {
-      out[pathKey] = [okBin, ...entries].join(delimiter);
-    }
-  }
+  const out = composeOkChildEnv(parentEnv, childOptions);
   out[OK_DESKTOP_TERMINAL_ENV] = '1';
-  return out;
+  return { env: out, managedBinDirs: okManagedBinDirs(childOptions) };
 }
 
 const CONPTY_DLL_LOAD_ERROR_PREFIXES = {
@@ -655,6 +655,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       event: 'pty-host-shell-resolved',
       platform,
       rung: resolution.rung,
+      shellCommandFamily: platform === 'win32' ? undefined : shellCommandFamily(resolution.shell),
     });
     const shell = resolution.shell;
     if (platform === 'win32') {
@@ -663,7 +664,11 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
         post({ type: 'shell-notice', ptyId, notice: 'shell-resolved', shellFamily });
       }
     }
-    const shellEnv = buildShellEnv(env, { platform, cliBinDir: deps.cliBinDir });
+    const { env: shellEnv, managedBinDirs } = buildShellEnv(env, {
+      platform,
+      cliBinDir: deps.cliBinDir,
+      logger: deps.logger,
+    });
     let launchCommand = message.launchCommand;
     if (
       platform === 'win32' &&
@@ -704,7 +709,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     }
     let shellArgs: string[] | string;
     try {
-      shellArgs = buildShellArgs(platform, shell, launchCommand);
+      shellArgs = buildShellArgs(platform, shell, launchCommand, managedBinDirs);
     } catch (error) {
       const launchFailure = error instanceof WindowsShellLaunchError ? error.reason : null;
       deps.logger?.warn({
@@ -944,14 +949,10 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
       exitHost: (code) => process.exit(code),
       flushLogger,
       env: process.env,
-      cliBinDir:
-        process.platform === 'win32'
-          ? join(
-              (process as NodeJS.Process & { resourcesPath: string }).resourcesPath,
-              'cli',
-              'bin',
-            )
-          : undefined,
+      cliBinDir: okPackagedCliBinDir(
+        process.platform,
+        (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath,
+      ),
       logger: {
         warn: (o) => log.warn(o, 'pty-host warning'),
         info: (o) => log.info(o, 'pty-host shell resolution'),

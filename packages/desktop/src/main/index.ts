@@ -214,8 +214,6 @@ import {
 import { classifyClaudeMcpScopes } from './claude-mcp-scopes.ts';
 import {
   cliProbeArgs,
-  type ProbeChild,
-  type ProbeTimers,
   probePlatformCliOnPath,
   resolveClaudeReadiness,
   resolveCliOnPath,
@@ -375,6 +373,7 @@ import {
   removePathShimFromRcFiles,
 } from './path-install.ts';
 import { probeLoopbackPort } from './port-probe.ts';
+import { realProbeSpawn, realProbeTimers } from './probe-spawn.ts';
 import { installStdioBrokenPipeGuard } from './process-safety-net.ts';
 import {
   type ProjectIntegrationsCliSurface,
@@ -3615,30 +3614,6 @@ function reconfigureMcpWiringNow(target: McpWiringDispatchTarget | undefined): b
 function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
-function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
-  const child = spawn(file, [...spawnArgs], {
-    stdio: 'ignore',
-    shell: false,
-    windowsHide: true,
-  });
-  return {
-    onExit: (cb) => {
-      child.on('exit', (code) => cb(code));
-    },
-    onError: (cb) => {
-      child.on('error', (err) => cb(err));
-    },
-    kill: () => {
-      child.kill('SIGKILL');
-    },
-  };
-}
-
-const realProbeTimers: ProbeTimers = {
-  setTimer: (cb, ms) => setTimeout(cb, ms),
-  clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-};
 
 function probeWindowsPath(bin: string): Promise<number | null> {
   const systemRoot = getWindowsEnvValue(process.env, 'SystemRoot') ?? 'C:\\Windows';

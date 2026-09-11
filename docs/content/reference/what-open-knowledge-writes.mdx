@@ -32,7 +32,7 @@ How the app lands depends on your platform:
 
 - **macOS** — a signed `.dmg` you drag into `/Applications`. Because a `.dmg` app can't put a CLI on your `PATH` on its own, first launch asks, in one dialog, whether to register the MCP server with your AI editors and whether to add `ok` to your shell's `PATH` (both covered below, both with your consent).
 - **Windows** — a per-user installer: the app lands under `%LOCALAPPDATA%\Programs\`, with no admin prompt. The installer itself adds the bundled `ok` CLI to your **user** `PATH` (a registry value under `HKCU\Environment`) and registers the `openknowledge://` URL scheme under `HKCU\Software\Classes` — both removed by its uninstaller. It also registers OpenKnowledge for `.md` and `.mdx` files under `HKCU\Software\Classes`, which can make it the default opener when you have not explicitly chosen one in Windows. Uninstall removes its Open With and file-handler registrations but does not restore a previous file-type default. To choose another opener, use **Settings → Apps → Default apps**. Your shell startup files are never touched.
-- **Linux** — a deb or rpm package: the app installs to `/opt/OpenKnowledge/`, and the package's post-install script symlinks `/usr/bin/ok`, `/usr/bin/open-knowledge`, and `/usr/bin/openknowledge` (plus a desktop entry that registers the `openknowledge://` scheme, and an AppArmor profile on Ubuntu 24.04+ so the Chromium sandbox keeps working). Your shell startup files are never touched.
+- **Linux** — a deb or rpm package: the app installs to `/opt/OpenKnowledge/`, and the package's post-install script symlinks `/usr/bin/ok`, `/usr/bin/open-knowledge`, and `/usr/bin/openknowledge` (plus a desktop entry that registers the `openknowledge://` scheme, and an AppArmor profile on Ubuntu 24.04+ so the Chromium sandbox keeps working). Your shell startup files are touched only with your consent, as described below.
 
 On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; on Windows the same app-state files live under `%APPDATA%\OpenKnowledge\` and staged updates under `%LOCALAPPDATA%\@inkeepopen-knowledge-desktop-updater\`. On Linux, app state defaults to `~/.config/OpenKnowledge/` and staged updates to `~/.cache/@inkeepopen-knowledge-desktop-updater/` (or the corresponding XDG config and cache directories). The `~/.ok/` paths are the same everywhere.
 
@@ -56,7 +56,7 @@ On its first launch the app also opens your default browser once to `openknowled
 
 ### Shell and `PATH`
 
-So `ok` can work in your terminal too, the packaged app manages a `PATH` shim. **This is macOS-only, packaged-build-only, and disabled by `OK_RECLAIM_DISABLE=1`.** It never uses `sudo`, never runs an admin prompt, and never installs a login item. (Windows and Linux don't need it: the Windows installer adds the bundled CLI to your user `PATH` itself, and the Linux packages place `/usr/bin/ok` directly — neither ever edits your shell files.)
+So `ok` can work in your terminal too, the packaged app manages a `PATH` shim. **This is macOS and Linux only, packaged-build-only, and disabled by `OK_RECLAIM_DISABLE=1`.** It never uses `sudo`, never runs an admin prompt, and never installs a login item. (Windows doesn't need it: the Windows installer adds the bundled CLI to your user `PATH` itself, and never edits your shell files. OpenKnowledge no longer ships a Linux AppImage, but a build launched from one skips the shim too, because an AppImage has no fixed install location to link to.)
 
 The first two rows below live in OpenKnowledge's own `~/.ok/` directory and are maintained automatically. The third — the only write into files OpenKnowledge doesn't own — happens **only with your consent**: the first-launch dialog has an "Add the `ok` command to your terminal" toggle (checked by default), and nothing is written to your shell config if you uncheck it.
 
@@ -64,7 +64,7 @@ The first two rows below live in OpenKnowledge's own `~/.ok/` directory and are 
 | --- | --- | --- |
 | `~/.ok/bin/ok`, `~/.ok/bin/open-knowledge` | Symlinks to the CLI bundled inside the app | Outside-project (home dir) |
 | `~/.ok/env.sh` | A managed shim that prepends `~/.ok/bin` to your `PATH` | Outside-project (home dir) |
-| `~/.zshrc`, `~/.bash_profile`, `~/.config/fish/conf.d/open-knowledge.fish` | A **fenced managed block** that sources `~/.ok/env.sh` — written **only if you consent** in the first-launch dialog | Outside-project (shell config) |
+| `~/.zshrc`, `~/.bash_profile`, `~/.bashrc` (Linux), `~/.config/fish/conf.d/open-knowledge.fish` | A **fenced managed block** that sources `~/.ok/env.sh` — written **only if you consent** in the first-launch dialog. The block is created in the startup file for your login shell, and maintained in any of these that already exists, except `~/.bashrc`, which is only ever touched on Linux | Outside-project (shell config) |
 
 If you decline, only `ok` typed in an *external* terminal (Terminal, iTerm) is affected — the app's built-in terminal, the MCP server, and the "Open with AI" launches all work without it. You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
 
@@ -315,7 +315,7 @@ Bridge setup requires a project directory it can resolve and access, and refuses
 | To skip… | Do this |
 | --- | --- |
 | The `postinstall` skill install (CLI) | `npm install --ignore-scripts` |
-| The shell-config `PATH` block (macOS app) | Uncheck "Add the `ok` command to your terminal" in the first-launch dialog |
+| The shell-config `PATH` block (macOS and Linux app) | Uncheck "Add the `ok` command to your terminal" in the first-launch dialog |
 | All editor MCP registration in `ok init` | `ok init --no-mcp` |
 | User-level (vs project) MCP writes | `ok init --scope project` |
 | Committing `.ok/` to git | Off by default for a new project; `ok init --shared` commits it instead |

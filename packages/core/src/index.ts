@@ -495,7 +495,13 @@ export {
   NATIVE_MENU_LABELS,
   type NativeMenuLabelKey,
 } from './constants/native-menu-labels.ts';
-export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER, SAVED_THEMES_DIRNAME } from './constants/ok-dir.ts';
+export {
+  LOCAL_DIR,
+  OK_DIR,
+  OK_PROJECT_MARKER,
+  posixOkManagedBinDir,
+  SAVED_THEMES_DIRNAME,
+} from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,
   type PreviewEmbedStarter,

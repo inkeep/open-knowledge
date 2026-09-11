@@ -60,6 +60,7 @@ async function openSlidesDeck(
         message = copy.unsupported;
         break;
       case 'spawn-error':
+      case 'port-error':
         message = copy.startFailed;
         retryable = true;
         break;
