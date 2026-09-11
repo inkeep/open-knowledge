@@ -4,9 +4,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Extension } from '@hocuspocus/server';
-import { CONFIG_DOC_NAME_PROJECT_LOCAL } from '@inkeep/open-knowledge-core';
+import {
+  CONFIG_DOC_NAME_PROJECT_LOCAL,
+  type SemanticProviderErrorReason,
+  type SemanticQueryOutcome,
+} from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
-import { createConceptEmbedder, type LoadOpenAiEmbedderInput } from './embeddings/index.ts';
+import { EmbeddingDimsMismatchError } from './embeddings/embedder.ts';
+import {
+  createConceptEmbedder,
+  type Embedder,
+  type LoadOpenAiEmbedderInput,
+} from './embeddings/index.ts';
+import { MAX_DIMS_DRIFT_RESETS } from './embeddings/semantic-search-service.ts';
 import { getLogger } from './logger.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
@@ -40,7 +50,13 @@ interface SearchRow {
 }
 interface SearchBody {
   results?: SearchRow[];
-  semantic?: { capable: boolean; applied: boolean; coverage: { embedded: number; total: number } };
+  semantic?: {
+    capable: boolean;
+    applied: boolean;
+    outcome: SemanticQueryOutcome;
+    providerErrorReason?: SemanticProviderErrorReason | null;
+    coverage: { embedded: number; total: number };
+  };
 }
 
 function makeReq(method: string, url: string, body = ''): IncomingMessage {
@@ -179,6 +195,7 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(result?.semantic?.coverage.total).toBe(SERVED_PAGE_COUNT);
     expect(result?.semantic?.coverage.embedded).toBe(SERVED_PAGE_COUNT);
     expect(result?.semantic?.applied).toBe(true);
+    expect(result?.semantic?.outcome).toBe('applied');
 
     const rotation = result?.results?.find((r) => r.path === 'guides/credential-rotation');
     expect(rotation, 'zero-overlap doc must surface via the vector candidate source').toBeDefined();
@@ -206,6 +223,8 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
       keyHint: string | null;
       ready: boolean;
       capable: boolean;
+      providerError: boolean;
+      providerErrorReason: SemanticProviderErrorReason | null;
       embedded: number;
       total: number;
     };
@@ -215,6 +234,8 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(status.keyHint).toBe('-key');
     expect(status.ready).toBe(true);
     expect(status.capable).toBe(true);
+    expect(status.providerError).toBe(false);
+    expect(status.providerErrorReason).toBeNull();
     expect(status.total).toBe(SERVED_PAGE_COUNT);
     expect(status.embedded).toBe(SERVED_PAGE_COUNT);
   });
@@ -297,6 +318,145 @@ describe('createServer boot — project-local scope enforcement (egress safety)'
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+test('GET /api/semantic-status exports a warm provider failure reason', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-provider-error-'));
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'config.yml'),
+      'search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n',
+      'utf-8',
+    );
+    const shadowRepo = await initShadowRepo(dir);
+    const srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo,
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+      embedderLoader: () => Promise.reject(new Error('provider down')),
+    });
+    await srv.ready;
+    try {
+      await searchViaServer(srv, {
+        query: 'auth retries',
+        intent: 'full_text',
+        semantic: true,
+      });
+      await vi.waitFor(async () => {
+        const status = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
+          providerError: boolean;
+          providerErrorReason: string | null;
+        };
+        expect(status).toMatchObject({
+          providerError: true,
+          providerErrorReason: 'warm',
+        });
+      });
+    } finally {
+      await srv.destroy();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the real search route maps terminal vector-size drift to restart_required', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-dims-drift-'));
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'config.yml'),
+      'search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n',
+      'utf-8',
+    );
+    const shadowRepo = await initShadowRepo(dir);
+    let servedDims = 8;
+    const createDriftingEmbedder = (): Embedder => {
+      let pinnedDims: number | null = null;
+      return {
+        providerId: 'drifting-provider',
+        modelId: 'drifting-model',
+        get dims() {
+          return pinnedDims;
+        },
+        pinDims: (dimensions) => {
+          pinnedDims ??= dimensions;
+        },
+        embed: (texts) => {
+          if (pinnedDims !== null && pinnedDims !== servedDims) {
+            return Promise.reject(new EmbeddingDimsMismatchError(pinnedDims, servedDims));
+          }
+          pinnedDims = servedDims;
+          return Promise.resolve(
+            texts.map((text, textIndex) =>
+              Float32Array.from(
+                { length: servedDims },
+                (_value, dimensionIndex) => text.length + textIndex + dimensionIndex + 1,
+              ),
+            ),
+          );
+        },
+      };
+    };
+    const srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo,
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+      embedderLoader: () => Promise.resolve(createDriftingEmbedder()),
+    });
+    await srv.ready;
+    const search = () =>
+      searchViaServer(srv, {
+        query: 'auth retries',
+        intent: 'full_text',
+        semantic: true,
+      });
+    const waitForCoverage = async () => {
+      await vi.waitFor(async () => {
+        const result = await search();
+        expect(result.semantic?.coverage.embedded).toBe(1);
+      });
+    };
+
+    try {
+      await waitForCoverage();
+      let terminal: SearchBody | undefined;
+      for (let change = 0; change < MAX_DIMS_DRIFT_RESETS + 2; change += 1) {
+        servedDims += 1;
+        const result = await search();
+        if (result.semantic?.outcome === 'restart_required') {
+          terminal = result;
+          break;
+        }
+        await waitForCoverage();
+      }
+
+      expect(terminal?.semantic).toMatchObject({
+        capable: false,
+        outcome: 'restart_required',
+        providerErrorReason: 'dimensions',
+      });
+    } finally {
+      await srv.destroy();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test.each([120_000, 900_000])(
@@ -603,6 +763,7 @@ describe('createServer boot — similarityFloor config reaches core ranking', ()
         expect(result?.results?.find((r) => r.path === 'rotation')).toBeUndefined();
         for (const r of result?.results ?? []) expect('vector' in r.signals).toBe(false);
         expect(result?.semantic?.applied).toBe(false);
+        expect(result?.semantic?.outcome).toBe('no_match');
       } finally {
         await srv.destroy();
       }

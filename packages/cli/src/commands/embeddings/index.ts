@@ -1,9 +1,13 @@
 import { resolve } from 'node:path';
 import {
   checkEmbeddingsBaseUrl,
+  classifySemanticProviderError,
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
+  isSemanticSearchOffered,
+  type SemanticIndexStatus,
+  SemanticIndexStatusSchema,
 } from '@inkeep/open-knowledge-core';
 import { writeConfigPatch } from '@inkeep/open-knowledge-core/server';
 import {
@@ -48,9 +52,7 @@ async function resolveKeyPresence(
   return { present: false, notRequired: cred.keyless, source: null };
 }
 
-async function fetchLiveCoverage(
-  projectDir: string,
-): Promise<{ embedded: number; total: number } | null> {
+async function fetchLiveCoverage(projectDir: string): Promise<SemanticIndexStatus | null> {
   try {
     const lock = readServerLock(resolveLockDir(projectDir));
     if (!lock || lock.port <= 0 || !isProcessAlive(lock.pid)) return null;
@@ -58,12 +60,38 @@ async function fetchLiveCoverage(
       signal: AbortSignal.timeout(1500),
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as { embedded?: unknown; total?: unknown };
-    if (typeof body.embedded !== 'number' || typeof body.total !== 'number') return null;
-    return { embedded: body.embedded, total: body.total };
+    const parsed = SemanticIndexStatusSchema.safeParse(await res.json());
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
+}
+
+export function formatSemanticCapabilityLabel(
+  offered: boolean,
+  coverage: SemanticIndexStatus | null,
+): string {
+  if (!offered) return 'unavailable (search stays lexical)';
+  const providerFailure = classifySemanticProviderError(coverage);
+  if (providerFailure === 'restart_required') {
+    return 'RESTART REQUIRED (provider vector dimensions changed repeatedly)';
+  }
+  if (providerFailure === 'incapable') {
+    return "CONFIGURATION ERROR (remove search.semantic.dimensions to use the model's own size)";
+  }
+  if (providerFailure === 'provider_error') {
+    if (coverage?.providerErrorReason === 'warm') {
+      return 'temporarily unavailable (provider initialization failed)';
+    }
+    if (coverage?.providerErrorReason === 'corpus') {
+      return 'partially unavailable (corpus indexing requests failed)';
+    }
+    if (coverage?.providerErrorReason === 'query') {
+      return 'temporarily unavailable (query embedding failed)';
+    }
+    return 'temporarily unavailable (provider error)';
+  }
+  return 'AVAILABLE';
 }
 
 function setKeyCommand(): Command {
@@ -154,7 +182,7 @@ function setUrlCommand(): Command {
         process.stderr.write(
           problem === 'invalid-url'
             ? `Not a valid URL: ${url}\n`
-            : `Refusing an insecure endpoint: use https:// (http:// is allowed only for localhost). Got: ${url}\n`,
+            : `Refusing an insecure endpoint: use https:// (http:// is allowed only for loopback endpoints). Got: ${url}\n`,
         );
         process.exitCode = 1;
         return;
@@ -298,8 +326,12 @@ function statusCommand(): Command {
         notRequired: keyNotRequired,
         source: keySource,
       } = await resolveKeyPresence(projectDir, cfg.baseUrl);
-      const capable = cfg.enabled && (hasKey || keyNotRequired);
-      const coverage = capable ? await fetchLiveCoverage(projectDir) : null;
+      const offered = isSemanticSearchOffered({
+        enabled: cfg.enabled,
+        keyPresent: hasKey,
+        keyNotRequired,
+      });
+      const coverage = offered ? await fetchLiveCoverage(projectDir) : null;
 
       if (opts.json) {
         process.stdout.write(
@@ -308,8 +340,14 @@ function statusCommand(): Command {
             key: { present: hasKey, notRequired: keyNotRequired, source: keySource },
             project_config: {
               enabled: cfg.enabled,
-              capable,
+              capable: offered,
               coverage: coverage ? { embedded: coverage.embedded, total: coverage.total } : null,
+              provider_error: coverage
+                ? {
+                    active: coverage.providerError === true,
+                    reason: coverage.providerErrorReason ?? null,
+                  }
+                : null,
               provider: {
                 baseUrl: cfg.baseUrl,
                 model: cfg.model,
@@ -329,13 +367,14 @@ function statusCommand(): Command {
       const keyLabel = hasKey
         ? `set for this endpoint — ${keySource === 'env' ? `environment (${EMBEDDINGS_API_KEY_ENV})` : '~/.ok/secrets.yml'}`
         : keyNotRequired
-          ? 'not required (localhost endpoint)'
+          ? 'not required (loopback endpoint)'
           : 'not set';
-      const coverageLabel = !capable
+      const coverageLabel = !offered
         ? null
         : coverage
           ? `${coverage.embedded} / ${coverage.total} pages embedded`
           : 'server not running — start it to index (or it has not embedded yet)';
+      const capabilityLabel = formatSemanticCapabilityLabel(offered, coverage);
 
       const lines = [
         'Semantic search',
@@ -344,7 +383,7 @@ function statusCommand(): Command {
         '  This project:',
         `    enabled:    ${cfg.enabled ? 'yes' : 'no'}`,
         `    API key:    ${keyLabel}`,
-        `    capability: ${capable ? 'AVAILABLE' : 'unavailable (search stays lexical)'}`,
+        `    capability: ${capabilityLabel}`,
         ...(coverageLabel ? [`    coverage:   ${coverageLabel}`] : []),
         `    provider:   ${cfg.baseUrl}`,
         `    model:      ${cfg.model}`,

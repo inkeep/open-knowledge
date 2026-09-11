@@ -189,6 +189,7 @@ describe('SearchSection', () => {
       keyPresent: true,
       keyNotRequired: false,
       keySource: 'file',
+      keyHint: 'a1b2',
       ready: true,
       capable: true,
       embedded: 2,
@@ -212,6 +213,7 @@ describe('SearchSection', () => {
       keyPresent: true,
       keyNotRequired: false,
       keySource: 'file',
+      keyHint: 'a1b2',
       ready: true,
       capable: true,
       embedded: 3,
@@ -233,6 +235,7 @@ describe('SearchSection', () => {
       keyPresent: true,
       keyNotRequired: false,
       keySource: 'file',
+      keyHint: 'a1b2',
       ready: true,
       capable: true,
       embedded: 0,
@@ -254,6 +257,7 @@ describe('SearchSection', () => {
       keyPresent: false,
       keyNotRequired: false,
       keySource: null,
+      keyHint: null,
       ready: false,
       capable: false,
       embedded: 0,
@@ -278,6 +282,7 @@ describe('SearchSection', () => {
       keyPresent: true,
       keyNotRequired: false,
       keySource: 'file',
+      keyHint: 'a1b2',
       ready: true,
       capable: false,
       embedded: 0,
@@ -291,6 +296,58 @@ describe('SearchSection', () => {
     expect(screen.queryByTestId('settings-search-needs-key')).toBeNull();
   });
 
+  test('on + terminal vector-size drift: asks for a restart', async () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true });
+    mockStatus = {
+      enabled: true,
+      keyPresent: true,
+      keyNotRequired: false,
+      keySource: 'file',
+      keyHint: 'a1b2',
+      ready: true,
+      capable: false,
+      embedded: 0,
+      total: 5,
+      providerError: true,
+      providerErrorReason: 'dimensions',
+    };
+
+    render(<SearchSection />);
+
+    const alert = await screen.findByTestId('settings-search-restart-required');
+    expect(alert.textContent).toContain('OpenKnowledge restarts');
+    expect(screen.queryByTestId('settings-search-provider-error')).toBeNull();
+  });
+
+  test('on + ignored configured dimensions: points back to the config key', async () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    mockProjectLocalConfig = configWithSemantic({ enabled: true, dimensions: 1536 });
+    mockStatus = {
+      enabled: true,
+      keyPresent: true,
+      keyNotRequired: false,
+      keySource: 'file',
+      keyHint: 'a1b2',
+      ready: true,
+      capable: false,
+      embedded: 0,
+      total: 5,
+      providerError: true,
+      providerErrorReason: 'configured_dimensions',
+    };
+
+    render(<SearchSection />);
+
+    const alert = await screen.findByTestId('settings-search-dimensions-mismatch');
+    expect(alert.textContent).toContain(
+      "Remove search.semantic.dimensions to use the model's own size",
+    );
+    expect(screen.queryByTestId('settings-search-provider-error')).toBeNull();
+  });
+
   test('on + keyed but not warmed: shows the pending state', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
@@ -300,6 +357,7 @@ describe('SearchSection', () => {
       keyPresent: true,
       keyNotRequired: false,
       keySource: 'file',
+      keyHint: 'a1b2',
       ready: false,
       capable: false,
       embedded: 0,
@@ -323,6 +381,7 @@ describe('SearchSection', () => {
       keyPresent: false,
       keyNotRequired: false,
       keySource: null,
+      keyHint: null,
       ready: false,
       capable: false,
       embedded: 0,
@@ -582,11 +641,14 @@ describe('SearchSection', () => {
     mockStatus = {
       enabled: true,
       keyPresent: true,
+      keyNotRequired: false,
+      keySource: 'file',
+      keyHint: 'a1b2',
       ready: true,
       capable: true,
       embedded: 4,
       total: 4,
-    } as SemanticIndexStatus;
+    };
     const fetchStatus = vi.fn(global.fetch);
     global.fetch = fetchStatus;
     render(<SearchSection />);
@@ -1234,7 +1296,7 @@ describe('SearchSection', () => {
       capable: false,
       embedded: 0,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     render(<SearchSection />);
     expect(screen.getByTestId('settings-search-key-input')).toBeDefined();
@@ -1255,7 +1317,7 @@ describe('SearchSection', () => {
       capable: false,
       embedded: 0,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     const setKey = vi.fn(async () => ({ ok: true }) as const);
     render(
@@ -1290,7 +1352,7 @@ describe('SearchSection', () => {
       capable: false,
       embedded: 0,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     const setKey = vi.fn(async () => ({ ok: true }) as const);
     render(
@@ -1324,7 +1386,7 @@ describe('SearchSection', () => {
       capable: false,
       embedded: 0,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     render(
       <SearchSection
@@ -1360,7 +1422,7 @@ describe('SearchSection', () => {
       capable: true,
       embedded: 3,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     const clearKey = vi.fn(async () => ({ ok: true }) as const);
     render(
@@ -1378,7 +1440,7 @@ describe('SearchSection', () => {
     expect(clearKey).toHaveBeenCalled();
   });
 
-  test('a localhost endpoint shows the key as not required, and no needs-key nag', async () => {
+  test('a loopback endpoint shows the key as not required, and no needs-key nag', async () => {
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithSemantic({
@@ -1395,7 +1457,7 @@ describe('SearchSection', () => {
       capable: false,
       embedded: 0,
       total: 3,
-    } as unknown as SemanticIndexStatus;
+    };
 
     render(<SearchSection />);
     await waitFor(() =>

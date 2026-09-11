@@ -1044,10 +1044,78 @@ export const SearchResultEntrySchema = z
   .loose() satisfies StandardSchemaV1;
 export type SearchResultEntry = z.infer<typeof SearchResultEntrySchema>;
 
+export const SemanticQueryOutcomeSchema = z.enum([
+  'applied',
+  'no_match',
+  'warming',
+  'incapable',
+  'provider_error',
+  'restart_required',
+  'query_too_short',
+]);
+export type SemanticQueryOutcome = z.infer<typeof SemanticQueryOutcomeSchema>;
+
+export const SemanticProviderErrorReasonSchema = z.enum([
+  'warm',
+  'corpus',
+  'query',
+  'dimensions',
+  'configured_dimensions',
+]);
+export type SemanticProviderErrorReason = z.infer<typeof SemanticProviderErrorReasonSchema>;
+
+export type SemanticProviderFailureOutcome = Extract<
+  SemanticQueryOutcome,
+  'incapable' | 'provider_error' | 'restart_required'
+>;
+
+export function classifySemanticProviderError(
+  status: Pick<SemanticIndexStatus, 'providerError' | 'providerErrorReason'> | null | undefined,
+): SemanticProviderFailureOutcome | null {
+  if (status?.providerErrorReason === 'dimensions') return 'restart_required';
+  if (status?.providerErrorReason === 'configured_dimensions') return 'incapable';
+  if (status?.providerError || status?.providerErrorReason) return 'provider_error';
+  return null;
+}
+
+export function assertNeverSemanticProviderErrorReason(value: never): never {
+  throw new Error(
+    `Unhandled SemanticProviderErrorReason variant: ${JSON.stringify(value as unknown)}`,
+  );
+}
+
+export function semanticProviderErrorBlocks(
+  status: Pick<SemanticIndexStatus, 'providerError' | 'providerErrorReason'> | null | undefined,
+  phase: 'probe' | 'query',
+): boolean {
+  const reason = status?.providerErrorReason;
+  switch (reason) {
+    case null:
+    case undefined:
+      return status?.providerError === true;
+    case 'corpus':
+      return false;
+    case 'query':
+      return phase === 'query';
+    case 'warm':
+    case 'dimensions':
+    case 'configured_dimensions':
+      return true;
+    default:
+      return assertNeverSemanticProviderErrorReason(reason);
+  }
+}
+
+export function assertNeverSemanticQueryOutcome(value: never): never {
+  throw new Error(`Unhandled SemanticQueryOutcome variant: ${JSON.stringify(value as unknown)}`);
+}
+
 export const SearchSemanticStatusSchema = z
   .object({
     capable: z.boolean(),
     applied: z.boolean(),
+    outcome: SemanticQueryOutcomeSchema,
+    providerErrorReason: SemanticProviderErrorReasonSchema.nullable().optional().catch(null),
     coverage: z.object({
       embedded: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
@@ -1065,11 +1133,19 @@ export const SemanticIndexStatusSchema = z
     keyHint: z.string().nullable(),
     ready: z.boolean(),
     capable: z.boolean(),
+    providerError: z.boolean().optional(),
+    providerErrorReason: SemanticProviderErrorReasonSchema.nullable().optional().catch(null),
     embedded: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SemanticIndexStatus = z.infer<typeof SemanticIndexStatusSchema>;
+
+export function isSemanticSearchOffered(
+  status: Pick<SemanticIndexStatus, 'enabled' | 'keyPresent' | 'keyNotRequired'> | null | undefined,
+): boolean {
+  return Boolean(status?.enabled && (status.keyPresent || status.keyNotRequired));
+}
 
 export const SearchSuccessSchema = z
   .object({

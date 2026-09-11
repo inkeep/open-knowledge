@@ -15,6 +15,7 @@ import {
   type RescueEntryTimeline,
   RescueListSuccessSchema,
   SemanticIndexStatusSchema,
+  type SemanticProviderErrorReason,
   ServerInfoSuccessSchema,
   WorkspaceSuccessSchema,
 } from '@inkeep/open-knowledge-core';
@@ -473,12 +474,16 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
         let enabled = false;
         let ready = false;
         let capable = false;
+        let providerError = false;
+        let providerErrorReason: SemanticProviderErrorReason | null = null;
         let embedded = 0;
         if (semanticSearch) {
           const status = semanticSearch.getStatus();
           enabled = status.enabled;
           ready = status.ready;
           capable = status.capable;
+          providerError = status.providerError;
+          providerErrorReason = status.providerErrorReason;
           embedded = status.embeddedCount;
         }
         const statusConfig = readSemanticProviderConfig?.();
@@ -512,6 +517,8 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
             keyHint,
             ready,
             capable,
+            providerError,
+            providerErrorReason,
             embedded,
             total,
           },

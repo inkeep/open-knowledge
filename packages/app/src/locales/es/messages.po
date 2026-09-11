@@ -3905,6 +3905,10 @@ msgstr "No se pudo comprobar qué herramientas están conectadas."
 msgid "Couldn't clear the key — please try again."
 msgstr "No se pudo borrar la clave; inténtalo de nuevo."
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr "No se pudo completar la búsqueda semántica — reintentar"
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr "No se pudo conectar con el servicio de agentes. Asegúrate de que el servidor de OpenKnowledge esté en marcha y actualizado (reinícialo si ya estaba en marcha) y vuelve a intentarlo."
@@ -5672,6 +5676,10 @@ msgstr "Introduce una URL válida, por ejemplo https://notes.example.com"
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
 msgstr "Introduce un número entero entre {minimum} y {maximum}."
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
+msgstr "Introduce al menos 3 caracteres para buscar por significado."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -9372,8 +9380,8 @@ msgid "Not redacted. Check the image before sharing."
 msgstr "Sin censurar. Revisa la imagen antes de compartirla."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
-msgstr "No hace falta para un endpoint de localhost como <0>{endpointHost}</0>: la mayoría de servidores locales la ignoran. Añádela solo si el tuyo la necesita."
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "No hace falta para un endpoint de loopback como <0>{endpointHost}</0>: la mayoría de servidores locales la ignoran. Añádela solo si el tuyo la necesita."
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -12335,6 +12343,10 @@ msgstr "La búsqueda semántica añade una clasificación por significado a la h
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr "La búsqueda semántica está activada, pero no hay ninguna clave de API definida: la búsqueda vuelve a coincidencia por palabras clave. Añade una abajo."
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr "La búsqueda semántica no está disponible con la configuración actual del proveedor de embeddings. Consulta Configuración → Búsqueda."
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13812,8 +13824,8 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr "Ese documento no se abrió a tiempo. Vuelve a intentarlo cuando se haya sincronizado."
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-msgstr "No se puede usar ese endpoint. Escribe una URL https://; http:// solo se admite para localhost."
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "No se puede usar ese endpoint. Escribe una URL https://; http:// solo se admite para endpoints de loopback."
 
 #. placeholder {0}: prompt.agentName
 #: src/components/acp/ThreadView.tsx
@@ -13925,6 +13937,10 @@ msgid "the doc {0}"
 msgstr "el documento {0}"
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr "El tamaño de los vectores del proveedor de embeddings siguió cambiando. La búsqueda semántica está desactivada hasta que se reinicie OpenKnowledge."
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr "El endpoint respondió, pero no con una respuesta de embeddings compatible con OpenAI. Revisa la URL base."
 
@@ -14033,6 +14049,10 @@ msgstr "El proveedor rechazó la solicitud (HTTP {0}). Revisa la clave de API y 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "El proveedor rechazó la solicitud. Revisa la clave de API y el id del modelo."
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+msgstr "El tamaño de los vectores del proveedor siguió cambiando. Reinicia OpenKnowledge antes de volver a buscar por significado."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -15416,8 +15436,8 @@ msgid "Use an http:// or https:// origin."
 msgstr "Usa un origen http:// o https://."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr "Usa una URL https://; http:// solo se admite para localhost."
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "Usa una URL https://; http:// solo se admite para endpoints de loopback."
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

@@ -582,6 +582,9 @@
     "6YBJ3m": ["Tanya AI tentang pilihan"],
     "6YE0P6": ["Menyunting ", ["0"]],
     "6YtxFj": ["Nama"],
+    "6ZIQjC": [
+      "Ukuran vektor penyedia terus berubah. Mulai ulang OpenKnowledge sebelum mencari berdasarkan makna lagi."
+    ],
     "6ZhdPI": ["Apa yang boleh dibaca, ditulis, dan ditampilkan agen."],
     "6_ZOw4": ["Jalur lengkap disalin"],
     "6bTTAN": ["Masukan tidak valid — pilih folder lain."],
@@ -1551,6 +1554,9 @@
     "HPaAxt": [
       "Slidev belum terpasang, jadi aksi Slidev tetap tersembunyi. Pasang, lalu kembali ke jendela ini."
     ],
+    "HQzk0t": [
+      "Endpoint itu tidak bisa dipakai. Masukkan URL https:// — http:// hanya diizinkan untuk endpoint loopback."
+    ],
     "HSI88F": ["Hapus tabel"],
     "HZ7fEu": ["Nama tema"],
     "HbcQYf": [
@@ -1675,7 +1681,6 @@
     "JL3si7": ["Memperbarui"],
     "JLUTgi": ["Belum ada tag — tulis `#namatag` di dokumen mana pun untuk mengisi indeksnya."],
     "JLzQi_": ["Tutup ", ["accessibleLabel"]],
-    "JM_aq-": ["Pakai URL https:// — http:// hanya diizinkan untuk localhost."],
     "JOcPqH": ["Bawa repositori remote ke komputer ini."],
     "JOhCT9": ["Push menyertakan"],
     "JReD69": ["File OpenKnowledge telah dihapus"],
@@ -2203,9 +2208,6 @@
     "Pgu10b": ["Disimpan sebagai <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Pergi ke hasil pencarian penyunting visual sebelumnya."],
     "PhIa-X": ["Ganti salinan-salinan ini dengan symlink ke sumbernya?"],
-    "PhLu69": [
-      "Endpoint itu tidak bisa dipakai. Masukkan URL https:// — http:// hanya diizinkan untuk localhost."
-    ],
     "PiH3UR": ["Disalin!"],
     "PijLsG": ["Nama berkas (dibuat di .ok/schemas/)"],
     "PkeYXL": ["Mode graf terbentang"],
@@ -3027,6 +3029,7 @@
     "ZgJVnp": ["Periksa ejaan saat mengetik"],
     "Zhe80e": ["Pulihkan hingga suntingan ", ["burstNumber"], " pada ", ["docName"]],
     "ZhhOwV": ["Kutipan"],
+    "Zj6JL8": ["Pakai URL https:// — http:// hanya diizinkan untuk endpoint loopback."],
     "ZjtgI-": ["Palet perintah"],
     "ZlCe_H": ["Tidak ada bahasa yang tersedia untuk pemeriksaan ejaan."],
     "Zon_qG": ["Sumber cermin <0>", ["label"], "</0>"],
@@ -3117,6 +3120,7 @@
     ],
     "_gO_m8": ["Menunggu persetujuan Anda"],
     "_gkGSK": ["templat dihapus"],
+    "_oqKcJ": ["Masukkan minimal 3 karakter untuk mencari berdasarkan makna."],
     "_pY_Vq": ["Repositorinya dipindahkan, diganti nama, atau dihapus."],
     "_qD6mn": ["Pilih folder tempat Anda mengkloningnya."],
     "_rP3HI": [["minutes"], " mnt lalu"],
@@ -4089,11 +4093,6 @@
     ],
     "k5rKNs": ["frontmatter"],
     "k7Hoig": ["Tidak ada perubahan isi pada versi ini."],
-    "k8xtrB": [
-      "Tidak diperlukan untuk endpoint localhost seperti <0>",
-      ["endpointHost"],
-      "</0> — kebanyakan server lokal mengabaikannya. Tambahkan hanya jika milik Anda memerlukannya."
-    ],
     "kBNHN1": ["Riwayat navigasi"],
     "kCjkGY": ["Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."],
     "kCqCyf": ["Membuka panel diagnostik lint CodeMirror."],
@@ -4359,6 +4358,9 @@
       "Ekstensi Open Knowledge sudah ditulis, tetapi folder tidak bisa ditandai tepercaya, jadi ekstensi itu tidak akan dimuat. Utas ini tidak memiliki alat Open Knowledge."
     ],
     "mlvM8g": ["Komentar itu tidak bisa ditempatkan ulang."],
+    "mmNeqE": [
+      "Ukuran vektor penyedia embedding terus berubah. Pencarian semantik dinonaktifkan hingga OpenKnowledge dimulai ulang."
+    ],
     "mmpzAq": ["Membungkus baris panjang di penyunting sumber markdown."],
     "mnpsVn": [
       "Pilih satu palet untuk mode terang dan satu untuk mode gelap. Pengaturan tema di Preferensi memilih di antara keduanya — pada “Sistem”, sistem operasi Anda yang memilih."
@@ -4736,6 +4738,9 @@
     "rQAQus": ["Templat tidak bisa disimpan: ", ["error"]],
     "rQRrkB": ["kemarin"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") belum terpasang atau tidak ada di PATH Anda."],
+    "rUNOLA": [
+      "Pencarian semantik tidak tersedia dengan penyiapan penyedia embedding saat ini. Periksa Pengaturan → Pencarian."
+    ],
     "rUWrSE": ["Hapus laporan"],
     "rVJpLz": [
       "Aktif — mengarahkan kursor ke tautan eksternal mengirim URL-nya ke situs tujuan untuk mengambil pratinjau."
@@ -4909,6 +4914,11 @@
     ],
     "tN5WTS": ["Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."],
     "tP5DDk": ["Terapkan tautan"],
+    "tUVRDy": [
+      "Tidak diperlukan untuk endpoint loopback seperti <0>",
+      ["endpointHost"],
+      "</0> — kebanyakan server lokal mengabaikannya. Tambahkan hanya jika milik Anda memerlukannya."
+    ],
     "tUvUfp": ["Pakai folder yang sudah Anda punya."],
     "tX8FLX": [
       "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Pasang keterampilan bawaan OpenKnowledge, atau tulis milik Anda di bilah sisi Keterampilan pada editor."
@@ -5009,6 +5019,7 @@
     "u3BOHd": [["fileCount", "plural", { "other": ["#", " berkas"] }]],
     "u3YnKw": ["URL berbagi tidak dapat disusun."],
     "u3wRF-": ["Diterbitkan"],
+    "u4azam": ["Pencarian semantik tidak dapat diselesaikan — coba lagi"],
     "u5Utjn": [["0"], " membutuhkan ", ["1"]],
     "u5hSeG": ["Bagikan masukan"],
     "u6Hp4N": ["Markdown"],

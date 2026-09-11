@@ -64,6 +64,18 @@ const FAKE_RULE_CATALOG = [
   },
 ];
 
+const SEMANTIC_STATUS_RESPONSE = {
+  enabled: true,
+  keyPresent: false,
+  keyNotRequired: true,
+  keySource: null,
+  keyHint: null,
+  ready: false,
+  capable: false,
+  embedded: 0,
+  total: 0,
+};
+
 vi.doMock('@inkeep/open-knowledge-core', async () => ({
   ...(await vi.importActual<typeof import('@inkeep/open-knowledge-core')>(
     '@inkeep/open-knowledge-core',
@@ -231,7 +243,9 @@ describe('settings dialog search', () => {
 
   test('search reveals the tuning fields and reopens them after an explicit collapse', async () => {
     const user = userEvent.setup();
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(SEMANTIC_STATUS_RESPONSE)));
     const scrollSpy = vi
       .spyOn(HTMLElement.prototype, 'scrollIntoView')
       .mockImplementation(() => {});
@@ -264,7 +278,9 @@ describe('settings dialog search', () => {
 
   test('successful disclosure navigation retires its give-up timer and clears the flash', async () => {
     const user = userEvent.setup();
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(SEMANTIC_STATUS_RESPONSE)));
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
     await user.type(screen.getByTestId('settings-search-input'), 'timeout');
     vi.useFakeTimers();

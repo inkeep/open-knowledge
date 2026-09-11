@@ -9,7 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
 import { CHUNK_CONFIG_ID } from './chunking.ts';
 import { createConceptEmbedder } from './concept-embedder.ts';
-import { createOpenAiEmbedder, type Embedder } from './embedder.ts';
+import { createOpenAiEmbedder, type Embedder, EmbeddingDimsMismatchError } from './embedder.ts';
 import { SemanticSearchService } from './semantic-search-service.ts';
 import { VectorCache } from './vector-cache.ts';
 
@@ -141,10 +141,35 @@ describe('SemanticSearchService', () => {
       doc('good-2', 'sourdough bread cold ferment'),
     ];
     await svc.embedCorpus(mixed);
-    expect(svc.getStatus().embeddedCount).toBe(2);
+    expect(svc.getStatus()).toMatchObject({ embeddedCount: 2, providerError: false });
     const scores = await svc.queryScores('authentication login session', mixed);
     expect(scores?.has('page:good-1')).toBe(true);
     expect(scores?.has('page:bad')).toBe(false);
+  });
+
+  test('one failed incremental document does not report a provider outage', async () => {
+    const inner = createConceptEmbedder({ concepts });
+    let failDocuments = false;
+    const flaky: Embedder = {
+      ...inner,
+      embed: (texts, opts) => {
+        if (opts.role === 'document' && failDocuments) {
+          return Promise.reject(new Error('transient failure'));
+        }
+        return inner.embed(texts, opts);
+      },
+    };
+    const svc = new SemanticSearchService({
+      loadEmbedder: () => Promise.resolve(flaky),
+      cacheDir: null,
+      enabled: true,
+    });
+
+    await svc.embedCorpus(corpus);
+    failDocuments = true;
+    await svc.embedCorpus([doc('session-tokens', 'Updated session token handling.', 2), corpus[1]]);
+
+    expect(svc.getStatus()).toMatchObject({ embeddedCount: 2, providerError: false });
   });
 
   test('query-path provider error degrades to lexical (queryScores → null, no throw)', async () => {
@@ -166,8 +191,136 @@ describe('SemanticSearchService', () => {
     });
     await svc.embedCorpus(corpus);
     expect(await svc.queryScores('auth retries', corpus)).not.toBeNull();
+    expect(svc.getStatus().providerError).toBe(false);
     failQueries = true;
     expect(await svc.queryScores('auth retries', corpus)).toBeNull();
+    expect(svc.getStatus()).toMatchObject({
+      providerError: true,
+      providerErrorReason: 'query',
+    });
+    failQueries = false;
+    expect(await svc.queryScores('auth retries', corpus)).not.toBeNull();
+    expect(svc.getStatus().providerError).toBe(false);
+  });
+
+  test('two independently batched corpus failures report an outage and a query failure supersedes it', async () => {
+    const inner = createConceptEmbedder({ concepts });
+    let failDocuments = false;
+    let failQueries = false;
+    let failedDocumentRequests = 0;
+    const flaky: Embedder = {
+      ...inner,
+      embed: (texts, opts) => {
+        if (opts.role === 'document' && failDocuments) {
+          failedDocumentRequests += 1;
+          return Promise.reject(new Error('provider down'));
+        }
+        if (opts.role === 'query' && failQueries) return Promise.reject(new Error('query down'));
+        return inner.embed(texts, opts);
+      },
+    };
+    const svc = new SemanticSearchService({
+      loadEmbedder: () => Promise.resolve(flaky),
+      cacheDir: null,
+      enabled: true,
+      maxBatchSize: 1,
+    });
+
+    await svc.embedCorpus(corpus);
+    failDocuments = true;
+    const updated = corpus.map((item) => doc(item.path, `${item.content} updated`, 2));
+    await svc.embedCorpus(updated);
+    expect(failedDocumentRequests).toBe(2);
+    expect(svc.getStatus()).toMatchObject({
+      embeddedCount: corpus.length,
+      providerError: true,
+      providerErrorReason: 'corpus',
+    });
+
+    failQueries = true;
+    expect(await svc.queryScores('auth retries', updated)).toBeNull();
+    expect(svc.getStatus()).toMatchObject({
+      providerError: true,
+      providerErrorReason: 'query',
+    });
+
+    failDocuments = false;
+    failQueries = false;
+    await svc.embedCorpus(updated);
+    expect(await svc.queryScores('auth retries', updated)).not.toBeNull();
+    expect(svc.getStatus()).toMatchObject({
+      embeddedCount: corpus.length,
+      providerError: false,
+    });
+  });
+
+  test('a concurrent query failure cannot overwrite a terminal configured-dimensions failure', async () => {
+    const inner = createConceptEmbedder({ concepts });
+    let fail = false;
+    const queryStarted = Promise.withResolvers<void>();
+    const releaseQuery = Promise.withResolvers<void>();
+    const heterogeneous: Embedder = {
+      ...inner,
+      embed: async (texts, opts) => {
+        if (!fail) return inner.embed(texts, opts);
+        if (opts.role === 'document') {
+          throw new EmbeddingDimsMismatchError(inner.dims ?? 1536, (inner.dims ?? 1536) + 1);
+        }
+        queryStarted.resolve();
+        await releaseQuery.promise;
+        throw new Error('query provider down');
+      },
+    };
+    const svc = new SemanticSearchService({
+      loadEmbedder: () => Promise.resolve(heterogeneous),
+      cacheDir: null,
+      enabled: true,
+    });
+    await svc.embedCorpus(corpus);
+
+    fail = true;
+    const query = svc.queryScores('auth retries', corpus);
+    await queryStarted.promise;
+    await svc.embedCorpus(corpus.map((item) => doc(item.path, `${item.content} updated`, 2)));
+    expect(svc.getStatus()).toMatchObject({
+      capable: false,
+      providerErrorReason: 'configured_dimensions',
+    });
+
+    releaseQuery.resolve();
+    await expect(query).resolves.toBeNull();
+    expect(svc.getStatus()).toMatchObject({
+      capable: false,
+      providerErrorReason: 'configured_dimensions',
+    });
+  });
+
+  test('a warm provider failure reloads the provider on retry', async () => {
+    const inner = createConceptEmbedder({ concepts });
+    let failWarm = true;
+    const loadEmbedder = vi.fn(() => {
+      if (failWarm) return Promise.reject(new Error('provider down'));
+      return Promise.resolve(inner);
+    });
+    const svc = new SemanticSearchService({ loadEmbedder, cacheDir: null, enabled: true });
+
+    await svc.embedCorpus(corpus);
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: false,
+      providerError: true,
+      providerErrorReason: 'warm',
+    });
+
+    failWarm = false;
+    await svc.embedCorpus(corpus);
+    expect(loadEmbedder).toHaveBeenCalledTimes(2);
+    expect(svc.getStatus()).toMatchObject({
+      ready: true,
+      capable: true,
+      embeddedCount: corpus.length,
+      providerError: false,
+    });
   });
 
   test('applyConfig disable frees in-memory vectors; re-enable re-warms', async () => {

@@ -1,15 +1,19 @@
 import { describe, expect, test } from 'vitest';
 import {
+  classifySemanticProviderError,
   interpretSkillMoveFailure,
   isSkillMoveRetainedDestinationCode,
   isSkillMoveStateCode,
   isSkillRetentionLedgerCode,
   isSkillSourceStateCode,
   normalizeApiWarnings,
+  SearchSemanticStatusSchema,
+  SemanticIndexStatusSchema,
   SKILL_MOVE_RETAINED_DESTINATION,
   SKILL_MOVE_STATE_CODES,
   SKILL_RETENTION_LEDGER_CODES,
   SKILL_SOURCE_STATE_CODES,
+  semanticProviderErrorBlocks,
   TemplateGetSuccessSchema,
   TemplatePayloadSchema,
 } from './tags-search.ts';
@@ -21,6 +25,62 @@ const validPayload = (scope: 'local' | 'inherited') => ({
   path: 'notes/.ok/templates/daily-journal.md',
   frontmatter: { title: '{{date}}' },
   body: '## Morning\n',
+});
+
+describe('semantic provider error classification', () => {
+  test.each([
+    ['dimensions', 'restart_required'],
+    ['configured_dimensions', 'incapable'],
+    ['warm', 'provider_error'],
+    ['corpus', 'provider_error'],
+    ['query', 'provider_error'],
+  ] as const)('%s maps to %s', (providerErrorReason, expected) => {
+    expect(classifySemanticProviderError({ providerErrorReason })).toBe(expected);
+  });
+
+  test('keeps compatibility with an older status that only carries the boolean', () => {
+    expect(classifySemanticProviderError({ providerError: true })).toBe('provider_error');
+    expect(classifySemanticProviderError({ providerError: false })).toBeNull();
+  });
+
+  test.each([
+    ['warm', true, true],
+    ['corpus', false, false],
+    ['query', false, true],
+    ['dimensions', true, true],
+    ['configured_dimensions', true, true],
+  ] as const)('%s blocks probe=%s query=%s', (providerErrorReason, probe, query) => {
+    const status = { providerError: true, providerErrorReason };
+    expect(semanticProviderErrorBlocks(status, 'probe')).toBe(probe);
+    expect(semanticProviderErrorBlocks(status, 'query')).toBe(query);
+  });
+
+  test('unknown provider reasons degrade to a generic provider error', () => {
+    const indexStatus = SemanticIndexStatusSchema.parse({
+      enabled: true,
+      keyPresent: true,
+      keyNotRequired: false,
+      keySource: 'file',
+      keyHint: 'a1b2',
+      ready: true,
+      capable: false,
+      providerError: true,
+      providerErrorReason: 'future_reason',
+      embedded: 0,
+      total: 2,
+    });
+    const searchStatus = SearchSemanticStatusSchema.parse({
+      capable: false,
+      applied: false,
+      outcome: 'provider_error',
+      providerErrorReason: 'future_reason',
+      coverage: { embedded: 0, total: 2 },
+    });
+
+    expect(indexStatus.providerErrorReason).toBeNull();
+    expect(classifySemanticProviderError(indexStatus)).toBe('provider_error');
+    expect(searchStatus.providerErrorReason).toBeNull();
+  });
 });
 
 describe('API warning compatibility', () => {

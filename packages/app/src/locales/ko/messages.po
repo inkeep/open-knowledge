@@ -3905,6 +3905,10 @@ msgstr "어떤 도구가 연결되었는지 확인하지 못했습니다."
 msgid "Couldn't clear the key — please try again."
 msgstr "키를 지우지 못했습니다. 다시 시도합니다."
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr "시맨틱 검색을 완료할 수 없습니다 — 다시 시도"
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr "에이전트 서비스 연결 실패. OpenKnowledge 서버 실행 및 최신 상태 확인 후 다시 시도하세요. 이미 실행 중이면 재시작하세요."
@@ -5672,6 +5676,10 @@ msgstr "유효한 URL을 입력하세요. 예: https://notes.example.com"
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
 msgstr "{minimum}에서 {maximum} 사이의 정수를 입력하세요."
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
+msgstr "의미로 검색하려면 3자 이상 입력하세요."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -9372,8 +9380,8 @@ msgid "Not redacted. Check the image before sharing."
 msgstr "민감 정보가 가려지지 않았습니다. 공유하기 전에 이미지를 확인하세요."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
-msgstr "<0>{endpointHost}</0> 같은 localhost 엔드포인트에는 필요하지 않습니다. 대부분의 로컬 서버는 키를 무시합니다. 필요할 때만 추가합니다."
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "<0>{endpointHost}</0> 같은 루프백 엔드포인트에는 필요하지 않습니다. 대부분의 로컬 서버는 키를 무시합니다. 필요할 때만 추가합니다."
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -12335,6 +12343,10 @@ msgstr "의미 기반 검색은 검색 도구에 의미 기반 순위를 추가�
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr "의미 기반 검색이 켜져 있지만 API 키가 설정되지 않아 검색이 키워드 매칭으로 대체됩니다. 아래에 추가합니다."
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr "현재 임베딩 제공업체 설정에서는 시맨틱 검색을 사용할 수 없습니다. 설정 → 검색을 확인하세요."
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13812,8 +13824,8 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr "문서 열기 시간 초과. 동기화 후 다시 시도합니다."
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-msgstr "이 엔드포인트는 사용할 수 없습니다. https:// URL을 입력합니다. http://는 localhost에만 사용할 수 있습니다."
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "이 엔드포인트는 사용할 수 없습니다. https:// URL을 입력합니다. http://는 루프백 엔드포인트에만 사용할 수 있습니다."
 
 #. placeholder {0}: prompt.agentName
 #: src/components/acp/ThreadView.tsx
@@ -13925,6 +13937,10 @@ msgid "the doc {0}"
 msgstr "문서 {0}"
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr "임베딩 제공업체의 벡터 크기가 계속 변경되었습니다. OpenKnowledge를 다시 시작할 때까지 시맨틱 검색이 꺼집니다."
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr "엔드포인트가 응답했지만 OpenAI 호환 임베딩 응답이 아닙니다. 기본 URL을 확인합니다."
 
@@ -14033,6 +14049,10 @@ msgstr "제공업체가 요청을 거부했습니다 (HTTP {0}). API 키와 모�
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "제공업체가 요청을 거부했습니다. API 키와 모델 ID를 확인합니다."
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+msgstr "제공업체의 벡터 크기가 계속 변경되었습니다. 의미로 다시 검색하기 전에 OpenKnowledge를 다시 시작하세요."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -15416,8 +15436,8 @@ msgid "Use an http:// or https:// origin."
 msgstr "http:// 또는 https:// 오리진을 사용하세요."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr "https:// URL을 사용합니다. http://는 localhost에만 허용됩니다."
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "https:// URL을 사용합니다. http://는 루프백 엔드포인트에만 허용됩니다."
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

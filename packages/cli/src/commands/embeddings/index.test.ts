@@ -1,11 +1,27 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_EMBEDDINGS_BASE_URL, DEFAULT_EMBEDDINGS_MODEL } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_MODEL,
+  type SemanticIndexStatus,
+} from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify } from 'yaml';
 import * as embeddingsKeyStore from '../../auth/embeddings-key-store.ts';
-import { embeddingsCommand } from './index.ts';
+import { embeddingsCommand, formatSemanticCapabilityLabel } from './index.ts';
+
+const LIVE_STATUS: SemanticIndexStatus = {
+  enabled: true,
+  keyPresent: false,
+  keyNotRequired: true,
+  keySource: null,
+  keyHint: null,
+  ready: true,
+  capable: true,
+  embedded: 2,
+  total: 3,
+};
 
 function readLocalConfig(dir: string): string {
   try {
@@ -155,5 +171,32 @@ describe('ok embeddings status transport settings', () => {
     expect(stdout).toContain('96 chunks maximum per indexing request');
     expect(stdout).toContain('    characters: 96000 approximate characters per indexing request');
     expect(stdout).toContain('30000 ms per indexing request attempt');
+  });
+
+  test.each([
+    ['warm', 'provider initialization failed'],
+    ['corpus', 'corpus indexing requests failed'],
+    ['query', 'query embedding failed'],
+    ['dimensions', 'RESTART REQUIRED'],
+    ['configured_dimensions', "remove search.semantic.dimensions to use the model's own size"],
+  ] as const)('renders the %s provider failure remedy', (providerErrorReason, expected) => {
+    expect(
+      formatSemanticCapabilityLabel(true, {
+        ...LIVE_STATUS,
+        capable: false,
+        providerError: true,
+        providerErrorReason,
+      }),
+    ).toContain(expected);
+  });
+
+  test('keeps an older boolean-only provider error visible', () => {
+    expect(
+      formatSemanticCapabilityLabel(true, {
+        ...LIVE_STATUS,
+        capable: false,
+        providerError: true,
+      }),
+    ).toContain('provider error');
   });
 });

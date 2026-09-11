@@ -3,12 +3,14 @@
 import {
   type ConfigBinding,
   checkEmbeddingsBaseUrl,
+  classifySemanticProviderError,
   DEFAULT_EMBEDDINGS_BASE_URL,
   DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
   DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
   DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
+  isSemanticSearchOffered,
   type LocalOpEmbeddingsTestResponse,
   MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
   MAX_EMBEDDINGS_MAX_BATCH_CHARS,
@@ -16,6 +18,7 @@ import {
   MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
   MIN_EMBEDDINGS_MAX_BATCH_CHARS,
   MIN_EMBEDDINGS_MAX_BATCH_SIZE,
+  type SemanticIndexStatus,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
@@ -220,7 +223,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     if (problem === null) return null;
     return problem === 'invalid-url'
       ? t`Enter a valid URL (for example https://api.openai.com/v1).`
-      : t`Use an https:// URL — http:// is only allowed for localhost.`;
+      : t`Use an https:// URL — http:// is only allowed for loopback endpoints.`;
   }
 
   function onBaseUrlChange(value: string): void {
@@ -239,14 +242,10 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     });
   }
 
-  const serverEnabled = status?.enabled ?? false;
   const keyPresent = status?.keyPresent ?? false;
   const keyNotRequired = status?.keyNotRequired ?? false;
   const keyHint = status?.keyHint ?? null;
   const keySource = status?.keySource ?? null;
-  const ready = status?.ready ?? false;
-  const capable = status?.capable ?? false;
-  const embedded = status?.embedded ?? 0;
   const total = status?.total ?? 0;
 
   const endpointHost = hostOf(configuredBaseUrl) ?? configuredBaseUrl;
@@ -300,18 +299,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
           />
         </div>
 
-        {enabled ? (
-          <SemanticStatusPanel
-            loaded={status !== null}
-            serverEnabled={serverEnabled}
-            keyPresent={keyPresent}
-            keyNotRequired={keyNotRequired}
-            ready={ready}
-            capable={capable}
-            embedded={embedded}
-            total={total}
-          />
-        ) : null}
+        {enabled ? <SemanticStatusPanel status={status} /> : null}
       </div>
 
       <EmbeddingsKeyField
@@ -759,7 +747,7 @@ function EmbeddingsKeyField({
         <p className="text-muted-foreground text-1sm">
           {keyNotRequired ? (
             <Trans>
-              Not required for a localhost endpoint like{' '}
+              Not required for a loopback endpoint like{' '}
               <span className="font-medium">{endpointHost}</span> — most local servers ignore it.
               Add one only if yours needs it.
             </Trans>
@@ -868,27 +856,11 @@ function EmbeddingsKeyField({
 }
 
 interface SemanticStatusPanelProps {
-  loaded: boolean;
-  serverEnabled: boolean;
-  keyPresent: boolean;
-  keyNotRequired: boolean;
-  ready: boolean;
-  capable: boolean;
-  embedded: number;
-  total: number;
+  status: SemanticIndexStatus | null;
 }
 
-function SemanticStatusPanel({
-  loaded,
-  serverEnabled,
-  keyPresent,
-  keyNotRequired,
-  ready,
-  capable,
-  embedded,
-  total,
-}: SemanticStatusPanelProps) {
-  if (!loaded || !serverEnabled) {
+function SemanticStatusPanel({ status }: SemanticStatusPanelProps) {
+  if (!status?.enabled) {
     return (
       <p
         role="status"
@@ -901,7 +873,7 @@ function SemanticStatusPanel({
     );
   }
 
-  if (!keyPresent && !keyNotRequired) {
+  if (!isSemanticSearchOffered(status)) {
     return (
       <div
         role="alert"
@@ -911,6 +883,42 @@ function SemanticStatusPanel({
         <Trans>
           Semantic search is on, but no API key is set — search falls back to keyword matching. Add
           one below.
+        </Trans>
+      </div>
+    );
+  }
+
+  const { ready, capable, embedded, total } = status;
+  const providerFailure = classifySemanticProviderError(status);
+
+  if (providerFailure === 'restart_required') {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-1sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        data-testid="settings-search-restart-required"
+      >
+        <Trans>
+          The embeddings provider's vector size kept changing. Semantic search is off until
+          OpenKnowledge restarts.
+        </Trans>
+      </div>
+    );
+  }
+
+  if (providerFailure === 'incapable') {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-1sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        data-testid="settings-search-dimensions-mismatch"
+      >
+        <Trans>
+          This endpoint ignored the vector size you configured. Remove{' '}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+            search.semantic.dimensions
+          </code>{' '}
+          to use the model's own size.
         </Trans>
       </div>
     );
@@ -1018,8 +1026,8 @@ function TestConnectionFailure({
     case 'invalid_endpoint':
       return (
         <Trans>
-          That endpoint can't be used. Enter an https:// URL — http:// is only allowed for
-          localhost.
+          That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback
+          endpoints.
         </Trans>
       );
     case 'rate_limit':

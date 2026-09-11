@@ -560,6 +560,9 @@
     "6YBJ3m": ["Ask AI about selection"],
     "6YE0P6": ["Editing ", ["0"]],
     "6YtxFj": ["Name"],
+    "6ZIQjC": [
+      "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+    ],
     "6ZhdPI": ["What the agent may read, write, and surface."],
     "6_ZOw4": ["Copied full path"],
     "6bTTAN": ["Invalid input — pick a different folder."],
@@ -1532,6 +1535,9 @@
     "HPaAxt": [
       "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
     ],
+    "HQzk0t": [
+      "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+    ],
     "HSI88F": ["Delete table"],
     "HZ7fEu": ["Theme name"],
     "HbcQYf": [
@@ -1649,7 +1655,6 @@
     "JL3si7": ["Updating"],
     "JLUTgi": ["No tags yet — author `#tagname` in any doc to populate the index."],
     "JLzQi_": ["Close ", ["accessibleLabel"]],
-    "JM_aq-": ["Use an https:// URL — http:// is only allowed for localhost."],
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JOhCT9": ["Push includes"],
     "JReD69": ["OpenKnowledge files were removed"],
@@ -2189,9 +2194,6 @@
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
     "PhIa-X": ["Replace these copies with symlinks to the source?"],
-    "PhLu69": [
-      "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-    ],
     "PiH3UR": ["Copied!"],
     "PijLsG": ["File name (created in .ok/schemas/)"],
     "PkeYXL": ["Expanded graph mode"],
@@ -2998,6 +3000,7 @@
     "ZgJVnp": ["Check spelling while typing"],
     "Zhe80e": ["Restore to edit ", ["burstNumber"], " of ", ["docName"]],
     "ZhhOwV": ["Quote"],
+    "Zj6JL8": ["Use an https:// URL — http:// is only allowed for loopback endpoints."],
     "ZjtgI-": ["Command palette"],
     "ZlCe_H": ["No spelling languages are available."],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
@@ -3096,6 +3099,7 @@
     ],
     "_gO_m8": ["Waiting for your approval"],
     "_gkGSK": ["deleted template"],
+    "_oqKcJ": ["Enter at least 3 characters to search by meaning."],
     "_pY_Vq": ["The repository was moved, renamed, or deleted."],
     "_qD6mn": ["Pick the folder where you've cloned it."],
     "_rP3HI": [["minutes"], "m ago"],
@@ -4053,11 +4057,6 @@
     ],
     "k5rKNs": ["Frontmatter"],
     "k7Hoig": ["No content changes at this version."],
-    "k8xtrB": [
-      "Not required for a localhost endpoint like <0>",
-      ["endpointHost"],
-      "</0> — most local servers ignore it. Add one only if yours needs it."
-    ],
     "kBNHN1": ["Navigation history"],
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
@@ -4329,6 +4328,9 @@
       "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
     ],
     "mlvM8g": ["Couldn't re-place that comment."],
+    "mmNeqE": [
+      "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+    ],
     "mmpzAq": ["Wrap long lines in the markdown source editor."],
     "mnpsVn": [
       "Pick a palette for light mode and one for dark mode. The theme setting in Preferences chooses between them — on “System”, so does your OS."
@@ -4716,6 +4718,9 @@
     "rQAQus": ["Couldn't save template: ", ["error"]],
     "rQRrkB": ["yesterday"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") isn't installed or on your PATH."],
+    "rUNOLA": [
+      "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+    ],
     "rUWrSE": ["Delete report"],
     "rVJpLz": [
       "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -4884,6 +4889,11 @@
     ],
     "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
+    "tUVRDy": [
+      "Not required for a loopback endpoint like <0>",
+      ["endpointHost"],
+      "</0> — most local servers ignore it. Add one only if yours needs it."
+    ],
     "tUvUfp": ["Use a folder you already have."],
     "tX8FLX": [
       "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
@@ -4984,6 +4994,7 @@
     "u3BOHd": [["fileCount", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]],
     "u3YnKw": ["Could not construct share URL."],
     "u3wRF-": ["Published"],
+    "u4azam": ["Couldn't complete semantic search — retry"],
     "u5Utjn": [["0"], " needs ", ["1"]],
     "u5hSeG": ["Share feedback"],
     "u6Hp4N": ["Markdown"],

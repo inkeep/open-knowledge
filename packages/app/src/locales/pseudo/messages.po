@@ -3901,6 +3901,10 @@ msgstr ""
 msgid "Couldn't clear the key — please try again."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr ""
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr ""
@@ -5667,6 +5671,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
 msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9368,7 +9376,7 @@ msgid "Not redacted. Check the image before sharing."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr ""
 
 #: src/components/BugReportHistory.tsx
@@ -12331,6 +12339,10 @@ msgstr ""
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr ""
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13808,7 +13820,7 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr ""
 
 #. placeholder {0}: prompt.agentName
@@ -13921,6 +13933,10 @@ msgid "the doc {0}"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr ""
 
@@ -14028,6 +14044,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
+msgstr ""
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
 msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
@@ -15412,7 +15432,7 @@ msgid "Use an http:// or https:// origin."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx

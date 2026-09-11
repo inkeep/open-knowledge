@@ -1,5 +1,15 @@
+import {
+  assertNeverSemanticQueryOutcome,
+  classifySemanticProviderError,
+  type SearchSemanticStatus,
+  SearchSemanticStatusSchema,
+  SemanticProviderErrorReasonSchema,
+  SemanticQueryOutcomeSchema,
+  semanticProviderErrorBlocks,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
+import { getLogger } from '../../logger.ts';
 import {
   buildListResolver,
   docNameFromPath,
@@ -17,6 +27,8 @@ import {
   textPlusStructured,
   textResult,
 } from './shared.ts';
+
+const log = getLogger('mcp:search');
 
 export const DESCRIPTION = [
   '[Requires: Hocuspocus server] Ranked retrieval across ALL non-ignored files (markdown by title/body, other file types by name/path, plus folders) — pair with `exec` `grep` for exhaustive content search. The cmd-K engine (title boost + body BM25 + recency).',
@@ -90,12 +102,6 @@ const SearchResultRowSchema = z.object({
   previewUrlSource: z.enum(PREVIEW_URL_SOURCES).optional(),
 });
 
-const SearchSemanticStatusSchema = z.object({
-  capable: z.boolean(),
-  applied: z.boolean(),
-  coverage: z.object({ embedded: z.number().int(), total: z.number().int() }),
-});
-
 const OutputSchema = outputSchemaWithText({
   cwd: z.string(),
   query: z.string(),
@@ -121,6 +127,8 @@ interface SearchApiRow {
 interface SearchApiSemanticStatus {
   capable?: boolean;
   applied?: boolean;
+  outcome?: unknown;
+  providerErrorReason?: unknown;
   coverage?: { embedded?: number; total?: number };
 }
 
@@ -146,12 +154,6 @@ interface SearchResultRow {
   snippet?: string;
   previewUrl: string | null;
   previewUrlSource?: PreviewUrlSource;
-}
-
-interface SearchSemanticStatus {
-  capable: boolean;
-  applied: boolean;
-  coverage: { embedded: number; total: number };
 }
 
 interface SearchStructuredResult {
@@ -187,29 +189,74 @@ function normalizeSemanticStatus(
   semantic: SearchApiSemanticStatus | undefined,
 ): SearchSemanticStatus | undefined {
   if (!semantic || typeof semantic.capable !== 'boolean') return undefined;
+  const applied = semantic.applied === true;
+  const coverage = {
+    embedded: typeof semantic.coverage?.embedded === 'number' ? semantic.coverage.embedded : 0,
+    total: typeof semantic.coverage?.total === 'number' ? semantic.coverage.total : 0,
+  };
+  const providerErrorReason = SemanticProviderErrorReasonSchema.safeParse(
+    semantic.providerErrorReason,
+  );
+  if (!providerErrorReason.success && semantic.providerErrorReason != null) {
+    log.warn(
+      { providerErrorReason: semantic.providerErrorReason },
+      '[mcp:search] invalid semantic provider error reason',
+    );
+  }
+  const reason = providerErrorReason.success ? providerErrorReason.data : null;
+  const outcome = SemanticQueryOutcomeSchema.safeParse(semantic.outcome);
+  if (!outcome.success) {
+    log.warn({ outcome: semantic.outcome }, '[mcp:search] invalid semantic outcome');
+  }
+  const reconstructedProviderStatus = {
+    providerError: semantic.providerErrorReason != null,
+    providerErrorReason: reason,
+  };
   return {
     capable: semantic.capable,
-    applied: semantic.applied === true,
-    coverage: {
-      embedded: typeof semantic.coverage?.embedded === 'number' ? semantic.coverage.embedded : 0,
-      total: typeof semantic.coverage?.total === 'number' ? semantic.coverage.total : 0,
-    },
+    applied,
+    outcome: outcome.success
+      ? outcome.data
+      : applied
+        ? 'applied'
+        : ((semanticProviderErrorBlocks(reconstructedProviderStatus, 'query')
+            ? classifySemanticProviderError(reconstructedProviderStatus)
+            : null) ??
+          (!semantic.capable
+            ? 'incapable'
+            : coverage.embedded === 0 && coverage.total > 0
+              ? 'warming'
+              : 'no_match')),
+    providerErrorReason: reason,
+    coverage,
   };
 }
 
 function formatSemanticNote(semantic: SearchSemanticStatus | undefined): string {
   if (!semantic) return '';
-  if (!semantic.capable) {
-    return '> Semantic: enabled but not ready (no API key, or warming up) — lexical ranking only.';
-  }
   const { embedded, total } = semantic.coverage;
-  if (semantic.applied) {
-    return `> Semantic: on — vector signal contributed (${embedded}/${total} pages embedded).`;
+  switch (semantic.outcome) {
+    case 'restart_required':
+      return '> Semantic: the provider changed vector dimensions repeatedly — restart OpenKnowledge before retrying.';
+    case 'provider_error':
+      return '> Semantic: provider unavailable — lexical ranking only.';
+    case 'incapable':
+      return semantic.providerErrorReason === 'configured_dimensions'
+        ? "> Semantic: the configured vector size does not match the provider — remove search.semantic.dimensions to use the model's own size."
+        : '> Semantic: enabled but unavailable (no usable embeddings provider) — lexical ranking only.';
+    case 'applied':
+      return `> Semantic: on — vector signal contributed (${embedded}/${total} pages embedded).`;
+    case 'query_too_short':
+      return '> Semantic: the query is too short for vector ranking — lexical ranking only.';
+    case 'warming':
+      return `> Semantic: on — indexing ${embedded}/${total} pages; vectors are still filling in, re-run for fuller coverage.`;
+    case 'no_match':
+      return embedded < total
+        ? `> Semantic: on — indexing ${embedded}/${total} pages; vectors are still filling in, re-run for fuller coverage.`
+        : '> Semantic: on — no page cleared the similarity threshold for this query.';
+    default:
+      return assertNeverSemanticQueryOutcome(semantic.outcome);
   }
-  if (embedded < total) {
-    return `> Semantic: on — indexing ${embedded}/${total} pages; vectors are still filling in, re-run for fuller coverage.`;
-  }
-  return '> Semantic: on — no page cleared the similarity threshold for this query.';
 }
 
 function formatResultsBlock(results: SearchResultRow[]): string {

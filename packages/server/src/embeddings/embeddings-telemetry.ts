@@ -1,4 +1,4 @@
-import type { SearchSource } from '@inkeep/open-knowledge-core';
+import type { SearchSource, SemanticQueryOutcome } from '@inkeep/open-knowledge-core';
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from '../logger.ts';
 import { getMeter } from '../telemetry.ts';
@@ -14,13 +14,6 @@ export type EmbeddingErrorReason =
   | 'network'
   | 'dims_mismatch'
   | 'malformed_response';
-
-export type SemanticQueryOutcome =
-  | 'applied'
-  | 'no_match'
-  | 'warming'
-  | 'incapable'
-  | 'provider_error';
 
 let _tokens: Counter | null = null;
 let _errors: Counter | null = null;

@@ -3901,6 +3901,10 @@ msgstr "जाँच नहीं हो सकी कि कौन-से ट�
 msgid "Couldn't clear the key — please try again."
 msgstr "कुंजी साफ़ नहीं की जा सकी — कृपया फिर कोशिश करें।"
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr "सिमेंटिक खोज पूरी नहीं हो सकी — फिर से कोशिश करें"
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr "एजेंट सेवा से नहीं जुड़ा जा सका। सुनिश्चित करें कि OpenKnowledge सर्वर चल रहा है और अद्यतित है (यदि पहले से चल रहा था तो उसे पुनः आरंभ करें), फिर कोशिश करें।"
@@ -5668,6 +5672,10 @@ msgstr "एक मान्य URL दर्ज करें, उदाहरण
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
 msgstr "{minimum} और {maximum} के बीच एक पूर्णांक दर्ज करें।"
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
+msgstr "अर्थ के आधार पर खोजने के लिए कम से कम 3 अक्षर दर्ज करें।"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -9368,8 +9376,8 @@ msgid "Not redacted. Check the image before sharing."
 msgstr "संवेदनशील जानकारी नहीं छिपाई गई है। साझा करने से पहले चित्र जाँचें।"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
-msgstr "<0>{endpointHost}</0> जैसे localhost एंडपॉइंट के लिए ज़रूरी नहीं — अधिकतर स्थानीय सर्वर इसे अनदेखा करते हैं। केवल तभी जोड़ें जब आपके सर्वर को इसकी ज़रूरत हो।"
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "<0>{endpointHost}</0> जैसे लूपबैक एंडपॉइंट के लिए ज़रूरी नहीं — अधिकतर स्थानीय सर्वर इसे अनदेखा करते हैं। केवल तभी जोड़ें जब आपके सर्वर को इसकी ज़रूरत हो।"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -12331,6 +12339,10 @@ msgstr "अर्थ-आधारित खोज, खोज टूल में
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr "अर्थ-आधारित खोज चालू है, पर कोई API कुंजी सेट नहीं है — खोज कीवर्ड मिलान पर लौट आती है। नीचे एक जोड़ें।"
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr "मौजूदा एम्बेडिंग प्रोवाइडर सेटअप के साथ सिमेंटिक खोज उपलब्ध नहीं है। सेटिंग्स → खोज देखें।"
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13808,8 +13820,8 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr "वह दस्तावेज़ समय पर नहीं खुला। सिंक होने के बाद फिर से कोशिश करें।"
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-msgstr "वह एंडपॉइंट उपयोग नहीं किया जा सकता। कोई https:// URL डालें — http:// केवल localhost के लिए अनुमत है।"
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "वह एंडपॉइंट उपयोग नहीं किया जा सकता। कोई https:// URL डालें — http:// केवल लूपबैक एंडपॉइंट के लिए अनुमत है।"
 
 #. placeholder {0}: prompt.agentName
 #: src/components/acp/ThreadView.tsx
@@ -13921,6 +13933,10 @@ msgid "the doc {0}"
 msgstr "दस्तावेज़ {0}"
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr "एम्बेडिंग प्रोवाइडर का वेक्टर आकार बार-बार बदलता रहा। OpenKnowledge के पुनः शुरू होने तक सिमेंटिक खोज बंद है।"
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr "एंडपॉइंट ने उत्तर तो दिया, पर वह OpenAI-संगत एम्बेडिंग प्रतिक्रिया नहीं थी। आधार URL जाँचें।"
 
@@ -14029,6 +14045,10 @@ msgstr "प्रदाता ने अनुरोध अस्वीकार
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "प्रदाता ने अनुरोध अस्वीकार कर दिया। API कुंजी और मॉडल id जाँचें।"
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+msgstr "प्रोवाइडर का वेक्टर आकार बार-बार बदलता रहा। अर्थ के आधार पर दोबारा खोजने से पहले OpenKnowledge को पुनः शुरू करें।"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -15412,8 +15432,8 @@ msgid "Use an http:// or https:// origin."
 msgstr "एक http:// या https:// origin का उपयोग करें।"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr "कोई https:// URL उपयोग करें — http:// केवल localhost के लिए अनुमत है।"
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "कोई https:// URL उपयोग करें — http:// केवल लूपबैक एंडपॉइंट के लिए अनुमत है।"
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

@@ -665,6 +665,9 @@
     "6YBJ3m": ["Preguntar a la IA sobre la selección"],
     "6YE0P6": ["Editando ", ["0"]],
     "6YtxFj": ["Nombre"],
+    "6ZIQjC": [
+      "El tamaño de los vectores del proveedor siguió cambiando. Reinicia OpenKnowledge antes de volver a buscar por significado."
+    ],
     "6ZhdPI": ["Lo que el agente puede leer, escribir y mostrar."],
     "6_ZOw4": ["Ruta completa copiada"],
     "6bTTAN": ["Entrada no válida: elige otra carpeta."],
@@ -1791,6 +1794,9 @@
     "HPaAxt": [
       "Slidev no está instalado, así que la acción de Slidev permanece oculta. Instálalo y vuelve a esta ventana."
     ],
+    "HQzk0t": [
+      "No se puede usar ese endpoint. Escribe una URL https://; http:// solo se admite para endpoints de loopback."
+    ],
     "HSI88F": ["Eliminar tabla"],
     "HZ7fEu": ["Nombre del tema"],
     "HbcQYf": [
@@ -1936,7 +1942,6 @@
       "Todavía no hay etiquetas: escribe `#nombredeetiqueta` en cualquier documento para llenar el índice."
     ],
     "JLzQi_": ["Cerrar ", ["accessibleLabel"]],
-    "JM_aq-": ["Usa una URL https://; http:// solo se admite para localhost."],
     "JOcPqH": ["Trae un repositorio remoto a este equipo."],
     "JOhCT9": ["Push incluye"],
     "JReD69": ["Se eliminaron los archivos de OpenKnowledge"],
@@ -2528,9 +2533,6 @@
     "Pgu10b": ["Guardado como <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Ir al resultado de búsqueda anterior del editor visual."],
     "PhIa-X": ["¿Reemplazar estas copias por enlaces simbólicos al origen?"],
-    "PhLu69": [
-      "No se puede usar ese endpoint. Escribe una URL https://; http:// solo se admite para localhost."
-    ],
     "PiH3UR": ["¡Copiado!"],
     "PijLsG": ["Nombre del archivo (se crea en .ok/schemas/)"],
     "PkeYXL": ["Modo de grafo expandido"],
@@ -3488,6 +3490,7 @@
     "ZgJVnp": ["Comprobar la ortografía al escribir"],
     "Zhe80e": ["Restaurar hasta la edición ", ["burstNumber"], " de ", ["docName"]],
     "ZhhOwV": ["Cita"],
+    "Zj6JL8": ["Usa una URL https://; http:// solo se admite para endpoints de loopback."],
     "ZjtgI-": ["Paleta de comandos"],
     "ZlCe_H": ["No hay idiomas disponibles para la corrección ortográfica."],
     "Zon_qG": ["Origen del espejo <0>", ["label"], "</0>"],
@@ -3595,6 +3598,7 @@
     ],
     "_gO_m8": ["Esperando tu aprobación"],
     "_gkGSK": ["plantilla eliminada"],
+    "_oqKcJ": ["Introduce al menos 3 caracteres para buscar por significado."],
     "_pY_Vq": ["El repositorio se movió, se renombró o se eliminó."],
     "_qD6mn": ["Elige la carpeta donde lo has clonado."],
     "_rP3HI": ["hace ", ["minutes"], " min"],
@@ -4702,11 +4706,6 @@
     ],
     "k5rKNs": ["frontmatter"],
     "k7Hoig": ["No hay cambios de contenido en esta versión."],
-    "k8xtrB": [
-      "No hace falta para un endpoint de localhost como <0>",
-      ["endpointHost"],
-      "</0>: la mayoría de servidores locales la ignoran. Añádela solo si el tuyo la necesita."
-    ],
     "kBNHN1": ["Historial de navegación"],
     "kCjkGY": ["Esto puede tardar un momento. Tu contenido markdown se conserva."],
     "kCqCyf": ["Abre el panel de diagnóstico de análisis de CodeMirror."],
@@ -5019,6 +5018,9 @@
       "Se escribió la extensión de Open Knowledge, pero no se pudo marcar la carpeta como de confianza, así que no se cargará. Este hilo no tiene herramientas de Open Knowledge."
     ],
     "mlvM8g": ["No se pudo volver a colocar ese comentario."],
+    "mmNeqE": [
+      "El tamaño de los vectores del proveedor de embeddings siguió cambiando. La búsqueda semántica está desactivada hasta que se reinicie OpenKnowledge."
+    ],
     "mmpzAq": ["Ajusta las líneas largas en el editor de código markdown."],
     "mnpsVn": [
       "Elige una paleta para el modo claro y otra para el oscuro. El ajuste de tema en Preferencias elige entre ambas; en “Sistema”, lo hace tu SO."
@@ -5446,6 +5448,9 @@
     "rQAQus": ["No se pudo guardar la plantilla: ", ["error"]],
     "rQRrkB": ["ayer"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") no está instalado ni en tu PATH."],
+    "rUNOLA": [
+      "La búsqueda semántica no está disponible con la configuración actual del proveedor de embeddings. Consulta Configuración → Búsqueda."
+    ],
     "rUWrSE": ["Eliminar informe"],
     "rVJpLz": [
       "Activada: al pasar el cursor por un enlace externo se envía su URL al sitio de destino para obtener una vista previa."
@@ -5632,6 +5637,11 @@
     ],
     "tN5WTS": ["El proveedor rechazó la solicitud. Revisa la clave de API y el id del modelo."],
     "tP5DDk": ["Aplicar enlace"],
+    "tUVRDy": [
+      "No hace falta para un endpoint de loopback como <0>",
+      ["endpointHost"],
+      "</0>: la mayoría de servidores locales la ignoran. Añádela solo si el tuyo la necesita."
+    ],
     "tUvUfp": ["Usa una carpeta que ya tengas."],
     "tX8FLX": [
       "Las habilidades enseñan tareas repetibles a tus herramientas de IA. Instala las que incluye OpenKnowledge o escribe las tuyas en la barra lateral Habilidades del editor."
@@ -5739,6 +5749,7 @@
     ],
     "u3YnKw": ["No se pudo construir la URL para compartir."],
     "u3wRF-": ["Publicado"],
+    "u4azam": ["No se pudo completar la búsqueda semántica — reintentar"],
     "u5Utjn": [["0"], " necesita ", ["1"]],
     "u5hSeG": ["Enviar comentarios"],
     "u6Hp4N": ["Markdown"],

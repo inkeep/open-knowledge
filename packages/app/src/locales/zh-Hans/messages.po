@@ -3905,6 +3905,10 @@ msgstr "无法检查哪些工具已连接。"
 msgid "Couldn't clear the key — please try again."
 msgstr "无法清除密钥——请重试。"
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr "无法完成语义搜索 — 重试"
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr "无法连接到智能体服务。请确认 OpenKnowledge 服务器正在运行且为最新版本（如果它已在运行，请重启），然后重试。"
@@ -5672,6 +5676,10 @@ msgstr "输入有效的 URL，例如 https://notes.example.com"
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
 msgstr "请输入 {minimum} 到 {maximum} 之间的整数。"
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
+msgstr "输入至少 3 个字符以按含义搜索。"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -9372,8 +9380,8 @@ msgid "Not redacted. Check the image before sharing."
 msgstr "未经脱敏。分享前请检查图片。"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
-msgstr "对于 <0>{endpointHost}</0> 这样的本地端点不是必需的——大多数本地服务器会忽略它。只有你的服务器需要时才添加。"
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "对于 <0>{endpointHost}</0> 这样的回环端点不是必需的——大多数本地服务器会忽略它。只有你的服务器需要时才添加。"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -12335,6 +12343,10 @@ msgstr "语义搜索为搜索工具加入基于语义的排序，即使没有共
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr "语义搜索已开启，但没有设置 API 密钥——搜索会退回到关键词匹配。请在下方添加一个。"
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr "当前嵌入提供商设置无法使用语义搜索。请检查“设置”→“搜索”。"
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13812,8 +13824,8 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr "该文档未能及时打开。请在同步完成后重试。"
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-msgstr "无法使用那个端点。请输入 https:// 的 URL——http:// 只允许用于 localhost。"
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "无法使用那个端点。请输入 https:// 的 URL——http:// 只允许用于回环端点。"
 
 #. placeholder {0}: prompt.agentName
 #: src/components/acp/ThreadView.tsx
@@ -13925,6 +13937,10 @@ msgid "the doc {0}"
 msgstr "文档 {0}"
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr "嵌入提供商的向量大小不断变化。OpenKnowledge 重启前，语义搜索将保持关闭。"
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr "端点有响应，但返回的不是兼容 OpenAI 的嵌入响应。请检查基础 URL。"
 
@@ -14033,6 +14049,10 @@ msgstr "服务提供方拒绝了这个请求（HTTP {0}）。请检查 API 密�
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "服务提供方拒绝了这个请求。请检查 API 密钥和模型 id。"
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+msgstr "提供商的向量大小不断变化。请重启 OpenKnowledge，然后再按含义搜索。"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -15416,8 +15436,8 @@ msgid "Use an http:// or https:// origin."
 msgstr "请使用 http:// 或 https:// 来源。"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr "请使用 https:// 的 URL——http:// 只允许用于 localhost。"
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "请使用 https:// 的 URL——http:// 只允许用于回环端点。"
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

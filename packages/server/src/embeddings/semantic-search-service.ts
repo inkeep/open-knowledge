@@ -1,5 +1,6 @@
 import {
   DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+  type SemanticProviderErrorReason,
   type WorkspaceSearchDocument,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
@@ -21,6 +22,7 @@ function errMsg(err: unknown): string {
 export const SEMANTIC_MIN_QUERY_LENGTH = 3;
 
 const MAX_CONSECUTIVE_EMBED_FAILURES = 5;
+const MIN_FAILED_REQUESTS_FOR_CORPUS_PROVIDER_ERROR = 2;
 
 export const MAX_DIMS_DRIFT_RESETS = 2;
 
@@ -37,6 +39,8 @@ export interface SemanticSearchStatus {
   enabled: boolean;
   capable: boolean;
   ready: boolean;
+  providerError: boolean;
+  providerErrorReason: SemanticProviderErrorReason | null;
   embeddedCount: number;
 }
 
@@ -59,6 +63,7 @@ export class SemanticSearchService {
   private maxBatchSize: number;
   private capable = false;
   private ready = false;
+  private providerErrorReason: SemanticProviderErrorReason | null = null;
   private embedder: Embedder | null = null;
   private cache: VectorCache | null = null;
 
@@ -87,6 +92,8 @@ export class SemanticSearchService {
       enabled: this.enabled,
       capable: this.capable,
       ready: this.ready,
+      providerError: this.providerErrorReason !== null,
+      providerErrorReason: this.providerErrorReason,
       embeddedCount: this.cache?.embeddedCount ?? 0,
     };
   }
@@ -114,14 +121,15 @@ export class SemanticSearchService {
   }
 
   private resetWarm(
-    reason: 'provider' | 'transport' | 'disabled' | 'credential' | 'dimensions',
+    reason: 'provider' | 'transport' | 'disabled' | 'credential' | 'dimensions' | 'retry',
   ): void {
     const cachedDocuments = this.cache?.embeddedCount ?? 0;
-    const retainCache = reason === 'transport' || reason === 'credential';
+    const retainCache = reason === 'transport' || reason === 'credential' || reason === 'retry';
     this.warmGeneration += 1;
     this.warmPromise = null;
     this.ready = false;
     this.capable = false;
+    this.providerErrorReason = null;
     this.embedder = null;
     if (reason === 'disabled') this.cache?.clearMemory();
     if (reason === 'dimensions') this.cache?.discard();
@@ -140,29 +148,54 @@ export class SemanticSearchService {
     this.resetWarm('credential');
   }
 
-  private recoverFromDimsDrift(cache: VectorCache, err: EmbeddingDimsMismatchError): boolean {
-    if (cache.identityDims !== 'auto') return false;
-    if (this.cache !== cache) return false;
+  private reportPhaseFailure(reason: 'warm' | 'corpus' | 'query'): void {
+    if (
+      this.providerErrorReason === 'dimensions' ||
+      this.providerErrorReason === 'configured_dimensions'
+    ) {
+      return;
+    }
+    this.providerErrorReason = reason;
+  }
+
+  private recoverFromDimsDrift(
+    cache: VectorCache,
+    err: EmbeddingDimsMismatchError,
+    phase: 'corpus' | 'query',
+  ): void {
+    if (this.cache !== cache) return;
+    if (cache.identityDims !== 'auto') {
+      log.error(
+        { expected: err.expected, got: err.got, phase, recovery: 'configured_mismatch' },
+        '[embeddings] provider ignored the configured vector size — check search.semantic.dimensions',
+      );
+      this.capable = false;
+      this.providerErrorReason = 'configured_dimensions';
+      cache.clearMemory();
+      return;
+    }
     if (this.dimsDriftResets >= MAX_DIMS_DRIFT_RESETS) {
       log.error(
         {
           expected: err.expected,
           got: err.got,
+          phase,
+          recovery: 'drift_exhausted',
           unloadedInMemoryDocumentCount: cache.embeddedCount,
         },
         '[embeddings] provider vector length keeps changing — disabling semantic search until restart',
       );
       this.capable = false;
+      this.providerErrorReason = 'dimensions';
       cache.clearMemory();
-      return false;
+      return;
     }
     this.dimsDriftResets += 1;
     log.warn(
-      { expected: err.expected, got: err.got },
+      { expected: err.expected, got: err.got, phase, recovery: 'recovered' },
       '[embeddings] provider vector length changed — discarding cached vectors and re-embedding',
     );
     this.resetWarm('dimensions');
-    return true;
   }
 
   async ensureWarm(): Promise<void> {
@@ -214,12 +247,16 @@ export class SemanticSearchService {
       if (generation !== this.warmGeneration || !this.enabled) return;
       this.capable = false;
       this.ready = true;
+      this.reportPhaseFailure('warm');
       log.warn({ err }, '[embeddings] warm failed');
     }
   }
 
   embedCorpus(documents: readonly WorkspaceSearchDocument[]): Promise<void> {
     if (!this.enabled) return Promise.resolve();
+    if (this.providerErrorReason === 'warm' && this.ready && !this.capable) {
+      this.resetWarm('retry');
+    }
     this.queuedDocs = documents;
     this.embedChain = this.embedChain.then(async () => {
       const next = this.queuedDocs;
@@ -228,6 +265,7 @@ export class SemanticSearchService {
       try {
         await this.runEmbedPass(next);
       } catch (err) {
+        this.reportPhaseFailure('corpus');
         log.warn({ err }, '[embeddings] embed pass failed');
       }
     });
@@ -260,6 +298,8 @@ export class SemanticSearchService {
 
     let consecutiveFailures = 0;
     let completedDocumentCount = 0;
+    let failedRequestCount = 0;
+    let haltedForProviderFailures = false;
 
     const storeDoc = (p: Pending, vectors: Float32Array[]): void => {
       const observed = vectors[0]?.length;
@@ -281,6 +321,7 @@ export class SemanticSearchService {
         return true;
       } catch (batchErr) {
         if (batchErr instanceof EmbeddingDimsMismatchError) throw new DimsMismatchSignal(batchErr);
+        failedRequestCount += 1;
         if (group.length === 1) {
           log.warn(
             { docId: group[0].doc.id, err: errMsg(batchErr) },
@@ -297,6 +338,7 @@ export class SemanticSearchService {
             consecutiveFailures = 0;
           } catch (docErr) {
             if (docErr instanceof EmbeddingDimsMismatchError) throw new DimsMismatchSignal(docErr);
+            failedRequestCount += 1;
             log.warn(
               { docId: p.doc.id, err: errMsg(docErr) },
               '[embeddings] failed to embed document',
@@ -320,18 +362,18 @@ export class SemanticSearchService {
           const carryOn = await embedGroup(batch);
           batch = [];
           batchChunks = 0;
-          if (!carryOn) break;
+          if (!carryOn) {
+            haltedForProviderFailures = true;
+            break;
+          }
         }
       }
-      if (batch.length > 0 && this.enabled) await embedGroup(batch);
+      if (batch.length > 0 && this.enabled) {
+        haltedForProviderFailures = !(await embedGroup(batch));
+      }
     } catch (err) {
       if (!(err instanceof DimsMismatchSignal)) throw err;
-      if (!this.recoverFromDimsDrift(cache, err.cause)) {
-        log.warn(
-          { err: err.cause },
-          '[embeddings] provider returned an unexpected vector length — stopping this embed pass',
-        );
-      }
+      this.recoverFromDimsDrift(cache, err.cause, 'corpus');
       return;
     }
 
@@ -349,6 +391,12 @@ export class SemanticSearchService {
     }
     cache.retain(activeIds);
     await cache.persist();
+    const corpusProviderError =
+      haltedForProviderFailures ||
+      (completedDocumentCount === 0 &&
+        failedRequestCount >= MIN_FAILED_REQUESTS_FOR_CORPUS_PROVIDER_ERROR);
+    if (corpusProviderError) this.reportPhaseFailure('corpus');
+    else if (this.providerErrorReason === 'corpus') this.providerErrorReason = null;
   }
 
   async queryScores(
@@ -366,15 +414,12 @@ export class SemanticSearchService {
     let queryVec: Float32Array | undefined;
     try {
       [queryVec] = await embedder.embed([trimmed], { role: 'query' });
+      if (this.providerErrorReason === 'query') this.providerErrorReason = null;
     } catch (err) {
       if (err instanceof EmbeddingDimsMismatchError) {
-        if (!this.recoverFromDimsDrift(cache, err)) {
-          log.warn(
-            { err, expected: err.expected, got: err.got },
-            '[embeddings] query vector length does not match the cached corpus — degrading to lexical',
-          );
-        }
+        this.recoverFromDimsDrift(cache, err, 'query');
       } else {
+        this.reportPhaseFailure('query');
         log.warn(
           { err, reason: err instanceof EmbeddingProviderError ? err.reason : undefined },
           '[embeddings] query embed failed — degrading to lexical',

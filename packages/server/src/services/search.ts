@@ -2,6 +2,7 @@ import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'no
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
+  classifySemanticProviderError,
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
   isHiddenDocName,
@@ -10,8 +11,10 @@ import {
   type SearchSemanticStatus,
   type SearchSource,
   type SearchSuccess,
+  type SemanticQueryOutcome,
   SKILL_NAME_REGEX,
   searchWorkspaceCorpus,
+  semanticProviderErrorBlocks,
   updateWorkspaceSearchCorpus,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchDocument,
@@ -22,10 +25,7 @@ import {
   type WorkspaceSemanticInput,
 } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
-import {
-  recordSemanticQuery,
-  type SemanticQueryOutcome,
-} from '../embeddings/embeddings-telemetry.ts';
+import { recordSemanticQuery } from '../embeddings/embeddings-telemetry.ts';
 import { SEMANTIC_MIN_QUERY_LENGTH, type SemanticSearchService } from '../embeddings/index.ts';
 import type { FileIndexEntry } from '../file-watcher.ts';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
@@ -201,11 +201,27 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
     }
 
     const status = semanticSearch.getStatus();
+    const blockingProviderFailure = semanticProviderErrorBlocks(status, 'query')
+      ? classifySemanticProviderError(status)
+      : null;
+    const outcome: SemanticQueryOutcome =
+      blockingProviderFailure ??
+      (!status.ready
+        ? 'warming'
+        : !status.capable
+          ? 'incapable'
+          : status.embeddedCount === 0
+            ? 'warming'
+            : query.trim().length < SEMANTIC_MIN_QUERY_LENGTH
+              ? 'query_too_short'
+              : 'no_match');
     return {
       input,
       status: {
         capable: status.capable,
         applied: false,
+        outcome,
+        providerErrorReason: status.providerErrorReason,
         coverage: { embedded: status.embeddedCount, total: pageTotal },
       },
       queryEmbedMs,
@@ -524,14 +540,8 @@ export function createSearchService(deps: SearchServiceDeps): SearchService {
           0,
         );
         const applied = vectorContributors > 0;
-        semanticStatus = { ...semantic.status, applied };
-        const outcome: SemanticQueryOutcome = !semantic.capable
-          ? 'incapable'
-          : applied
-            ? 'applied'
-            : semantic.status.coverage.embedded === 0
-              ? 'warming'
-              : 'no_match';
+        const outcome: SemanticQueryOutcome = applied ? 'applied' : semantic.status.outcome;
+        semanticStatus = { ...semantic.status, applied, outcome };
         recordSemanticQuery({
           outcome,
           source: params.source,

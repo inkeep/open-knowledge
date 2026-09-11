@@ -688,6 +688,9 @@
     "6YBJ3m": ["Demander à l'IA à propos de la sélection"],
     "6YE0P6": ["Modification de ", ["0"]],
     "6YtxFj": ["Nom"],
+    "6ZIQjC": [
+      "La taille des vecteurs du fournisseur changeait continuellement. Redémarrez OpenKnowledge avant d’effectuer une nouvelle recherche par sens."
+    ],
     "6ZhdPI": ["Ce que l'agent peut lire, écrire et faire remonter."],
     "6_ZOw4": ["Chemin complet copié"],
     "6bTTAN": ["Saisie invalide — choisissez un autre dossier."],
@@ -1823,6 +1826,9 @@
     "HPaAxt": [
       "Slidev n'est pas installé, l'action Slidev reste donc masquée. Installez-le, puis revenez à cette fenêtre."
     ],
+    "HQzk0t": [
+      "Ce point de terminaison ne peut pas être utilisé. Saisissez une URL https:// — http:// n'est autorisé que pour les points de terminaison de bouclage."
+    ],
     "HSI88F": ["Supprimer le tableau"],
     "HZ7fEu": ["Nom du thème"],
     "HbcQYf": [
@@ -1966,7 +1972,6 @@
       "Pas encore d'étiquettes — écrivez `#nometiquette` dans un document pour alimenter l'index."
     ],
     "JLzQi_": ["Fermer ", ["accessibleLabel"]],
-    "JM_aq-": ["Utilisez une URL https:// — http:// n'est autorisé que pour localhost."],
     "JOcPqH": ["Récupérer un dépôt distant sur cette machine."],
     "JOhCT9": ["Pousser inclut"],
     "JReD69": ["Les fichiers OpenKnowledge ont été supprimés"],
@@ -2569,9 +2574,6 @@
     "Pgu10b": ["Enregistré sous <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Va au résultat de recherche précédent dans l'éditeur visuel."],
     "PhIa-X": ["Remplacer ces copies par des liens symboliques vers la source ?"],
-    "PhLu69": [
-      "Ce point de terminaison ne peut pas être utilisé. Saisissez une URL https:// — http:// n'est autorisé que pour localhost."
-    ],
     "PiH3UR": ["Copié !"],
     "PijLsG": ["Nom du fichier (créé dans .ok/schemas/)"],
     "PkeYXL": ["Mode graphe développé"],
@@ -3533,6 +3535,9 @@
     "ZgJVnp": ["Vérifier l'orthographe pendant la saisie"],
     "Zhe80e": ["Restaurer à la modification ", ["burstNumber"], " de ", ["docName"]],
     "ZhhOwV": ["Citation"],
+    "Zj6JL8": [
+      "Utilisez une URL https:// — http:// n'est autorisé que pour les points de terminaison de bouclage."
+    ],
     "ZjtgI-": ["Palette de commandes"],
     "ZlCe_H": ["Aucune langue n'est disponible pour la correction orthographique."],
     "Zon_qG": ["Source du miroir <0>", ["label"], "</0>"],
@@ -3640,6 +3645,7 @@
     ],
     "_gO_m8": ["En attente de votre approbation"],
     "_gkGSK": ["modèle supprimé"],
+    "_oqKcJ": ["Saisissez au moins 3 caractères pour rechercher par sens."],
     "_pY_Vq": ["Le dépôt a été déplacé, renommé ou supprimé."],
     "_qD6mn": ["Choisissez le dossier où vous l'avez cloné."],
     "_rP3HI": ["il y a ", ["minutes"], " min"],
@@ -4741,11 +4747,6 @@
     ],
     "k5rKNs": ["frontmatter"],
     "k7Hoig": ["Aucune modification de contenu dans cette version."],
-    "k8xtrB": [
-      "Pas nécessaire pour un point de terminaison local comme <0>",
-      ["endpointHost"],
-      "</0> — la plupart des serveurs locaux l'ignorent. N'en ajoutez une que si le vôtre l'exige."
-    ],
     "kBNHN1": ["Historique de navigation"],
     "kCjkGY": ["Cela peut prendre un moment. Votre contenu markdown est conservé."],
     "kCqCyf": ["Ouvre le panneau de diagnostics de vérification de CodeMirror."],
@@ -5062,6 +5063,9 @@
       "L'extension Open Knowledge a été écrite, mais le dossier n'a pas pu être marqué comme approuvé, donc elle ne se chargera pas. Ce fil n'a pas les outils Open Knowledge."
     ],
     "mlvM8g": ["Impossible de replacer ce commentaire."],
+    "mmNeqE": [
+      "La taille des vecteurs du fournisseur d’embeddings changeait continuellement. La recherche sémantique est désactivée jusqu’au redémarrage d’OpenKnowledge."
+    ],
     "mmpzAq": ["Renvoie les lignes longues à la ligne dans l'éditeur de source markdown."],
     "mnpsVn": [
       "Choisissez une palette pour le mode clair et une pour le mode sombre. Le réglage de thème dans les Préférences choisit entre les deux — sur « Système », c'est votre système d'exploitation qui décide."
@@ -5513,6 +5517,9 @@
     "rQAQus": ["Impossible d'enregistrer le modèle : ", ["error"]],
     "rQRrkB": ["hier"],
     "rSoi6g": [["displayName"], " (", ["bin"], ") n'est pas installé ni présent dans votre PATH."],
+    "rUNOLA": [
+      "La recherche sémantique n’est pas disponible avec la configuration actuelle du fournisseur d’embeddings. Consultez Paramètres → Recherche."
+    ],
     "rUWrSE": ["Supprimer le rapport"],
     "rVJpLz": [
       "Activé — survoler un lien externe envoie son URL au site de destination pour récupérer un aperçu."
@@ -5699,6 +5706,11 @@
     ],
     "tN5WTS": ["Le fournisseur a rejeté la requête. Vérifiez la clé API et l'id du modèle."],
     "tP5DDk": ["Appliquer le lien"],
+    "tUVRDy": [
+      "Pas nécessaire pour un point de terminaison de bouclage comme <0>",
+      ["endpointHost"],
+      "</0> — la plupart des serveurs locaux l'ignorent. N'en ajoutez une que si le vôtre l'exige."
+    ],
     "tUvUfp": ["Utilisez un dossier que vous avez déjà."],
     "tX8FLX": [
       "Les compétences apprennent des tâches répétables à vos outils IA. Installez celles fournies par OpenKnowledge ou écrivez les vôtres dans la barre latérale Compétences de l'éditeur."
@@ -5808,6 +5820,7 @@
     ],
     "u3YnKw": ["Impossible de construire l'URL de partage."],
     "u3wRF-": ["Publié"],
+    "u4azam": ["Impossible de terminer la recherche sémantique — réessayer"],
     "u5Utjn": [["0"], " a besoin de ", ["1"]],
     "u5hSeG": ["Donner votre avis"],
     "u6Hp4N": ["Markdown"],

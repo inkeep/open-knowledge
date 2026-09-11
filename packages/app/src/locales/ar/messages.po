@@ -3905,6 +3905,10 @@ msgstr "تعذّر تحديد الأدوات المتّصلة."
 msgid "Couldn't clear the key — please try again."
 msgstr "تعذّر مسح المفتاح — يرجى المحاولة مرة أخرى."
 
+#: src/components/CommandPalette.tsx
+msgid "Couldn't complete semantic search — retry"
+msgstr "تعذر إكمال البحث الدلالي — أعد المحاولة"
+
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
 msgstr "تعذّر الاتصال بخدمة الوكيل. تأكد من أن خادم OpenKnowledge يعمل ومحدَّث (أعد تشغيله إن كان يعمل بالفعل)، ثم أعد المحاولة."
@@ -5672,6 +5676,10 @@ msgstr "أدخل عنوان URL صالحًا، على سبيل المثال http
 #: src/components/settings/SearchSection.tsx
 msgid "Enter a whole number between {minimum} and {maximum}."
 msgstr "أدخل عددًا صحيحًا بين {minimum} و{maximum}."
+
+#: src/components/CommandPalette.tsx
+msgid "Enter at least 3 characters to search by meaning."
+msgstr "أدخل 3 أحرف على الأقل للبحث حسب المعنى."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
@@ -9372,8 +9380,8 @@ msgid "Not redacted. Check the image before sharing."
 msgstr "لم تُحجب المعلومات الحساسة. تحقق من الصورة قبل مشاركتها."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Not required for a localhost endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
-msgstr "غير مطلوب لنقطة نهاية محلية مثل <0>{endpointHost}</0> — تتجاهله معظم الخوادم المحلية. أضفه فقط إن كان خادمك يحتاجه."
+msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
+msgstr "غير مطلوب لنقطة نهاية loopback مثل <0>{endpointHost}</0> — تتجاهله معظم الخوادم المحلية. أضفه فقط إن كان خادمك يحتاجه."
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -12335,6 +12343,10 @@ msgstr "يضيف البحث الدلالي ترتيبًا قائمًا على ا
 msgid "Semantic search is on, but no API key is set — search falls back to keyword matching. Add one below."
 msgstr "البحث الدلالي مفعّل، لكن لم يُضبط مفتاح API — يعود البحث إلى مطابقة الكلمات المفتاحية. أضف واحدًا أدناه."
 
+#: src/components/CommandPalette.tsx
+msgid "Semantic search isn't available with the current embeddings provider setup. Check Settings → Search."
+msgstr "البحث الدلالي غير متاح مع إعداد موفر التضمينات الحالي. تحقق من الإعدادات ← البحث."
+
 #: src/components/acp/ThreadView.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
@@ -13812,8 +13824,8 @@ msgid "That document didn't open in time. Try again once it has synced."
 msgstr "لم يُفتح ذلك المستند في الوقت المناسب. حاول مرة أخرى بعد اكتمال المزامنة."
 
 #: src/components/settings/SearchSection.tsx
-msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
-msgstr "لا يمكن استخدام نقطة النهاية تلك. أدخل رابط https:// — لا يُسمح بـ http:// إلا للمضيف المحلي."
+msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "لا يمكن استخدام نقطة النهاية تلك. أدخل رابط https:// — لا يُسمح بـ http:// إلا لنقاط نهاية loopback."
 
 #. placeholder {0}: prompt.agentName
 #: src/components/acp/ThreadView.tsx
@@ -13925,6 +13937,10 @@ msgid "the doc {0}"
 msgstr "المستند {0}"
 
 #: src/components/settings/SearchSection.tsx
+msgid "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
+msgstr "استمر حجم المتجه لدى موفر التضمينات في التغير. تم إيقاف البحث الدلالي حتى تتم إعادة تشغيل OpenKnowledge."
+
+#: src/components/settings/SearchSection.tsx
 msgid "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
 msgstr "استجابت نقطة النهاية، لكن ليس باستجابة تضمينات متوافقة مع OpenAI. تحقق من الرابط الأساسي."
 
@@ -14033,6 +14049,10 @@ msgstr "رفض المزوّد الطلب (HTTP {0}). تحقق من مفتاح AP
 #: src/components/settings/SearchSection.tsx
 msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "رفض المزوّد الطلب. تحقق من مفتاح API ومعرّف النموذج."
+
+#: src/components/CommandPalette.tsx
+msgid "The provider's vector size kept changing. Restart OpenKnowledge before searching by meaning again."
+msgstr "استمر حجم المتجه لدى موفر الخدمة في التغير. أعد تشغيل OpenKnowledge قبل البحث حسب المعنى مرة أخرى."
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -15416,8 +15436,8 @@ msgid "Use an http:// or https:// origin."
 msgstr "استخدم أصلًا يبدأ بـ http:// أو https://."
 
 #: src/components/settings/SearchSection.tsx
-msgid "Use an https:// URL — http:// is only allowed for localhost."
-msgstr "استخدم رابط https:// — لا يُسمح بـ http:// إلا للمضيف المحلي."
+msgid "Use an https:// URL — http:// is only allowed for loopback endpoints."
+msgstr "استخدم رابط https:// — لا يُسمح بـ http:// إلا لنقاط نهاية loopback."
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."
