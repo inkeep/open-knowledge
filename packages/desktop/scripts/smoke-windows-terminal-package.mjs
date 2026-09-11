@@ -14,6 +14,56 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  SPAWN_STARTUP_DEADLINE_MS,
+  SPAWN_WAIT_EXTENSION_FACTOR,
+} from '../src/shared/boot-narration.ts';
+
+export const PACKAGED_BOOT_ENVELOPE_MS = 10_000;
+export const PACKAGED_PTY_ECHO_BUDGET_MS = 30_000;
+export const PACKAGED_DISCOVERY_OVERRUN_MS = 3_000;
+export const PACKAGED_DRIVER_MARGIN_MS = 5_000;
+
+export function packagedStartupBoundMs(
+  spawnStartupDeadlineMs = SPAWN_STARTUP_DEADLINE_MS,
+  spawnWaitExtensionFactor = SPAWN_WAIT_EXTENSION_FACTOR,
+) {
+  return spawnStartupDeadlineMs * spawnWaitExtensionFactor;
+}
+
+export function packagedDiscoveryDeadlineMs(
+  spawnStartupDeadlineMs = SPAWN_STARTUP_DEADLINE_MS,
+  spawnWaitExtensionFactor = SPAWN_WAIT_EXTENSION_FACTOR,
+) {
+  return (
+    packagedStartupBoundMs(spawnStartupDeadlineMs, spawnWaitExtensionFactor) +
+    PACKAGED_BOOT_ENVELOPE_MS
+  );
+}
+
+export const PACKAGED_DRIVER_TIMEOUT_MS =
+  packagedDiscoveryDeadlineMs() +
+  PACKAGED_PTY_ECHO_BUDGET_MS +
+  PACKAGED_DISCOVERY_OVERRUN_MS +
+  PACKAGED_DRIVER_MARGIN_MS;
+
+export function describeDriverTimeoutBudget() {
+  return (
+    `the packaged PTY CDP driver outlived its ${PACKAGED_DRIVER_TIMEOUT_MS / 1000}s budget ` +
+    `(${packagedDiscoveryDeadlineMs() / 1000}s discovery + ${PACKAGED_PTY_ECHO_BUDGET_MS / 1000}s echo + ` +
+    `${PACKAGED_DISCOVERY_OVERRUN_MS / 1000}s overrun + ${PACKAGED_DRIVER_MARGIN_MS / 1000}s margin), ` +
+    'so one phase overran and was killed before it could report itself'
+  );
+}
+
+export function packagedDriverSpawnOptions(packageDir, env = process.env) {
+  return {
+    cwd: packageDir,
+    encoding: 'utf8',
+    env: windowsPtyDriverEnv(env),
+    timeout: PACKAGED_DRIVER_TIMEOUT_MS,
+  };
+}
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = resolve(scriptDir, '../dist-desktop/win-unpacked');
@@ -32,7 +82,12 @@ export function windowsPackageLaunchArgs(projectDir, userDataDir) {
 }
 
 export function windowsPtyDriverEnv(env = process.env) {
-  return { ...env, OK_SMOKE_EXPECT_PLATFORM: 'win32' };
+  return {
+    ...env,
+    OK_SMOKE_EXPECT_PLATFORM: 'win32',
+    OK_SMOKE_DISCOVERY_DEADLINE_MS: String(packagedDiscoveryDeadlineMs()),
+    OK_SMOKE_ECHO_DEADLINE_MS: String(PACKAGED_PTY_ECHO_BUDGET_MS),
+  };
 }
 
 export function seedWindowsPtySmokeProject(rootDir, shellPath) {
@@ -90,16 +145,20 @@ export function runWindowsPackageTerminalSmoke({
       windowsHide: true,
     });
 
-    const driver = spawnSync(python, [cdpDriver], {
-      cwd: resolvedPackageDir,
-      encoding: 'utf8',
-      env: windowsPtyDriverEnv(env),
-      timeout: 60_000,
-    });
+    const driver = spawnSync(
+      python,
+      [cdpDriver],
+      packagedDriverSpawnOptions(resolvedPackageDir, env),
+    );
     if (driver.stdout) process.stdout.write(driver.stdout);
     if (driver.stderr) process.stderr.write(driver.stderr);
+    if (driver.error?.code === 'ETIMEDOUT') {
+      fail(describeDriverTimeoutBudget());
+    }
     if (driver.error) fail(`could not run packaged PTY CDP driver: ${driver.error.message}`);
-    if (driver.status !== 0) fail(`packaged PTY CDP driver exited ${driver.status}`);
+    if (driver.status !== 0) {
+      fail(`packaged PTY CDP driver exited ${driver.status} (signal ${driver.signal})`);
+    }
   } catch (error) {
     closeSync(logFd);
     printAppLog(logPath);
