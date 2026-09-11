@@ -7,6 +7,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  statfsSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -317,6 +318,7 @@ import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
 } from './linux-install-fallback.ts';
+import { applyDevShmPosture } from './linux-shm-posture.ts';
 import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
 import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
@@ -1069,9 +1071,7 @@ function yieldRestoreToDeepLink(): void {
 
 const showGate: ShowGateRegistry = createShowGateRegistry({
   log: {
-    warn: (obj, msg) => {
-      console.warn(JSON.stringify({ ...obj, msg }));
-    },
+    warn: (obj, msg) => getLogger('show-gate').warn({ ...obj }, msg),
   },
   setTimeout: (cb, ms) => setTimeout(cb, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -5626,6 +5626,15 @@ installStdioBrokenPipeGuard(process, {
 
 app.commandLine.appendSwitch('use-system-ca');
 trustSystemCertificates();
+
+applyDevShmPosture({
+  platform: process.platform,
+  statfs: (path) => statfsSync(path),
+  env: process.env,
+  appendSwitch: (name) => app.commandLine.appendSwitch(name),
+  log: (level, facts) =>
+    getRootDesktopLogger()[level](facts, 'linux shared-memory posture for chromium'),
+});
 
 if (!app.isPackaged) {
   const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
