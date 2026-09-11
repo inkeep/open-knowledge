@@ -357,6 +357,29 @@ export async function readMenuSnapshotSpellcheck(editor: Page): Promise<boolean 
   });
 }
 
+export interface EditorSelectionSnapshot {
+  readonly held: boolean;
+  readonly text: string;
+}
+
+export async function readEditorSelectionSnapshot(editor: Page): Promise<EditorSelectionSnapshot> {
+  return editorBody(editor).evaluate(async (element) => {
+    const menu = window.okDesktop?.menu;
+    if (!menu) throw new Error('the editor window exposes no okDesktop.menu bridge');
+    const snapshot = await menu.dispatch({ kind: 'query' });
+    if (!snapshot) {
+      throw new Error('menu.dispatch({ kind: "query" }) returned no renderer snapshot');
+    }
+    const selection = window.getSelection();
+    const range = selection !== null && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    const insideEditor = range !== null && element.contains(range.commonAncestorContainer);
+    return {
+      held: snapshot.viewMenuState.hasEditorSelection ?? false,
+      text: insideEditor ? (selection?.toString() ?? '') : '',
+    } satisfies EditorSelectionSnapshot;
+  });
+}
+
 export async function applicationMenuSpellcheck(
   app: ElectronApplication,
   action: 'read' | 'click',

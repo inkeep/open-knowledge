@@ -4,6 +4,7 @@ import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_help
 import {
   addLanguageInSelector,
   closeSettingsDialog,
+  type EditorSelectionSnapshot,
   editorBody,
   findEditorWindow,
   launchOnSeededProfile,
@@ -11,6 +12,7 @@ import {
   openSettingsDialog,
   openSpellingSettings,
   pickNonDefaultSelection,
+  readEditorSelectionSnapshot,
   readSessionSpellingTruth,
   seedProjectProfile,
   setSpellcheckToggle,
@@ -29,6 +31,8 @@ const MARKER = 'undisturbed';
 const STAMP = 'pre-settings';
 
 const CONTENT_HOLD_MS = 1_000;
+
+const PRESS_INTERVAL_MS = 33;
 
 type StampCarrier = Record<string, unknown>;
 
@@ -59,8 +63,24 @@ async function readStamps(editor: Page): Promise<SurfaceStamps> {
   }, STAMP_KEY);
 }
 
-async function readEditorSelectionText(editor: Page): Promise<string> {
-  return editor.evaluate(() => window.getSelection()?.toString() ?? '');
+async function waitForEditorSelection(
+  editor: Page,
+  expected: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  await expect
+    .poll(() => readEditorSelectionSnapshot(editor), { timeout: timeoutMs })
+    .toEqual({ held: true, text: expected } satisfies EditorSelectionSnapshot);
+}
+
+async function selectMarkerBackwards(editor: Page, timeoutMs = 30_000): Promise<void> {
+  await expect(async () => {
+    await editor.keyboard.press('End');
+    for (let i = 0; i < MARKER.length; i++) {
+      await editor.keyboard.press('Shift+ArrowLeft', { delay: PRESS_INTERVAL_MS });
+    }
+    await waitForEditorSelection(editor, MARKER, 3_000);
+  }).toPass({ timeout: timeoutMs });
 }
 
 async function refocusEditable(editor: Page): Promise<void> {
@@ -141,8 +161,7 @@ test.describe('Spelling settings — platform presentation and editor non-interf
 
     const contentBefore = await readEditorContent(editor);
 
-    for (let i = 0; i < MARKER.length; i++) await editor.keyboard.press('Shift+ArrowLeft');
-    expect(await readEditorSelectionText(editor)).toBe(MARKER);
+    await selectMarkerBackwards(editor);
 
     await stampSurfaces(editor);
 
@@ -168,7 +187,7 @@ test.describe('Spelling settings — platform presentation and editor non-interf
     await expectEditorContentHolds(editor, contentBefore, CONTENT_HOLD_MS);
 
     await refocusEditable(editor);
-    expect(await readEditorSelectionText(editor)).toBe(MARKER);
+    await waitForEditorSelection(editor, MARKER);
 
     await editor.keyboard.press('ControlOrMeta+z');
     await expect(body).not.toContainText(MARKER, { timeout: 20_000 });
