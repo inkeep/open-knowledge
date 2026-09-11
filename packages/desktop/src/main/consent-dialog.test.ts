@@ -1,4 +1,3 @@
-import type { Dirent } from 'node:fs';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +9,6 @@ import {
   type PreviewContentFn,
   requestUserConsent,
   runProbe,
-  walkExceedsCap,
 } from './consent-dialog.ts';
 
 interface IpcStub extends ConsentIpcMainLike {
@@ -444,50 +442,6 @@ describe('runProbe', () => {
     });
     expect(result.ok).toBe(true);
     expect(receivedContentDir).toBe(join(tmp, 'docs'));
-  });
-});
-
-describe('walkExceedsCap — async chunked yields', () => {
-  test('yields the event loop between chunks of entries', async () => {
-    const fakeEntries = Array.from({ length: 5000 }, (_, i) => ({
-      name: `f${i}.md`,
-      isDirectory: () => false,
-    })) as unknown as Dirent[];
-    const fakeReaddir = (path: string): Promise<readonly Dirent[]> =>
-      Promise.resolve(path === '/fake/root' ? fakeEntries : []);
-
-    let yieldsDuringWalk = 0;
-    let walkCompleted = false;
-    const tickCounter = (): void => {
-      if (walkCompleted) return;
-      yieldsDuringWalk += 1;
-      setImmediate(tickCounter);
-    };
-    setImmediate(tickCounter);
-
-    const truncated = await walkExceedsCap('/fake/root', 50_000, {
-      readdirImpl: fakeReaddir,
-      chunkYieldEvery: 500,
-    });
-    walkCompleted = true;
-
-    expect(yieldsDuringWalk).toBeGreaterThanOrEqual(5);
-    expect(truncated).toBe(false);
-  });
-
-  test('returns truncated=true when entry count exceeds cap', async () => {
-    const fakeEntries = Array.from({ length: 100 }, (_, i) => ({
-      name: `f${i}.md`,
-      isDirectory: () => false,
-    })) as unknown as Dirent[];
-    const fakeReaddir = (path: string): Promise<readonly Dirent[]> =>
-      Promise.resolve(path === '/fake/root' ? fakeEntries : []);
-
-    const truncated = await walkExceedsCap('/fake/root', 10, {
-      readdirImpl: fakeReaddir,
-      chunkYieldEvery: 1000,
-    });
-    expect(truncated).toBe(true);
   });
 });
 

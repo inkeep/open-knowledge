@@ -470,7 +470,7 @@ function ConsentDialogForm({ payload, store, toast, detectionGraceMs }: ConsentD
 }
 
 function ProbePreview({ probe }: { probe: OkOnboardingProbeContentResult | null }) {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   if (probe === null) {
     return (
       <p className="text-1sm text-muted-foreground" data-testid="consent-preview">
@@ -486,7 +486,9 @@ function ProbePreview({ probe }: { probe: OkOnboardingProbeContentResult | null 
       </p>
     );
   }
-  const countDisplay = probe.truncated ? '≥ 50,000' : String(probe.count);
+  const numberFormat = new Intl.NumberFormat(i18n.locale);
+  const formattedCount = numberFormat.format(probe.count);
+  const countDisplay = probe.truncated ? `≥ ${formattedCount}` : formattedCount;
   const countLine = t`Found ${countDisplay} markdown files`;
   if (probe.sample.length === 0) {
     return (
@@ -495,7 +497,8 @@ function ProbePreview({ probe }: { probe: OkOnboardingProbeContentResult | null 
       </p>
     );
   }
-  const remaining = probe.truncated ? null : probe.count - probe.sample.length;
+  const remainingCount = probe.truncated ? null : probe.count - probe.sample.length;
+  const remaining = remainingCount === null ? null : numberFormat.format(remainingCount);
   return (
     <Collapsible data-testid="consent-preview">
       <CollapsibleTrigger className="flex items-center gap-1 text-1sm text-muted-foreground hover:text-foreground [&[data-state=open]>svg]:rotate-90">
@@ -511,7 +514,7 @@ function ProbePreview({ probe }: { probe: OkOnboardingProbeContentResult | null 
             <li key={path}>{path}</li>
           ))}
         </ul>
-        {probe.truncated || (remaining !== null && remaining > 0) ? (
+        {probe.truncated || (remainingCount !== null && remainingCount > 0) ? (
           <p className="mt-1 italic">
             {probe.truncated ? <Trans>and more</Trans> : <Trans>and {remaining} more</Trans>}
           </p>

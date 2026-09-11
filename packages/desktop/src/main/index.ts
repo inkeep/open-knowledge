@@ -223,7 +223,7 @@ import {
   runLoginShellProbe,
   runWindowsPathProbe,
 } from './claude-readiness.ts';
-import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
+import { requestUserConsent } from './consent-dialog.ts';
 import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
   type CrashDetection,
@@ -271,6 +271,7 @@ import {
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
 import { defaultGitTopLevel, discoverProject, validateFolderPick } from './folder-admission.ts';
+import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
@@ -1621,6 +1622,7 @@ function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
 }
 
 const BOOT_BUDGET_FILE_CAP = 10_000;
+const bootBudgetDirSizeProbe = createBootBudgetDirSizeProbe(BOOT_BUDGET_FILE_CAP);
 
 async function openProject(
   projectPath: string,
@@ -1656,16 +1658,7 @@ async function openProject(
         { projectName: basename(dir), pickedName: basename(projectPath) },
         'probing ancestor size',
       );
-      try {
-        const exceedsCap = await walkExceedsCap(dir, BOOT_BUDGET_FILE_CAP);
-        return { exceedsCap };
-      } catch (err) {
-        getLogger('project').warn(
-          { err },
-          'project admission size probe failed, treating as over cap',
-        );
-        return { exceedsCap: true };
-      }
+      return bootBudgetDirSizeProbe(dir);
     },
     gitTopLevel: async (cwd) => {
       getLogger('project').info(

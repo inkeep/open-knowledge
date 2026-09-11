@@ -43,6 +43,7 @@ const CHECKS: BuildArtifactCheck[] = [
       resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-result.ts'),
       resolve(DESKTOP_PKG, 'src/main/consent-dialog.ts'),
       resolve(DESKTOP_PKG, 'src/main/folder-admission.ts'),
+      resolve(DESKTOP_PKG, 'src/main/fs-walk-budget.ts'),
     ],
   },
   {
