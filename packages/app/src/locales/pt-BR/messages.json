@@ -3663,6 +3663,13 @@
     "bjsEcb": ["Trazer tudo para a frente"],
     "bkQRMh": ["Parágrafo"],
     "blFttG": ["Buscar projetos"],
+    "bm1oV9": [
+      "Escolha o que o OpenKnowledge configura para ",
+      ["agentLabel"],
+      ". ",
+      ["agentLabel"],
+      " oferece suporte apenas à configuração global."
+    ],
     "bmC18N": [
       "Limpando os dados locais de colaboração de \"",
       ["docName"],

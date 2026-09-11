@@ -997,6 +997,34 @@ describe('AgentConnectionDialogs', () => {
     expect(within(dialog).queryByRole('checkbox', { name: 'Project MCP server' })).toBeNull();
     expect(within(dialog).queryByRole('checkbox', { name: 'Project skill' })).toBeNull();
     expect(within(dialog).getByRole('checkbox', { name: 'Global MCP server' })).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        'Choose what OpenKnowledge sets up for Hermes. Hermes only supports global configuration.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a global-only agent uses a global-specific description', async () => {
+    const apply = vi.fn(async () => result(snapshotWith()));
+
+    await renderConfigureDialog(apply, 'antigravity');
+    const dialog = await screen.findByRole('dialog', { name: 'Antigravity' });
+
+    expect(
+      within(dialog).getByText(
+        'Choose what OpenKnowledge sets up for Antigravity. Antigravity only supports global configuration.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText('This project')).toBeNull();
+  });
+
+  test('an agent with project options does not show the global-only description', async () => {
+    const apply = vi.fn(async () => result(snapshotWith()));
+
+    await renderConfigureDialog(apply, 'cursor');
+    const dialog = await screen.findByRole('dialog', { name: 'Cursor' });
+
+    expect(within(dialog).getByText('Choose what OpenKnowledge sets up for Cursor.')).toBeTruthy();
   });
 });
 

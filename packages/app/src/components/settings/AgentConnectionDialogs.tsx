@@ -774,6 +774,8 @@ export function ConfigureConnectionDialog({
     connection !== null && !draft.projectSkill && canChangePart(connection, 'projectSkill');
   const projectParts = connection === null ? [] : presentParts(connection, 'project');
   const machineParts = connection === null ? [] : presentParts(connection, 'machine');
+  const isGlobalOnly = connection !== null && projectParts.length === 0;
+  const agentLabel = connection?.label;
   const projectNotes = firstShowingRow(projectParts);
   const machineNotes = firstShowingRow(machineParts);
   const removingCount = CONNECTION_PARTS.filter(
@@ -826,7 +828,9 @@ export function ConfigureConnectionDialog({
           </DialogTitle>
           <DialogDescription>
             {connection
-              ? t`Choose what OpenKnowledge sets up for ${connection.label}.`
+              ? isGlobalOnly
+                ? t`Choose what OpenKnowledge sets up for ${agentLabel}. ${agentLabel} only supports global configuration.`
+                : t`Choose what OpenKnowledge sets up for ${connection.label}.`
               : t`Choose what OpenKnowledge sets up.`}
           </DialogDescription>
         </DialogHeader>

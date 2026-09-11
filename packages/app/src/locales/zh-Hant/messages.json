@@ -2853,6 +2853,13 @@
     "bjsEcb": ["將全部移至最前"],
     "bkQRMh": ["段落"],
     "blFttG": ["搜尋專案"],
+    "bm1oV9": [
+      "選擇 OpenKnowledge 為 ",
+      ["agentLabel"],
+      " 設定的內容。",
+      ["agentLabel"],
+      " 僅支援全域設定。"
+    ],
     "bmC18N": ["正在重新連線前清除「", ["docName"], "」的本機協作資料。"],
     "bmI-q1": ["已移除 OpenKnowledge 檔案"],
     "bnOTEz": ["擷取中…"],

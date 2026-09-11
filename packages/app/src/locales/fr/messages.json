@@ -3780,6 +3780,13 @@
     "bjsEcb": ["Tout ramener au premier plan"],
     "bkQRMh": ["Paragraphe"],
     "blFttG": ["Rechercher des projets"],
+    "bm1oV9": [
+      "Choisissez ce qu’OpenKnowledge configure pour ",
+      ["agentLabel"],
+      ". ",
+      ["agentLabel"],
+      " prend uniquement en charge la configuration globale."
+    ],
     "bmC18N": [
       "Effacement des données de collaboration locales de « ",
       ["docName"],

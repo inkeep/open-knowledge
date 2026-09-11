@@ -3110,6 +3110,13 @@
     "bjsEcb": ["모두 앞으로 가져오기"],
     "bkQRMh": ["문단"],
     "blFttG": ["프로젝트 검색"],
+    "bm1oV9": [
+      "OpenKnowledge가 ",
+      ["agentLabel"],
+      "에 설정할 항목을 선택하세요. ",
+      ["agentLabel"],
+      "에서는 전역 구성만 지원됩니다."
+    ],
     "bmC18N": ["다시 연결하기 전에 \"", ["docName"], "\"의 로컬 협업 데이터를 지우는 중입니다."],
     "bmI-q1": ["OpenKnowledge 파일 제거 완료"],
     "bnOTEz": ["가져오는 중…"],

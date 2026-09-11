@@ -2858,6 +2858,10 @@ msgid "Choose what OpenKnowledge sets up for {0}."
 msgstr "منتخب کریں کہ OpenKnowledge {0} کے لیے کیا سیٹ اپ کرے۔"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
+msgid "Choose what OpenKnowledge sets up for {agentLabel}. {agentLabel} only supports global configuration."
+msgstr "منتخب کریں کہ OpenKnowledge {agentLabel} کے لیے کیا سیٹ اپ کرے۔ {agentLabel} صرف گلوبل کنفیگریشن کو سپورٹ کرتا ہے۔"
+
+#: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Choose what OpenKnowledge sets up."
 msgstr "منتخب کریں کہ OpenKnowledge کیا سیٹ اپ کرے۔"
 

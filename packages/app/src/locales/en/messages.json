@@ -3219,6 +3219,13 @@
     "bjsEcb": ["Bring All to Front"],
     "bkQRMh": ["Paragraph"],
     "blFttG": ["Search projects"],
+    "bm1oV9": [
+      "Choose what OpenKnowledge sets up for ",
+      ["agentLabel"],
+      ". ",
+      ["agentLabel"],
+      " only supports global configuration."
+    ],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
     "bmI-q1": ["Removed OpenKnowledge files"],
     "bnOTEz": ["Retrieving…"],

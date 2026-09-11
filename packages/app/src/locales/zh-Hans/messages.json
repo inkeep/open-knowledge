@@ -2835,6 +2835,13 @@
     "bjsEcb": ["前置全部窗口"],
     "bkQRMh": ["段落"],
     "blFttG": ["搜索项目"],
+    "bm1oV9": [
+      "选择 OpenKnowledge 为 ",
+      ["agentLabel"],
+      " 设置的内容。",
+      ["agentLabel"],
+      " 仅支持全局配置。"
+    ],
     "bmC18N": ["正在重新连接前清除“", ["docName"], "”的本地协作数据。"],
     "bmI-q1": ["已移除 OpenKnowledge 文件"],
     "bnOTEz": ["正在检索…"],

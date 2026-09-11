@@ -3735,6 +3735,13 @@
     "bjsEcb": ["Traer todo al frente"],
     "bkQRMh": ["Párrafo"],
     "blFttG": ["Buscar proyectos"],
+    "bm1oV9": [
+      "Elige qué configura OpenKnowledge para ",
+      ["agentLabel"],
+      ". ",
+      ["agentLabel"],
+      " solo admite la configuración global."
+    ],
     "bmC18N": [
       "Borrando los datos locales de colaboración de \"",
       ["docName"],

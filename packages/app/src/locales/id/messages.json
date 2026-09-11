@@ -3249,6 +3249,13 @@
     "bjsEcb": ["Bawa semua ke depan"],
     "bkQRMh": ["Paragraf"],
     "blFttG": ["Cari proyek"],
+    "bm1oV9": [
+      "Pilih apa yang disiapkan OpenKnowledge untuk ",
+      ["agentLabel"],
+      ". ",
+      ["agentLabel"],
+      " hanya mendukung konfigurasi global."
+    ],
     "bmC18N": [
       "Membersihkan data kolaborasi lokal untuk \"",
       ["docName"],
