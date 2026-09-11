@@ -9333,6 +9333,10 @@ msgstr "未连接到 GitHub。"
 msgid "Not detected on this machine"
 msgstr "未在此计算机上检测到"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine · OpenKnowledge files present"
+msgstr "未在此计算机上检测到 · 存在 OpenKnowledge 文件"
+
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
 msgstr "不太好"
@@ -9346,6 +9350,10 @@ msgstr "不在侧边栏中"
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "未安装"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not installed · OpenKnowledge files present"
+msgstr "未安装 · 存在 OpenKnowledge 文件"
 
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Not installed in this project yet."
@@ -11261,10 +11269,6 @@ msgstr "移除 {patternText}"
 msgid "Remove {projectName} from recent projects"
 msgstr "把 {projectName} 从最近的项目中移除"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-msgid "Remove {rowLabel}"
-msgstr "移除 {rowLabel}"
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "移除 {tag}"
@@ -11304,6 +11308,10 @@ msgstr "把 OpenKnowledge 从 {0} 中移除"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge from {0}?"
 msgstr "从 {0} 中移除 OpenKnowledge？"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove OpenKnowledge from {rowLabel}"
+msgstr "从 {rowLabel} 中移除 OpenKnowledge"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge?"

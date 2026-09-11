@@ -9333,6 +9333,10 @@ msgstr "Not connected to GitHub."
 msgid "Not detected on this machine"
 msgstr "Not detected on this machine"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine · OpenKnowledge files present"
+msgstr "Not detected on this machine · OpenKnowledge files present"
+
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
 msgstr "Not great"
@@ -9346,6 +9350,10 @@ msgstr "Not in sidebar"
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "Not installed"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not installed · OpenKnowledge files present"
+msgstr "Not installed · OpenKnowledge files present"
 
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Not installed in this project yet."
@@ -11261,10 +11269,6 @@ msgstr "Remove {patternText}"
 msgid "Remove {projectName} from recent projects"
 msgstr "Remove {projectName} from recent projects"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-msgid "Remove {rowLabel}"
-msgstr "Remove {rowLabel}"
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "Remove {tag}"
@@ -11304,6 +11308,10 @@ msgstr "Remove OpenKnowledge from {0}"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge from {0}?"
 msgstr "Remove OpenKnowledge from {0}?"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove OpenKnowledge from {rowLabel}"
+msgstr "Remove OpenKnowledge from {rowLabel}"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge?"

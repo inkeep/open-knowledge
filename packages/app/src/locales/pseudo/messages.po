@@ -9329,6 +9329,10 @@ msgstr ""
 msgid "Not detected on this machine"
 msgstr ""
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine · OpenKnowledge files present"
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
 msgstr ""
@@ -9341,6 +9345,10 @@ msgstr ""
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
+msgstr ""
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not installed · OpenKnowledge files present"
 msgstr ""
 
 #: src/components/settings/ProjectSkillSection.tsx
@@ -11257,10 +11265,6 @@ msgstr ""
 msgid "Remove {projectName} from recent projects"
 msgstr ""
 
-#: src/components/settings/AgentConnectionsSection.tsx
-msgid "Remove {rowLabel}"
-msgstr ""
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr ""
@@ -11299,6 +11303,10 @@ msgstr ""
 #. placeholder {0}: connection.label
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge from {0}?"
+msgstr ""
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove OpenKnowledge from {rowLabel}"
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx

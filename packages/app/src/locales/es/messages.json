@@ -78,6 +78,7 @@
     ],
     "05n5wS": ["Sugerencias de menciones de documentos"],
     "06SZfb": ["Se creó la plantilla \"", ["trimmedTitle"], "\""],
+    "06Ucfz": ["No instalado · Archivos de OpenKnowledge presentes"],
     "07eGJB": ["No se pudo mover la habilidad: ", ["0"]],
     "07gHun": [
       "No tienes acceso a este repositorio privado. Inicia sesión con una cuenta que sí lo tenga."
@@ -1418,7 +1419,6 @@
     "E1_c72": ["Lista de tareas"],
     "E1tG2u": ["Obtener Claude Code"],
     "E2Mv-X": ["Copiar el código fuente"],
-    "E35Meh": ["Quitar ", ["rowLabel"]],
     "E4XYYH": ["Activar la terminal en este proyecto"],
     "E5WeIy": ["Reabre la última pestaña del editor que se cerró."],
     "E6lrpp": [
@@ -3014,6 +3014,7 @@
         }
       ]
     ],
+    "V0Jk_K": ["No detectado en este equipo · Archivos de OpenKnowledge presentes"],
     "V0mbgd": ["Cierra la pestaña de este chat para eliminarlo"],
     "V2Gmie": [
       "Estas reglas vienen del archivo <0>",
@@ -5870,6 +5871,7 @@
     "vQOuVY": [
       "Los adjuntos aún no están disponibles en las ventanas de notas — usa la ventana principal para adjuntar archivos."
     ],
+    "vRlzx-": ["Quitar OpenKnowledge de ", ["rowLabel"]],
     "vUP_HF": [
       "Sin una herramienta de IA conectada, no se instalarán ",
       [

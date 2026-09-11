@@ -13,7 +13,15 @@ import {
 } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -655,6 +663,73 @@ describe('AgentConnectionsSection — Terminal group (docked terminal present)',
     expect(codexRow?.parentElement?.textContent ?? '').toContain('Not installed');
   });
 
+  test('an absent CLI with OpenKnowledge files says so, and keeps Install as its main action', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    const snapshot = snapshotWith([satisfierId('pi', 'skill', 'user')]);
+    renderSection(async () => result(snapshot));
+
+    await screen.findByTestId('configure-agents-terminal-claude');
+    await expandTerminal();
+    const row = await waitFor(() => terminalRow('pi'));
+
+    await waitFor(() =>
+      expect(row.textContent ?? '').toContain('Not installed · OpenKnowledge files present'),
+    );
+    expect(within(row).getByRole('link', { name: /^Install\b/ })).toBeTruthy();
+    expect(
+      within(row).getByRole('button', { name: 'Remove OpenKnowledge from Pi CLI' }),
+    ).toBeTruthy();
+  });
+
+  test('an absent CLI with nothing on disk offers no cleanup and no residual hint', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    renderSection(async () => result(snapshotWith([])));
+
+    await screen.findByTestId('configure-agents-terminal-claude');
+    await expandTerminal();
+    const row = await waitFor(() => terminalRow('pi'));
+
+    await waitFor(() => expect(row.textContent ?? '').toContain('Not installed'));
+    expect(row.textContent ?? '').not.toContain('OpenKnowledge files present');
+    expect(within(row).queryByRole('button', { name: /^Remove\b/ })).toBeNull();
+  });
+
+  test('the cleanup button stays out of the switch accessible description', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    const snapshot = snapshotWith([satisfierId('pi', 'skill', 'user')]);
+    renderSection(async () => result(snapshot));
+
+    await screen.findByTestId('configure-agents-terminal-claude');
+    await expandTerminal();
+    await waitFor(() => terminalRow('pi'));
+    const toggle = screen.getByTestId('configure-agents-terminal-pi');
+
+    await waitFor(() =>
+      expect(accessibleDescription(toggle)).toContain('OpenKnowledge files present'),
+    );
+    expect(accessibleDescription(toggle)).not.toContain('Remove');
+  });
+
+  test('cleanup on an absent CLI opens the removal dialog for that agent', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    const snapshot = snapshotWith([satisfierId('pi', 'skill', 'user')]);
+    renderSection(async () => result(snapshot));
+
+    await screen.findByTestId('configure-agents-terminal-claude');
+    await expandTerminal();
+    const row = await waitFor(() => terminalRow('pi'));
+    const remove = await waitFor(() =>
+      within(row).getByRole('button', { name: 'Remove OpenKnowledge from Pi CLI' }),
+    );
+
+    fireEvent.click(remove);
+    expect(await screen.findByText('Remove OpenKnowledge from Pi?')).toBeTruthy();
+  });
+
   test('toggling a CLI writes the terminal: override key, not the desktop one', async () => {
     renderSection();
     const toggle = await screen.findByTestId('configure-agents-terminal-claude');
@@ -859,6 +934,7 @@ describe('AgentConnectionsSection — connection status and action', () => {
 
   test('a tool uninstalled after setup is off by default yet still offers Remove', async () => {
     terminalLaunchValue = { installedClis: { claude: false } };
+    states = { 'claude-code': { installed: false } } as Record<string, InstallState>;
     reloadEnabledAgentsFromStorage();
     const snapshot: HostSnapshot = {
       ...snapshotWith([satisfierId('claude', 'mcp', 'project')]),
@@ -873,6 +949,105 @@ describe('AgentConnectionsSection — connection status and action', () => {
     expect(within(terminalRow('claude')).getByRole('switch').getAttribute('aria-checked')).toBe(
       'false',
     );
+  });
+
+  test('focus lands on the group heading after a cleanup removes the row control', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    const seeded = snapshotWith([satisfierId('pi', 'skill', 'user')]);
+    const cleared = snapshotWith([]);
+    let applied = false;
+    renderSection(async () => {
+      const snap = applied ? cleared : seeded;
+      applied = true;
+      return result(snap);
+    });
+
+    await screen.findByTestId('configure-agents-terminal-claude');
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+    const row = await waitFor(() => terminalRow('pi'));
+    const remove = await waitFor(() =>
+      within(row).getByRole('button', { name: 'Remove OpenKnowledge from Pi CLI' }),
+    );
+    const heading = row.closest('section')?.querySelector('h4') as HTMLElement;
+    expect(heading).toBeTruthy();
+
+    remove.focus();
+    expect(document.activeElement).toBe(remove);
+
+    fireEvent.click(remove);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    await waitForElementToBeRemoved(() => screen.queryByRole('alertdialog'));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  test('a paired row whose sibling is present claims no residue and offers no cleanup', async () => {
+    terminalLaunchValue = { installedClis: { claude: false } };
+    states = { 'claude-code': { installed: true } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
+    const snapshot: HostSnapshot = {
+      ...snapshotWith([satisfierId('claude', 'mcp', 'project')]),
+      detection: { detected: [], probed: true },
+    };
+    renderSection(async () => result(snapshot));
+
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+    const row = await waitFor(() => terminalRow('claude'));
+
+    await waitFor(() => expect(row.textContent ?? '').toContain('Not installed'));
+    expect(row.textContent ?? '').not.toContain('OpenKnowledge files present');
+    expect(within(row).queryByRole('button', { name: /^Remove OpenKnowledge from/ })).toBeNull();
+  });
+
+  test('a paired row whose sibling presence is unknown makes no residue claim', async () => {
+    terminalLaunchValue = null;
+    states = { codex: { installed: false } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
+    const snapshot: HostSnapshot = {
+      ...snapshotWith([satisfierId('codex', 'mcp', 'project')]),
+      detection: { detected: [], probed: false },
+    };
+    renderSection(async () => result(snapshot));
+
+    fireEvent.click(await screen.findByTestId('configure-agents-desktop-show-more'));
+    const row = await waitFor(() => desktopRow('codex'));
+
+    await waitFor(() => expect(row.textContent ?? '').toContain('Not installed'));
+    expect(row.textContent ?? '').not.toContain('OpenKnowledge files present');
+    expect(within(row).queryByRole('button', { name: /^Remove OpenKnowledge from/ })).toBeNull();
+  });
+
+  test('a desktop row carries the same residual hint and cleanup link', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, codex: false } };
+    states = { codex: { installed: false } } as Record<string, InstallState>;
+    reloadEnabledAgentsFromStorage();
+    const snapshot: HostSnapshot = {
+      ...snapshotWith([satisfierId('codex', 'mcp', 'project')]),
+      detection: { detected: [], probed: true },
+    };
+    renderSection(async () => result(snapshot));
+
+    fireEvent.click(await screen.findByTestId('configure-agents-desktop-show-more'));
+    const row = await waitFor(() => desktopRow('codex'));
+
+    await waitFor(() =>
+      expect(row.textContent ?? '').toContain('Not installed · OpenKnowledge files present'),
+    );
+    expect(within(row).getByRole('button', { name: /^Remove OpenKnowledge from/ })).toBeTruthy();
+  });
+
+  test('an unlaunchable row carries the residual hint and cleanup link too', async () => {
+    const snapshot: HostSnapshot = {
+      ...snapshotWith(diskSatisfierIds('lm-studio')),
+      detection: { detected: [], probed: true },
+    };
+    renderSection(async () => result(snapshot));
+
+    fireEvent.click(await screen.findByTestId('configure-agents-desktop-show-more'));
+    const row = await waitFor(() => screen.getByTestId('agent-connection-lm-studio'));
+    await waitFor(() => expect(row.textContent ?? '').toContain('OpenKnowledge files present'));
+    expect(within(row).getByRole('button', { name: /^Remove OpenKnowledge from/ })).toBeTruthy();
   });
 
   test('an External-app row shows its connection status too', async () => {
@@ -1507,6 +1682,25 @@ describe('a host that cannot manage connections', () => {
     for (const label of [/^Add MCP & skill/, /^Manage/, /^Remove/]) {
       expect(within(section).queryByRole('button', { name: label })).toBeNull();
     }
+  });
+
+  test('a read-only build hides the cleanup link even when files are on disk', async () => {
+    terminalLaunchValue = { installedClis: { claude: true, pi: false } };
+    reloadEnabledAgentsFromStorage();
+    renderSection(async () => ({
+      ok: false,
+      unavailable: true,
+      error: 'Managing AI tool connections is unavailable in this build.',
+      report: EMPTY_REPORT,
+      snapshot: snapshotWith([satisfierId('pi', 'skill', 'user')]),
+    }));
+
+    await screen.findByTestId('configure-agents-read-only');
+    fireEvent.click(await screen.findByTestId('configure-agents-terminal-show-more'));
+    const row = await waitFor(() => terminalRow('pi'));
+
+    await waitFor(() => expect(row.textContent ?? '').toContain('OpenKnowledge files present'));
+    expect(within(row).queryByRole('button', { name: /^Remove OpenKnowledge from/ })).toBeNull();
   });
 
   test('a host that can manage connections shows no such notice', async () => {

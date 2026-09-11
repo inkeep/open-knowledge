@@ -21,7 +21,7 @@ import {
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Folder, Info, Monitor, Sparkles, TriangleAlert, X } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
 import {
   AlertDialog,
@@ -53,6 +53,7 @@ import { connectionPathDisplay, sharedPathDisplays } from '@/lib/agent-connectio
 import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
 import { guidanceText, troubleshootingText } from '@/lib/agent-guidance-copy';
 import { formatToolList } from '@/lib/tool-list-format';
+import { groupHeadingFor } from './group-heading';
 
 type ConnectionPart = 'projectMcp' | 'projectSkill' | 'globalMcp' | 'discoverySkill';
 
@@ -1109,6 +1110,14 @@ export function RemoveConnectionDialog({
   paired?: boolean;
 }) {
   const { i18n, t } = useLingui();
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openerSectionRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement as HTMLElement | null;
+    openerRef.current = opener;
+    openerSectionRef.current = opener?.closest('section') ?? null;
+  }, [open]);
   const [removing, setRemoving] = useState(false);
   const [removeFailure, setRemoveFailure] = useState<ApplyAgentConnectionsResult | null>(null);
   const [sharedChoice, setSharedChoice] = useState<SharedRemovalChoice | null>(null);
@@ -1141,7 +1150,16 @@ export function RemoveConnectionDialog({
   }
   return (
     <AlertDialog open={open} onOpenChange={(nextOpen) => !removing && onOpenChange(nextOpen)}>
-      <AlertDialogContent className="sm:max-w-lg">
+      <AlertDialogContent
+        className="sm:max-w-lg"
+        onCloseAutoFocus={(event) => {
+          const opener = openerRef.current;
+          const target = opener?.isConnected ? opener : groupHeadingFor(openerSectionRef.current);
+          if (!target?.isConnected) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         <AlertDialogHeader className="gap-2">
           <AlertDialogTitle className="flex items-center gap-2 text-lg">
             {connection ? (

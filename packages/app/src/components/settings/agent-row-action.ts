@@ -25,7 +25,6 @@ export function rowActionFor(input: RowActionInput): RowAction {
   const docAction = (): RowAction =>
     setupDocSlug === null ? { kind: 'none' } : { kind: 'setup-doc', slug: setupDocSlug };
 
-  if (absent && installed) return { kind: 'remove' };
   if (absent) {
     return installUrl == null || installUrl === ''
       ? docAction()
@@ -34,4 +33,10 @@ export function rowActionFor(input: RowActionInput): RowAction {
   if (!configurable) return installed ? { kind: 'remove' } : docAction();
   if (enabled) return installed ? { kind: 'manage' } : { kind: 'connect' };
   return installed ? { kind: 'remove' } : { kind: 'none' };
+}
+
+export function rowHasResidualFiles(
+  input: Pick<RowActionInput, 'presence' | 'installedCount'>,
+): boolean {
+  return input.presence === 'absent' && input.installedCount > 0;
 }

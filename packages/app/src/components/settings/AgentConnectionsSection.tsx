@@ -77,7 +77,8 @@ import {
   type RowPresence,
   resolvePresence,
 } from './agent-connection-status';
-import { type RowAction, rowActionFor } from './agent-row-action';
+import { type RowAction, rowActionFor, rowHasResidualFiles } from './agent-row-action';
+import { groupHeadingFor } from './group-heading';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 function AgentRow({
@@ -96,7 +97,7 @@ function AgentRow({
 }: {
   icon: ReactNode;
   name: ReactNode;
-  hint?: ReactNode;
+  hint?: { text: ReactNode; action?: ReactNode };
   status?: ReactNode;
   action?: ReactNode;
   checked?: boolean;
@@ -116,8 +117,11 @@ function AgentRow({
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm leading-5">{name}</span>
           {hint ? (
-            <span id={hintId} className="truncate text-muted-foreground text-1sm">
-              {hint}
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span id={hintId} className="truncate text-muted-foreground text-1sm">
+                {hint.text}
+              </span>
+              {hint.action}
             </span>
           ) : null}
           {status ? <span id={statusId}>{status}</span> : null}
@@ -179,7 +183,7 @@ function restoreGroupFocusOnRemoval(button: HTMLButtonElement | null) {
   if (!button) return;
   return () => {
     if (button.ownerDocument.activeElement === button) {
-      button.closest('section')?.querySelector('h4')?.focus();
+      groupHeadingFor(button)?.focus();
     }
   };
 }
@@ -328,13 +332,34 @@ function RowActionButton({
           size="sm"
           className="shrink-0 font-mono uppercase"
           onClick={onRemove}
-          aria-label={t`Remove ${rowLabel}`}
+          aria-label={t`Remove OpenKnowledge from ${rowLabel}`}
           aria-describedby={describedById}
         >
           {t`Remove`}
         </Button>
       );
   }
+}
+
+function InlineRemoveButton({
+  rowLabel,
+  onRemove,
+}: {
+  rowLabel: string;
+  onRemove: () => void;
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <Button
+      type="button"
+      variant="link-muted"
+      className="h-auto p-0 text-1sm underline underline-offset-4 hover:text-destructive"
+      onClick={onRemove}
+      aria-label={t`Remove OpenKnowledge from ${rowLabel}`}
+    >
+      {t`Remove`}
+    </Button>
+  );
 }
 
 function registryInstallUrl(agentId: AgentId | undefined): string | null {
@@ -439,6 +464,17 @@ export function AgentConnectionsSection({
       (id): id is AgentId => id !== undefined,
     ),
   );
+  function siblingRowPresence(agentId: AgentId, mode: AgentMode): RowPresence {
+    if (mode === 'terminal') {
+      const targetId = AGENT_REGISTRY[agentId].external?.targetId;
+      return targetId === undefined
+        ? 'unknown'
+        : rowPresence(agentId, states[targetId]?.installed ?? null);
+    }
+    const cli = TERMINAL_CLI_IDS.find((id) => agentIdForTerminalCli(id) === agentId);
+    return cli === undefined ? 'unknown' : rowPresence(agentId, installedClis[cli] ?? null);
+  }
+
   function connectionSlots(
     agentId: AgentId | undefined,
     rowLabel: string,
@@ -448,7 +484,13 @@ export function AgentConnectionsSection({
     detected: boolean | null,
     presence: RowPresence,
     installUrl?: string | null,
-  ): { status: ReactNode; action: ReactNode; statusId?: string } {
+  ): {
+    status: ReactNode;
+    action: ReactNode;
+    hintAction: ReactNode;
+    residualFiles: boolean;
+    statusId?: string;
+  } {
     const connection =
       agentId === undefined ? undefined : connections.find((c) => c.id === agentId);
     if (
@@ -457,9 +499,15 @@ export function AgentConnectionsSection({
       snapshot === null ||
       !readProducedFacts(snapshot)
     ) {
-      return { status: undefined, action: undefined, statusId: undefined };
+      return {
+        status: undefined,
+        action: undefined,
+        hintAction: undefined,
+        residualFiles: false,
+        statusId: undefined,
+      };
     }
-    const action = rowActionFor({
+    const actionInput = {
       enabled,
       installedCount: installedCount(partsForConnection(connection)),
       presence,
@@ -469,7 +517,11 @@ export function AgentConnectionsSection({
         installUrl === undefined
           ? (AGENT_REGISTRY[agentId].external?.installUrl ?? null)
           : installUrl,
-    });
+    };
+    const action = rowActionFor(actionInput);
+    const siblingMayBeUsingFiles =
+      hasPairedConnectionRows(agentId) && siblingRowPresence(agentId, mode) !== 'absent';
+    const residualFiles = rowHasResidualFiles(actionInput) && !siblingMayBeUsingFiles;
     const rowStatus = deriveRowConnectionStatus({ agentId, mode, snapshot, detected });
     const speaks = rowStatus === 'connected' || (rowStatus === 'not-connected' && enabled);
     const statusId = speaks ? `${rowTestId}-status` : undefined;
@@ -505,8 +557,22 @@ export function AgentConnectionsSection({
           onRemove={() => setRemoveId(agentId)}
         />
       ) : undefined,
+      hintAction:
+        residualFiles && !readOnly ? (
+          <InlineRemoveButton rowLabel={rowLabel} onRemove={() => setRemoveId(agentId)} />
+        ) : undefined,
+      residualFiles,
       statusId,
     };
+  }
+
+  function presenceHint(kind: 'not-installed' | 'not-detected', residualFiles: boolean): string {
+    if (kind === 'not-installed') {
+      return residualFiles ? t`Not installed · OpenKnowledge files present` : t`Not installed`;
+    }
+    return residualFiles
+      ? t`Not detected on this machine · OpenKnowledge files present`
+      : t`Not detected on this machine`;
   }
 
   function toggleConnectable(
@@ -650,7 +716,7 @@ export function AgentConnectionsSection({
                   />
                 }
                 name={agent.name}
-                hint={hint}
+                hint={hint === undefined ? undefined : { text: hint }}
                 checked={checked}
                 disabled={!agent.supported}
                 ariaLabel={t`Enable ${agent.name}`}
@@ -699,7 +765,7 @@ export function AgentConnectionsSection({
         const presence = rowPresence(agentIdForTerminalCli(cli), detected);
         const enabled = isTerminalCliRowEnabled(overrides, cli, presence === 'absent');
         const rowTestId = `configure-agents-terminal-row-${cli}`;
-        const { status, action, statusId } = connectionSlots(
+        const { status, action, hintAction, residualFiles, statusId } = connectionSlots(
           agentIdForTerminalCli(cli),
           t`${displayName} CLI`,
           rowTestId,
@@ -714,7 +780,11 @@ export function AgentConnectionsSection({
             key={cli}
             icon={<TargetIcon id={cliIconTargetId(cli)} className="size-4" aria-hidden="true" />}
             name={t`${displayName} CLI`}
-            hint={presence === 'absent' ? t`Not installed` : undefined}
+            hint={
+              presence === 'absent'
+                ? { text: presenceHint('not-installed', residualFiles), action: hintAction }
+                : undefined
+            }
             status={status}
             action={action}
             checked={enabled}
@@ -760,7 +830,7 @@ export function AgentConnectionsSection({
         const enabled = isDesktopTargetEnabled(overrides, target.id, installed);
         const presence = rowPresence(agentIdForHandoffTarget(target.id), installed);
         const rowTestId = `configure-agents-desktop-row-${target.id}`;
-        const { status, action, statusId } = connectionSlots(
+        const { status, action, hintAction, residualFiles, statusId } = connectionSlots(
           agentIdForHandoffTarget(target.id),
           t`${displayName} Desktop`,
           rowTestId,
@@ -774,7 +844,11 @@ export function AgentConnectionsSection({
             key={target.id}
             icon={<TargetIcon id={target.id} className="size-4" aria-hidden="true" />}
             name={t`${displayName} Desktop`}
-            hint={presence === 'absent' ? t`Not installed` : undefined}
+            hint={
+              presence === 'absent'
+                ? { text: presenceHint('not-installed', residualFiles), action: hintAction }
+                : undefined
+            }
             status={status}
             action={action}
             checked={enabled}
@@ -799,6 +873,7 @@ export function AgentConnectionsSection({
         const connection = connections.find((c) => c.id === agentId) ?? null;
         const detected = connection?.row.detected ?? null;
         const label = connectionLabel(agentId);
+        const presence = rowPresence(agentId, detected);
         const rowTestId = `agent-connection-${agentId}`;
         const slots = connectionSlots(
           agentId,
@@ -807,7 +882,7 @@ export function AgentConnectionsSection({
           'external',
           connection === null || !allAvailableCellsChecked(connection),
           detected,
-          rowPresence(agentId, detected),
+          presence,
         );
         return (
           <AgentRow
@@ -817,8 +892,11 @@ export function AgentConnectionsSection({
             }
             name={label}
             hint={
-              rowPresence(agentId, detected) === 'absent'
-                ? t`Not detected on this machine`
+              presence === 'absent'
+                ? {
+                    text: presenceHint('not-detected', slots.residualFiles),
+                    action: slots.hintAction,
+                  }
                 : undefined
             }
             status={slots.status}

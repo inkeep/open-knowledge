@@ -64,6 +64,7 @@
     ],
     "05n5wS": ["Saran penyebutan dokumen"],
     "06SZfb": ["Templat \"", ["trimmedTitle"], "\" dibuat"],
+    "06Ucfz": ["Belum terpasang · File OpenKnowledge ada"],
     "07eGJB": ["Keterampilan tidak bisa dipindahkan: ", ["0"]],
     "07gHun": ["Anda tidak punya akses ke repo pribadi ini. Masuk dengan akun yang punya akses."],
     "07q4Qk": ["Bilah sisi berkas"],
@@ -1202,7 +1203,6 @@
     "E1_c72": ["Daftar tugas"],
     "E1tG2u": ["Dapatkan Claude Code"],
     "E2Mv-X": ["Salin sumber"],
-    "E35Meh": ["Hapus ", ["rowLabel"]],
     "E4XYYH": ["Aktifkan terminal untuk proyek ini"],
     "E5WeIy": ["Membuka lagi tab penyunting yang paling akhir ditutup."],
     "E6lrpp": [
@@ -2612,6 +2612,7 @@
     "Uuj_R4": ["Baru dari templat"],
     "Uw6ERJ": ["Tidak bisa menyalin: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "other": ["#", " mnt lalu"] }]],
+    "V0Jk_K": ["Tidak terdeteksi di mesin ini · File OpenKnowledge ada"],
     "V0mbgd": ["Tutup tab obrolan ini untuk menghapusnya"],
     "V2Gmie": [
       "Aturan-aturan ini berasal dari berkas <0>",
@@ -5112,6 +5113,7 @@
     "vQOuVY": [
       "Lampiran belum tersedia di jendela catatan — gunakan jendela utama untuk melampirkan berkas."
     ],
+    "vRlzx-": ["Hapus OpenKnowledge dari ", ["rowLabel"]],
     "vUP_HF": [
       "Tanpa alat AI yang terhubung, ",
       ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skill"] }],

@@ -9333,6 +9333,10 @@ msgstr "GitHub에 연결되지 않음"
 msgid "Not detected on this machine"
 msgstr "이 컴퓨터에서 감지되지 않음"
 
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not detected on this machine · OpenKnowledge files present"
+msgstr "이 컴퓨터에서 감지되지 않음 · OpenKnowledge 파일 있음"
+
 #: src/components/FeedbackForm.tsx
 msgid "Not great"
 msgstr "별로 좋지 않음"
@@ -9346,6 +9350,10 @@ msgstr "사이드바에 없음"
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Not installed"
 msgstr "설치되지 않음"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Not installed · OpenKnowledge files present"
+msgstr "설치되지 않음 · OpenKnowledge 파일 있음"
 
 #: src/components/settings/ProjectSkillSection.tsx
 msgid "Not installed in this project yet."
@@ -11261,10 +11269,6 @@ msgstr "{patternText} 제거"
 msgid "Remove {projectName} from recent projects"
 msgstr "프로젝트 \"{projectName}\"을 최근 프로젝트에서 제거"
 
-#: src/components/settings/AgentConnectionsSection.tsx
-msgid "Remove {rowLabel}"
-msgstr "{rowLabel} 제거"
-
 #: src/components/ui/tag-pill-input.tsx
 msgid "Remove {tag}"
 msgstr "{tag} 제거"
@@ -11304,6 +11308,10 @@ msgstr "{0}에서 OpenKnowledge 제거"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge from {0}?"
 msgstr "{0}에서 OpenKnowledge를 제거할까요?"
+
+#: src/components/settings/AgentConnectionsSection.tsx
+msgid "Remove OpenKnowledge from {rowLabel}"
+msgstr "{rowLabel}에서 OpenKnowledge 제거"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Remove OpenKnowledge?"

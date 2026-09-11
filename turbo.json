@@ -23,6 +23,8 @@
       "passThroughEnv": [
         "OK_INSTANCE",
         "OK_AUTO_INSTANCE",
+        "OK_M6B_FORCE",
+        "OK_RECLAIM_DISABLE",
         "OK_UNINSTALL_UI_PREVIEW",
         "OK_FEEDBACK_INTAKE_ORIGIN"
       ]

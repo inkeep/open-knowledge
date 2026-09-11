@@ -78,6 +78,7 @@
     ],
     "05n5wS": ["Sugestões de menção de documentos"],
     "06SZfb": ["Modelo \"", ["trimmedTitle"], "\" criado"],
+    "06Ucfz": ["Não instalado · Arquivos do OpenKnowledge presentes"],
     "07eGJB": ["Não deu para mover a habilidade: ", ["0"]],
     "07gHun": ["Você não tem acesso a este repositório privado. Entre com uma conta que tenha."],
     "07q4Qk": ["Barra lateral de arquivos"],
@@ -1396,7 +1397,6 @@
     "E1_c72": ["Lista de tarefas"],
     "E1tG2u": ["Obter o Claude Code"],
     "E2Mv-X": ["Copiar o código fonte"],
-    "E35Meh": ["Remover ", ["rowLabel"]],
     "E4XYYH": ["Ativar o terminal neste projeto"],
     "E5WeIy": ["Reabre a última aba do editor que foi fechada."],
     "E6lrpp": [
@@ -2973,6 +2973,7 @@
         { "one": ["há ", "#", " min"], "many": ["há ", "#", " min"], "other": ["há ", "#", " min"] }
       ]
     ],
+    "V0Jk_K": ["Não detectado nesta máquina · Arquivos do OpenKnowledge presentes"],
     "V0mbgd": ["Feche a aba deste chat para excluí-lo"],
     "V2Gmie": [
       "Estas regras vêm do arquivo <0>",
@@ -5771,6 +5772,7 @@
     "vQOuVY": [
       "Anexos ainda não estão disponíveis em janelas de nota — use a janela principal para anexar arquivos."
     ],
+    "vRlzx-": ["Remover o OpenKnowledge de ", ["rowLabel"]],
     "vUP_HF": [
       "Sem uma ferramenta de IA conectada, ",
       [

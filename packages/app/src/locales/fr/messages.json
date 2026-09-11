@@ -80,6 +80,7 @@
     ],
     "05n5wS": ["Suggestions de mentions de documents"],
     "06SZfb": ["Modèle « ", ["trimmedTitle"], " » créé"],
+    "06Ucfz": ["Non installé · Fichiers OpenKnowledge présents"],
     "07eGJB": ["Impossible de déplacer la compétence : ", ["0"]],
     "07gHun": [
       "Vous n'avez pas accès à ce dépôt privé. Connectez-vous avec un compte qui y a accès."
@@ -1449,7 +1450,6 @@
     "E1_c72": ["Liste de tâches"],
     "E1tG2u": ["Obtenir Claude Code"],
     "E2Mv-X": ["Copier la source"],
-    "E35Meh": ["Retirer ", ["rowLabel"]],
     "E4XYYH": ["Activer le terminal pour ce projet"],
     "E5WeIy": ["Rouvre le dernier onglet d'éditeur fermé."],
     "E6lrpp": [
@@ -3056,6 +3056,7 @@
         }
       ]
     ],
+    "V0Jk_K": ["Non détecté sur cette machine · Fichiers OpenKnowledge présents"],
     "V0mbgd": ["Fermez l'onglet de ce chat pour le supprimer"],
     "V2Gmie": [
       "Ces règles proviennent du fichier <0>",
@@ -5939,6 +5940,7 @@
     "vQOuVY": [
       "Les pièces jointes ne sont pas encore disponibles dans les fenêtres de notes — utilisez la fenêtre principale pour joindre des fichiers."
     ],
+    "vRlzx-": ["Supprimer OpenKnowledge de ", ["rowLabel"]],
     "vUP_HF": [
       "Sans outil d'IA connecté, ",
       [

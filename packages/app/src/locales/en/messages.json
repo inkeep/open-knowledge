@@ -66,6 +66,7 @@
     "05F1GY": ["The original text was deleted. You can re-place this comment on selected text."],
     "05n5wS": ["Doc mention suggestions"],
     "06SZfb": ["Template \"", ["trimmedTitle"], "\" created"],
+    "06Ucfz": ["Not installed · OpenKnowledge files present"],
     "07eGJB": ["Couldn't move skill: ", ["0"]],
     "07gHun": ["You don't have access to this private repo. Sign in with an account that does."],
     "07q4Qk": ["File sidebar"],
@@ -1199,7 +1200,6 @@
     "E1_c72": ["Task list"],
     "E1tG2u": ["Get Claude Code"],
     "E2Mv-X": ["Copy source"],
-    "E35Meh": ["Remove ", ["rowLabel"]],
     "E4XYYH": ["Enable terminal for this project"],
     "E5WeIy": ["Reopen the most recently closed editor tab."],
     "E6lrpp": [
@@ -2603,6 +2603,7 @@
     "Uuj_R4": ["New from template"],
     "Uw6ERJ": ["Couldn't copy: ", ["detail"]],
     "UyROxs": [["mins", "plural", { "one": ["#", " min ago"], "other": ["#", " min ago"] }]],
+    "V0Jk_K": ["Not detected on this machine · OpenKnowledge files present"],
     "V0mbgd": ["Close this chat's tab to delete it"],
     "V2Gmie": [
       "These rules come from your project's <0>",
@@ -5102,6 +5103,7 @@
     "vQOuVY": [
       "Attachments aren't available in note windows yet — use the main window to attach files."
     ],
+    "vRlzx-": ["Remove OpenKnowledge from ", ["rowLabel"]],
     "vUP_HF": [
       "Without a connected AI tool, the pack's ",
       ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skills"] }],

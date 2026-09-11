@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { rowActionFor } from './agent-row-action';
+import { rowActionFor, rowHasResidualFiles } from './agent-row-action';
 
 const CONFIGURABLE = { presence: 'present', configurable: true, setupDocSlug: null } as const;
 
@@ -34,16 +34,16 @@ describe('rowActionFor', () => {
     });
   });
 
-  test('an absent tool the registry folds still offers to remove its files', () => {
-    expect(
-      rowActionFor({
-        enabled: false,
-        installedCount: 1,
-        presence: 'absent',
-        configurable: true,
-        setupDocSlug: 'claude-code',
-      }),
-    ).toEqual({ kind: 'remove' });
+  test('an absent tool the registry folds still points at its setup docs with files on disk', () => {
+    const input = {
+      enabled: false,
+      installedCount: 1,
+      presence: 'absent',
+      configurable: true,
+      setupDocSlug: 'claude-code',
+    } as const;
+    expect(rowActionFor(input)).toEqual({ kind: 'setup-doc', slug: 'claude-code' });
+    expect(rowHasResidualFiles(input)).toBe(true);
   });
 
   test('an absent tool the registry folds points at its setup docs', () => {
@@ -118,16 +118,16 @@ describe('rowActionFor', () => {
     ).toEqual({ kind: 'setup-doc', slug: 'codex' });
   });
 
-  test('an absent tool with files still on disk offers cleanup before its doc', () => {
-    expect(
-      rowActionFor({
-        enabled: false,
-        installedCount: 1,
-        presence: 'absent',
-        configurable: true,
-        setupDocSlug: 'codex',
-      }),
-    ).toEqual({ kind: 'remove' });
+  test('an absent tool with files still on disk keeps its doc as the primary action', () => {
+    const input = {
+      enabled: false,
+      installedCount: 1,
+      presence: 'absent',
+      configurable: true,
+      setupDocSlug: 'codex',
+    } as const;
+    expect(rowActionFor(input)).toEqual({ kind: 'setup-doc', slug: 'codex' });
+    expect(rowHasResidualFiles(input)).toBe(true);
   });
 
   test('an absent tool with no doc still offers nothing', () => {
@@ -180,17 +180,32 @@ describe('rowActionFor', () => {
     ).toEqual({ kind: 'setup-doc', slug: 'codex' });
   });
 
-  test('cleanup still outranks the install link', () => {
-    expect(
-      rowActionFor({
-        enabled: false,
-        installedCount: 2,
-        presence: 'absent',
-        configurable: true,
-        setupDocSlug: 'codex',
-        installUrl: 'https://developers.openai.com/codex/app',
-      }),
-    ).toEqual({ kind: 'remove' });
+  test('the install link outranks cleanup, which moves beside the hint', () => {
+    const input = {
+      enabled: false,
+      installedCount: 2,
+      presence: 'absent',
+      configurable: true,
+      setupDocSlug: 'codex',
+      installUrl: 'https://developers.openai.com/codex/app',
+    } as const;
+    expect(rowActionFor(input)).toEqual({
+      kind: 'install',
+      url: 'https://developers.openai.com/codex/app',
+    });
+    expect(rowHasResidualFiles(input)).toBe(true);
+  });
+
+  test('a present tool never reports residual files, however many parts it has', () => {
+    expect(rowHasResidualFiles({ ...CONFIGURABLE, installedCount: 3 })).toBe(false);
+  });
+
+  test('an unresolved probe never reports residual files', () => {
+    expect(rowHasResidualFiles({ installedCount: 2, presence: 'unknown' })).toBe(false);
+  });
+
+  test('an absent tool with nothing on disk has no cleanup to offer', () => {
+    expect(rowHasResidualFiles({ installedCount: 0, presence: 'absent' })).toBe(false);
   });
 
   test('a present tool never offers to install it', () => {
