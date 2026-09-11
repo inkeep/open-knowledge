@@ -67,19 +67,25 @@ function runGit(repoRoot, args, input) {
   });
 }
 
+function describeSpawnFailure(result) {
+  const outcome = result.signal
+    ? `killed by ${result.signal}`
+    : result.status === null
+      ? 'no exit status'
+      : `exit ${result.status}`;
+  const detail = [result.error?.message, result.stderr?.trim()].filter(Boolean).join('; ');
+  return detail ? `${outcome} (${detail})` : outcome;
+}
+
 function gitIgnoredPaths(repoRoot, relPaths) {
   if (relPaths.length === 0) return new Set();
   const result = runGit(repoRoot, ['check-ignore', '--stdin', '-z'], `${relPaths.join('\0')}\0`);
   if (result.status === 1) return new Set();
   if (result.status === 128 && /not a git repository/i.test(result.stderr)) return new Set();
   if (result.error || result.status !== 0) {
-    const outcome = result.signal
-      ? `killed by ${result.signal}`
-      : result.status === null
-        ? 'no exit status'
-        : `exit ${result.status}`;
-    const detail = result.stderr?.trim() || result.error?.message || outcome;
-    throw new Error(`git check-ignore failed in ${repoRoot}: ${detail}`, { cause: result.error });
+    throw new Error(`git check-ignore failed in ${repoRoot}: ${describeSpawnFailure(result)}`, {
+      cause: result.error,
+    });
   }
   return new Set(result.stdout.split('\0').filter(Boolean).map(normalizeRelativePath));
 }

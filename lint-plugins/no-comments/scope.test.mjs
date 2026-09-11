@@ -326,7 +326,24 @@ describe('gitignored output is outside discovery', () => {
     Reflect.set(process.env, pathKey, emptyPath);
     try {
       expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
-        /git check-ignore failed.*ENOENT/,
+        /git check-ignore failed in .*: no exit status \(spawnSync git ENOENT\)$/,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
+      else Reflect.set(process.env, pathKey, previous);
+    }
+  });
+
+  test('a Git that exits nonzero with nothing to say names the exit alone', () => {
+    const pathKey = 'PATH';
+    const previous = Reflect.get(process.env, pathKey);
+    const shimPath = join(root, 'silent-exit-path');
+    mkdirSync(shimPath);
+    writeFileSync(join(shimPath, 'git'), '#!/bin/sh\ncat > /dev/null\nexit 3\n', { mode: 0o755 });
+    Reflect.set(process.env, pathKey, `${shimPath}:${previous}`);
+    try {
+      expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
+        /git check-ignore failed in .*: exit 3$/,
       );
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
@@ -339,11 +356,73 @@ describe('gitignored output is outside discovery', () => {
     const previous = Reflect.get(process.env, pathKey);
     const shimPath = join(root, 'signal-path');
     mkdirSync(shimPath);
-    writeFileSync(join(shimPath, 'git'), '#!/bin/sh\nkill -KILL $$\n', { mode: 0o755 });
+    writeFileSync(
+      join(shimPath, 'git'),
+      '#!/bin/sh\nwhile IFS= read -r _; do :; done\nkill -KILL $$\n',
+      { mode: 0o755 },
+    );
     Reflect.set(process.env, pathKey, shimPath);
     try {
       expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
-        /git check-ignore failed.*killed by SIGKILL/,
+        /git check-ignore failed in .*: killed by SIGKILL$/,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
+      else Reflect.set(process.env, pathKey, previous);
+    }
+  });
+
+  const walkerBeyondAnyPipeBuffer = () => {
+    const padded = new Set();
+    for (let bytes = 0; bytes < 1 << 20; ) {
+      const name = `pad-${padded.size}.ts`;
+      padded.add(name);
+      bytes += `packages/desktop/src/${name}`.length + 1;
+    }
+    return {
+      readdirSync: (path) =>
+        String(path).endsWith('/packages/desktop/src')
+          ? [...readdirSync(path), ...padded]
+          : readdirSync(path),
+      statSync,
+      lstatSync: (path) =>
+        padded.has(basename(String(path)))
+          ? { isSymbolicLink: () => false, isDirectory: () => false }
+          : lstatSync(path),
+    };
+  };
+
+  test('a signal-killed Git still names the termination when the candidate write breaks', () => {
+    const pathKey = 'PATH';
+    const previous = Reflect.get(process.env, pathKey);
+    const shimPath = join(root, 'broken-write-path');
+    mkdirSync(shimPath);
+    writeFileSync(join(shimPath, 'git'), '#!/bin/sh\nkill -KILL $$\n', { mode: 0o755 });
+    Reflect.set(process.env, pathKey, shimPath);
+    try {
+      expect(() => discoverInScopeFiles(root, walkerBeyondAnyPipeBuffer())).toThrow(
+        /git check-ignore failed.*killed by SIGKILL \(spawnSync git EPIPE\)/,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
+      else Reflect.set(process.env, pathKey, previous);
+    }
+  });
+
+  test('a Git that both complains and dies mid-write carries each account once', () => {
+    const pathKey = 'PATH';
+    const previous = Reflect.get(process.env, pathKey);
+    const shimPath = join(root, 'loud-broken-write-path');
+    mkdirSync(shimPath);
+    writeFileSync(
+      join(shimPath, 'git'),
+      '#!/bin/sh\necho "fatal: bad config line 3" >&2\necho "  run git config to repair it" >&2\nexit 3\n',
+      { mode: 0o755 },
+    );
+    Reflect.set(process.env, pathKey, shimPath);
+    try {
+      expect(() => discoverInScopeFiles(root, walkerBeyondAnyPipeBuffer())).toThrow(
+        /git check-ignore failed in .*: exit 3 \(spawnSync git EPIPE; fatal: bad config line 3\n {2}run git config to repair it\)$/,
       );
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
