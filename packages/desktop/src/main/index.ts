@@ -262,6 +262,7 @@ import {
   runDesktopUninstallHandoffStep,
   showDesktopUninstallResult,
 } from './desktop-uninstall-handoff.ts';
+import { desktopUninstallResultCommand } from './desktop-uninstall-result.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
@@ -2849,12 +2850,28 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
     collectFeedback: collectDesktopUninstallFeedback,
     launchHandoff: () =>
       withDesktopUninstallProgress(() =>
-        launchDesktopUninstallHandoff({
-          cliPath: wrapperPathInBundle(process.execPath),
-          projectPaths,
-          logPath,
-          appBundlePath,
-        }),
+        launchDesktopUninstallHandoff(
+          {
+            cliPath: wrapperPathInBundle(process.execPath),
+            projectPaths,
+            logPath,
+            appBundlePath,
+          },
+          {
+            resultCommand: desktopUninstallResultCommand(
+              process.execPath,
+              app.isPackaged,
+              app.getAppPath(),
+              resolveDesktopLocaleForPushed(
+                pushedLanguagePreference ?? readStoredLanguagePreference(osHomedir()),
+                {
+                  preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
+                  env: process.env,
+                },
+              ),
+            ),
+          },
+        ),
       ),
     showFailure: async ({ error }) => {
       getLogger('lifecycle').warn(
@@ -3078,14 +3095,19 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     },
     suppressAutoInstallOnQuit: () => {},
     quit: () =>
-      showDesktopUninstallResult({
-        appBundlePath: resolveAppBundleFromExecPath(process.execPath) ?? process.execPath,
-        logPath,
-        cleanup:
-          mode === 'failure'
-            ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
-            : { ok: true },
-      }),
+      showDesktopUninstallResult(
+        {
+          appBundlePath: resolveAppBundleFromExecPath(process.execPath) ?? process.execPath,
+          logPath,
+          cleanup:
+            mode === 'failure'
+              ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
+              : { ok: true },
+        },
+        {
+          result: desktopUninstallResultCommand(process.execPath, app.isPackaged, app.getAppPath()),
+        },
+      ),
   });
 
   log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');

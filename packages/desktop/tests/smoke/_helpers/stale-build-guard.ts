@@ -17,10 +17,30 @@ export const CLI_BUILD_COMMAND = 'pnpm --filter @inkeep/open-knowledge run build
 
 const CHECKS: BuildArtifactCheck[] = [
   {
-    name: 'main',
+    name: 'main dispatcher',
     out: resolve(DESKTOP_PKG, 'out/main/index.js'),
     srcs: [
+      resolve(DESKTOP_PKG, 'src/main/entry.ts'),
+      resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-result.ts'),
+    ],
+  },
+  {
+    name: 'uninstall result window',
+    out: resolve(DESKTOP_PKG, 'out/main/uninstall-result-window.js'),
+    srcs: [
+      resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-result-window.ts'),
+      resolve(DESKTOP_PKG, 'src/main/uninstall-window.ts'),
+      resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-result.ts'),
+    ],
+  },
+  {
+    name: 'app main',
+    out: resolve(DESKTOP_PKG, 'out/main/app-main.js'),
+    srcs: [
       resolve(DESKTOP_PKG, 'src/main/index.ts'),
+      resolve(DESKTOP_PKG, 'src/main/uninstall-window.ts'),
+      resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-handoff.ts'),
+      resolve(DESKTOP_PKG, 'src/main/desktop-uninstall-result.ts'),
       resolve(DESKTOP_PKG, 'src/main/consent-dialog.ts'),
       resolve(DESKTOP_PKG, 'src/main/folder-admission.ts'),
     ],

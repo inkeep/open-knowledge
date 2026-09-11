@@ -6,6 +6,7 @@ const existsSyncMock = vi.fn();
 const readdirSyncMock = vi.fn();
 const lstatSyncMock = vi.fn();
 
+let scanLockProcesses: typeof import('./process-scan.ts').scanLockProcesses;
 let discoverLockDirs: typeof import('./process-scan.ts').discoverLockDirs;
 let findOkProcessPids: typeof import('./process-scan.ts').findOkProcessPids;
 let pidCwd: typeof import('./process-scan.ts').pidCwd;
@@ -22,7 +23,9 @@ beforeAll(async () => {
     readdirSync: readdirSyncMock,
     lstatSync: lstatSyncMock,
   }));
-  ({ discoverLockDirs, findOkProcessPids, pidCwd } = await import('./process-scan.ts'));
+  ({ scanLockProcesses, discoverLockDirs, findOkProcessPids, pidCwd } = await import(
+    './process-scan.ts'
+  ));
 });
 
 function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyncReturns<string> {
@@ -535,5 +538,84 @@ describe('discoverLockDirs', () => {
 
     const dirs = await discoverLockDirs();
     expect(dirs).toHaveLength(0);
+  });
+});
+
+describe('lock recovery process evidence', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+  });
+  afterEach(() => {
+    spawnSyncMock.mockReset();
+  });
+
+  it('does not mistake failed process enumeration for evidence of absence', async () => {
+    spawnSyncMock.mockReturnValue(makeSpawnResult({ status: 2, stderr: 'permission denied' }));
+    const scan = await scanLockProcesses();
+    expect(scan.candidates).toEqual([]);
+    expect(scan.unavailable).toEqual(['Could not enumerate processes with pgrep or ps']);
+  });
+  it('accepts a successful empty process and listener scan', async () => {
+    spawnSyncMock.mockReturnValue(makeSpawnResult({ status: 1 }));
+    expect(await scanLockProcesses()).toEqual({ candidates: [], unavailable: [] });
+  });
+  it('retains listener inspection failures', async () => {
+    spawnSyncMock
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1, stderr: 'permission denied' }));
+    expect((await scanLockProcesses()).unavailable).toEqual([
+      'Could not enumerate TCP listeners with lsof',
+    ]);
+  });
+  it('keeps explicit process provenance even without a lock file on disk', async () => {
+    const lockDir = '/missing/project/.ok/local';
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          stdout: `${process.pid} node --ok-lock-dir-b64=${Buffer.from(lockDir).toString('base64url')}\n`,
+        }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+    expect(await scanLockProcesses()).toEqual({
+      candidates: [{ lockDir, pid: process.pid, source: 'lock-dir-argument' }],
+      unavailable: [],
+    });
+  });
+  it('recognizes the production server process title and its working directory', async () => {
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p123\nfcwd\nn/notes\n' }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+    expect((await scanLockProcesses()).candidates).toContainEqual({
+      lockDir: '/notes/.ok/local',
+      pid: process.pid,
+      source: 'process-cwd',
+    });
+  });
+  it('retains a live candidate with an unreadable working directory as uncertainty', async () => {
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+    expect((await scanLockProcesses()).unavailable).toEqual([
+      `Could not read the working directory of process ${process.pid}`,
+    ]);
+  });
+  it('keeps listener provenance without asserting the process is an OpenKnowledge server', async () => {
+    spawnSyncMock
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `COMMAND PID USER\nnode ${process.pid} user\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p123\nfcwd\nn/notes\n' }));
+    expect((await scanLockProcesses()).candidates).toContainEqual({
+      lockDir: '/notes/.ok/local',
+      pid: process.pid,
+      source: 'listener-cwd',
+    });
   });
 });

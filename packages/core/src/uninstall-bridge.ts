@@ -1,3 +1,5 @@
+export const UNINSTALL_RESULT_WAIT_TIMEOUT_MS = 10 * 60_000;
+
 export interface UninstallProjectRow {
   readonly path: string;
   readonly open: boolean;
@@ -5,7 +7,16 @@ export interface UninstallProjectRow {
   readonly running: boolean;
 }
 
+export interface UninstallNoticeChecklistItem {
+  readonly label: string;
+  readonly detail?: string;
+  readonly done: boolean;
+}
+
 export interface UninstallNoticeScreen {
+  readonly subtitle?: string;
+  readonly checklist?: readonly UninstallNoticeChecklistItem[];
+  readonly logRevealLabel?: string;
   readonly title: string;
   readonly paragraphs: readonly string[];
   readonly footnote?: string;
@@ -18,10 +29,12 @@ export interface UninstallNoticeScreen {
 export type UninstallScreenSpec =
   | { readonly kind: 'picker'; readonly projects: readonly UninstallProjectRow[] }
   | { readonly kind: 'survey' }
-  | { readonly kind: 'progress' }
+  | { readonly kind: 'progress'; readonly awaitResult?: boolean }
+  | { readonly kind: 'result'; readonly outcome: 'success' | 'failure' }
   | { readonly kind: 'notice'; readonly notice: UninstallNoticeScreen };
 
 export type UninstallIntent =
+  | { readonly kind: 'progress-shown' }
   | { readonly kind: 'picker-confirm'; readonly selectedIndexes: readonly number[] }
   | { readonly kind: 'picker-cancel' }
   | {
@@ -32,7 +45,8 @@ export type UninstallIntent =
     }
   | { readonly kind: 'survey-skip' }
   | { readonly kind: 'notice-confirm' }
-  | { readonly kind: 'notice-cancel' };
+  | { readonly kind: 'notice-cancel' }
+  | { readonly kind: 'notice-reveal-log' };
 
 export type UninstallDispatchRequest = { readonly kind: 'ready' } | UninstallIntent;
 

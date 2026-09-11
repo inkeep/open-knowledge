@@ -1,7 +1,7 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { AutoStartDisabledError } from '../../autostart.ts';
 import { resolveLockDir } from '../../config/paths.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
@@ -10,6 +10,18 @@ import { markServerLockDraining } from '../../server-lock.ts';
 import { register } from './get-preview-url.ts';
 import { bindTestServerLock, bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
+
+const ownedDirectories: string[] = [];
+function temporaryProject(prefix = 'ok-get-preview-url-'): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  ownedDirectories.push(dir);
+  return dir;
+}
+afterEach(() => {
+  const owned = ownedDirectories.splice(0);
+  for (const dir of owned) rmSync(dir, { recursive: true, force: true });
+  for (const dir of owned) expect(existsSync(dir)).toBe(false);
+});
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 const CONFIG_AUTOOPEN_OFF: Config = ConfigSchema.parse({
@@ -64,7 +76,7 @@ function captureRegistration(
 
 describe('preview_url tool — UI running', () => {
   test('with document: composes baseUrl + the doc route', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
@@ -77,7 +89,7 @@ describe('preview_url tool — UI running', () => {
   });
 
   test('with folder: composes the folder route with a trailing slash', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ folder: 'specs/foo' });
@@ -85,7 +97,7 @@ describe('preview_url tool — UI running', () => {
   });
 
   test('folder route tolerates surrounding slashes and per-segment encodes', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ folder: '/My Notes/sub/' });
@@ -94,7 +106,7 @@ describe('preview_url tool — UI running', () => {
 
   describe('isHostedAgent steer (desktop terminal or in-app agent panel)', () => {
     test('document: response leads with `ok open <doc>` and tells the agent not to navigate the URL', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
@@ -106,7 +118,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('document: steer tells the agent not to paste the URL into its reply', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
@@ -114,7 +126,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('folder: steers to `ok open <folder>`', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
@@ -123,7 +135,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('skill default scope (project): steers to `ok open <name> --skill` (no --scope)', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log' } });
@@ -133,7 +145,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('skill --scope global: steers to `ok open <name> --skill --scope global`', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log', scope: 'global' } });
@@ -144,7 +156,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('no target (root): no steer — nothing to `ok open`', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({});
@@ -152,7 +164,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('NOT a hosted agent (default): no steer — plain Preview URL', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd);
       const result = await handler({ document: 'specs/foo/SPEC' });
@@ -161,7 +173,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('hosted agent + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.structuredContent?.running).toBe(false);
@@ -171,7 +183,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('document with a space: okOpenCommand shell-quotes the path', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'notes/My Doc' });
@@ -179,7 +191,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('document with an embedded single quote: okOpenCommand POSIX-escapes it', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: "Q&A/what's new" });
@@ -187,7 +199,7 @@ describe('preview_url tool — UI running', () => {
     });
 
     test('hosted agent + no UI + folder: okOpenCommand still fires', async () => {
-      const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+      const cwd = temporaryProject();
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.structuredContent?.running).toBe(false);
@@ -196,7 +208,7 @@ describe('preview_url tool — UI running', () => {
   });
 
   test('docName + folder together is rejected (mutually exclusive)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC', folder: 'specs/foo' });
@@ -205,7 +217,7 @@ describe('preview_url tool — UI running', () => {
   });
 
   test('without docName: returns the UI root URL', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({});
@@ -217,7 +229,7 @@ describe('preview_url tool — UI running', () => {
   });
 
   test('per-segment encodes docName when composing the URL', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'notes/My Doc' });
@@ -227,7 +239,7 @@ describe('preview_url tool — UI running', () => {
 
 describe('preview_url tool — skill target', () => {
   test('with skill: composes the __skill__ route (default project scope)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'trip-log' } });
@@ -235,7 +247,7 @@ describe('preview_url tool — skill target', () => {
   });
 
   test('with skill + explicit global scope and a spaced name', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'run tests', scope: 'global' } });
@@ -243,7 +255,7 @@ describe('preview_url tool — skill target', () => {
   });
 
   test('skill + document together is rejected (mutually exclusive)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'trip-log' }, document: 'specs/foo/SPEC' });
@@ -254,7 +266,7 @@ describe('preview_url tool — skill target', () => {
 
 describe('preview_url tool — no UI running', () => {
   test('returns running:false + the ok-start hint when nothing is running', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.isError).toBeUndefined();
@@ -268,7 +280,7 @@ describe('preview_url tool — no UI running', () => {
   });
 
   test('no-UI branch is the same regardless of docName', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd);
     const result = await handler({});
     expect(result.structuredContent?.running).toBe(false);
@@ -277,7 +289,7 @@ describe('preview_url tool — no UI running', () => {
   });
 
   test('draining ui-capable server: transient retry hint, no spawn advice', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
     markServerLockDraining(resolveLockDir(cwd));
     const handler = captureRegistration(cwd);
@@ -289,7 +301,7 @@ describe('preview_url tool — no UI running', () => {
   });
 
   test('--only server (capabilities omit ui): permanent hint, no "Retry" (UI never binds on its own)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestServerLock(cwd, 4321, ['http', 'ws']);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
@@ -302,7 +314,7 @@ describe('preview_url tool — no UI running', () => {
   });
 
   test('ui-capable server.lock resolves directly (single-listener): running, own origin, no ui.lock needed', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
@@ -314,7 +326,7 @@ describe('preview_url tool — no UI running', () => {
 
 describe('preview_url tool — backend demand-ensure', () => {
   test('cold project: ensure spawns the backend and the call returns a live URL', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     let resolverCalls = 0;
     let uiBase = '';
     const handler = captureRegistration(cwd, BASE_CONFIG, {
@@ -333,7 +345,7 @@ describe('preview_url tool — backend demand-ensure', () => {
   });
 
   test('resolver runs on every call, even with a live UI (orphan-heal contract)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const uiBase = bindTestUiServerLock(cwd);
     let resolverCalls = 0;
     const handler = captureRegistration(cwd, BASE_CONFIG, {
@@ -349,7 +361,7 @@ describe('preview_url tool — backend demand-ensure', () => {
   });
 
   test('auto-start opt-out: soft not-running payload naming the knob', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         throw new AutoStartDisabledError(
@@ -367,7 +379,7 @@ describe('preview_url tool — backend demand-ensure', () => {
   });
 
   test('spawn failure surfaces as a tool error carrying the resolver message', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         throw new Error('server did not start within 5000ms stderr:\nboom');
@@ -379,7 +391,7 @@ describe('preview_url tool — backend demand-ensure', () => {
   });
 
   test('fresh spawn that comes up draining: server-running retry hint after the bounded wait', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
@@ -397,7 +409,7 @@ describe('preview_url tool — backend demand-ensure', () => {
   });
 
   test('spawn failure during demand-ensure surfaces isError', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         throw new Error('spawn failed: ENOENT');
@@ -410,7 +422,7 @@ describe('preview_url tool — backend demand-ensure', () => {
 
 describe('preview_url tool — autoOpen field', () => {
   test('echoes resolved autoOpen=false when the user has disabled it', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd, CONFIG_AUTOOPEN_OFF);
     const result = await handler({ document: 'specs/foo/SPEC' });
@@ -420,7 +432,7 @@ describe('preview_url tool — autoOpen field', () => {
   });
 
   test('echoes autoOpen=false when no UI is running', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     const handler = captureRegistration(cwd, CONFIG_AUTOOPEN_OFF);
     const result = await handler({});
     expect(result.structuredContent?.running).toBe(false);
@@ -428,7 +440,7 @@ describe('preview_url tool — autoOpen field', () => {
   });
 
   test('reads config fresh per call (resolver invoked on every invocation)', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
+    const cwd = temporaryProject();
     bindTestUiServerLock(cwd);
     let currentAutoOpen = true;
     const configResolver = async (): Promise<Config> =>
@@ -500,7 +512,7 @@ function mockOffCwdDeps(
 
 describe('preview_url tool — file branch (out-of-project)', () => {
   test('resolves a loose file to the session whose contentDir contains it', async () => {
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: mockOffCwdDeps([
         { contentDir: '/loose', baseUrl: 'http://localhost:6001' },
       ]),
@@ -515,7 +527,7 @@ describe('preview_url tool — file branch (out-of-project)', () => {
   });
 
   test('no session for the file → running:false with an ok-open hint', async () => {
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: mockOffCwdDeps([]),
     });
     const result = await handler({ file: '/loose/notes.md' });
@@ -526,7 +538,7 @@ describe('preview_url tool — file branch (out-of-project)', () => {
   });
 
   test('file is mutually exclusive with document', async () => {
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: mockOffCwdDeps([]),
     });
     const result = await handler({ file: '/loose/notes.md', document: 'specs/foo' });
@@ -551,7 +563,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
           : null,
       realpath: async (p) => p,
     };
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: liveDeps,
       ensureSingleFileSession: async () => {
         candidate = { contentDir: '/loose', baseUrl: 'http://localhost:6010' };
@@ -570,7 +582,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
       realpath: async (p) => p,
     };
     let called = false;
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: empty,
       ensureSingleFileSession: async () => {
         called = true;
@@ -589,7 +601,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
       inspect: async () => null,
       realpath: async (p) => p,
     };
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: empty,
     });
     const result = await handler({ file: '/loose/y.md' });
@@ -602,7 +614,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
       inspect: async () => null,
       realpath: async (p) => p,
     };
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: empty,
       ensureSingleFileSession: async () => {
         throw new Error('spawn boom');
@@ -614,7 +626,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
     expect(result.content[0]?.text).toContain('ok open');
   });
   test('relative file path is rejected (must be absolute)', async () => {
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG);
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG);
     const result = await handler({ file: 'notes.md' });
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('absolute');
@@ -625,7 +637,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
       inspect: async () => null,
       realpath: async (p) => p,
     };
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: empty,
       ensureSingleFileSession: async () => true,
     });
@@ -635,7 +647,7 @@ describe('preview_url tool — file branch boot-on-demand', () => {
     expect(result.content[0]?.text).toContain('ok open');
   });
   test('file branch honors a user-scoped autoOpen=false preference', async () => {
-    const handler = captureRegistration(mkdtempSync(join(tmpdir(), 'ok-pv-')), BASE_CONFIG, {
+    const handler = captureRegistration(temporaryProject('ok-pv-'), BASE_CONFIG, {
       offCwdResolverDeps: mockOffCwdDeps([
         { contentDir: '/loose', baseUrl: 'http://127.0.0.1:6020' },
       ]),

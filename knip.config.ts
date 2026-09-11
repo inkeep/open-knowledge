@@ -139,7 +139,9 @@ export default {
     'packages/server': {
       entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
       project: 'src/**',
-      ignoreDependencies: ['@types/shell-quote'],
+      ignoreDependencies: [
+        '@types/shell-quote',
+      ],
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
@@ -150,6 +152,7 @@ export default {
     },
     'packages/desktop': {
       entry: [
+        'src/main/entry.ts',
         'src/utility/server-entry.ts',
         'src/utility/pty-host.ts',
         'src/**/*.test.ts',

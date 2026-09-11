@@ -2670,8 +2670,19 @@ describe('WindowManager', () => {
     });
 
     describe('forceStopConflictingServer (dialog "Stop Server & Retry")', () => {
+      const ownedDirectories: string[] = [];
+      function temporaryProject(prefix = 'ok-force-stop-'): string {
+        const dir = mkdtempSync(join(tmpdir(), prefix));
+        ownedDirectories.push(dir);
+        return dir;
+      }
+      afterEach(() => {
+        const owned = ownedDirectories.splice(0);
+        for (const dir of owned) rmSync(dir, { recursive: true, force: true });
+        for (const dir of owned) expect(existsSync(dir)).toBe(false);
+      });
       function seedRawLock(pid: number, overrides?: { port?: number }): string {
-        const projectPath = mkdtempSync(join(tmpdir(), 'ok-force-stop-'));
+        const projectPath = temporaryProject();
         const lockDir = join(projectPath, '.ok', 'local');
         mkdirSync(lockDir, { recursive: true });
         writeFileSync(
@@ -2712,7 +2723,7 @@ describe('WindowManager', () => {
         env.deps.killProbe = (pid) => {
           killCalls.push(pid);
         };
-        const projectPath = mkdtempSync(join(tmpdir(), 'ok-force-stop-empty-'));
+        const projectPath = temporaryProject('ok-force-stop-empty-');
 
         const wm = new WindowManager(env.deps);
         const outcome = await wm.forceStopConflictingServer(projectPath);

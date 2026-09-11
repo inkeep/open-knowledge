@@ -112,3 +112,39 @@ describe('formatRemovalOutcome', () => {
     }
   });
 });
+
+test('reports root stop failures once and counts dependent items separately', async () => {
+  const locks = ['/one/.ok/local', '/two/.ok/local'];
+  const outcome = await runRemoval(
+    {
+      scope: 'uninstall',
+      ops: [
+        ...locks.map((lockDir) => ({
+          kind: 'stop-server' as const,
+          group: 'Servers',
+          label: `Stop ${lockDir}`,
+          lockDir,
+        })),
+        ...Array.from({ length: 35 }, (_, i) => ({
+          kind: 'remove-path' as const,
+          group: 'Global',
+          label: `Global ${i}`,
+          path: `/unused/${i}`,
+        })),
+      ],
+    },
+    {
+      stopServer: async (lockDir) => {
+        throw new Error(`Cannot stop ${lockDir}; resolve this blocker`);
+      },
+    },
+  );
+  const rendered = stripVTControlCharacters(formatRemovalOutcome(outcome));
+  expect(rendered).toContain('2 could not be removed');
+  expect(rendered).toContain('35 dependent items left untouched');
+  expect(rendered.match(/resolve this blocker/g)).toHaveLength(2);
+  expect(outcome.results.filter((r) => r.status === 'blocked')).toHaveLength(35);
+  const json = removalOutcomeToJson('uninstall', outcome);
+  expect(json.mode === 'applied' && json.failed).toHaveLength(37);
+  expect(json.mode === 'applied' && json.blocked).toHaveLength(35);
+});

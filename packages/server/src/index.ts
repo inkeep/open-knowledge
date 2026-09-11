@@ -411,9 +411,11 @@ export {
 export {
   discoverLockDirs,
   extractOkBinaryPath,
+  type LockProcessScan,
   type ProcessUsage,
   processCommand,
   processUsage,
+  scanLockProcesses,
 } from './process-scan.ts';
 export {
   type EnsureProjectGitResult,

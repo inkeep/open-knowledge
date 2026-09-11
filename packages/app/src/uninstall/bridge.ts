@@ -1,7 +1,7 @@
 import type {
   OkUninstallBridge,
+  UninstallDispatchResult,
   UninstallIntent,
-  UninstallScreenSpec,
 } from '@inkeep/open-knowledge-core';
 
 declare global {
@@ -10,14 +10,32 @@ declare global {
   }
 }
 
-export async function requestUninstallScreen(): Promise<UninstallScreenSpec | null> {
+export type UninstallScreenResponse =
+  | Extract<UninstallDispatchResult, { kind: 'screen' | 'refused' }>
+  | {
+      kind: 'unavailable';
+      reason: 'missing-bridge' | 'request-failed' | 'timeout' | 'unexpected-response';
+    };
+
+export async function requestUninstallScreen(): Promise<UninstallScreenResponse> {
   const bridge = typeof window === 'undefined' ? undefined : window.okUninstall;
-  if (bridge === undefined) return null;
+  if (bridge === undefined) return { kind: 'unavailable', reason: 'missing-bridge' };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const result = await bridge.ready();
-    return result.kind === 'screen' ? result.screen : null;
-  } catch {
-    return null;
+    const result = await Promise.race([
+      bridge.ready(),
+      new Promise<UninstallScreenResponse>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: 'unavailable', reason: 'timeout' }), 5000);
+      }),
+    ]);
+    if (result.kind === 'accepted') return { kind: 'unavailable', reason: 'unexpected-response' };
+    if (result.kind !== 'screen') console.warn('Uninstall screen unavailable', result.reason);
+    return result;
+  } catch (error) {
+    console.warn('Uninstall screen request failed', error);
+    return { kind: 'unavailable', reason: 'request-failed' };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

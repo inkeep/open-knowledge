@@ -175,3 +175,14 @@ describe('runStatus', () => {
     expect(process.exitCode).toBe(before);
   });
 });
+
+test('read failures retain unknown liveness and suggest restoring access', () => {
+  const report = buildStatusReport({
+    status: 'read-error',
+    lockPath: '/x/server.lock',
+    error: 'EACCES',
+  });
+  expect(report.server).toMatchObject({ state: 'read-error', alive: 'unknown' });
+  expect(report.server.pid).toBeUndefined();
+  expect(renderStatusText(report)).toContain('restore file and parent-directory access');
+});

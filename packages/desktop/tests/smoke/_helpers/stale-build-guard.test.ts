@@ -187,11 +187,35 @@ describe('the real CHECKS list, not an injected one', () => {
     const cli = verdict.missing.find((m) => m.name.includes('CLI'));
     expect(cli?.out).toMatch(/cli[/\\]dist[/\\]index\.mjs$/);
     expect(verdict.missing.map((m) => m.name)).toEqual([
-      'main',
+      'main dispatcher',
+      'uninstall result window',
+      'app main',
       'preload',
       'renderer',
       'utility server entry',
       '@inkeep/open-knowledge CLI',
     ]);
   });
+});
+
+it.each([
+  ['src/main/entry.ts', ['main dispatcher']],
+  ['src/main/index.ts', ['app main']],
+  ['src/main/desktop-uninstall-result-window.ts', ['uninstall result window']],
+  [
+    'src/main/desktop-uninstall-result.ts',
+    ['main dispatcher', 'app main', 'uninstall result window'],
+  ],
+  ['src/main/uninstall-window.ts', ['app main', 'uninstall result window']],
+  ['src/main/desktop-uninstall-handoff.ts', ['app main']],
+] as const)('guards the entry emitted for %s', (source, artifacts) => {
+  const verdict = evaluateBuild({
+    exists: () => true,
+    mtimeMs: (path) => (path.replaceAll('\\', '/').endsWith(source) ? 200 : 100),
+    smokeEnabled: true,
+    packagedOverride: undefined,
+  });
+  for (const artifact of artifacts) {
+    expect(verdict.stale.some((item) => item.includes(`${artifact}:`))).toBe(true);
+  }
 });

@@ -996,6 +996,9 @@
     "BVkqD9": [
       "Pemeliharaan indeks dihentikan sementara karena atribut Git lainnya mengontrol index.md. Perbarui .gitattributes sehingga jalur index.md yang dicakup menggunakan merge=union, lalu coba lagi."
     ],
+    "BVmgJG": [
+      "Tampilkan di Finder menampilkan aplikasi agar Anda dapat menyeretnya ke Tong Sampah."
+    ],
     "BWTzAb": ["Manual"],
     "BY-g4_": ["Tambahkan pola"],
     "Ba4D2x": ["Templat diimpor"],
@@ -1232,6 +1235,7 @@
     "EPKVES": ["Perbarui \"", ["skillName"], "\" menimpa suntingan Anda?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " token terpakai"],
     "EQXPXf": ["Gulir ke akhir"],
+    "ES1zFv": ["Pindahkan OpenKnowledge.app ke Tong Sampah"],
     "ETyvvg": ["Tidak ada bahasa yang cocok."],
     "EWCJFu": [["target"], " dibuat"],
     "EWPtMO": ["Kode"],
@@ -1674,6 +1678,7 @@
     "JM_aq-": ["Pakai URL https:// — http:// hanya diizinkan untuk localhost."],
     "JOcPqH": ["Bawa repositori remote ke komputer ini."],
     "JOhCT9": ["Push menyertakan"],
+    "JReD69": ["File OpenKnowledge telah dihapus"],
     "JWsZlx": ["Buka sebuah proyek untuk menyunting."],
     "JYj5R2": ["Pilih file"],
     "JZ8cO6": ["Terang, gelap, atau ikuti sistem."],
@@ -1909,6 +1914,7 @@
     "M7SqjM": ["Buka lagi"],
     "M92_0q": ["Tutup komentar"],
     "M9597s": ["Menyiapkan URL berbagi..."],
+    "MAVznT": ["Pengaturan dan integrasi telah dihapus."],
     "MBKkUy": ["skills.sh tidak tersedia; menampilkan hasil GitHub (tanpa peringkat pemasangan)."],
     "MBfjUk": [["0", "plural", { "other": ["Mengunggah ", "#", " lampiran"] }]],
     "MCjC9A": ["Hapus ", ["deleteDescriptorLabel"]],
@@ -2612,6 +2618,7 @@
       ["configFile"],
       "</0> proyek Anda, yang sepenuhnya mengatur lint untuk proyek ini. Nyalakan atau matikan aturan dan sunting opsinya di sini; perubahannya ditulis kembali ke berkas itu."
     ],
+    "V3JCWv": ["Pembersihan belum selesai"],
     "V3iDh1": [
       "Memvalidasi frontmatter dokumen terhadap berkas JSON Schema standar (draft-06, draft-07, 2019-09, atau 2020-12). Nyalakan sebuah skema untuk memvalidasi dokumen yang cocok dengan glob-nya; pelanggaran muncul sebagai peringatan dan tidak pernah menghalangi penulisan. Gunakan Sunting untuk membuka berkas skemanya."
     ],
@@ -2996,6 +3003,7 @@
     "ZQJ1IV": ["Mengaktifkan tab penyunting terakhir."],
     "ZQLDTl": ["folder dibuat"],
     "ZQc7C8": ["Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> membatalkan."],
+    "ZR-8iJ": ["Tidak dapat menampilkan hasil pembersihan"],
     "ZSoojc": ["Kloning gagal — periksa URL lalu coba lagi (", ["status"], ")"],
     "ZU8VV_": ["Gagal menghapus: ", ["error"]],
     "ZVOhXM": ["Gagal memperbarui sinkronisasi — ", ["detail"]],
@@ -3153,6 +3161,7 @@
     "aSVmqV": [
       "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Proyek ini."
     ],
+    "aTDVi6": ["Konten Anda dipertahankan"],
     "aWlJai": ["Memulai alur masuk"],
     "aXkLuE": ["Respons apply salah bentuk"],
     "a_u4ck": ["Memuat tag"],
@@ -3240,6 +3249,7 @@
       ["docName"],
       "\" sebelum menyambung ulang."
     ],
+    "bmI-q1": ["File OpenKnowledge dihapus"],
     "bnOTEz": ["Mengambil…"],
     "bn_MDX": ["Mengapa ini perlu diperhatikan"],
     "bpMVIA": [
@@ -3348,6 +3358,7 @@
     "ciozf1": ["Keterampilan sudah ada dalam proyek"],
     "cjtjry": ["Menyusuri riwayat navigasi OpenKnowledge ke belakang."],
     "cklVjM": ["Lini masa"],
+    "clJ3qM": ["Selesai."],
     "cnGeoo": ["Hapus"],
     "cqQyPB": ["Nama folder"],
     "crqzW5": ["Alat AI"],
@@ -4599,6 +4610,7 @@
       ["2"],
       "”. Apa pun di SKILL.md yang menunjuk ke berkas itu akan rusak sampai dibuat ulang."
     ],
+    "psUrB1": ["File Markdown dan skill yang Anda buat tidak diubah."],
     "psl2Sj": ["Perubahan Anda masih disimpan — jalankan pengujiannya lagi sebentar."],
     "ptQ3_N": ["lepas tautan"],
     "pvnfJD": ["Gelap"],
@@ -5148,6 +5160,7 @@
       ]
     ],
     "vmahUq": ["Garis bawah yang sudah ada mungkin tidak langsung diperbarui."],
+    "vmwZHP": ["Hampir selesai. Berikut yang sudah dilakukan dan yang masih perlu dilakukan."],
     "vp5vfW": ["1 jam"],
     "vppAju": ["Tempat lampiran yang baru ditambahkan diletakkan."],
     "vqJXNe": ["Pasang skill <0>open-knowledge-discovery</0>"],
@@ -5199,6 +5212,9 @@
     "wSBXaS": ["Kelola ", ["rowLabel"]],
     "wT4iQr": ["Membuka pencarian penyunting visual dengan kendali penggantian terbentang."],
     "wTcjov": ["Tanpa ruang kerja"],
+    "wTf1ag": [
+      "Beberapa file mungkin belum dihapus. Buka log pembersihan untuk melihat detailnya. Anda dapat membuka kembali OpenKnowledge untuk mencoba lagi."
+    ],
     "wU8WyK": ["Bidang elemen"],
     "wVa83H": ["Laporannya tidak bisa dibuat"],
     "wWtVYd": ["Masukkan port antara 1 dan 65535."],
@@ -5311,6 +5327,7 @@
     "xiv-dW": ["Belum ada berkas."],
     "xk133d": ["Memasang skill ke ", ["path"], " — lokasi pertama menyimpan salinan aslinya"],
     "xloBjn": ["Jalur Relatif"],
+    "xnWySt": ["Pembersihan mungkin masih berlangsung."],
     "xrVr_k": ["Keterampilan tidak bisa dibuat: ", ["0"]],
     "xsZhu-": ["Nomor halaman"],
     "xtJgSe": ["Sumber ini memuat beberapa keterampilan — pilih yang akan diimpor."],
@@ -5354,6 +5371,7 @@
     "yQE2r9": ["Memuat"],
     "yQyglE": ["Tidak ada dokumen yang cocok"],
     "yR5LHI": ["Masukkan nilai heksa 6 digit seperti #1A2B3C"],
+    "yU_9ur": ["Akan dikerjakan."],
     "yUxR-Q": ["Bentangkan ", ["keyName"]],
     "yWSvcf": ["Akar konten"],
     "yWWThY": ["Referensi aset"],

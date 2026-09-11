@@ -1897,6 +1897,10 @@ msgstr "Nilai yang diizinkan (kosong = apa saja)"
 msgid "Allowed values for {field}"
 msgstr "Nilai yang diizinkan untuk {field}"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Almost done. Here's what happened and what's left."
+msgstr "Hampir selesai. Berikut yang sudah dilakukan dan yang masih perlu dilakukan."
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "Sudah ada di {assetContentPath} — memakai ulang."
@@ -2890,9 +2894,18 @@ msgstr "Claude Code (claude) belum terpasang atau tidak ada di PATH Anda."
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Cleanup didn’t finish"
+msgstr "Pembersihan belum selesai"
+
 #: src/uninstall/UninstallNoticeScreen.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Cleanup log"
 msgstr "Log pembersihan"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Cleanup may still be running."
+msgstr "Pembersihan mungkin masih berlangsung."
 
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
@@ -3033,6 +3046,8 @@ msgstr "Mengkloning..."
 #: src/components/ui/sheet.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/native-menu-catalog.ts
+#: src/uninstall/UninstallApp.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Close"
 msgstr "Tutup"
 
@@ -5100,6 +5115,10 @@ msgstr "selesai"
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr "Selesai"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
+msgstr "Selesai."
 
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
@@ -7722,6 +7741,10 @@ msgstr "Menjaga basis pengetahuan Anda tetap selaras dengan Open Knowledge Forma
 msgid "Kept both — \"{0}\" is its own skill now"
 msgstr "Keduanya disimpan — \"{0}\" kini menjadi keterampilan tersendiri"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Kept your content"
+msgstr "Konten Anda dipertahankan"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr "Kunci yang berakhiran {keyHint}"
@@ -8235,6 +8258,10 @@ msgstr "Markdown"
 msgid "Markdown checks do not apply to this file."
 msgstr "Pemeriksaan Markdown tidak berlaku untuk file ini."
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Markdown files and authored skills were left untouched."
+msgstr "File Markdown dan skill yang Anda buat tidak diubah."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Sumber markdown"
@@ -8448,6 +8475,10 @@ msgstr "Pindahkan blok"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Move down"
 msgstr "Turunkan"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Move OpenKnowledge.app to the Trash"
+msgstr "Pindahkan OpenKnowledge.app ke Tong Sampah"
 
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Move or rename this file inside the skill — the path stays under references/ or scripts/."
@@ -9941,6 +9972,10 @@ msgstr "OpenKnowledge menyunting {subject}"
 msgid "OpenKnowledge edited a document"
 msgstr "OpenKnowledge menyunting sebuah dokumen"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "OpenKnowledge files were removed"
+msgstr "File OpenKnowledge telah dihapus"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
 msgstr "OpenKnowledge mengimpor {source}"
@@ -11299,6 +11334,10 @@ msgstr "\"{0}\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Removed OpenKnowledge files"
+msgstr "File OpenKnowledge dihapus"
+
 #. placeholder {0}: connection.label
 #. placeholder {1}: sharedChoice.peers
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -11790,8 +11829,13 @@ msgstr "Tampilkan di Penjelajah Berkas"
 
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Reveal in Finder"
 msgstr "Tampilkan di Finder"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Reveal in Finder shows the app so you can drag it to the Trash."
+msgstr "Tampilkan di Finder menampilkan aplikasi agar Anda dapat menyeretnya ke Tong Sampah."
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -12489,6 +12533,10 @@ msgstr "Menyiapkan"
 msgid "Settings"
 msgstr "Pengaturan"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Settings and integrations were cleaned up."
+msgstr "Pengaturan dan integrasi telah dihapus."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"
 msgstr "Isi pengaturan"
@@ -13004,6 +13052,10 @@ msgstr "Beberapa file yang dilepas tidak dapat disisipkan dengan aman."
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Some files may not have been removed. Open the cleanup log for details. You can reopen OpenKnowledge to try again."
+msgstr "Beberapa file mungkin belum dihapus. Buka log pembersihan untuk melihat detailnya. Anda dapat membuka kembali OpenKnowledge untuk mencoba lagi."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
@@ -14698,6 +14750,10 @@ msgstr "Judul"
 msgid "To do"
 msgstr "Akan dikerjakan"
 
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
+msgstr "Akan dikerjakan."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "Menyalakan atau mematikan daftar berpoin."
@@ -14955,6 +15011,10 @@ msgstr "Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> memb
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"
 msgstr "Ketik untuk menemukan sebuah dokumen"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Unable to show the cleanup result"
+msgstr "Tidak dapat menampilkan hasil pembersihan"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "unavailable on this platform"

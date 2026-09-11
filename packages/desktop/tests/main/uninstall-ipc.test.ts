@@ -88,7 +88,6 @@ describe('uninstall screen registry — intent delivery', () => {
 
     for (const payload of [
       { kind: 'delete-everything' },
-      { kind: 'notice-reveal-log' },
       { kind: 42 },
       'notice-confirm',
       null,

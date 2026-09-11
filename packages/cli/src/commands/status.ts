@@ -42,6 +42,10 @@ function summarize(name: 'server' | 'ui', state: LockState): StatusEntry {
       return { name, state: 'missing', alive: false };
     case 'corrupt':
       return { name, state: 'corrupt', alive: false };
+    case 'read-error':
+      return { name, state: 'read-error', alive: 'unknown' };
+    case 'unverified-owner':
+      return { name, state: 'unverified-owner', pid: state.pid, alive: 'unknown' };
     case 'foreign-host':
       return {
         name,
@@ -86,6 +90,12 @@ function renderEntry(entry: StatusEntry): string {
   }
   if (entry.state === 'corrupt') {
     return `${label}  lock file corrupt — run \`ok clean\``;
+  }
+  if (entry.state === 'read-error') {
+    return `${label}  lock file unreadable — restore file and parent-directory access, then retry`;
+  }
+  if (entry.state === 'unverified-owner') {
+    return `${label}  unverified owner (lock records no machine) pid=${entry.pid} is alive locally; server identity unknown`;
   }
   if (entry.state === 'foreign-host') {
     return `${label}  foreign host (${entry.host}) pid=${entry.pid} port=${entry.port}`;

@@ -1,6 +1,14 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -191,6 +199,25 @@ describe('desktop uninstall handoff readiness', () => {
     child.emit('error', new Error('spawn EACCES'));
     await expect(launched).resolves.toEqual({ ok: false, error: 'spawn EACCES' });
     expect(child.unref).not.toHaveBeenCalled();
+  });
+
+  test('allows the progress renderer to start before applying the bounded readiness timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const child = new Child();
+      const launched = launchDesktopUninstallHandoff(input, {
+        spawn: () => child,
+        readParentStartedAt: () => 'original process',
+        resultCommand: ['/owned/Electron'],
+      });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(child.kill).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(35_000);
+      await expect(launched).resolves.toMatchObject({ ok: false });
+      expect(child.kill).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('stops a helper that never becomes ready', async () => {
@@ -400,3 +427,383 @@ describe.skipIf(process.platform === 'win32')('desktop cleanup result', () => {
     },
   );
 });
+
+describe.skipIf(process.platform === 'win32')('result dialog dismissal', () => {
+  test.each([
+    [true, 'Cleanup log', false],
+    [false, 'Cleanup log', false],
+    [true, 'Reveal in Finder', false],
+    [false, 'Close', false],
+    [true, 'Cleanup log', true],
+    [false, 'Cleanup log', true],
+  ] as const)('dismisses once (ok=%s, action=%s, revealFails=%s)', (ok, action, revealFails) => {
+    const f = fixture();
+    const logPath = join(f.dir, 'cleanup.log');
+    const appBundlePath = join(f.dir, 'OpenKnowledge.app');
+    mkdirSync(appBundlePath);
+    const count = join(f.dir, 'count');
+    const commands = {
+      ps: f.executable('ps', 'exit 1'),
+      osascript: f.executable(
+        'notice-once',
+        `
+if [ -f '${count}' ]; then
+  printf 'dialog-again\\n' >> '${f.events}'
+  printf 'Close\\n'
+else
+  touch '${count}'
+  printf 'dialog\\n' >> '${f.events}'
+  printf '%s\\n' '${action}'
+fi`,
+      ),
+      open: f.executable(
+        'reveal-result',
+        `printf 'reveal:%s\\n' "$2" >> '${f.events}'
+${revealFails ? "printf 'Finder unavailable\\n' >&2\nexit 7" : 'exit 0'}`,
+      ),
+    };
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable(
+          'cleanup-once',
+          `printf 'cleanup\\n' >> '${f.events}'\nexit ${ok ? 0 : 31}`,
+        ),
+        projectPaths: [],
+        logPath,
+        appBundlePath,
+        parentPid: 123,
+        parentStartedAt: 'original',
+      },
+      commands,
+    );
+    const result = spawnSync('/bin/sh', ['-c', script], { timeout: 5000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(ok ? 0 : 1);
+    const events = readFileSync(f.events, 'utf8').trim().split('\n');
+    expect(events.filter((event) => event.startsWith('dialog'))).toEqual(['dialog']);
+    expect(events.filter((event) => event === 'cleanup')).toEqual(['cleanup']);
+    expect(events.filter((event) => event.startsWith('reveal:'))).toEqual(
+      action === 'Close' ? [] : [`reveal:${action === 'Cleanup log' ? logPath : appBundlePath}`],
+    );
+    const log = readFileSync(logPath, 'utf8');
+    expect(log).toContain(`Cleanup result: ${ok ? 'succeeded' : 'failed'}`);
+    expect(log).not.toContain(`Cleanup result: ${ok ? 'failed' : 'succeeded'}`);
+    if (revealFails) expect(log).toContain('Finder unavailable');
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('rendered uninstall result handoff', () => {
+  test.each([
+    [true, 0, undefined],
+    [true, 10, 'log'],
+    [true, 11, 'app'],
+    [false, 0, undefined],
+    [false, 10, 'log'],
+  ] as const)(
+    'waits for the result window to exit before revealing (ok=%s, result=%s)',
+    (ok, result, reveal) => {
+      const f = fixture();
+      const logPath = join(f.dir, 'cleanup.log');
+      const appBundlePath = join(f.dir, 'OpenKnowledge.app');
+      const commands = {
+        ...f.commands,
+        ps: f.executable('ps', 'exit 1'),
+        result: [
+          f.executable(
+            'result-ui',
+            `profile="${'$'}{1#--user-data-dir=}"
+printf '%s' "$profile" > '${f.dir}/profile-path'
+if [ "$2" = '--ok-uninstall-progress' ]; then
+  printf 'progress-ui\\n' >> '${f.events}'
+  touch "$profile/ready"
+  while [ ! -f "$profile/result" ]; do /bin/sleep 0.01; done
+  cp "$profile/result" '${f.dir}/result'
+fi
+printf 'result-ui\\nresult-exited\\n' >> '${f.events}'
+exit ${result}`,
+          ),
+        ],
+        open: f.executable('finder', `printf 'reveal:%s\\n' "$2" >> '${f.events}'`),
+      };
+      const script = buildDesktopUninstallHandoffScript(
+        {
+          cliPath: f.executable('cli', `printf 'cleanup\\n' >> '${f.events}'\nexit ${ok ? 0 : 1}`),
+          projectPaths: [],
+          logPath,
+          appBundlePath,
+          parentPid: 123,
+          parentStartedAt: 'old',
+        },
+        commands,
+      );
+      const outcome = spawnSync('/bin/sh', ['-c', script], { encoding: 'utf8' });
+      expect(outcome.status).toBe(ok ? 0 : 1);
+      const events = readFileSync(f.events, 'utf8').trim().split('\n');
+      expect(events).toEqual([
+        'progress-ui',
+        'cleanup',
+        'result-ui',
+        'result-exited',
+        ...(reveal ? [`reveal:${reveal === 'log' ? logPath : appBundlePath}`] : []),
+      ]);
+      expect(readFileSync(join(f.dir, 'result'), 'utf8').split('\0')[0]).toBe(
+        ok ? 'OpenKnowledge files were removed' : 'Cleanup didn’t finish',
+      );
+      const profile = readFileSync(join(f.dir, 'profile-path'), 'utf8');
+      expect(profile).not.toBe('');
+      expect(existsSync(profile)).toBe(false);
+      expect(readFileSync(logPath, 'utf8')).toContain(
+        `Cleanup result: ${ok ? 'succeeded' : 'failed'}`,
+      );
+    },
+  );
+});
+
+describe.skipIf(process.platform === 'win32')('continuous uninstall progress', () => {
+  test('keeps the original app open and does no cleanup if the progress window cannot start', () => {
+    const f = fixture();
+    const outcome = spawnSync(
+      '/bin/sh',
+      [
+        '-c',
+        buildDesktopUninstallHandoffScript(
+          {
+            cliPath: f.executable('cli', `printf 'cleanup\\n' >> '${f.events}'`),
+            projectPaths: [],
+            logPath: join(f.dir, 'cleanup.log'),
+            appBundlePath: '/Applications/OpenKnowledge.app',
+            parentPid: 123,
+            parentStartedAt: 'old',
+          },
+          {
+            ...f.commands,
+            ps: f.executable('ps', 'exit 1'),
+            result: [
+              f.executable(
+                'broken-ui',
+                `printf '%s' "${'$'}{1#--user-data-dir=}" > '${f.dir}/profile-path'\nexit 7`,
+              ),
+            ],
+          },
+        ),
+      ],
+      { encoding: 'utf8', timeout: 5000 },
+    );
+    expect(outcome.status).toBe(1);
+    expect(outcome.stdout).not.toContain('OK_UNINSTALL_READY');
+    expect(existsSync(f.events)).toBe(false);
+    expect(existsSync(readFileSync(join(f.dir, 'profile-path'), 'utf8'))).toBe(false);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('progress window failure boundaries', () => {
+  test('falls back once when the progress process dies and preserves a cleanup failure', () => {
+    const f = fixture();
+    const outcome = spawnSync(
+      '/bin/sh',
+      [
+        '-c',
+        buildDesktopUninstallHandoffScript(
+          {
+            cliPath: f.executable(
+              'cli',
+              `touch '${f.dir}/cleaning'\nprintf 'cleanup\\n' >> '${f.events}'\nexit 31`,
+            ),
+            projectPaths: [],
+            logPath: join(f.dir, 'cleanup.log'),
+            appBundlePath: '/Applications/OpenKnowledge.app',
+            parentPid: 123,
+            parentStartedAt: 'old',
+          },
+          {
+            ...f.commands,
+            ps: f.executable('ps', 'exit 1'),
+            result: [
+              f.executable(
+                'crashing-ui',
+                `profile="${'$'}{1#--user-data-dir=}"
+printf '%s' "$profile" > '${f.dir}/profile-path'
+touch "$profile/ready"
+while [ ! -f '${f.dir}/cleaning' ]; do /bin/sleep 0.01; done
+exit 7`,
+              ),
+            ],
+          },
+        ),
+      ],
+      { encoding: 'utf8', timeout: 5000 },
+    );
+    expect(outcome.status).toBe(1);
+    const events = readFileSync(f.events, 'utf8');
+    expect(events.match(/cleanup\n/g)).toHaveLength(1);
+    expect(events.match(/-e on run argv/g)).toHaveLength(1);
+    expect(events).toContain('Cleanup didn’t finish');
+    expect(events).not.toContain('OpenKnowledge files were removed');
+    expect(existsSync(readFileSync(join(f.dir, 'profile-path'), 'utf8'))).toBe(false);
+  });
+
+  test('reaps its own progress process and profile if the handoff is interrupted', async () => {
+    const f = fixture();
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable('cli', `touch '${f.dir}/cleaning'`),
+        projectPaths: [],
+        logPath: join(f.dir, 'cleanup.log'),
+        appBundlePath: '/Applications/OpenKnowledge.app',
+        parentPid: 123,
+        parentStartedAt: 'old',
+      },
+      {
+        ...f.commands,
+        ps: f.executable('ps', "printf 'old'"),
+        result: [
+          f.executable(
+            'waiting-ui',
+            `profile="${'$'}{1#--user-data-dir=}"
+printf '%s' "$profile" > '${f.dir}/profile-path'
+printf '%s' "$$" > '${f.dir}/ui-pid'
+touch "$profile/ready"
+exec /bin/sleep 60`,
+          ),
+        ],
+      },
+    );
+    const child = spawn('/bin/sh', ['-c', script], { stdio: ['ignore', 'pipe', 'ignore'] });
+    try {
+      await once(child.stdout, 'data');
+      const closed = once(child, 'close');
+      child.kill('SIGTERM');
+      await closed;
+      const pid = Number(readFileSync(join(f.dir, 'ui-pid'), 'utf8'));
+      expect(() => process.kill(pid, 0)).toThrow();
+      expect(existsSync(readFileSync(join(f.dir, 'profile-path'), 'utf8'))).toBe(false);
+      expect(existsSync(join(f.dir, 'cleaning'))).toBe(false);
+    } finally {
+      if (child.exitCode === null) child.kill('SIGTERM');
+    }
+  });
+});
+
+test.skipIf(!existsSync('/bin/dash')).each([
+  { state: 'empty', ps: 'exit 0', status: 1, cleanup: false },
+  { state: 'absent', ps: 'exit 1', status: 0, cleanup: true },
+  { state: 'reused', ps: "printf 'replacement'", status: 0, cleanup: true },
+])(
+  'reaps the query watchdog promptly under dash when the parent is $state',
+  ({ ps, status, cleanup }) => {
+    const f = fixture();
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable('cli', `touch '${f.dir}/cleanup-ran'`),
+        projectPaths: [],
+        logPath: join(f.dir, 'cleanup.log'),
+        appBundlePath: '/owned/App.app',
+        parentPid: 123,
+        parentStartedAt: 'original',
+      },
+      { ...f.commands, ps: f.executable('ps', ps) },
+    );
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const result = spawnSync('/bin/dash', ['-c', script], {
+        encoding: 'utf8',
+        timeout: 3000,
+        env: { ...process.env, TMPDIR: f.dir },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(status);
+    }
+    expect(existsSync(join(f.dir, 'cleanup-ran'))).toBe(cleanup);
+    expect(readdirSync(f.dir).filter((name) => name.startsWith('ok-uninstall-ps.'))).toEqual([]);
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'fails closed when process-query output cannot be read',
+  () => {
+    const f = fixture();
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable('cli', `touch '${f.dir}/cleanup-ran'`),
+        projectPaths: [],
+        logPath: join(f.dir, 'cleanup.log'),
+        appBundlePath: '/owned/App.app',
+        parentPid: 123,
+        parentStartedAt: 'original',
+      },
+      {
+        ...f.commands,
+        ps: f.executable(
+          'ps',
+          `for probe in '${f.dir}'/ok-uninstall-ps.*; do /bin/rm -f "$probe/output"; done
+exit 1`,
+        ),
+      },
+    );
+    const result = spawnSync('/bin/sh', ['-c', script], {
+      encoding: 'utf8',
+      timeout: 3000,
+      env: { ...process.env, TMPDIR: f.dir },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(existsSync(join(f.dir, 'cleanup-ran'))).toBe(false);
+    expect(readFileSync(f.events, 'utf8')).toContain('Could not verify that OpenKnowledge stopped');
+    expect(readdirSync(f.dir).filter((name) => name.startsWith('ok-uninstall-ps.'))).toEqual([]);
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'bounds a stuck parent identity query without starting cleanup',
+  () => {
+    const f = fixture();
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable('cli', `printf 'cleanup\\n' >> '${f.events}'`),
+        projectPaths: [],
+        logPath: join(f.dir, 'cleanup.log'),
+        appBundlePath: '/owned/App.app',
+        parentPid: 123,
+        parentStartedAt: 'original',
+      },
+      { ...f.commands, ps: f.executable('ps', 'exec /bin/sleep 30'), psTimeoutSeconds: 0.05 },
+    );
+    const result = spawnSync('/bin/sh', ['-c', script], {
+      encoding: 'utf8',
+      timeout: 3000,
+      env: { ...process.env, TMPDIR: f.dir },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(readdirSync(f.dir).filter((name) => name.startsWith('ok-uninstall-ps.'))).toEqual([]);
+    expect(readFileSync(f.events, 'utf8')).toContain('Could not verify that OpenKnowledge stopped');
+    expect(readFileSync(f.events, 'utf8')).not.toContain('cleanup\n');
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'reports empty successful process-query output without running cleanup',
+  () => {
+    const f = fixture();
+    const script = buildDesktopUninstallHandoffScript(
+      {
+        cliPath: f.executable('cli', `touch '${f.dir}/cleanup-ran'`),
+        projectPaths: [],
+        logPath: join(f.dir, 'cleanup.log'),
+        appBundlePath: '/owned/App.app',
+        parentPid: 123,
+        parentStartedAt: 'original',
+      },
+      { ...f.commands, ps: f.executable('ps', 'exit 0') },
+    );
+    const result = spawnSync('/bin/sh', ['-c', script], {
+      encoding: 'utf8',
+      timeout: 3000,
+      env: { ...process.env, TMPDIR: f.dir },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(readFileSync(f.events, 'utf8')).toContain('process query returned no start time');
+    expect(readFileSync(f.events, 'utf8')).not.toContain('process query exit 0');
+    expect(existsSync(join(f.dir, 'cleanup-ran'))).toBe(false);
+  },
+);

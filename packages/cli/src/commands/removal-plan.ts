@@ -3,7 +3,7 @@ import { basename, join, relative, resolve, sep } from 'node:path';
 import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import { resolveLockDir } from '@inkeep/open-knowledge-server';
+import { resolveLockDir, scanLockProcesses } from '@inkeep/open-knowledge-server';
 import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
 import { clearTokenFromAllBackends } from '../auth/token-store.ts';
 import {
@@ -37,7 +37,13 @@ import { stopServerForRemoval } from './stop-for-removal.ts';
 export type RemovalGroup = string;
 
 export type RemovalOp = (
-  | { kind: 'stop-server'; group: RemovalGroup; label: string; lockDir: string }
+  | {
+      kind: 'stop-server';
+      group: RemovalGroup;
+      label: string;
+      lockDir: string;
+      preserveProjectState?: true;
+    }
   | { kind: 'keychain-token'; group: RemovalGroup; label: string; host: string }
   | { kind: 'embeddings-key'; group: RemovalGroup; label: string }
   | { kind: 'shell-block'; group: RemovalGroup; label: string; rcFile: string }
@@ -71,7 +77,7 @@ export interface RemovalPlan {
   ops: RemovalOp[];
 }
 
-type RemovalStatus = 'removed' | 'not-present' | 'skipped' | 'failed';
+type RemovalStatus = 'removed' | 'not-present' | 'skipped' | 'failed' | 'blocked';
 
 interface RemovalOpResult {
   op: RemovalOp;
@@ -100,12 +106,22 @@ export function deinitOps(
 ): RemovalOp[] {
   const ops: RemovalOp[] = [];
 
-  ops.push({
-    kind: 'stop-server',
-    group,
-    label: 'Stop the project server (if running)',
-    lockDir: resolveLockDir(projectRoot),
-  });
+  const lockDirs = [resolveLockDir(projectRoot)];
+  const legacyLockDir = join(projectRoot, '.ok');
+  if (resolveRemovalFilePath(join(legacyLockDir, 'server.lock')).kind !== 'not-present') {
+    lockDirs.push(legacyLockDir);
+  }
+  for (const lockDir of lockDirs) {
+    ops.push({
+      kind: 'stop-server',
+      group,
+      label:
+        lockDir === legacyLockDir
+          ? 'Check the legacy project server lock'
+          : 'Stop the project server (if running)',
+      lockDir,
+    });
+  }
 
   const mcpRelPaths = new Set<string>();
   for (const id of ALL_EDITOR_IDS) {
@@ -177,7 +193,7 @@ export function deinitOps(
       ? op
       : {
           ...op,
-          requiresStoppedServers: [resolveLockDir(projectRoot)],
+          requiresStoppedServers: lockDirs,
           ...(op.kind === 'remove-path' ? { requiresSuccessfulCleanup: true } : {}),
         },
   );
@@ -208,6 +224,7 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
       group: 'Running servers',
       label: `Stop server at ${tildify(join(lockDir, '..', '..'), home)}`,
       lockDir,
+      preserveProjectState: true,
     });
   }
 
@@ -358,6 +375,7 @@ export interface RunRemovalDeps {
   stopServer?: (lockDir: string) => Promise<{
     stopped: number;
     failed: Array<{ pid: number; error: string }>;
+    skipped?: string;
   }>;
 }
 
@@ -367,7 +385,19 @@ export async function runRemoval(
 ): Promise<RemovalOutcome> {
   const clearToken = deps.clearToken ?? clearTokenFromAllBackends;
   const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearAllEmbeddingsKeys;
-  const stopServer = deps.stopServer ?? stopServerForRemoval;
+  const deinitLockDirs = new Set(
+    plan.ops.flatMap((op) =>
+      op.kind === 'stop-server' && !op.preserveProjectState ? [resolve(op.lockDir)] : [],
+    ),
+  );
+  let processScan: ReturnType<typeof scanLockProcesses> | undefined;
+  const stopServer =
+    deps.stopServer ??
+    ((lockDir: string) =>
+      stopServerForRemoval(lockDir, {
+        preserveProjectState: plan.scope === 'uninstall' && !deinitLockDirs.has(resolve(lockDir)),
+        scanProcesses: () => (processScan ??= scanLockProcesses()),
+      }));
 
   const resolvedDeps = { clearToken, clearEmbeddingsKey, stopServer, env: deps.env ?? {} };
   const execute = async (op: RemovalOp): Promise<RemovalOpResult> => {
@@ -399,21 +429,21 @@ export async function runRemoval(
     if (blocked.length > 0) {
       results.push({
         op,
-        status: 'failed',
-        detail: `left untouched because server shutdown was not verified: ${blocked.join(', ')}. Stop the server and retry cleanup.`,
+        status: 'blocked',
+        detail: `left untouched because server shutdown was not verified (${blocked.length} server blocker${blocked.length === 1 ? '' : 's'}; see the stop-server failures).`,
       });
       continue;
     }
     if (op.kind === 'remove-path' && op.requiresSuccessfulCleanup) {
       const previousFailure = results.some((result) => {
-        if (result.status !== 'failed') return false;
+        if (result.status !== 'failed' && result.status !== 'blocked') return false;
         if (!op.requiresStoppedServers) return true;
         return result.op.requiresStoppedServers?.some((lockDir) => required.includes(lockDir));
       });
       if (previousFailure) {
         results.push({
           op,
-          status: 'failed',
+          status: 'blocked',
           detail:
             'left untouched so cleanup can be retried after the earlier failures are resolved',
         });
@@ -426,7 +456,7 @@ export async function runRemoval(
   return {
     results,
     removed: results.filter((r) => r.status === 'removed'),
-    failed: results.filter((r) => r.status === 'failed'),
+    failed: results.filter((r) => r.status === 'failed' || r.status === 'blocked'),
   };
 }
 
@@ -454,7 +484,7 @@ type ResolvedDeps = Required<RunRemovalDeps>;
 async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpResult> {
   switch (op.kind) {
     case 'stop-server': {
-      const { stopped, failed } = await deps.stopServer(op.lockDir);
+      const { stopped, failed, skipped } = await deps.stopServer(op.lockDir);
       if (failed.length > 0) {
         const detail = failed.map((f) => `pid ${f.pid}: ${f.error}`).join('; ');
         return {
@@ -463,6 +493,7 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
           detail: `could not stop the server (${detail}); dependent files were left untouched; stop the server and retry cleanup`,
         };
       }
+      if (skipped) return { op, status: 'skipped', detail: skipped };
       return { op, status: stopped > 0 ? 'removed' : 'not-present' };
     }
     case 'keychain-token': {

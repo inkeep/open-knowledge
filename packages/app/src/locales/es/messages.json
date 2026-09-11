@@ -1177,6 +1177,9 @@
     "BVkqD9": [
       "El mantenimiento del índice está en pausa porque otro atributo de Git controla index.md. Actualiza .gitattributes para que las rutas index.md de ese ámbito usen merge=union y vuelve a intentarlo."
     ],
+    "BVmgJG": [
+      "Mostrar en Finder muestra la aplicación para que puedas arrastrarla a la Papelera."
+    ],
     "BWTzAb": ["Manual"],
     "BY-g4_": ["Añadir patrón"],
     "Ba4D2x": ["Plantilla importada"],
@@ -1450,6 +1453,7 @@
     "EPKVES": ["¿Actualizar \"", ["skillName"], "\" sobre tus ediciones?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens usados"],
     "EQXPXf": ["Desplazar hasta el final"],
+    "ES1zFv": ["Mueve OpenKnowledge.app a la Papelera"],
     "ETyvvg": ["Ningún idioma coincide."],
     "EWCJFu": ["Se creó ", ["target"]],
     "EWPtMO": ["Código"],
@@ -1935,6 +1939,7 @@
     "JM_aq-": ["Usa una URL https://; http:// solo se admite para localhost."],
     "JOcPqH": ["Trae un repositorio remoto a este equipo."],
     "JOhCT9": ["Push incluye"],
+    "JReD69": ["Se eliminaron los archivos de OpenKnowledge"],
     "JWsZlx": ["Abre un proyecto para editarlo."],
     "JYj5R2": ["Examinar archivos"],
     "JZ8cO6": ["Claro, oscuro o seguir al sistema."],
@@ -2210,6 +2215,7 @@
     "M7SqjM": ["Reabrir"],
     "M92_0q": ["Cerrar comentario"],
     "M9597s": ["Preparando la URL para compartir..."],
+    "MAVznT": ["Se eliminaron los ajustes y las integraciones."],
     "MBKkUy": [
       "skills.sh no está disponible; se muestran resultados de GitHub (sin clasificación por instalaciones)."
     ],
@@ -3014,6 +3020,7 @@
       ["configFile"],
       "</0> de tu proyecto, que gobierna por completo el análisis de este proyecto. Activa o desactiva reglas y edita sus opciones aquí; los cambios se escriben en el archivo."
     ],
+    "V3JCWv": ["La limpieza no terminó"],
     "V3iDh1": [
       "Valida el frontmatter de los documentos contra archivos JSON Schema estándar (draft-06, draft-07, 2019-09 o 2020-12). Activa un esquema para validar los documentos que coincidan con sus globs; las infracciones aparecen como advertencias y nunca bloquean una escritura. Usa Editar para abrir el archivo de esquema."
     ],
@@ -3455,6 +3462,7 @@
     "ZQJ1IV": ["Activa la última pestaña del editor."],
     "ZQLDTl": ["carpeta creada"],
     "ZQc7C8": ["Escribe para editar; <0>Cmd/Ctrl+Enter</0> guarda, <1>Esc</1> cancela."],
+    "ZR-8iJ": ["No se puede mostrar el resultado de la limpieza"],
     "ZSoojc": ["No se pudo clonar: revisa la URL e inténtalo de nuevo (", ["status"], ")"],
     "ZU8VV_": ["Falló al quitarlo: ", ["error"]],
     "ZVOhXM": ["No se pudo actualizar la sincronización — ", ["detail"]],
@@ -3631,6 +3639,7 @@
     "aSVmqV": [
       "Todavía no se ha detectado ninguna herramienta de IA. Cuando instales una, conéctala desde Ajustes > Este proyecto."
     ],
+    "aTDVi6": ["Tu contenido se conservó"],
     "aWlJai": ["Iniciando el flujo de inicio de sesión"],
     "aXkLuE": ["Respuesta de aplicación con formato incorrecto"],
     "a_u4ck": ["Cargando etiquetas"],
@@ -3726,6 +3735,7 @@
       ["docName"],
       "\" antes de reconectar."
     ],
+    "bmI-q1": ["Archivos de OpenKnowledge eliminados"],
     "bnOTEz": ["Recuperando…"],
     "bn_MDX": ["Por qué esto requiere atención"],
     "bpMVIA": [
@@ -3849,6 +3859,7 @@
     "ciozf1": ["La habilidad ya está en el proyecto"],
     "cjtjry": ["Retrocede por el historial de navegación de OpenKnowledge."],
     "cklVjM": ["Cronología"],
+    "clJ3qM": ["Listo."],
     "cnGeoo": ["Eliminar"],
     "cqQyPB": ["Nombre de la carpeta"],
     "crqzW5": ["Herramientas de IA"],
@@ -5277,6 +5288,7 @@
       ["2"],
       "». Todo lo que apunte a ese archivo en SKILL.md dejará de funcionar hasta que se vuelva a crear."
     ],
+    "psUrB1": ["Los archivos Markdown y las habilidades creadas no se modificaron."],
     "psl2Sj": ["Tu cambio todavía se está guardando; vuelve a ejecutar la prueba en un momento."],
     "ptQ3_N": ["desenlazar"],
     "pvnfJD": ["Oscuro"],
@@ -5924,6 +5936,7 @@
       ]
     ],
     "vmahUq": ["Puede que los subrayados existentes no se actualicen de inmediato."],
+    "vmwZHP": ["Casi listo. Esto es lo que se hizo y lo que queda pendiente."],
     "vp5vfW": ["1 hora"],
     "vppAju": ["Dónde se colocan los adjuntos recién añadidos."],
     "vqJXNe": ["Instalar la habilidad <0>open-knowledge-discovery</0>"],
@@ -5977,6 +5990,9 @@
     "wSBXaS": ["Gestionar ", ["rowLabel"]],
     "wT4iQr": ["Abre la búsqueda del editor visual con los controles de reemplazo desplegados."],
     "wTcjov": ["Sin espacio de trabajo"],
+    "wTf1ag": [
+      "Es posible que algunos archivos no se hayan eliminado. Abre el registro de limpieza para ver los detalles. Puedes volver a abrir OpenKnowledge para intentarlo de nuevo."
+    ],
     "wU8WyK": ["Campos del elemento"],
     "wVa83H": ["No se pudo crear el informe"],
     "wWtVYd": ["Introduce un puerto entre 1 y 65535."],
@@ -6105,6 +6121,7 @@
     "xiv-dW": ["Todavía no hay archivos."],
     "xk133d": ["Instala la skill en ", ["path"], " — la primera ubicación guarda su propia copia"],
     "xloBjn": ["Ruta relativa"],
+    "xnWySt": ["Puede que la limpieza siga en curso."],
     "xrVr_k": ["No se pudo crear la habilidad: ", ["0"]],
     "xsZhu-": ["Número de página"],
     "xtJgSe": ["Este origen incluye varias habilidades: elige cuál importar."],
@@ -6158,6 +6175,7 @@
     "yQE2r9": ["Cargando"],
     "yQyglE": ["Ningún documento coincide"],
     "yR5LHI": ["Escribe un valor hexadecimal de 6 dígitos, como #1A2B3C"],
+    "yU_9ur": ["Por hacer."],
     "yUxR-Q": ["Expandir ", ["keyName"]],
     "yWSvcf": ["Raíz del contenido"],
     "yWWThY": ["Referencia al recurso"],

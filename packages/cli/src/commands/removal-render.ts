@@ -30,18 +30,26 @@ function indentDetail(detail: string): string {
 
 export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   const removed = outcome.removed.length;
-  const failed = outcome.failed.length;
+  const failures = outcome.failed.filter((r) => r.status !== 'blocked');
+  const blocked = outcome.results.filter((r) => r.status === 'blocked');
+  const failed = failures.length;
   const notPresent = outcome.results.filter((r) => r.status === 'not-present').length;
   const skipped = outcome.results.filter((r) => r.status === 'skipped');
 
   const lines: string[] = [];
   lines.push(
-    failed > 0
+    outcome.failed.length > 0
       ? warning(
           `Removed ${removed} item${removed === 1 ? '' : 's'}, ${failed} could not be removed.`,
         )
       : success(`✓ Removed ${removed} item${removed === 1 ? '' : 's'}.`),
   );
+  if (blocked.length > 0)
+    lines.push(
+      warning(
+        `  ${blocked.length} dependent items left untouched; resolve the failures below and retry.`,
+      ),
+    );
   if (notPresent > 0) lines.push(dim(`  ${notPresent} already absent.`));
 
   for (const r of outcome.removed) {
@@ -51,13 +59,13 @@ export function formatRemovalOutcome(outcome: RemovalOutcome): string {
 
   for (const s of skipped) {
     lines.push(
-      `  ${warning('·')} Left in place: ${s.op.label}${s.detail ? ` — ${dim(indentDetail(s.detail))}` : ''}`,
+      `  ${warning('·')} ${s.op.kind === 'stop-server' ? 'Skipped' : 'Left in place'}: ${s.op.label}${s.detail ? ` — ${dim(indentDetail(s.detail))}` : ''}`,
     );
   }
   if (failed > 0) {
     lines.push('');
     lines.push(errorColor('Could not remove:'));
-    for (const f of outcome.failed) {
+    for (const f of failures) {
       lines.push(
         `  ${errorColor('✗')} ${f.op.label}${f.detail ? ` — ${indentDetail(f.detail)}` : ''}`,
       );
@@ -85,6 +93,7 @@ export type RemovalJson =
       removed: RemovalItem[];
       skipped: RemovalItem[];
       failed: RemovalItem[];
+      blocked: RemovalItem[];
       attachedClients: string[];
     };
 
@@ -112,6 +121,9 @@ export function removalOutcomeToJson(
     })),
     skipped: outcome.results
       .filter((r) => r.status === 'skipped')
+      .map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
+    blocked: outcome.results
+      .filter((r) => r.status === 'blocked')
       .map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
     failed: outcome.failed.map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
     attachedClients,

@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
+import { isProcessAlive, isValidLockPid } from './process-alive.ts';
 
 const SPAWN_TIMEOUT_MS = 2000;
 const LOCK_SCAN_MAX_DEPTH = 3;
@@ -13,6 +14,7 @@ const OK_PROCESS_PGREP_QUERY =
   'cli\\.mjs|open-knowledge|Open ?Knowledge(\\.app| Helper)|--ok-lock-dir-b64=|--ok-project-path=|(^|[ /])ok[ ]+(start|mcp|ui)([ ]|$)|packages/(cli|app)|hocuspocus|vite';
 
 const OK_PROCESS_PATTERNS: RegExp[] = [
+  /^open-knowledge-server(?:\s|$)/,
   /cli\.mjs/,
   /(^|[\s/])(open-knowledge|ok)\s+(start|mcp|ui)(\s|$)/,
   /Open ?Knowledge(?:\.app| Helper)/,
@@ -93,7 +95,7 @@ function parsePsOutput(output: string): OkProcessEntry[] {
   return entries;
 }
 
-async function findOkProcessEntries(): Promise<OkProcessEntry[]> {
+async function findOkProcessEntries(strict = false): Promise<OkProcessEntry[]> {
   const pgrepResult = spawnSync(
     'pgrep',
     ['-a', '-f', OK_PROCESS_PGREP_QUERY],
@@ -106,7 +108,11 @@ async function findOkProcessEntries(): Promise<OkProcessEntry[]> {
   const pgrepUnavailable =
     pgrepResult.error != null && (pgrepResult.error as NodeJS.ErrnoException).code === 'ENOENT';
 
-  if (!pgrepUnavailable) {
+  if (
+    !pgrepUnavailable &&
+    !pgrepResult.error &&
+    (pgrepResult.status === 0 || pgrepResult.status === 1)
+  ) {
     const output = pgrepResult.stdout ?? '';
     const entries = parsePgrepOutput(output);
     if (entries.length > 0 || output.trim() === '') return entries;
@@ -121,7 +127,8 @@ async function findOkProcessEntries(): Promise<OkProcessEntry[]> {
     }),
   );
 
-  if (psResult.error != null || !psResult.stdout) {
+  if (psResult.error != null || psResult.status !== 0 || !psResult.stdout) {
+    if (strict) throw new Error('Could not enumerate processes with pgrep or ps');
     return [];
   }
 
@@ -335,4 +342,74 @@ export async function discoverLockDirs(): Promise<string[]> {
   }
 
   return [...canonical.values()];
+}
+
+export interface LockProcessScan {
+  candidates: Array<{
+    lockDir: string;
+    pid: number;
+    source: 'lock-dir-argument' | 'project-argument' | 'process-cwd' | 'listener-cwd';
+  }>;
+  unavailable: string[];
+}
+
+export async function scanLockProcesses(): Promise<LockProcessScan> {
+  const scan: LockProcessScan = { candidates: [], unavailable: [] };
+  let entries: OkProcessEntry[];
+  try {
+    entries = await findOkProcessEntries(true);
+  } catch (error) {
+    scan.unavailable.push(error instanceof Error ? error.message : String(error));
+    return scan;
+  }
+  const add = async (
+    lockDir: string,
+    pid: number,
+    source: LockProcessScan['candidates'][number]['source'],
+  ) => {
+    const canonical = await realpath(lockDir).catch(() => resolve(lockDir));
+    scan.candidates.push({ lockDir: canonical, pid, source });
+  };
+  const addProject = async (
+    project: string,
+    pid: number,
+    source: LockProcessScan['candidates'][number]['source'],
+  ) => {
+    await add(join(project, '.ok', 'local'), pid, source);
+    await add(join(project, '.ok'), pid, source);
+  };
+  const addCwd = async (pid: number, source: 'process-cwd' | 'listener-cwd') => {
+    const cwd = await pidCwd(pid);
+    if (cwd) await addProject(cwd, pid, source);
+    else if (isProcessAlive(pid))
+      scan.unavailable.push(`Could not read the working directory of process ${pid}`);
+  };
+  for (const entry of entries) {
+    if (!isValidLockPid(entry.pid)) continue;
+    const marked = extractMarkedLockDir(entry.command);
+    const project = extractProjectPathArg(entry.command);
+    if (marked) await add(marked, entry.pid, 'lock-dir-argument');
+    else if (project) await addProject(project, entry.pid, 'project-argument');
+    else await addCwd(entry.pid, 'process-cwd');
+  }
+  const listeners = spawnSync(
+    'lsof',
+    ['-iTCP', '-sTCP:LISTEN', '-nP'],
+    withHiddenWindowsConsole({
+      encoding: 'utf-8',
+      timeout: SPAWN_TIMEOUT_MS,
+    }),
+  );
+  if (
+    listeners.error ||
+    (listeners.status !== 0 && !(listeners.status === 1 && !listeners.stdout && !listeners.stderr))
+  ) {
+    scan.unavailable.push('Could not enumerate TCP listeners with lsof');
+    return scan;
+  }
+  const known = new Set(entries.map((entry) => entry.pid));
+  for (const pid of parseListeningPids(listeners.stdout ?? '')) {
+    if (isValidLockPid(pid) && !known.has(pid)) await addCwd(pid, 'listener-cwd');
+  }
+  return scan;
 }

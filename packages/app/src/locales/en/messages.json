@@ -998,6 +998,7 @@
     "BVkqD9": [
       "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
     ],
+    "BVmgJG": ["Reveal in Finder shows the app so you can drag it to the Trash."],
     "BWTzAb": ["Manual"],
     "BY-g4_": ["Add pattern"],
     "Ba4D2x": ["Template imported"],
@@ -1231,6 +1232,7 @@
     "EPKVES": ["Update \"", ["skillName"], "\" over your edits?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens used"],
     "EQXPXf": ["Scroll to end"],
+    "ES1zFv": ["Move OpenKnowledge.app to the Trash"],
     "ETyvvg": ["No language match."],
     "EWCJFu": ["Created ", ["target"]],
     "EWPtMO": ["Code"],
@@ -1650,6 +1652,7 @@
     "JM_aq-": ["Use an https:// URL — http:// is only allowed for localhost."],
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JOhCT9": ["Push includes"],
+    "JReD69": ["OpenKnowledge files were removed"],
     "JWsZlx": ["Open a project to edit."],
     "JYj5R2": ["Browse files"],
     "JZ8cO6": ["Light, dark, or follow the OS."],
@@ -1892,6 +1895,7 @@
     "M7SqjM": ["Reopen"],
     "M92_0q": ["Close comment"],
     "M9597s": ["Preparing share URL..."],
+    "MAVznT": ["Settings and integrations were cleaned up."],
     "MBKkUy": ["skills.sh is unavailable; showing GitHub results (no install ranking)."],
     "MBfjUk": [
       [
@@ -2605,6 +2609,7 @@
       ["configFile"],
       "</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
     ],
+    "V3JCWv": ["Cleanup didn’t finish"],
     "V3iDh1": [
       "Validate document frontmatter against standard JSON Schema files (draft-06, draft-07, 2019-09, or 2020-12). Toggle a schema on to validate the docs its globs match; violations surface as warnings and never block a write. Use Edit to open the schema file."
     ],
@@ -2969,6 +2974,7 @@
     "ZQJ1IV": ["Activate the last editor tab."],
     "ZQLDTl": ["created folder"],
     "ZQc7C8": ["Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."],
+    "ZR-8iJ": ["Unable to show the cleanup result"],
     "ZSoojc": ["Clone failed — check the URL and try again (", ["status"], ")"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
     "ZVOhXM": ["Failed to update sync — ", ["detail"]],
@@ -3134,6 +3140,7 @@
     "aSVmqV": [
       "No AI tools detected yet. Once you install one, connect it from Settings > This project."
     ],
+    "aTDVi6": ["Kept your content"],
     "aWlJai": ["Starting sign-in flow"],
     "aXkLuE": ["Malformed apply response"],
     "a_u4ck": ["Loading tags"],
@@ -3208,6 +3215,7 @@
     "bkQRMh": ["Paragraph"],
     "blFttG": ["Search projects"],
     "bmC18N": ["Clearing local collaboration data for \"", ["docName"], "\" before reconnecting."],
+    "bmI-q1": ["Removed OpenKnowledge files"],
     "bnOTEz": ["Retrieving…"],
     "bn_MDX": ["Why this needs attention"],
     "bpMVIA": ["Link target \"", ["shown"], "\" could not be resolved to a project-local target."],
@@ -3315,6 +3323,7 @@
     "ciozf1": ["Skill already in project"],
     "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
     "cklVjM": ["Timeline"],
+    "clJ3qM": ["Done."],
     "cnGeoo": ["Delete"],
     "cqQyPB": ["Folder name"],
     "crqzW5": ["AI tools"],
@@ -4570,6 +4579,7 @@
       ["2"],
       "\" skill. Anything in SKILL.md that points at it will break until it's recreated."
     ],
+    "psUrB1": ["Markdown files and authored skills were left untouched."],
     "psl2Sj": ["Your change is still being saved — run the test again in a moment."],
     "ptQ3_N": ["unlink"],
     "pvnfJD": ["Dark"],
@@ -5135,6 +5145,7 @@
       ]
     ],
     "vmahUq": ["Existing underlines may not update immediately."],
+    "vmwZHP": ["Almost done. Here's what happened and what's left."],
     "vp5vfW": ["1 hour"],
     "vppAju": ["Where newly added attachments are placed."],
     "vqJXNe": ["Install the <0>open-knowledge-discovery</0> skill"],
@@ -5182,6 +5193,9 @@
     "wSBXaS": ["Manage ", ["rowLabel"]],
     "wT4iQr": ["Open visual-editor find with replace controls expanded."],
     "wTcjov": ["No workspace"],
+    "wTf1ag": [
+      "Some files may not have been removed. Open the cleanup log for details. You can reopen OpenKnowledge to try again."
+    ],
     "wU8WyK": ["Element fields"],
     "wVa83H": ["Couldn't create the report"],
     "wWtVYd": ["Enter a port between 1 and 65535."],
@@ -5300,6 +5314,7 @@
     "xiv-dW": ["No files yet."],
     "xk133d": ["Installs the skill to ", ["path"], " — the first location holds its own copy"],
     "xloBjn": ["Relative Path"],
+    "xnWySt": ["Cleanup may still be running."],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],
     "xtJgSe": ["This source bundles several skills — choose the one to import."],
@@ -5348,6 +5363,7 @@
     "yQE2r9": ["Loading"],
     "yQyglE": ["No matching docs"],
     "yR5LHI": ["Enter a 6-digit hex like #1A2B3C"],
+    "yU_9ur": ["To do."],
     "yUxR-Q": ["Expand ", ["keyName"]],
     "yWSvcf": ["Content root"],
     "yWWThY": ["Asset reference"],

@@ -1901,6 +1901,10 @@ msgstr "اجازت شدہ اقدار (خالی = کوئی بھی)"
 msgid "Allowed values for {field}"
 msgstr "{field} کے لیے اجازت شدہ اقدار"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Almost done. Here's what happened and what's left."
+msgstr "تقریباً مکمل ہو گیا۔ دیکھیں کیا ہوا اور کیا باقی ہے۔"
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "پہلے ہی {assetContentPath} پر — دوبارہ استعمال کیا جا رہا ہے۔"
@@ -2894,9 +2898,18 @@ msgstr "Claude Code (claude) نصب نہیں ہے یا آپ کے PATH میں ن�
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Cleanup didn’t finish"
+msgstr "صفائی مکمل نہیں ہوئی"
+
 #: src/uninstall/UninstallNoticeScreen.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Cleanup log"
 msgstr "صفائی کا لاگ"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Cleanup may still be running."
+msgstr "ممکن ہے صفائی ابھی جاری ہو۔"
 
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
@@ -3037,6 +3050,8 @@ msgstr "کلون کیا جا رہا ہے..."
 #: src/components/ui/sheet.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/native-menu-catalog.ts
+#: src/uninstall/UninstallApp.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Close"
 msgstr "بند کریں"
 
@@ -5104,6 +5119,10 @@ msgstr "مکمل"
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr "مکمل"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
+msgstr "مکمل۔"
 
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
@@ -7726,6 +7745,10 @@ msgstr "آپ کے علمی ذخیرے کو Open Knowledge Format کے مطابق
 msgid "Kept both — \"{0}\" is its own skill now"
 msgstr "دونوں رکھ لیے گئے — «{0}» اب اپنی الگ مہارت ہے"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Kept your content"
+msgstr "آپ کا مواد محفوظ رکھا گیا"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr "{keyHint} پر ختم ہونے والی کلید"
@@ -8239,6 +8262,10 @@ msgstr "Markdown"
 msgid "Markdown checks do not apply to this file."
 msgstr "Markdown کی جانچیں اس فائل پر لاگو نہیں ہوتیں۔"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Markdown files and authored skills were left untouched."
+msgstr "Markdown فائلوں اور آپ کی بنائی ہوئی اسکلز میں کوئی تبدیلی نہیں کی گئی۔"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown سورس"
@@ -8452,6 +8479,10 @@ msgstr "بلاک منتقل کریں"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Move down"
 msgstr "نیچے لے جائیں"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Move OpenKnowledge.app to the Trash"
+msgstr "OpenKnowledge.app کو کوڑے دان میں منتقل کریں"
 
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Move or rename this file inside the skill — the path stays under references/ or scripts/."
@@ -9945,6 +9976,10 @@ msgstr "OpenKnowledge نے {subject} میں ترمیم کی"
 msgid "OpenKnowledge edited a document"
 msgstr "OpenKnowledge نے ایک دستاویز میں ترمیم کی"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "OpenKnowledge files were removed"
+msgstr "OpenKnowledge کی فائلیں ہٹا دی گئیں"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
 msgstr "OpenKnowledge نے {source} درآمد کیا"
@@ -11303,6 +11338,10 @@ msgstr "«{0}» کو ہر دوسرے مقام سے ہٹا دیا گیا — اس
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "«{projectName}» کو حالیہ پروجیکٹس سے ہٹا دیا گیا۔ اس کا فولڈر اب موجود نہیں۔"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Removed OpenKnowledge files"
+msgstr "OpenKnowledge کی فائلیں ہٹا دی گئیں"
+
 #. placeholder {0}: connection.label
 #. placeholder {1}: sharedChoice.peers
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -11794,8 +11833,13 @@ msgstr "فائل ایکسپلورر میں دکھائیں"
 
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Reveal in Finder"
 msgstr "Finder میں دکھائیں"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Reveal in Finder shows the app so you can drag it to the Trash."
+msgstr "Finder میں دکھائیں سے ایپ دکھائی دیتی ہے تاکہ آپ اسے کوڑے دان میں کھینچ سکیں۔"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -12493,6 +12537,10 @@ msgstr "ترتیب دیا جا رہا ہے"
 msgid "Settings"
 msgstr "ترتیبات"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Settings and integrations were cleaned up."
+msgstr "ترتیبات اور انضمام ہٹا دیے گئے۔"
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"
 msgstr "ترتیبات کا مواد"
@@ -13008,6 +13056,10 @@ msgstr "چھوڑی گئی کچھ فائلیں محفوظ طریقے سے شام�
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "کچھ فائلیں فہرست میں نہیں ہیں: ورکنگ ٹری میں بہت زیادہ تبدیلیاں ہیں۔"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Some files may not have been removed. Open the cleanup log for details. You can reopen OpenKnowledge to try again."
+msgstr "ممکن ہے کچھ فائلیں نہ ہٹی ہوں۔ تفصیلات کے لیے صفائی کا لاگ کھولیں۔ دوبارہ کوشش کرنے کے لیے OpenKnowledge پھر سے کھول سکتے ہیں۔"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
@@ -14702,6 +14754,10 @@ msgstr "عنوان"
 msgid "To do"
 msgstr "کرنا ہے"
 
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
+msgstr "کرنا ہے۔"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "بلٹ فہرست بدلیں۔"
@@ -14959,6 +15015,10 @@ msgstr "ترمیم کے لیے لکھیں؛ <0>Cmd/Ctrl+Enter</0> محفوظ ک�
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"
 msgstr "دستاویز ڈھونڈنے کے لیے لکھیں"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Unable to show the cleanup result"
+msgstr "صفائی کا نتیجہ نہیں دکھایا جا سکا"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "unavailable on this platform"

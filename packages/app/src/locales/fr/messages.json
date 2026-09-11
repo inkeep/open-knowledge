@@ -1204,6 +1204,9 @@
     "BVkqD9": [
       "La maintenance de l'index est suspendue car un autre attribut Git contrôle index.md. Mettez à jour .gitattributes pour que les chemins index.md définis utilisent merge=union, puis réessayez."
     ],
+    "BVmgJG": [
+      "Afficher dans le Finder affiche l’application pour que vous puissiez la faire glisser dans la Corbeille."
+    ],
     "BWTzAb": ["Manuel"],
     "BY-g4_": ["Ajouter un motif"],
     "Ba4D2x": ["Modèle importé"],
@@ -1479,6 +1482,7 @@
     "EPKVES": ["Mettre à jour « ", ["skillName"], " » par-dessus vos modifications ?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens utilisés"],
     "EQXPXf": ["Défiler jusqu'à la fin"],
+    "ES1zFv": ["Placez OpenKnowledge.app dans la Corbeille"],
     "ETyvvg": ["Aucune langue correspondante."],
     "EWCJFu": [["target"], " créé"],
     "EWPtMO": ["Code"],
@@ -1965,6 +1969,7 @@
     "JM_aq-": ["Utilisez une URL https:// — http:// n'est autorisé que pour localhost."],
     "JOcPqH": ["Récupérer un dépôt distant sur cette machine."],
     "JOhCT9": ["Pousser inclut"],
+    "JReD69": ["Les fichiers OpenKnowledge ont été supprimés"],
     "JWsZlx": ["Ouvrez un projet pour le modifier."],
     "JYj5R2": ["Parcourir les fichiers"],
     "JZ8cO6": ["Clair, sombre, ou suivre le système."],
@@ -2253,6 +2258,7 @@
     "M7SqjM": ["Rouvrir"],
     "M92_0q": ["Fermer le commentaire"],
     "M9597s": ["Préparation de l'URL de partage…"],
+    "MAVznT": ["Les réglages et les intégrations ont été supprimés."],
     "MBKkUy": [
       "skills.sh est indisponible ; affichage des résultats GitHub (sans classement par installations)."
     ],
@@ -3056,6 +3062,7 @@
       ["configFile"],
       "</0> de votre projet, qui régit entièrement la vérification pour ce projet. Activez ou désactivez des règles et modifiez leurs options ici ; les changements sont réécrits dans le fichier."
     ],
+    "V3JCWv": ["Le nettoyage n’a pas abouti"],
     "V3iDh1": [
       "Valide le frontmatter des documents à l'aide de fichiers JSON Schema standard (draft-06, draft-07, 2019-09 ou 2020-12). Activez un schéma pour valider les documents que ses globs sélectionnent ; les manquements apparaissent en avertissements et ne bloquent jamais une écriture. Utilisez Modifier pour ouvrir le fichier de schéma."
     ],
@@ -3500,6 +3507,7 @@
     "ZQJ1IV": ["Active le dernier onglet de l'éditeur."],
     "ZQLDTl": ["dossier créé"],
     "ZQc7C8": ["Saisissez pour modifier ; <0>Cmd/Ctrl+Enter</0> enregistre, <1>Échap</1> annule."],
+    "ZR-8iJ": ["Impossible d’afficher le résultat du nettoyage"],
     "ZSoojc": ["Échec du clonage — vérifiez l'URL et réessayez (", ["status"], ")"],
     "ZU8VV_": ["Échec du retrait : ", ["error"]],
     "ZVOhXM": ["Échec de la mise à jour de la synchronisation — ", ["detail"]],
@@ -3678,6 +3686,7 @@
     "aSVmqV": [
       "Aucun outil IA détecté pour l'instant. Une fois que vous en installez un, connectez-le depuis Paramètres > Ce projet."
     ],
+    "aTDVi6": ["Votre contenu a été conservé"],
     "aWlJai": ["Démarrage du processus de connexion"],
     "aXkLuE": ["Réponse d'application mal formée"],
     "a_u4ck": ["Chargement des étiquettes"],
@@ -3769,6 +3778,7 @@
       ["docName"],
       " » avant la reconnexion."
     ],
+    "bmI-q1": ["Fichiers OpenKnowledge supprimés"],
     "bnOTEz": ["Récupération…"],
     "bn_MDX": ["Pourquoi cela demande votre attention"],
     "bpMVIA": [
@@ -3901,6 +3911,7 @@
     "ciozf1": ["Compétence déjà en projet"],
     "cjtjry": ["Recule dans l'historique de navigation d'OpenKnowledge."],
     "cklVjM": ["Chronologie"],
+    "clJ3qM": ["Terminé."],
     "cnGeoo": ["Supprimer"],
     "cqQyPB": ["Nom du dossier"],
     "crqzW5": ["Outils IA"],
@@ -5332,6 +5343,9 @@
       ["2"],
       " ». Tout ce qui y renvoie dans SKILL.md cessera de fonctionner jusqu’à sa recréation."
     ],
+    "psUrB1": [
+      "Les fichiers Markdown et les compétences que vous avez créées sont restés intacts."
+    ],
     "psl2Sj": [
       "Votre modification est encore en cours d'enregistrement — relancez le test dans un instant."
     ],
@@ -5997,6 +6011,7 @@
       ]
     ],
     "vmahUq": ["Les soulignements existants peuvent ne pas se mettre à jour immédiatement."],
+    "vmwZHP": ["Presque terminé. Voici ce qui a été fait et ce qu’il reste à faire."],
     "vp5vfW": ["1 heure"],
     "vppAju": ["Où sont placées les pièces jointes nouvellement ajoutées."],
     "vqJXNe": ["Installer la compétence <0>open-knowledge-discovery</0>"],
@@ -6050,6 +6065,9 @@
       "Ouvre la recherche de l'éditeur visuel avec les contrôles de remplacement dépliés."
     ],
     "wTcjov": ["Aucun espace de travail"],
+    "wTf1ag": [
+      "Certains fichiers n’ont peut-être pas été supprimés. Ouvrez le journal de nettoyage pour en savoir plus. Vous pouvez rouvrir OpenKnowledge pour réessayer."
+    ],
     "wU8WyK": ["Champs d'élément"],
     "wVa83H": ["Impossible de créer le rapport"],
     "wWtVYd": ["Saisissez un port entre 1 et 65535."],
@@ -6178,6 +6196,7 @@
       " — le premier emplacement conserve sa propre copie"
     ],
     "xloBjn": ["Chemin relatif"],
+    "xnWySt": ["Le nettoyage est peut-être encore en cours."],
     "xrVr_k": ["Impossible de créer la compétence : ", ["0"]],
     "xsZhu-": ["Numéro de page"],
     "xtJgSe": ["Cette source regroupe plusieurs compétences — choisissez celle à importer."],
@@ -6231,6 +6250,7 @@
     "yQE2r9": ["Chargement"],
     "yQyglE": ["Aucun document correspondant"],
     "yR5LHI": ["Saisissez une valeur hexadécimale à 6 chiffres, par ex. #1A2B3C"],
+    "yU_9ur": ["À faire."],
     "yUxR-Q": ["Développer ", ["keyName"]],
     "yWSvcf": ["Racine du contenu"],
     "yWWThY": ["Référence de ressource"],

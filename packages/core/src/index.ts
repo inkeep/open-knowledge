@@ -1954,10 +1954,12 @@ export type {
   UninstallDispatchRequest,
   UninstallDispatchResult,
   UninstallIntent,
+  UninstallNoticeChecklistItem,
   UninstallNoticeScreen,
   UninstallProjectRow,
   UninstallScreenSpec,
 } from './uninstall-bridge.ts';
+export { UNINSTALL_RESULT_WAIT_TIMEOUT_MS } from './uninstall-bridge.ts';
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,

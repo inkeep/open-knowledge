@@ -74,7 +74,12 @@ export default defineConfig({
         // into the same folder. Alternative: multi-root rollup config — not
         // worth the complexity for a single extra entry.
         input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
+          index: resolve(__dirname, 'src/main/entry.ts'),
+          'app-main': resolve(__dirname, 'src/main/index.ts'),
+          'uninstall-result-window': resolve(
+            __dirname,
+            'src/main/desktop-uninstall-result-window.ts',
+          ),
           'utility/server-entry': resolve(__dirname, 'src/utility/server-entry.ts'),
           'utility/pty-host': resolve(__dirname, 'src/utility/pty-host.ts'),
         },

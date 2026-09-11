@@ -1,9 +1,18 @@
 import { type ChildProcess, execFileSync, type SpawnSyncReturns, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isProcessAlive, lockFilePath } from '@inkeep/open-knowledge-server';
+import { isProcessAlive, lockFilePath, scanLockProcesses } from '@inkeep/open-knowledge-server';
 import pino from 'pino';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as cliLogger from '../cli-logger.ts';
@@ -62,17 +71,185 @@ describe('stopServerForRemoval', () => {
     return pid;
   }
 
+  test('recovers a dead PID-only lock for deinit', async () => {
+    writeFileSync(lockFilePath(dir, 'server'), JSON.stringify({ pid: 4242 }));
+    expect(await stopServerForRemoval(dir, { isAlive: () => false })).toMatchObject({
+      stopped: 0,
+      failed: [],
+      skipped: expect.stringContaining('has exited'),
+    });
+  });
+
+  test('refuses a live PID-only lock without inventing an owning machine', async () => {
+    writeFileSync(lockFilePath(dir, 'server'), JSON.stringify({ pid: 4242 }));
+    await expect(stopServerForRemoval(dir, { isAlive: () => true })).rejects.toThrow(
+      'does not record its owning machine',
+    );
+  });
+
   test('reports no server when no lock exists', async () => {
     expect(await stopServerForRemoval(dir)).toEqual({ stopped: 0, failed: [] });
   });
 
-  test('rejects an unreadable lock instead of claiming shutdown was verified', async () => {
+  test('skips malformed filesystem residue without claiming a server was stopped', async () => {
     writeFileSync(lockFilePath(dir, 'server'), '{bad metadata');
-    await expect(stopServerForRemoval(dir)).rejects.toThrow(
-      `Once you have confirmed they have exited, remove the stale lock file at ${lockFilePath(dir, 'server')} and retry cleanup`,
-    );
-    expectRefusalLogged('corrupt', 'unreadable server lock');
+    const scanProcesses = vi.fn(async () => ({ candidates: [], unavailable: [] }));
+    expect(await stopServerForRemoval(dir, { scanProcesses })).toMatchObject({
+      stopped: 0,
+      failed: [],
+      skipped: expect.stringContaining('malformed'),
+    });
+    expect(scanProcesses).toHaveBeenCalledOnce();
+    expect(readFileSync(lockFilePath(dir, 'server'), 'utf8')).toBe('{bad metadata');
   });
+
+  test.each([0, 1, -1, 1.5, 2147483648, '123', null])(
+    'skips invalid PID %j without a liveness probe or signal',
+    async (pid) => {
+      writeFileSync(lockFilePath(dir, 'server'), JSON.stringify({ pid, hostname: hostname() }));
+      const isAlive = vi.fn(() => {
+        throw new Error('invalid PID must not be probed');
+      });
+      const result = await stopServerForRemoval(dir, {
+        isAlive,
+        scanProcesses: async () => ({ candidates: [], unavailable: [] }),
+      });
+      expect(result).toMatchObject({
+        stopped: 0,
+        failed: [],
+        skipped: expect.stringContaining('malformed'),
+      });
+      expect(isAlive).not.toHaveBeenCalled();
+    },
+  );
+
+  test('preserves malformed locks when process inspection is unavailable', async () => {
+    writeFileSync(lockFilePath(dir, 'server'), 'not json');
+    await expect(
+      stopServerForRemoval(dir, {
+        scanProcesses: async () => ({ candidates: [], unavailable: ['ps unavailable'] }),
+      }),
+    ).rejects.toThrow('ps unavailable');
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'preserves a lock after a genuine access failure',
+    async () => {
+      const path = lockFilePath(dir, 'server');
+      writeFileSync(path, 'not json');
+      chmodSync(path, 0o000);
+      try {
+        await expect(stopServerForRemoval(dir)).rejects.toThrow(
+          'Restore file and parent-directory access',
+        );
+        expectRefusalLogged('read-error', 'EACCES');
+      } finally {
+        chmodSync(path, 0o600);
+      }
+    },
+  );
+
+  test('preserves a non-file lock path', async () => {
+    mkdirSync(lockFilePath(dir, 'server'));
+    await expect(stopServerForRemoval(dir)).rejects.toThrow('Cannot read the server lock');
+  });
+
+  test.each([undefined, 0, 1, '123'])(
+    'retains foreign ownership with unusable PID %j for deinit and global-only removal',
+    async (pid) => {
+      const raw = JSON.stringify({ pid, machineId: 'not-this-machine' });
+      writeFileSync(lockFilePath(dir, 'server'), raw);
+      const isAlive = vi.fn(() => {
+        throw new Error('invalid PID must not be probed');
+      });
+      const scanProcesses = vi.fn(async () => ({ candidates: [], unavailable: [] }));
+      await expect(stopServerForRemoval(dir, { isAlive, scanProcesses })).rejects.toThrow(
+        'another machine',
+      );
+      expect(scanProcesses).not.toHaveBeenCalled();
+      expect(
+        await stopServerForRemoval(dir, {
+          isAlive,
+          scanProcesses,
+          preserveProjectState: true,
+        }),
+      ).toMatchObject({
+        stopped: 0,
+        failed: [],
+        skipped: expect.stringContaining('foreign-owned'),
+      });
+      expect(isAlive).not.toHaveBeenCalled();
+      expect(readFileSync(lockFilePath(dir, 'server'), 'utf8')).toBe(raw);
+    },
+  );
+
+  test('preserves valid foreign ownership even when the PID is absent on this machine', async () => {
+    writeFileSync(
+      lockFilePath(dir, 'server'),
+      JSON.stringify({ pid: 99999999, hostname: 'remote-host' }),
+    );
+    await expect(stopServerForRemoval(dir, { isAlive: () => false })).rejects.toThrow(
+      'owning machine',
+    );
+  });
+
+  test('retains a foreign project while allowing local-only cleanup after process inspection', async () => {
+    const raw = JSON.stringify({ pid: 99999999, hostname: 'remote-host' });
+    writeFileSync(lockFilePath(dir, 'server'), raw);
+    const scanProcesses = vi.fn(async () => ({ candidates: [], unavailable: [] }));
+    expect(
+      await stopServerForRemoval(dir, { preserveProjectState: true, scanProcesses }),
+    ).toMatchObject({
+      stopped: 0,
+      failed: [],
+      skipped: expect.stringContaining('foreign-owned'),
+    });
+    expect(scanProcesses).toHaveBeenCalledOnce();
+    expect(readFileSync(lockFilePath(dir, 'server'), 'utf8')).toBe(raw);
+  });
+
+  test('cannot skip a foreign project when local process inspection is unavailable', async () => {
+    writeFileSync(
+      lockFilePath(dir, 'server'),
+      JSON.stringify({ pid: 99999999, hostname: 'remote-host' }),
+    );
+    await expect(
+      stopServerForRemoval(dir, {
+        preserveProjectState: true,
+        scanProcesses: async () => ({ candidates: [], unavailable: ['ps unavailable'] }),
+      }),
+    ).rejects.toThrow('ps unavailable');
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'blocks a malformed lock associated with a live marked process',
+    async () => {
+      const child = spawn(
+        process.execPath,
+        [
+          '-e',
+          "process.send('ready'); setInterval(() => {}, 1000)",
+          '--',
+          `--ok-lock-dir-b64=${Buffer.from(dir).toString('base64url')}`,
+        ],
+        { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] },
+      );
+      children.push(child);
+      await once(child, 'message');
+      writeFileSync(lockFilePath(dir, 'server'), 'not json');
+      const scan = await scanLockProcesses();
+      expect(scan.candidates).toContainEqual({
+        lockDir: realpathSync(dir),
+        pid: child.pid,
+        source: 'lock-dir-argument',
+      });
+      await expect(stopServerForRemoval(dir, { scanProcesses: async () => scan })).rejects.toThrow(
+        'live process candidates',
+      );
+      if (child.pid === undefined) throw new Error('Missing child PID');
+      expect(isProcessAlive(child.pid)).toBe(true);
+    },
+  );
 
   test('does not signal an unrelated process whose PID appears in an older lock', async () => {
     const pid = await startServer(`
@@ -268,7 +445,16 @@ describe('stopServerForRemoval', () => {
       child.kill('SIGTERM');
       await exited;
       expect(isProcessAlive(pid)).toBe(false);
-      expect(await stopServerForRemoval(dir)).toEqual({ stopped: 0, failed: [] });
+      const scanProcesses = vi.fn(async () => ({
+        candidates: [],
+        unavailable: ['POSIX tools unavailable'],
+      }));
+      expect(await stopServerForRemoval(dir, { scanProcesses })).toMatchObject({
+        stopped: 0,
+        failed: [],
+        skipped: expect.stringContaining('stale'),
+      });
+      expect(scanProcesses).not.toHaveBeenCalled();
     },
   );
 });

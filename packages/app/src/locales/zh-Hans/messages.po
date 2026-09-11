@@ -1901,6 +1901,10 @@ msgstr "允许的值（留空 = 任意）"
 msgid "Allowed values for {field}"
 msgstr "{field} 允许的值"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Almost done. Here's what happened and what's left."
+msgstr "即将完成。以下是已完成和仍需完成的事项。"
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "已经在 {assetContentPath} 了——直接复用。"
@@ -2894,9 +2898,18 @@ msgstr "Claude Code（claude）未安装，也不在你的 PATH 中。"
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Cleanup didn’t finish"
+msgstr "清理未完成"
+
 #: src/uninstall/UninstallNoticeScreen.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Cleanup log"
 msgstr "清理日志"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Cleanup may still be running."
+msgstr "清理可能仍在进行中。"
 
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
@@ -3037,6 +3050,8 @@ msgstr "正在克隆…"
 #: src/components/ui/sheet.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/native-menu-catalog.ts
+#: src/uninstall/UninstallApp.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Close"
 msgstr "关闭"
 
@@ -5104,6 +5119,10 @@ msgstr "完成"
 #: src/editor/slash-command/items.tsx
 msgid "Done"
 msgstr "完成"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
+msgstr "完成。"
 
 #: src/components/ui/tag-pill-input.tsx
 msgid "Double-click to edit"
@@ -7726,6 +7745,10 @@ msgstr "让您的知识库与 Open Knowledge Format 保持一致。"
 msgid "Kept both — \"{0}\" is its own skill now"
 msgstr "两个都保留了——“{0}”现在是一个独立的技能"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Kept your content"
+msgstr "已保留你的内容"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr "以 {keyHint} 结尾的密钥"
@@ -8239,6 +8262,10 @@ msgstr "Markdown"
 msgid "Markdown checks do not apply to this file."
 msgstr "此文件不适用 Markdown 检查。"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Markdown files and authored skills were left untouched."
+msgstr "Markdown 文件和你编写的技能未被改动。"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown 源码"
@@ -8452,6 +8479,10 @@ msgstr "移动块"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Move down"
 msgstr "下移"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Move OpenKnowledge.app to the Trash"
+msgstr "将 OpenKnowledge.app 移到废纸篓"
 
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Move or rename this file inside the skill — the path stays under references/ or scripts/."
@@ -9945,6 +9976,10 @@ msgstr "OpenKnowledge 编辑了 {subject}"
 msgid "OpenKnowledge edited a document"
 msgstr "OpenKnowledge 编辑了一个文档"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "OpenKnowledge files were removed"
+msgstr "已移除 OpenKnowledge 文件"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
 msgstr "OpenKnowledge 导入了 {source}"
@@ -11303,6 +11338,10 @@ msgstr "已把“{0}”从其他所有位置移除——它的来源文件夹仍
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "已把“{projectName}”从最近的项目中移除。它的文件夹已不存在。"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Removed OpenKnowledge files"
+msgstr "已移除 OpenKnowledge 文件"
+
 #. placeholder {0}: connection.label
 #. placeholder {1}: sharedChoice.peers
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -11794,8 +11833,13 @@ msgstr "在文件资源管理器中显示"
 
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Reveal in Finder"
 msgstr "在访达中显示"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Reveal in Finder shows the app so you can drag it to the Trash."
+msgstr "“在 Finder 中显示”会显示应用，以便你将其拖到废纸篓。"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -12493,6 +12537,10 @@ msgstr "正在设置"
 msgid "Settings"
 msgstr "设置"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Settings and integrations were cleaned up."
+msgstr "已清理设置和集成。"
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"
 msgstr "设置内容"
@@ -13008,6 +13056,10 @@ msgstr "部分拖放的文件无法安全插入。"
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "部分文件未列出：工作区的更改过多。"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Some files may not have been removed. Open the cleanup log for details. You can reopen OpenKnowledge to try again."
+msgstr "部分文件可能尚未移除。打开清理日志查看详情。你可以重新打开 OpenKnowledge 后重试。"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
@@ -14702,6 +14754,10 @@ msgstr "标题"
 msgid "To do"
 msgstr "待办"
 
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
+msgstr "待办。"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "切换无序列表。"
@@ -14959,6 +15015,10 @@ msgstr "输入即可编辑；<0>Cmd/Ctrl+Enter</0> 保存，<1>Esc</1> 取消。
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"
 msgstr "输入以查找文档"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Unable to show the cleanup result"
+msgstr "无法显示清理结果"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "unavailable on this platform"

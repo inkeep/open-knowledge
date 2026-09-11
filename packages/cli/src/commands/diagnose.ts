@@ -311,7 +311,13 @@ export async function runDiagnose(
   let lockInfo: unknown = null;
   for (const lockDir of lockDirs) {
     const s = inspect(lockDir);
-    if (s.status !== 'missing' && s.status !== 'corrupt' && s.lock.pid === pid) {
+    if (
+      s.status !== 'missing' &&
+      s.status !== 'corrupt' &&
+      s.status !== 'read-error' &&
+      s.status !== 'unverified-owner' &&
+      s.lock.pid === pid
+    ) {
       contentDir = s.lock.worktreeRoot;
       lockInfo = { lockDir, state: s.status, lockPath: s.lockPath, lock: s.lock };
       break;

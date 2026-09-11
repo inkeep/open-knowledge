@@ -1,16 +1,60 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { inspectLock } from './lock-state.ts';
+
+const fixtures: string[] = [];
+afterEach(() => {
+  for (const dir of fixtures.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 function freshLockDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ok-lock-state-'));
+  fixtures.push(dir);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 describe('inspectLock', () => {
+  test.each([undefined, 0, '123'])('retains foreign ownership when PID %j is unusable', (pid) => {
+    const dir = freshLockDir();
+    writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid, machineId: 'foreign' }));
+    expect(
+      inspectLock(dir, 'server', {
+        machineId: 'local',
+        isAlive: () => {
+          throw new Error('no probe');
+        },
+      }),
+    ).toMatchObject({ status: 'corrupt', foreignHost: true });
+  });
+
+  test('a PID without ownership metadata cannot be classified as a local live server', () => {
+    const dir = freshLockDir();
+    writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid: 4242 }));
+    expect(inspectLock(dir, 'server', { isAlive: () => true })).toEqual({
+      status: 'unverified-owner',
+      lockPath: join(dir, 'server.lock'),
+      pid: 4242,
+    });
+  });
+
+  test('a live PID with a matching hostname retains its local ownership', () => {
+    const dir = freshLockDir();
+    writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid: 4242, hostname: hostname() }));
+    expect(inspectLock(dir, 'server', { isAlive: () => true })).toMatchObject({
+      status: 'alive',
+      lock: { pid: 4242, hostname: hostname() },
+    });
+  });
+
+  test('recovers a dead PID-only lock without inventing foreign ownership', () => {
+    const dir = freshLockDir();
+    writeFileSync(join(dir, 'server.lock'), JSON.stringify({ pid: 4242 }));
+    expect(inspectLock(dir, 'server', { isAlive: () => false }).status).toBe('dead-pid');
+  });
+
   test('missing lock file', () => {
     const dir = freshLockDir();
     const result = inspectLock(dir, 'server');
@@ -53,7 +97,7 @@ describe('inspectLock', () => {
     }
   });
 
-  test('foreign host with dead PID classifies dead-pid (hostname drift cleanup)', () => {
+  test('foreign host remains foreign even when its PID is absent locally', () => {
     const dir = freshLockDir();
     writeFileSync(
       join(dir, 'server.lock'),
@@ -70,8 +114,8 @@ describe('inspectLock', () => {
       host: 'current-hostname',
       isAlive: () => false,
     });
-    expect(result.status).toBe('dead-pid');
-    if (result.status === 'dead-pid') {
+    expect(result.status).toBe('foreign-host');
+    if (result.status === 'foreign-host') {
       expect(result.lock.pid).toBe(999999);
       expect(result.lock.hostname).toBe('previous-hostname');
     }
@@ -181,3 +225,21 @@ describe('inspectLock', () => {
     expect(second.status).toBe('dead-pid');
   });
 });
+
+test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+  'distinguishes unreadable lock contents from malformed JSON',
+  () => {
+    const dir = freshLockDir();
+    const path = join(dir, 'server.lock');
+    writeFileSync(path, 'not json');
+    chmodSync(path, 0o000);
+    try {
+      expect(inspectLock(dir, 'server')).toMatchObject({
+        status: 'read-error',
+        error: expect.stringContaining('EACCES'),
+      });
+    } finally {
+      chmodSync(path, 0o600);
+    }
+  },
+);

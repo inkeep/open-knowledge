@@ -1901,6 +1901,10 @@ msgstr "허용되는 값 (비워 두면 모두 허용)"
 msgid "Allowed values for {field}"
 msgstr "{field}에 허용되는 값"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Almost done. Here's what happened and what's left."
+msgstr "거의 완료되었습니다. 완료된 작업과 남은 작업을 확인하세요."
+
 #: src/editor/image-upload/index.ts
 msgid "Already at {assetContentPath} — reusing."
 msgstr "이미 {assetContentPath}에 있으므로 재사용합니다."
@@ -2894,9 +2898,18 @@ msgstr "Claude Code (claude) 미설치 또는 PATH 미등록"
 msgid "Claude Desktop"
 msgstr "Claude Desktop"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Cleanup didn’t finish"
+msgstr "정리가 완료되지 않았습니다"
+
 #: src/uninstall/UninstallNoticeScreen.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Cleanup log"
 msgstr "정리 로그"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Cleanup may still be running."
+msgstr "정리가 아직 진행 중일 수 있습니다."
 
 #: src/components/settings/SearchSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
@@ -3037,6 +3050,8 @@ msgstr "클론 중…"
 #: src/components/ui/sheet.tsx
 #: src/editor/find-replace/FindReplaceBar.tsx
 #: src/lib/native-menu-catalog.ts
+#: src/uninstall/UninstallApp.tsx
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Close"
 msgstr "닫기"
 
@@ -5103,6 +5118,10 @@ msgstr "완료"
 #: src/editor/extensions/MathInlineView.tsx
 #: src/editor/slash-command/items.tsx
 msgid "Done"
+msgstr "완료"
+
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "Done."
 msgstr "완료"
 
 #: src/components/ui/tag-pill-input.tsx
@@ -7726,6 +7745,10 @@ msgstr "지식 베이스를 Open Knowledge Format에 맞게 유지합니다."
 msgid "Kept both — \"{0}\" is its own skill now"
 msgstr "둘 다 유지됨. \"{0}\"은 이제 별도 스킬입니다"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Kept your content"
+msgstr "콘텐츠를 보관했습니다"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Key ending in {keyHint}"
 msgstr "끝이 {keyHint}인 키"
@@ -8239,6 +8262,10 @@ msgstr "Markdown"
 msgid "Markdown checks do not apply to this file."
 msgstr "Markdown 검사는 이 파일에 적용되지 않습니다."
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Markdown files and authored skills were left untouched."
+msgstr "Markdown 파일과 직접 작성한 스킬은 변경하지 않았습니다."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown 소스"
@@ -8452,6 +8479,10 @@ msgstr "블록 이동"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Move down"
 msgstr "아래로 이동"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Move OpenKnowledge.app to the Trash"
+msgstr "OpenKnowledge.app을 휴지통으로 이동하세요"
 
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Move or rename this file inside the skill — the path stays under references/ or scripts/."
@@ -9945,6 +9976,10 @@ msgstr "OpenKnowledge에서 {subject} 편집"
 msgid "OpenKnowledge edited a document"
 msgstr "OpenKnowledge에서 문서 편집"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "OpenKnowledge files were removed"
+msgstr "OpenKnowledge 파일을 제거했습니다"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge imported {source}"
 msgstr "OpenKnowledge에서 {source} 가져오기"
@@ -11303,6 +11338,10 @@ msgstr "다른 모든 위치에서 \"{0}\"을 제거했습니다. 소스 폴더�
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "최근 프로젝트에서 \"{projectName}\"을 제거했습니다. 폴더가 더 이상 존재하지 않습니다."
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Removed OpenKnowledge files"
+msgstr "OpenKnowledge 파일 제거 완료"
+
 #. placeholder {0}: connection.label
 #. placeholder {1}: sharedChoice.peers
 #: src/components/settings/AgentConnectionDialogs.tsx
@@ -11794,8 +11833,13 @@ msgstr "파일 탐색기에서 보기"
 
 #: src/components/command-palette-commands.ts
 #: src/lib/platform-labels.ts
+#: src/uninstall/UninstallResultScreen.tsx
 msgid "Reveal in Finder"
 msgstr "Finder에서 보기"
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Reveal in Finder shows the app so you can drag it to the Trash."
+msgstr "Finder에서 보기를 누르면 앱이 표시되어 휴지통으로 드래그할 수 있습니다."
 
 #: src/components/SkillOriginInline.tsx
 msgid "Revert"
@@ -12493,6 +12537,10 @@ msgstr "설정 중"
 msgid "Settings"
 msgstr "설정"
 
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Settings and integrations were cleaned up."
+msgstr "설정과 연동을 정리했습니다."
+
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"
 msgstr "설정 콘텐츠"
@@ -13008,6 +13056,10 @@ msgstr "놓은 파일 중 일부를 안전하게 삽입할 수 없습니다."
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "일부 파일이 표시되지 않았습니다. 작업 트리의 변경 사항이 너무 많습니다."
+
+#: src/uninstall/UninstallResultScreen.tsx
+msgid "Some files may not have been removed. Open the cleanup log for details. You can reopen OpenKnowledge to try again."
+msgstr "일부 파일이 제거되지 않았을 수 있습니다. 정리 로그를 열어 자세한 내용을 확인하세요. OpenKnowledge를 다시 열어 재시도할 수 있습니다."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
@@ -14702,6 +14754,10 @@ msgstr "제목"
 msgid "To do"
 msgstr "할 일"
 
+#: src/uninstall/UninstallNoticeScreen.tsx
+msgid "To do."
+msgstr "할 일"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "글머리 기호 목록을 전환합니다."
@@ -14959,6 +15015,10 @@ msgstr "입력하여 편집하세요. <0>Cmd/Ctrl+Enter</0>로 저장하고 <1>E
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"
 msgstr "문서를 찾으려면 입력"
+
+#: src/uninstall/UninstallApp.tsx
+msgid "Unable to show the cleanup result"
+msgstr "정리 결과를 표시할 수 없습니다"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "unavailable on this platform"

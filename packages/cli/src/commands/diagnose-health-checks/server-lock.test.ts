@@ -86,7 +86,7 @@ describe('server-lock check', () => {
     const result = await def.run({ cwd });
     expect(result.status).toBe('warn');
     expect(result.summary).toContain('other-host');
-    expect(result.remediation).toContain('ok clean');
+    expect(result.remediation).toContain('owning machine');
   });
 
   test('warns on dead-pid', async () => {
@@ -117,4 +117,14 @@ describe('server-lock check', () => {
     expect(result.summary).toContain('corrupt');
     expect(result.remediation).toContain('Delete');
   });
+});
+
+test('reports a read failure with access guidance rather than suggesting deletion', async () => {
+  const cwd = makeProjectWithLockDir();
+  const result = await makeServerLockCheck({
+    inspect: () => ({ status: 'read-error', lockPath: '/x/server.lock', error: 'EACCES' }),
+  }).run({ cwd });
+  expect(result.status).toBe('fail');
+  expect(result.remediation).toContain('Restore file and parent-directory access');
+  expect(result.detail).toContain('EACCES');
 });
