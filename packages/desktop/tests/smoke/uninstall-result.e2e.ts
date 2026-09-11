@@ -16,18 +16,28 @@ import { join } from 'node:path';
 import type { OkUninstallBridge } from '@inkeep/open-knowledge-core';
 import { type Browser, chromium, _electron as electron, expect, test } from '@playwright/test';
 import { buildDesktopUninstallHandoffScript } from '../../src/main/desktop-uninstall-handoff';
-import { closeAppBounded } from './_helpers/electron-cleanup';
+import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 
 const TARGET = resolveDesktopTarget();
 const DARWIN = process.platform === 'darwin';
 const owned: string[] = [];
+const cleanupFailures: string[] = [];
+test.afterEach(() => {
+  expect(cleanupFailures.splice(0)).toEqual([]);
+});
 test.afterEach(() => {
   for (const dir of owned.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
     expect(existsSync(dir)).toBe(false);
   }
 });
+
+function closeOrRecord(proc: Parameters<typeof closeAppBounded>[0]): Promise<void> {
+  return closeAppBounded(proc).catch((error: unknown) => {
+    cleanupFailures.push(error instanceof Error ? error.message : String(error));
+  });
+}
 
 test.describe('isolated uninstall completion', () => {
   test.skip(!DARWIN, 'macOS uninstall handoff');
@@ -50,7 +60,7 @@ test.describe('isolated uninstall completion', () => {
           env: { ...process.env, HOME: home },
         }),
       );
-      const child = app.process();
+      const child = captureAppProcess(app);
       try {
         const page = await app.firstWindow();
         await expect(
@@ -68,7 +78,7 @@ test.describe('isolated uninstall completion', () => {
         expect(await exited).toEqual([0, null]);
         expect(existsSync(join(home, '.ok'))).toBe(false);
       } finally {
-        await closeAppBounded(child);
+        await closeOrRecord(child);
       }
     });
   }
@@ -83,7 +93,7 @@ test.describe('isolated uninstall completion', () => {
         env: { ...process.env, HOME: home, OK_UNINSTALL_UI_PREVIEW: 'notice' },
       }),
     );
-    const child = app.process();
+    const child = captureAppProcess(app);
     try {
       await expect(async () => {
         const headings = await Promise.all(
@@ -92,7 +102,7 @@ test.describe('isolated uninstall completion', () => {
         expect(headings.flat()).toContain('Uninstall OpenKnowledge?');
       }).toPass({ timeout: 20_000 });
     } finally {
-      await closeAppBounded(child);
+      await closeOrRecord(child);
     }
   });
   for (const [success, action, exitCode] of [
@@ -123,7 +133,7 @@ test.describe('isolated uninstall completion', () => {
           env: { ...process.env, HOME: home },
         }),
       );
-      const child = app.process();
+      const child = captureAppProcess(app);
       try {
         const page = await app.firstWindow();
         await expect(page.getByRole('alertdialog')).toBeVisible();
@@ -157,7 +167,7 @@ test.describe('isolated uninstall completion', () => {
         );
         expect(readFileSync(note, 'utf8')).toBe('# Keep my notes');
       } finally {
-        await closeAppBounded(child);
+        await closeOrRecord(child);
       }
     });
   }
@@ -307,8 +317,8 @@ ${success ? `rm '${state}'` : 'exit 31'}
           helper.kill('SIGTERM');
           await closed;
         }
-        await closeAppBounded(parent);
-        await closeAppBounded(helper);
+        await closeOrRecord(parent);
+        await closeOrRecord(helper);
         await browser?.close().catch(() => {});
       }
     });

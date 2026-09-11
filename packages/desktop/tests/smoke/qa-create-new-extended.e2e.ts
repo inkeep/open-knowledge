@@ -293,7 +293,12 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(firstProject, '.cursor'))).toBe(false);
     expect(existsSync(join(firstProject, '.mcp.json'))).toBe(false);
 
-    await closeAppBounded(app1Proc, { gracefulMs: 5_000 });
+    await closeAppBounded(app1Proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
+      throw new Error(
+        'app1 did not close; app2 shares this userDataDir and would fail requestSingleInstanceLock',
+        { cause: error },
+      );
+    });
 
     const stateAfterSubmit = JSON.parse(readFileSync(join(userDataDir, 'state.json'), 'utf8'));
     expect(stateAfterSubmit.lastUsedProjectParent).toBe(parent);

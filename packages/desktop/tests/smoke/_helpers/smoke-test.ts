@@ -86,11 +86,24 @@ export const test = baseTest.extend<SmokeFixtures>({
         console.warn(`[smoke-test] boot-log attach failed: ${reason}`);
       }
     }
-    if (shouldAttachStderr(testInfo)) {
-      await attachCapturedStderr(testInfo, captures);
-    }
+    const unclosed: Error[] = [];
     for (const proc of procs) {
-      await closeAppBounded(proc, { gracefulMs: 5_000 });
+      try {
+        await closeAppBounded(proc, { gracefulMs: 5_000 });
+      } catch (error) {
+        unclosed.push(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
+    if (unclosed.length > 0) {
+      try {
+        await testInfo.attach('app-cleanup-incomplete', {
+          body: unclosed.map((error) => error.message).join('\n\n'),
+          contentType: 'text/plain',
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`[smoke-test] cleanup-diagnostic attach failed: ${reason}`);
+      }
     }
     reapDetachedServers(cleanupDirs);
     for (const dir of cleanupDirs) {
@@ -100,6 +113,18 @@ export const test = baseTest.extend<SmokeFixtures>({
         const reason = error instanceof Error ? error.message : String(error);
         console.warn(`[smoke-test] tmp-dir cleanup failed for ${dir}: ${reason}`);
       }
+    }
+    if (shouldAttachStderr(testInfo) || unclosed.length > 0) {
+      await attachCapturedStderr(testInfo, captures);
+    }
+    if (unclosed.length > 0) {
+      for (const error of unclosed) {
+        console.error(`[smoke-test] cleanup incomplete: ${error.message}`);
+      }
+      throw new AggregateError(
+        unclosed,
+        `[smoke-test] ${unclosed.length} app process(es) did not close`,
+      );
     }
   },
 });

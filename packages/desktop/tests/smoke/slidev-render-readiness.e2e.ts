@@ -98,11 +98,14 @@ async function isReachable(url: string): Promise<boolean> {
 }
 
 async function closeElectronAppBounded(app: ElectronApplication): Promise<void> {
-  const process = captureAppProcess(app);
-  await Promise.race([
-    app.close().catch(() => undefined),
-    closeAppBounded(process, { gracefulMs: 5_000 }),
-  ]);
+  const proc = captureAppProcess(app);
+  void app.close().catch(() => undefined);
+  await closeAppBounded(proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[slidev-render-readiness] cleanup incomplete, fixture teardown reports it: ${reason}`,
+    );
+  });
 }
 
 test.describe('Slidev renderer readiness smoke', () => {

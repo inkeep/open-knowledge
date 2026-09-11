@@ -418,10 +418,13 @@ export async function awaitEngineSpellcheckEnabled(
 
 export async function closeAppForRelaunch(app: ElectronApplication): Promise<void> {
   const proc = captureAppProcess(app);
-  await Promise.race([
-    app.close().catch(() => undefined),
-    closeAppBounded(proc, { gracefulMs: 5_000 }),
-  ]);
+  void app.close().catch(() => undefined);
+  await closeAppBounded(proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
+    throw new Error(
+      'app did not close; the relaunch shares this userDataDir and would fail requestSingleInstanceLock',
+      { cause: error },
+    );
+  });
 }
 
 export function editorBody(editor: Page) {
