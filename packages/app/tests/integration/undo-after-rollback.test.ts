@@ -31,7 +31,7 @@ function countOccurrences(hay: string, needle: string): number {
 }
 
 describe('client UndoManager under a timeline rollback', () => {
-  test('rollback is not undoable and a pre-rollback stack item does not recover discarded content', () => {
+  test('rollback is not undoable and clears the pre-rollback steps, so nothing recovers discarded content', () => {
     const ydoc = new Y.Doc();
     const ytext = ydoc.getText('source');
     ydoc.transact(() => ytext.insert(0, '\n'), 'seed');
@@ -49,7 +49,7 @@ describe('client UndoManager under a timeline rollback', () => {
 
       expect(captured).toContain('restored body');
       expect(captured).not.toContain('USER TYPED CONTENT');
-      expect(stackAfterRollback).toBe(stackBefore);
+      expect(stackAfterRollback).toBe(0);
 
       um.undo();
       const afterUndo = editor.state.doc.textContent;

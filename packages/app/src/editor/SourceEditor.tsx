@@ -213,11 +213,7 @@ export function SourceEditor({
               keymap.of([indentWithTab]),
               yCollab(ytext, provider.awareness, { undoManager: sharedUndoManagerFor(ytext) }),
               keymap.of(yUndoManagerKeymap),
-              createSourceUndoFlipExtension({
-                docName: resolvedDocName,
-                ytext,
-                undoManager: sharedUndoManagerFor(ytext),
-              }),
+              createSourceUndoFlipExtension({ undoManager: sharedUndoManagerFor(ytext) }),
               ...createNestedCMExtensions({
                 themeCompartment,
                 resolvedTheme,

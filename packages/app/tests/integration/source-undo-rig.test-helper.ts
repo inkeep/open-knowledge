@@ -5,6 +5,7 @@ import { basicSetup } from 'codemirror';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { sharedUndoManagerFor } from '../../src/editor/shared-undo-manager';
 import { sourceModeSetup } from '../../src/editor/source-mode-setup';
 import {
   createSourceUndoFlipExtension,
@@ -57,18 +58,15 @@ export function mountSourceUndoEditor(opts: {
       'mountSourceUndoEditor({ wiring: "production" }) requires awareness: yCollab drops yRemoteSelections without it, so the mount would install a smaller extension set than SourceEditor.tsx',
     );
   }
-  const undoManager = new Y.UndoManager(opts.ytext);
+  const undoManager =
+    opts.wiring === 'production' ? sharedUndoManagerFor(opts.ytext) : new Y.UndoManager(opts.ytext);
   const undoWiring =
     opts.wiring === 'production'
       ? [
           sourceModeSetup,
           yCollab(opts.ytext, opts.awareness, { undoManager }),
           keymap.of(yUndoManagerKeymap),
-          createSourceUndoFlipExtension({
-            docName: opts.docName ?? 'source-undo-rig',
-            ytext: opts.ytext,
-            undoManager,
-          }),
+          createSourceUndoFlipExtension({ undoManager }),
         ]
       : [basicSetup, yCollab(opts.ytext, opts.awareness, { undoManager })];
   const view = new EditorView({

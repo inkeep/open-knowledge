@@ -53,8 +53,8 @@ const ORIGINAL = '# Original\n\noriginal body anchor\n';
 const SUPERSEDING = '# Superseding\n\nsuperseding body anchor\n';
 const TYPED = 'USER TYPED AFTER RESTORE POINT';
 
-describe('rollback on the shipped path leaves the client undo stack invariant', () => {
-  test('a real POST /api/rollback is not undoable, does not pop the user stack, and a stale item cannot resurrect the discarded content', async () => {
+describe('rollback on the shipped path leaves nothing on the client undo stack to resurrect', () => {
+  test('a real POST /api/rollback is not undoable, clears the pre-rollback steps, and nothing resurrects the discarded content', async () => {
     server = await createTestServer({ gitEnabled: true, commitDebounceMs: 100 });
     const docName = `qa050-${randomUUID().slice(0, 8)}`;
 
@@ -93,7 +93,7 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
         const afterRollback = client.ytext.toString();
         expect(afterRollback).not.toContain('superseding body anchor');
 
-        expect(um.undoStack.length).toBe(stackBefore);
+        expect(um.undoStack.length).toBe(0);
 
         await pollUntil(
           () => editor.state.doc.textContent.includes('original body anchor'),

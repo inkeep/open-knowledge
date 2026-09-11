@@ -30,13 +30,15 @@ A doc written before this behavior may still carry a blank line at the end that 
 
 Markdown problems (hard tabs, heading increments, and the rest) are flagged inline as you write, with a **Problems** panel in the document panel for the whole doc or project. See [Content rules](/docs/advanced/content-rules/overview).
 
-### Undo in source mode
+### Undo
 
-This section is about the Markdown source pane only. The visual editor keeps its own undo history, and none of what follows changes it.
+The Markdown source pane and the visual editor share one undo history. An edit you made in either view can be undone from the other, most recent first. Undo only ever takes back your own edits, never a collaborator's, an agent's, or a change on disk.
 
-Undo in source mode covers the editing you did there. Switching to the visual editor for a look and coming straight back leaves that history intact. But if you leave source mode, by switching to the visual editor or by moving to another tab, and anything writes to the document while you are away, source-mode undo and redo start fresh when you come back. Many things count as a write, not only the obvious ones: your own edits in the visual editor, an agent, a collaborator, a change on disk, a field you change in the **Properties** panel, a fix applied from the **Problems** panel or from the visual editor, or the tail of a large paste you started in source mode that was still landing as you flipped away. Restoring an earlier version from the [Timeline](./timeline-and-recovery.mdx) counts as a write too, so if you restore while you are out of source mode, undo there starts fresh when you come back. Source-mode undo history belongs to the current document session: navigating through enough other documents to evict it, or closing and reopening the app, starts it fresh even if no one rewrote the file.
+Edits by others leave your history as it is. A collaborator typing in another paragraph, a change on disk, or a field you change in the **Properties** panel does not reset it, whichever view you are in.
 
-No text is removed when that happens. One case is still not covered. If a rewrite lands while you are sitting in Markdown source rather than away from it, the history is left as it is, so a single undo can still take back more than you expect.
+Your history starts fresh when the whole document is rewritten at once: an agent replacing the document's content, restoring an earlier version from the [Timeline](./timeline-and-recovery.mdx), or a generated page being regenerated. None of your earlier steps can be applied correctly to a document rewritten from scratch, so they are dropped rather than putting text back in the wrong place. No text is removed when that happens. Undo history also belongs to the current document session: navigating through enough other documents to evict it, or closing and reopening the app, starts it fresh.
+
+One case is still not covered. If a collaborator rewrites a passage you had deleted text from, undoing that deletion can put the text back beside their version.
 
 To go further back, the [Timeline](./timeline-and-recovery.mdx) keeps earlier versions of the whole document. Each entry is a snapshot of the whole document. Agent edits, human edits, and file-system changes are batched into an entry once activity settles. Upstream syncs get their own entry when the sync lands. Restoring an entry brings back that version's content. Restoring is append-only, so the edits you made since then stay on the timeline and you can restore back to them.
 

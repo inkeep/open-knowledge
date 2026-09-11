@@ -16,8 +16,6 @@ Object.defineProperty(window.Range.prototype, 'getBoundingClientRect', {
   value: () => ({ bottom: 0, height: 0, left: 0, right: 0, top: 0, width: 0 }),
 });
 
-const UNTRACKED_ORIGIN = Object.freeze({ kind: 'source-undo-flip-dom-untracked' });
-
 interface Rig {
   doc: Y.Doc;
   ytext: Y.Text;
@@ -36,9 +34,7 @@ function mountRig(): Rig {
   document.body.appendChild(parent);
   const view = new EditorView({
     state: EditorState.create({
-      extensions: [
-        createSourceUndoFlipExtension({ docName: 'source-undo-flip-dom', ytext, undoManager }),
-      ],
+      extensions: [createSourceUndoFlipExtension({ undoManager })],
     }),
     parent,
   });
@@ -62,29 +58,22 @@ describe('createSourceUndoFlipExtension plugin lifecycle', () => {
     const { doc, ytext, undoManager, view } = mountRig();
     setSourceViewUndoFlipActive(view, true);
     doc.transact(() => ytext.insert(0, 'one'));
-    expect(undoManager.undoStack.length).toBe(1);
 
     setSourceViewUndoFlipActive(view, false);
-    doc.transact(() => ytext.insert(ytext.length, ' rewritten'), UNTRACKED_ORIGIN);
-    setSourceViewUndoFlipActive(view, true);
+    doc.transact(() => ytext.insert(ytext.length, ' two'));
 
-    expect(undoManager.undoStack.length).toBe(0);
+    expect(undoManager.undoStack.length).toBe(2);
   });
 
-  test('a destroyed view stops arming, so a later reactivation keeps the stack', () => {
+  test('a destroyed view stops sealing', () => {
     const { doc, ytext, undoManager, view } = mountRig();
     setSourceViewUndoFlipActive(view, true);
     doc.transact(() => ytext.insert(0, 'one'));
-    expect(undoManager.undoStack.length).toBe(1);
 
-    setSourceViewUndoFlipActive(view, false);
     view.destroy();
-
-    doc.transact(() => ytext.insert(ytext.length, ' rewritten'), UNTRACKED_ORIGIN);
-    setSourceViewUndoFlipActive(view, true);
+    setSourceViewUndoFlipActive(view, false);
+    doc.transact(() => ytext.insert(ytext.length, ' two'));
 
     expect(undoManager.undoStack.length).toBe(1);
-    undoManager.undo();
-    expect(ytext.toString()).toBe(' rewritten');
   });
 });
