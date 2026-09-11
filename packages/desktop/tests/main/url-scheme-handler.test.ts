@@ -1983,7 +1983,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle | null, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -2011,7 +2011,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle | null, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -2038,7 +2038,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     const readyWin: FakeWindowHandle = { id: 'fallback' };
     env.readyWindow = readyWin;
-    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+    const openScreen = vi.fn((_win: FakeWindowHandle | null, _screen: ScreenTarget) => {});
 
     registerProtocolHandler({
       app: env.app,
@@ -2085,31 +2085,39 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
 
-  test('screen URL with no window available surfaces warn + no dispatch', async () => {
-    const env = makeEnv();
-    env.readyWindow = { id: 'ready' };
-    const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
+  test.each(['settings', 'install-claude'] as const)(
+    '%s screen routing handles an app with no windows',
+    async (screen) => {
+      const env = makeEnv();
+      env.readyWindow = { id: 'ready' };
+      const openScreen = vi.fn((_win: FakeWindowHandle | null, _screen: ScreenTarget) => {});
 
-    registerProtocolHandler({
-      app: env.app,
-      focusWindowForProject: env.focusWindowForProject,
-      openProject: env.openProject,
-      sendDeepLink: env.sendDeepLink,
-      getAnyReadyWindow: vi.fn(() => null),
-      openScreen,
-      getFocusedWindow: () => null,
-      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: env.log,
-    });
-    env.app.resolveReady();
-    await flushPromises();
+      registerProtocolHandler({
+        app: env.app,
+        focusWindowForProject: env.focusWindowForProject,
+        openProject: env.openProject,
+        sendDeepLink: env.sendDeepLink,
+        getAnyReadyWindow: vi.fn(() => null),
+        openScreen,
+        getFocusedWindow: () => null,
+        setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+        log: env.log,
+      });
+      env.app.resolveReady();
+      await flushPromises();
 
-    env.app.fireOpenUrl('openknowledge://screen?name=settings');
-    await flushPromises();
+      env.app.fireOpenUrl(`openknowledge://screen?name=${screen}`);
+      await flushPromises();
 
-    expect(openScreen).not.toHaveBeenCalled();
-    expect(env.warnLog.some((e) => e.msg.includes('no target window'))).toBe(true);
-  });
+      if (screen === 'settings') {
+        expect(openScreen).toHaveBeenCalledExactlyOnceWith(null, 'settings');
+        expect(env.warnLog.some((e) => e.msg.includes('no target window'))).toBe(false);
+      } else {
+        expect(openScreen).not.toHaveBeenCalled();
+        expect(env.warnLog.some((e) => e.msg.includes('no target window'))).toBe(true);
+      }
+    },
+  );
 });
 
 describe('registerProtocolHandler — continue-activity Handoff path', () => {

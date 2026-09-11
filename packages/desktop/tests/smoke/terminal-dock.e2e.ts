@@ -1069,7 +1069,8 @@ test.describe('Docked terminal — live Electron', () => {
       .click();
     const setup = page.getByRole('dialog', { name: 'Claude', exact: true });
     await expect(setup).toContainText('Choose what OpenKnowledge sets up for Claude.');
-    await setup.getByRole('checkbox', { name: 'Project MCP server', exact: true }).uncheck();
+    await setup.getByRole('checkbox', { name: 'Project MCP server', exact: true }).check();
+    await setup.getByRole('checkbox', { name: 'Project skill', exact: true }).check();
     await setup.getByRole('checkbox', { name: 'Global MCP server', exact: true }).uncheck();
     await setup
       .getByRole('checkbox', { name: 'OpenKnowledge discovery skill', exact: true })

@@ -785,6 +785,28 @@ describe('McpConsentDialog surface by origin', () => {
     pending.resolve({ ok: true });
   });
 
+  test('a user-opened one is titled as customization, not as a welcome', async () => {
+    await renderDialog(reconfigureHarness());
+
+    expect(
+      screen.getByRole('dialog', { name: /Customize your OpenKnowledge experience/ }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Welcome to OpenKnowledge/)).toBeNull();
+    expect(screen.queryByText(/Let's get set up/)).toBeNull();
+    expect(screen.getByRole('dialog').getAttribute('aria-describedby')).toBeNull();
+  });
+
+  test('first-run keeps the welcome title', async () => {
+    await renderDialog();
+
+    expect(screen.getByRole('alertdialog', { name: /Let's get set up/ })).toBeTruthy();
+    expect(screen.getByText(/Welcome to OpenKnowledge/)).toBeTruthy();
+    const descriptionId = screen.getByRole('alertdialog').getAttribute('aria-describedby');
+    expect(document.getElementById(descriptionId ?? '')?.textContent).toBe(
+      'Customize your OpenKnowledge experience.',
+    );
+  });
+
   test('a user-opened one still offers Finish setup', async () => {
     const harness = await renderDialog(reconfigureHarness());
 

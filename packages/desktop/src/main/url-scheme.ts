@@ -406,7 +406,7 @@ interface ProtocolHandlerDeps {
     path: string,
   ): CheckTargetExistsResult;
   routeShareToNavigator?(payload: ShareNavigatorPayload): void;
-  openScreen?(win: BrowserWindowHandle, screen: ScreenTarget): void;
+  openScreen?(win: BrowserWindowHandle | null, screen: ScreenTarget): void;
   getFocusedWindow?(): BrowserWindowHandle | null;
   getAnyReadyWindow(): BrowserWindowHandle | null;
   getInitialArgv?: () => readonly string[];
@@ -765,7 +765,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       return;
     }
     const target = deps.getFocusedWindow?.() ?? deps.getAnyReadyWindow();
-    if (!target) {
+    if (!target && screen !== 'settings') {
       deps.log?.warn({ url, screen }, '[url-scheme] no target window — screen deep link dropped');
       return;
     }

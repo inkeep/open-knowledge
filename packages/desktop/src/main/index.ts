@@ -408,6 +408,13 @@ import { handleRevealExternal } from './reveal-external.ts';
 import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { breakServerLockHeldBy } from './server-lock-break.ts';
+import {
+  openSettingsSurface,
+  resolveSettingsWindowKind,
+  type SettingsSurfaceOptions,
+  type SettingsWindowKind,
+  settingsHashScript,
+} from './settings-surface.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
@@ -1539,7 +1546,8 @@ function ensureWindowManager() {
 function openNavigator(pendingPayload?: ShareNavigatorPayload) {
   if (navigatorWindow) {
     getLogger('navigator').debug({}, 'already open, focusing');
-    (navigatorWindow as unknown as { focus: () => void }).focus();
+    if (navigatorWindow.isMinimized?.()) navigatorWindow.restore?.();
+    navigatorWindow.focus();
     if (pendingPayload) {
       const wc = (navigatorWindow as unknown as { webContents: Electron.WebContents }).webContents;
       if (wc.isLoading()) {
@@ -2333,14 +2341,7 @@ async function runMenuDispatchCommand(
       refreshApplicationMenu();
       return;
     case 'open-settings': {
-      const target =
-        BrowserWindow.fromWebContents(sender) ??
-        BrowserWindow.getFocusedWindow() ??
-        BrowserWindow.getAllWindows()[0];
-      if (!target) return;
-      target.webContents
-        .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {});
+      openSettings(BrowserWindow.fromWebContents(sender));
       return;
     }
     case 'check-for-updates':
@@ -2351,7 +2352,7 @@ async function runMenuDispatchCommand(
       });
       return;
     case 'reconfigure-mcp-wiring':
-      reconfigureMcpWiringNow();
+      reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
       return;
     case 'open-github':
       void shell.openExternal('https://github.com/inkeep/open-knowledge');
@@ -2452,7 +2453,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     reconfigureMcpWiring:
       app.isPackaged && supportedPackagedInstall()
         ? () => {
-            reconfigureMcpWiringNow();
+            reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
           }
         : undefined,
     openInstallSkillDialog: () => {
@@ -2462,13 +2463,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
         "window.location.hash = '#install-claude-desktop'; undefined",
       );
     },
-    openSettings: () => {
-      const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      if (!target) return;
-      target.webContents
-        .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {});
-    },
+    openSettings: () => openSettings(),
     onReportBug: () => sendMenuAction('report-bug'),
     onSendFeedback: () => sendMenuAction('send-feedback'),
     onCheckForUpdates: autoUpdaterHandle
@@ -3531,14 +3526,86 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
   return runMcpWiringOnFirstLaunch(createMcpWiringOpts(opts));
 }
 
-function reconfigureMcpWiringNow(): boolean {
+function settingsWindowKind(win: BrowserWindow): SettingsWindowKind {
+  return resolveSettingsWindowKind(win, {
+    isDestroyed: (target) => target.isDestroyed(),
+    isNavigator: (target) => target === navigatorWindow,
+    getEditorContext: (target) =>
+      wm?.getContextForBrowserWindow(target as unknown as BrowserWindowLike),
+    getNoteContext: (target) => getNoteWindowContext(target.id),
+    getTerminalContext: (target) => getTerminalWindowContext(target.id),
+  });
+}
+
+function openSettings(
+  explicit: BrowserWindow | null = null,
+  options: SettingsSurfaceOptions = {},
+): void {
+  openSettingsSurface(
+    explicit,
+    {
+      kindOf: settingsWindowKind,
+      getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
+      getAllWindows: () => BrowserWindow.getAllWindows(),
+      showEditor: (win, section) => {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+        void win.webContents.executeJavaScript(settingsHashScript(section)).catch((err) => {
+          getLogger('settings').warn({ err }, 'failed to open editor settings');
+        });
+      },
+      showNavigator: (win) => {
+        if (win?.isMinimized()) win.restore();
+        win?.focus();
+        if (!(app.isPackaged && supportedPackagedInstall())) {
+          getLogger('settings').warn(
+            { packaged: app.isPackaged, supported: supportedPackagedInstall() },
+            'navigator settings unavailable on this install',
+          );
+          const options: MessageBoxOptions = {
+            type: 'info',
+            buttons: ['OK'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Settings unavailable',
+            message:
+              'Settings from the navigator is unavailable in this build. Open Settings from a project window instead.',
+          };
+          void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+          return false;
+        }
+        return reconfigureMcpWiringNow(
+          win && !win.webContents.isLoading() ? win.webContents : undefined,
+        );
+      },
+      openNavigator,
+      onEditorRequired: (win) => {
+        getLogger('settings').info({}, 'account settings require an open project');
+        const options: MessageBoxOptions = {
+          type: 'info',
+          buttons: ['OK'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Open a project',
+          message: 'Open a project to connect your account in Settings.',
+        };
+        void (win && !win.isDestroyed()
+          ? dialog.showMessageBox(win, options)
+          : dialog.showMessageBox(options));
+      },
+    },
+    options,
+  );
+}
+
+function reconfigureMcpWiringNow(target: McpWiringDispatchTarget | undefined): boolean {
   if (!(app.isPackaged && supportedPackagedInstall())) return false;
   mcpWiringHandle?.destroy();
   mcpWiringHandle = null;
   try {
     mcpWiringHandle = armMcpWiring({
       forceShow: true,
-      immediateDispatchTarget: pickLoadedRendererForMcpDialog(),
+      immediateDispatchTarget: target,
     });
     return true;
   } catch (err) {
@@ -3712,7 +3779,10 @@ const RECENT_GIT_ROOTS_CAP = 256;
 function registerIpcHandlers() {
   const handle = createHandler(ipcMain);
 
-  handle('ok:mcp-wiring:reconfigure', async (): Promise<boolean> => reconfigureMcpWiringNow());
+  handle(
+    'ok:mcp-wiring:reconfigure',
+    async (): Promise<boolean> => reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog()),
+  );
 
   handle('ok:spellcheck:toggle', async (): Promise<boolean> => {
     setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
@@ -5996,13 +6066,7 @@ function bootPrimaryInstance(): void {
         ? await dialog.showMessageBox(parentWindow, messageBoxOptions)
         : await dialog.showMessageBox(messageBoxOptions);
       if (response === 0) {
-        if (parentWindow) {
-          (parentWindow as BrowserWindowLike).webContents.executeJavaScript(
-            "window.location.hash = '#settings/account'; undefined",
-          );
-        } else {
-          openNavigator();
-        }
+        openSettings(parentWindow ?? null, { section: 'account', editorOnly: true });
         return 'connect';
       }
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -6029,14 +6093,22 @@ function bootPrimaryInstance(): void {
       openNavigator(payload);
     },
     openScreen: (win, screen) => {
+      if (screen === 'settings') {
+        openSettings(win as BrowserWindow | null, { origin: 'deep-link' });
+        return;
+      }
+      if (!win) return;
       const w = win as BrowserWindowLike;
-      const hashByScreen: Record<ScreenTarget, string> = {
-        settings: '#settings',
+      const hashByScreen: Record<Exclude<ScreenTarget, 'settings'>, string> = {
         'install-claude': '#install-claude-desktop',
       };
-      w.webContents.executeJavaScript(
-        `window.location.hash = '${hashByScreen[screen]}'; undefined`,
-      );
+      void w.webContents
+        .executeJavaScript(
+          `window.location.hash = ${JSON.stringify(hashByScreen[screen])}; undefined`,
+        )
+        .catch((err) => {
+          getLogger('url-scheme').warn({ err, screen }, 'failed to open screen deep link');
+        });
     },
     getFocusedWindow: () => {
       const focused = BrowserWindow.getFocusedWindow();

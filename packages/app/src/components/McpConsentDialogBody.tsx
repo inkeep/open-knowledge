@@ -60,7 +60,12 @@ interface ConsentSurface {
     onOpenChange: (open: boolean) => void;
     children: ReactNode;
   }>;
-  Content: ComponentType<{ className?: string; 'aria-busy'?: boolean; children: ReactNode }>;
+  Content: ComponentType<{
+    className?: string;
+    'aria-busy'?: boolean;
+    'aria-describedby'?: string;
+    children: ReactNode;
+  }>;
   Header: ComponentType<{ children: ReactNode }>;
   Title: ComponentType<{ className?: string; children: ReactNode }>;
   Description: ComponentType<{ className?: string; children: ReactNode }>;
@@ -216,22 +221,31 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
             '[&_[data-slot=dialog-close]]:pointer-events-none [&_[data-slot=dialog-close]]:opacity-50',
         )}
         aria-busy={busy}
+        {...(firstRun ? {} : { 'aria-describedby': undefined })}
       >
         <Surface.Header>
           <Surface.Title className="flex flex-col gap-8 text-2xl tracking-tighter">
             {}
             <OkIcon className="size-10 shrink-0" aria-hidden />
             {}
-            <span className="flex flex-col gap-1.5">
-              <span className="uppercase font-mono font-normal text-2xs text-muted-foreground tracking-widest">
-                <Trans>Welcome to OpenKnowledge</Trans>
+            {firstRun ? (
+              <span className="flex flex-col gap-1.5">
+                <span className="uppercase font-mono font-normal text-2xs text-muted-foreground tracking-widest">
+                  <Trans>Welcome to OpenKnowledge</Trans>
+                </span>
+                <Trans>Let's get set up.</Trans>
               </span>
-              <Trans>Let's get set up.</Trans>
-            </span>
+            ) : (
+              <span>
+                <Trans>Customize your OpenKnowledge experience.</Trans>
+              </span>
+            )}
           </Surface.Title>
-          <Surface.Description className="sr-only">
-            <Trans>Customize your OpenKnowledge experience.</Trans>
-          </Surface.Description>
+          {firstRun && (
+            <Surface.Description className="sr-only">
+              <Trans>Customize your OpenKnowledge experience.</Trans>
+            </Surface.Description>
+          )}
         </Surface.Header>
 
         <Surface.Body className="flex flex-col gap-6 min-h-0">
