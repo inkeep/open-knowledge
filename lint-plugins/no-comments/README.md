@@ -4,8 +4,9 @@ Open Knowledge writes **no code comments by default**. A comment is legal only w
 parses it, or when it carries a contract that code cannot express. Everything else belongs in
 the commit message, the PR body, `AGENTS.md`, a spec, or a `README`.
 
-This directory is the single source of truth for that rule. It is a zero-dependency plain-ESM
-module so that every consumer runs the *same* predicate:
+This directory is the single source of truth for that rule. Its plain-ESM matcher and comment
+predicate require no installed packages, so every consumer runs the *same* predicate. Whole-tree
+discovery additionally requires the `git` executable on `PATH` to apply ignore rules:
 
 | Consumer | Lane | Why it exists |
 |---|---|---|
@@ -478,14 +479,20 @@ Scope is declared, not compiled in: `no-comments.config.jsonc` at the repository
 grammar families (an extension list plus an extractor id), the named units that cross a family
 with a list of roots, and the exclusion set. Membership is DERIVED from `units[].roots` crossed
 with the family's extensions, plus any explicit `units[].files`; the walk roots and the
-directories discovery prunes derive from the same declaration. `scope.mjs` compiles that config
-and nothing else, so an adopter points the predicate at their own root and gets their own scope.
+directories discovery prunes derive from the same declaration. The matcher in `scope.mjs`
+compiles that config. Whole-tree discovery also removes candidates that Git reports as ignored,
+using the ignore rules Git resolves from the containing worktree, including parent-directory
+rules when the scope root is nested in a repository. Git filtering retains tracked candidates
+even beneath an ignored directory, and untracked nonignored source before staging; the declared
+static scope still applies to both. A non-Git content directory retains filesystem discovery
+when Git is installed. Missing Git or unexpected
+Git failures stop discovery rather than silently disabling ignore handling.
 Read the config rather than a restatement here: this paragraph has drifted from the real scope
 twice, because an enumeration in prose has nothing checking it.
 
 `scope.test.mjs` also pins discovery against `git ls-files`, so an in-scope file git does not
 track yet fails it by name: track it if it is source, move it outside the declared roots if it is
-scratch, or add it to `exclude` if it is generated output.
+scratch, or declare generated output in `.gitignore` (or in `exclude` for a non-Git adopter).
 
 A family that no unit names is declared but ungated: it gives the extractor a grammar to read
 that extension under, while contributing nothing to membership. That is how a family reaches the
@@ -529,13 +536,27 @@ This directory ships to the public mirror, which means its own tests may not *sp
 shipping file. `scope.test.mjs` composes those paths from parts for that reason, and a test
 added here has to do the same.
 
+The Git environment scrub mirrors `scripts/git-clean-env.mjs`. The hook import-closure constraint
+above prevents importing that helper into this module, so a parity test keeps the local scrub
+aligned with the canonical helper; the local copy additionally fixes `LC_ALL=C` for diagnostic
+classification. Repository redirection and upward-discovery controls are removed before Git runs.
+The baseline scrub removes GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY, GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_NAMESPACE, and GIT_PREFIX. The discovery controls add GIT_CEILING_DIRECTORIES and GIT_DISCOVERY_ACROSS_FILESYSTEM for this scope; they do not redefine every Git helper's contract. Git configuration, including configured ignore files,
+remains an input: this scrub is not isolation from all Git configuration.
+
+Static `exclude` rules and Git ignore rules serve different boundaries. Static exclusions also
+work for non-Git adopters and can prune directories before filesystem traversal. Git filtering
+follows the walk so force-added tracked files under an ignored directory are retained. This
+change removes ignored candidates from parsing, not all traversal cost; the with/without-output
+gate timings are separate observations, not a controlled performance benchmark.
+
 ### Symlinks are refused, never followed
 
 Discovery walks real entries only. Any symlink it meets that would otherwise have contributed —
 one whose own path is in scope, and one that resolves to a directory the walk would have descended
-— is recorded as a skip, and `discoverInScopeFiles` throws rather than return a list that quietly
-lost a subtree. `discoverInScopeFilesWithSkips` is the exported escape hatch for a caller that
-wants to handle skips itself. Both refuse to run without `lstatSync` and `statSync`: `lstatSync`
+— is recorded as a skip. Paths Git reports as ignored are removed from both the candidate and
+skip sets. For every remaining skip, `discoverInScopeFiles` throws rather than return a list
+that quietly lost a subtree. `discoverInScopeFilesWithSkips` is the exported escape hatch for
+a caller that wants to handle skips itself. Both refuse to run without `lstatSync` and `statSync`: `lstatSync`
 is what tells a link from a real entry, `statSync` is what tells a link-to-a-directory from a
 link-to-a-file, and passing one where the other belongs makes the whole branch unreachable while
 the corpus silently widens to whatever the links point at.

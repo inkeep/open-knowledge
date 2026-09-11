@@ -1,12 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  UNSUPPORTED_GLOB_SYNTAX,
   loadScopeConfig,
   SCOPE_CONFIG_FILENAME,
   ScopeConfigError,
   ScopeConfigMissingError,
+  UNSUPPORTED_GLOB_SYNTAX,
 } from './config.mjs';
 import { hashDialectsFor, hashDialectsWithoutReference } from './extract-hash.mjs';
 import { GRAMMAR_EXTRACTORS } from './extractors.mjs';
@@ -37,6 +38,50 @@ export function globToRegExp(glob) {
 
 export function normalizeRelativePath(relPath) {
   return relPath.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+export function gitEnvironment(base = process.env) {
+  const {
+    GIT_DIR: _gitDir,
+    GIT_WORK_TREE: _gitWorkTree,
+    GIT_COMMON_DIR: _gitCommonDir,
+    GIT_INDEX_FILE: _gitIndexFile,
+    GIT_OBJECT_DIRECTORY: _gitObjectDirectory,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: _gitAlternateObjectDirectories,
+    GIT_NAMESPACE: _gitNamespace,
+    GIT_PREFIX: _gitPrefix,
+    GIT_CEILING_DIRECTORIES: _gitCeilingDirectories,
+    GIT_DISCOVERY_ACROSS_FILESYSTEM: _gitDiscoveryAcrossFilesystem,
+    ...env
+  } = base;
+  return { ...env, LC_ALL: 'C' };
+}
+
+function runGit(repoRoot, args, input) {
+  return spawnSync('git', args, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: gitEnvironment(),
+    input,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+}
+
+function gitIgnoredPaths(repoRoot, relPaths) {
+  if (relPaths.length === 0) return new Set();
+  const result = runGit(repoRoot, ['check-ignore', '--stdin', '-z'], `${relPaths.join('\0')}\0`);
+  if (result.status === 1) return new Set();
+  if (result.status === 128 && /not a git repository/i.test(result.stderr)) return new Set();
+  if (result.error || result.status !== 0) {
+    const outcome = result.signal
+      ? `killed by ${result.signal}`
+      : result.status === null
+        ? 'no exit status'
+        : `exit ${result.status}`;
+    const detail = result.stderr?.trim() || result.error?.message || outcome;
+    throw new Error(`git check-ignore failed in ${repoRoot}: ${detail}`, { cause: result.error });
+  }
+  return new Set(result.stdout.split('\0').filter(Boolean).map(normalizeRelativePath));
 }
 
 const compile = (globs) => globs.map(globToRegExp);
@@ -384,8 +429,15 @@ export function discoverInScopeFilesWithSkips(repoRoot, options) {
       else if (stat.isFile()) found.add(file);
     }
   }
-  skips.sort((a, b) => (a.path < b.path ? -1 : 1));
-  return { files: [...found].sort(), skips, declaredAbsent: scope.config.declaredAbsent };
+  const ignored = gitIgnoredPaths(repoRoot, [...found, ...skips.map((skip) => skip.path)]);
+  for (const path of ignored) found.delete(path);
+  const visibleSkips = skips.filter((skip) => !ignored.has(skip.path));
+  visibleSkips.sort((a, b) => (a.path < b.path ? -1 : 1));
+  return {
+    files: [...found].sort(),
+    skips: visibleSkips,
+    declaredAbsent: scope.config.declaredAbsent,
+  };
 }
 
 export function discoverInScopeFiles(repoRoot, options) {

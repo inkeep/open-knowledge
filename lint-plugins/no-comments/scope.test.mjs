@@ -7,12 +7,14 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
 import {
   loadScopeConfig,
   SCOPE_CONFIG_FILENAME,
@@ -24,6 +26,7 @@ import {
   diagnoseScope,
   discoverInScopeFiles,
   discoverInScopeFilesWithSkips,
+  gitEnvironment,
   globToRegExp,
   isExcluded,
   isInScope,
@@ -32,11 +35,7 @@ import {
   subjectScope,
   unitFor,
 } from './scope.mjs';
-import {
-  configWith,
-  createScratchRoot,
-  removeScratchRoots,
-} from './scratch-root.test-helper.mjs';
+import { configWith, createScratchRoot, removeScratchRoots } from './scratch-root.test-helper.mjs';
 
 const CONFIG = subjectScope().config;
 
@@ -224,6 +223,201 @@ describe('discovery over the real tree', () => {
         /\.d\.[mc]?ts$/.test(path),
     );
     expect(leaks).toEqual([]);
+  });
+});
+
+describe('gitignored output is outside discovery', () => {
+  afterAll(removeScratchRoots);
+
+  let root;
+  const expected = [
+    'packages/desktop/out/tracked.ts',
+    'packages/desktop/src/authoring.ts',
+    'packages/desktop/src/tracked.ts',
+  ];
+  beforeAll(() => {
+    root = createScratchRoot({
+      prefix: 'no-comments-gitignore-',
+      config: configWith({
+        units: [{ id: 'desktop', family: 'typescript', roots: ['packages/desktop'] }],
+      }),
+      files: {
+        '.gitignore': 'packages/desktop/out/\n',
+        'packages/desktop/src/tracked.ts': 'export const tracked = true;\n',
+        'packages/desktop/src/deleted.ts': 'export const deleted = true;\n',
+        'packages/desktop/src/authoring.ts': 'export const authoring = true;\n',
+        'packages/desktop/out/generated.ts': 'export const generated = true;\n',
+        'packages/desktop/out/tracked.ts': 'export const trackedOutput = true;\n',
+      },
+    });
+    symlinkSync('../src/tracked.ts', join(root, 'packages/desktop/out/linked.ts'));
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    execFileSync(
+      'git',
+      [
+        'add',
+        '.gitignore',
+        SCOPE_CONFIG_FILENAME,
+        'packages/desktop/src/deleted.ts',
+        'packages/desktop/src/tracked.ts',
+      ],
+      { cwd: root },
+    );
+    execFileSync('git', ['add', '-f', 'packages/desktop/out/tracked.ts'], { cwd: root });
+    rmSync(join(root, 'packages/desktop/src/deleted.ts'));
+  });
+
+  test('retains tracked and untracked source while excluding ignored desktop output', () => {
+    expect(discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toStrictEqual(
+      expected,
+    );
+  });
+
+  test('ignored skips disappear while a visible unreadable entry remains a refusal', () => {
+    const unreadable = {
+      readdirSync,
+      statSync,
+      lstatSync: (path) => {
+        if (
+          String(path).endsWith('/packages/desktop/out/generated.ts') ||
+          String(path).endsWith('/packages/desktop/src/tracked.ts')
+        ) {
+          const error = new Error(`EACCES: simulated failure, lstat '${path}'`);
+          error.code = 'EACCES';
+          throw error;
+        }
+        return lstatSync(path);
+      },
+    };
+    const result = discoverInScopeFilesWithSkips(root, unreadable);
+    expect(result.skips).toStrictEqual([
+      { path: 'packages/desktop/src/tracked.ts', reason: 'EACCES' },
+    ]);
+    expect(result.files).toStrictEqual([
+      'packages/desktop/out/tracked.ts',
+      'packages/desktop/src/authoring.ts',
+    ]);
+    expect(() => discoverInScopeFiles(root, unreadable)).toThrow(
+      /packages\/desktop\/src\/tracked\.ts \(EACCES\)/,
+    );
+  });
+
+  test('inherited git redirection cannot retarget the ignore lookup', () => {
+    const decoy = createScratchRoot({ prefix: 'no-comments-gitignore-decoy-' });
+    execFileSync('git', ['init', '-q'], { cwd: decoy });
+    const gitDirKey = 'GIT_DIR';
+    const previous = Reflect.get(process.env, gitDirKey);
+    Reflect.set(process.env, gitDirKey, join(decoy, '.git'));
+    try {
+      expect(discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toStrictEqual(
+        expected,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, gitDirKey);
+      else Reflect.set(process.env, gitDirKey, previous);
+    }
+  });
+
+  test('missing Git fails with the spawn error instead of admitting ignored output', () => {
+    const pathKey = 'PATH';
+    const previous = Reflect.get(process.env, pathKey);
+    const emptyPath = join(root, 'empty-path');
+    mkdirSync(emptyPath);
+    Reflect.set(process.env, pathKey, emptyPath);
+    try {
+      expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
+        /git check-ignore failed.*ENOENT/,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
+      else Reflect.set(process.env, pathKey, previous);
+    }
+  });
+
+  test('a signal-killed Git names the termination instead of echoing a bare token', () => {
+    const pathKey = 'PATH';
+    const previous = Reflect.get(process.env, pathKey);
+    const shimPath = join(root, 'signal-path');
+    mkdirSync(shimPath);
+    writeFileSync(join(shimPath, 'git'), '#!/bin/sh\nkill -KILL $$\n', { mode: 0o755 });
+    Reflect.set(process.env, pathKey, shimPath);
+    try {
+      expect(() => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync })).toThrow(
+        /git check-ignore failed.*killed by SIGKILL/,
+      );
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, pathKey);
+      else Reflect.set(process.env, pathKey, previous);
+    }
+  });
+
+  test('the local scrub stays aligned with the canonical Git environment helper', () => {
+    const keysReadBy = (helper) => {
+      const reads = new Set();
+      const base = new Proxy(
+        { KEEP: 'yes', LC_ALL: 'caller' },
+        {
+          get(target, key, receiver) {
+            if (typeof key === 'string') reads.add(key);
+            return Reflect.get(target, key, receiver);
+          },
+        },
+      );
+      helper(base);
+      return reads;
+    };
+    const canonicalReads = keysReadBy(gitCleanEnv);
+    const localReads = keysReadBy(gitEnvironment);
+    expect(localReads).toStrictEqual(canonicalReads);
+    const redirectKeys = [...canonicalReads].filter((key) => key.startsWith('GIT_'));
+    const base = {
+      KEEP: 'yes',
+      LC_ALL: 'caller',
+      ...Object.fromEntries(redirectKeys.map((key) => [key, 'redirect'])),
+    };
+    const local = gitEnvironment(base);
+    expect(local).toStrictEqual({ ...gitCleanEnv(base), LC_ALL: 'C' });
+    for (const key of redirectKeys) expect(local).not.toHaveProperty(key);
+  });
+});
+
+describe('discovery from a nested Git worktree root', () => {
+  afterAll(removeScratchRoots);
+
+  let root;
+  beforeAll(() => {
+    root = createScratchRoot({
+      prefix: 'no-comments-nested-git-',
+      nest: 'public/open-knowledge',
+      config: configWith({
+        units: [{ id: 'desktop', family: 'typescript', roots: ['packages/desktop'] }],
+      }),
+      files: {
+        'packages/desktop/src/authoring.ts': 'export const authoring = true;\n',
+        'packages/desktop/out/generated.ts': 'export const generated = true;\n',
+      },
+    });
+    const outer = dirname(dirname(root));
+    writeFileSync(join(outer, '.gitignore'), 'public/open-knowledge/packages/desktop/out/\n');
+    execFileSync('git', ['init', '-q'], { cwd: outer });
+  });
+
+  const discover = () => discoverInScopeFiles(root, { readdirSync, statSync, lstatSync });
+
+  test('inherits ignore rules from the enclosing repository', () => {
+    expect(discover()).toStrictEqual(['packages/desktop/src/authoring.ts']);
+  });
+
+  test('a strict-ancestor discovery ceiling cannot hide the enclosing repository', () => {
+    const ceilingKey = 'GIT_CEILING_DIRECTORIES';
+    const previousCeiling = Reflect.get(process.env, ceilingKey);
+    Reflect.set(process.env, ceilingKey, dirname(root));
+    try {
+      expect(discover()).toStrictEqual(['packages/desktop/src/authoring.ts']);
+    } finally {
+      if (previousCeiling === undefined) Reflect.deleteProperty(process.env, ceilingKey);
+      else Reflect.set(process.env, ceilingKey, previousCeiling);
+    }
   });
 });
 
