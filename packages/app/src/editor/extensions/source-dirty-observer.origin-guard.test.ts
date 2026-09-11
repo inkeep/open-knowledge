@@ -1,40 +1,7 @@
-/**
- * SourceDirtyObserver origin-guard regression test.
- *
- * Precedent #1 (typed transaction origins) exists because three shipped
- * three observer-bridge correctness bugs that all hinged on whether a CRDT
- * sync transaction was properly identified and skipped. This test drives
- * the source-dirty plugin at the PM-state level (the same surface the plugin
- * runs against in production inside a real EditorView + y-prosemirror). The
- * guard's truth table has three arms; this file owns the first two, and the
- * sibling suite `source-dirty-observer.autonomous-swap.test.ts` owns the third:
- *
- *   1. Transaction WITH `ySyncPluginKey` meta set → appendTransaction must
- *      return null. This covers every CRDT-origin path: Observer A/B,
- *      agent-write, rollback-apply, file-watcher, remote WebSocket. None
- *      of these should flip `sourceDirty` on the local view.
- *   2. Transaction with NEITHER `ySyncPluginKey` meta nor the autonomous
- *      stamp → appendTransaction must return a new tr that sets
- *      `sourceDirty: true` on mutated jsxComponent nodes ONLY. Siblings with
- *      no prop or content change must stay pristine (the reconstruction path
- *      applies per-node, so any false-positive dirty on a sibling silently
- *      corrupts unrelated content on save).
- *   3. Transaction carrying the autonomous stamp but no sync meta → must NOT
- *      mark dirty; absence of sync meta alone is not user intent. Covered by
- *      the sibling suite, not here.
- *
- * A future refactor that renames `ySyncPluginKey`, strips meta via an
- * intermediate plugin, or replaces the meta check with something else fails
- * this test before it can ship. Runs at the PM-state level rather than
- * through Hocuspocus because the guard's correctness is a per-transaction
- * property of the plugin itself — the multi-client integration harness
- * would add orders of magnitude of wall time without adding signal.
- */
-
 import { getSchema } from '@tiptap/core';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { describe, expect, test } from 'vitest';
+import { PROJECTION_REMOTE_APPLY_META } from './autonomous-fragment-edit';
 import { sharedExtensions } from './shared';
 import { sourceDirtyPluginKey } from './source-dirty-observer';
 import { applyWithAppend, getSourceDirtyPlugin } from './source-dirty-observer.test-helper';
@@ -98,10 +65,10 @@ function componentPositions(state: EditorState): number[] {
   return positions;
 }
 
-function editInteriorText(state: EditorState, text: string, syncMeta?: unknown): EditorState {
+function editInteriorText(state: EditorState, text: string, remote = false): EditorState {
   const innerTextPos = firstComponentPos(state) + 2;
   return applyWithAppend(state, (tr) => {
-    if (syncMeta !== undefined) tr.setMeta(ySyncPluginKey, syncMeta);
+    if (remote) tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
     return tr.insertText(text, innerTextPos);
   });
 }
@@ -126,7 +93,7 @@ describe('SourceDirtyObserver origin guard', () => {
     expect(isDirty(next, secondPos)).toBe(false);
   });
 
-  test('CRDT-origin transaction with ySyncPluginKey meta does NOT mark dirty', () => {
+  test('a remote re-projection does NOT mark dirty', () => {
     const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
@@ -134,35 +101,13 @@ describe('SourceDirtyObserver origin guard', () => {
     const next = applyWithAppend(initial, (tr) => {
       const node = initial.doc.nodeAt(targetPos);
       if (!node) throw new Error('Target vanished');
-      tr.setMeta(ySyncPluginKey, { isChangeOrigin: true });
-      return tr.setNodeMarkup(targetPos, null, { ...node.attrs, props: { title: 'A-crdt' } });
+      tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
+      return tr.setNodeMarkup(targetPos, null, { ...node.attrs, props: { title: 'A-remote' } });
     });
 
     const nodeAfter = next.doc.nodeAt(targetPos);
-    expect(nodeAfter?.attrs.props).toEqual({ title: 'A-crdt' });
+    expect(nodeAfter?.attrs.props).toEqual({ title: 'A-remote' });
     expect(isDirty(next, targetPos)).toBe(false);
-  });
-
-  test('meta truthiness — any non-nullish ySyncPluginKey meta short-circuits', () => {
-    const plugin = getSourceDirtyPlugin();
-    const initial = buildInitialState(plugin);
-    const targetPos = firstComponentPos(initial);
-
-    for (const stamp of [
-      { isChangeOrigin: true },
-      { isUndoRedoOperation: true },
-      { other: 'payload' },
-      true,
-      1,
-    ]) {
-      const next = applyWithAppend(initial, (tr) => {
-        const node = initial.doc.nodeAt(targetPos);
-        if (!node) throw new Error('Target vanished');
-        tr.setMeta(ySyncPluginKey, stamp);
-        return tr.setNodeMarkup(targetPos, null, { ...node.attrs, props: { title: 'x' } });
-      });
-      expect(isDirty(next, targetPos)).toBe(false);
-    }
   });
 
   test('sourceDirtyPluginKey is exported and locatable on the EditorState', () => {
@@ -172,7 +117,7 @@ describe('SourceDirtyObserver origin guard', () => {
     expect(located).toBe(plugin);
   });
 
-  test('insertion of a new non-CRDT jsxComponent marks only the insertion dirty', () => {
+  test('insertion of a new local jsxComponent marks only the insertion dirty', () => {
     const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
@@ -237,7 +182,7 @@ describe('SourceDirtyObserver origin guard', () => {
 
     {
       const initial = buildInitialState(plugin);
-      const next = editInteriorText(initial, 'X', { isChangeOrigin: true });
+      const next = editInteriorText(initial, 'X', true);
       const [firstPos] = componentPositions(next);
       expect(isDirty(next, firstPos)).toBe(false);
     }

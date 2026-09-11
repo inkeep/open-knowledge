@@ -1,5 +1,4 @@
 import type { Editor } from '@tiptap/core';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -12,6 +11,7 @@ import {
   mountProjectionEditor,
   type ProjectionEditorRig,
 } from './editor-rig.test-helper';
+import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
 import { GfmAutolink, PREVENT_AUTOLINK_META } from './gfm-autolink-plugin';
 import { flushMicrotasksAndTimers, installDomGlobals } from './walk-currency-test-harness';
 
@@ -118,11 +118,11 @@ describe('typed autolink — conversion', () => {
 });
 
 describe('typed autolink — guards', () => {
-  test('a transaction tagged with ySyncPluginKey meta never converts', async () => {
+  test('a remote re-projection never converts', async () => {
     const editor = makeLightEditor();
     try {
       const tr = editor.state.tr.insertText('https://example.com ', 1, 1);
-      tr.setMeta(ySyncPluginKey, { isChangeOrigin: true });
+      tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
       editor.view.dispatch(tr);
       await flushMicrotasksAndTimers();
 

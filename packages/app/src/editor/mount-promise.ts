@@ -77,12 +77,7 @@ import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
 import { emitColdMountChild, finalizeColdMountSpan } from '@/lib/perf/otel-spans';
 import '@/lib/perf/scheduler-polyfill-shim';
-import {
-  mountTiptapEditor,
-  peekTiptap,
-  readEditorUndoManager,
-  type TiptapCacheEntry,
-} from './editor-cache';
+import { mountTiptapEditor, peekTiptap, type TiptapCacheEntry } from './editor-cache';
 
 interface ConstructedTiptapBundle {
   editor: Editor;
@@ -328,25 +323,11 @@ interface MountBodyParams {
   rejectFn: (error: Error) => void;
 }
 
-/**
- * Destroy a pre-mount editor with the same UndoManager-restore cleanup that
- * `editor-cache.ts` applies at park / evict (precedent #18(c) leak-cleanup).
- * Capturing the UndoManager BEFORE `editor.destroy()` is required because
- * `editor.state` is only safely readable while the editor is alive; clearing
- * `restore` AFTER destroy breaks the @tiptap/extension-collaboration closure
- * that retains the full editor graph (~30 MB per cycle on multi-MB docs).
- *
- * Idempotent on pre-mount editors per TipTap source verification. Emits a
- * telemetry mark on destroy() failure so a regression in TipTap's pre-mount-
- * destroy idempotency surfaces in traces rather than vanishing — mirrors
- * `editor-cache.ts`'s `ok/cache/evict-failed` discipline.
- */
 function destroyPreMountEditor(
   docName: string,
   editor: Editor,
   stage: 'aborted' | 'mount-failed' | 'v2-register-failed' | 'backstop',
 ): void {
-  const undoManager = readEditorUndoManager(editor);
   try {
     editor.destroy();
   } catch (err) {
@@ -355,9 +336,6 @@ function destroyPreMountEditor(
       stage,
       message: err instanceof Error ? err.message : String(err),
     });
-  }
-  if (undoManager) {
-    undoManager.restore = undefined;
   }
 }
 

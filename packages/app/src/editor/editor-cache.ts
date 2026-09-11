@@ -51,7 +51,6 @@ import type { RenamedDocMapping } from '@inkeep/open-knowledge-core';
 import { isMarkdownDocFile } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
-import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
@@ -59,22 +58,6 @@ import { unregisterSourceView } from './active-source-view';
 import { getMountId } from './mount-id-registry';
 import { invalidateMountPromise } from './mount-promise';
 import { scrollSuppressionHolder } from './scroll-restore-coordination';
-
-export function readEditorUndoManager(editor: Editor): { restore?: unknown } | null {
-  try {
-    const state = editor.state;
-    const pluginState = yUndoPluginKey.getState(state) as
-      | { undoManager?: { restore?: unknown } }
-      | null
-      | undefined;
-    return pluginState?.undoManager ?? null;
-  } catch (err) {
-    mark('ok/cache/undo-manager-read-failed', {
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return null;
-  }
-}
 
 export const CACHE_ENABLED = true;
 
@@ -440,7 +423,6 @@ export function parkTiptapEditor(entry: TiptapCacheEntry): void {
     if (docName) {
       invalidateMountPromise(docName);
     }
-    const undoManager = readEditorUndoManager(entry.editor);
     try {
       entry.editor.destroy();
     } catch (err) {
@@ -450,9 +432,6 @@ export function parkTiptapEditor(entry: TiptapCacheEntry): void {
         stage: 'editor',
         message: err instanceof Error ? err.message : String(err),
       });
-    }
-    if (undoManager) {
-      undoManager.restore = undefined;
     }
     entry.activeMountKey = null;
     return;
@@ -481,7 +460,6 @@ export function evictTiptapEditor(docName: string): boolean {
   const entry = tiptapCache.get(docName);
   if (!entry) return false;
 
-  const undoManager = readEditorUndoManager(entry.editor);
   try {
     entry.editor.destroy();
   } catch (err) {
@@ -491,9 +469,6 @@ export function evictTiptapEditor(docName: string): boolean {
       stage: 'editor',
       message: err instanceof Error ? err.message : String(err),
     });
-  }
-  if (undoManager) {
-    undoManager.restore = undefined;
   }
   try {
     entry.provider.destroy();
