@@ -7,7 +7,7 @@
     },
     "test": {
       "dependsOn": [],
-      "inputs": ["Cargo.toml", "Cargo.lock", "build.rs", "src/**/*.rs"],
+      "inputs": ["$TURBO_DEFAULT$", "!README.md"],
       "outputs": []
     }
   }

@@ -5,9 +5,10 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.2.0"
   },
   "scripts": {
+    "postinstall": "node scripts/create-turbo-cache-key.mjs",
     "knip": "turbo run build --filter=@inkeep/open-knowledge-server --filter=@inkeep/open-knowledge-core --output-logs=errors-only && knip",
     "notices": "node scripts/generate-third-party-notices.mjs",
     "schema:dump": "tsx packages/core/scripts/dump-schema.ts",
@@ -17,6 +18,7 @@
     "check:desktop": "turbo run lint typecheck test --filter=@inkeep/open-knowledge-desktop",
     "check:fast": "pnpm run typecheck",
     "check:doc-links": "pnpm --dir docs run validate-link",
+    "check:server-test-inputs": "node scripts/check-server-test-inputs.mjs",
     "check:drift": "pnpm run check:drift:guards && vitest run --config vitest.scripts.config.ts",
     "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && node scripts/check-i18n-new-string-translations.mjs && node scripts/check-i18n-picker-completeness.mjs && bash scripts/check-no-major-changeset.sh && node scripts/check-override-floors.mjs && node scripts/check-typescript-resolution.mjs",
     "typecheck": "turbo run typecheck",
@@ -28,7 +30,7 @@
     "lint:oxlint": "oxlint --max-warnings 0 .",
     "format": "pnpm run lint:biome --write --unsafe",
     "check": "pnpm run lint && pnpm exec turbo run build typecheck test",
-    "check:full:parallel": "pnpm run check:drift:guards && pnpm run lint && pnpm run check:doc-links && vitest run --config vitest.scripts.config.ts && turbo run build typecheck check:dts test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:visual test:perf test:a11y --concurrency=100% --output-logs=errors-only",
+    "check:full:parallel": "pnpm run check:drift:guards && pnpm run check:server-test-inputs && pnpm run lint && pnpm run check:doc-links && vitest run --config vitest.scripts.config.ts && turbo run build typecheck check:dts test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:visual test:perf test:a11y --concurrency=100% --output-logs=errors-only",
     "tier1": "pnpm run check",
     "tier2": "pnpm run tier1 && turbo run test:perf:regression:unit test:health:unit test:health test:e2e",
     "tier3": "STRESS_FIDELITY=1 pnpm run tier2",

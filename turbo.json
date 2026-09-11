@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
+    "turbo-cache-key.json",
     "test-support/fixtures/share-url-v1-v2.json",
     "test-support/fixtures/codex-legacy-warning-envelopes.json",
     "pnpm-workspace.yaml",
@@ -107,6 +108,26 @@
         "vitest.config.ts",
         "vitest.*.config.mts",
         "../test-support/*.ts"
+      ]
+    },
+    "@inkeep/open-knowledge-server#test": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!CHANGELOG.md",
+        "!README.md",
+        "../../test-support/*.ts",
+        "../../oxlint.config.ts",
+        "../../lint-plugins/**",
+        "../plugin/**",
+        "../../plugins/ok/**",
+        "../app/src/editor/observers.ts",
+        "../cli/src/**",
+        "../cli/tsdown.config.ts",
+        "../desktop/src/main/**",
+        "../*/package.json",
+        "../../docs/content/**"
       ]
     },
     "@inkeep/open-knowledge#test": {
