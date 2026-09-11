@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
-import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
+import {
+  assertPathAbsentFromLegacyRegistry,
+  bootCompositionRig,
+  parseProblem,
+  rawRequest,
+} from './composition-rig.test-helper.ts';
 
 const READS = ['/api/agent-activity', '/api/agent-burst-diff'];
 const WRITES = [
@@ -27,8 +32,8 @@ const RESIDUAL = [
   '/api/lint/markdownlint-config',
   '/api/lint/frontmatter-schema',
   '/api/lint/fix',
-  '/api/agent-integrations/apply',
 ];
+const AGENT_INTEGRATIONS_APPLY = '/api/agent-integrations/apply';
 let root: string;
 let enabled: BootedServer;
 let disabled: BootedServer;
@@ -58,6 +63,9 @@ test('native ownership is exclusive and the remaining legacy registry matches it
       expect(server.serverInstance.nativeApi.paths.filter((entry) => entry === path)).toHaveLength(
         1,
       );
+    expect(
+      server.serverInstance.nativeApi.paths.filter((entry) => entry === AGENT_INTEGRATIONS_APPLY),
+    ).toHaveLength(1);
     for (const path of RESIDUAL) expect(server.serverInstance.nativeApi.paths).not.toContain(path);
   }
   for (const path of TEST_PATHS) {
@@ -65,12 +73,11 @@ test('native ownership is exclusive and the remaining legacy registry matches it
     expect(disabled.serverInstance.nativeApi.paths).not.toContain(path);
   }
   const source = readFileSync(new URL('./api-extension.ts', import.meta.url), 'utf8');
-  const registry = source.match(/const routes:[\s\S]*?= (\{[\s\S]*?\n {2}\});/)?.[1];
-  expect(registry).toBeDefined();
+  const registry = assertPathAbsentFromLegacyRegistry(source, AGENT_INTEGRATIONS_APPLY);
 
-  expect(
-    [...(registry?.matchAll(/'([^']*\/api\/[^']*)'/g) ?? [])].map((match) => match[1]).sort(),
-  ).toEqual([...RESIDUAL].sort());
+  expect([...registry.matchAll(/'([^']*\/api\/[^']*)'/g)].map((match) => match[1]).sort()).toEqual(
+    [...RESIDUAL].sort(),
+  );
 });
 
 test('ingress rejects every migrated route before method or malformed-body admission', async () => {

@@ -143,10 +143,7 @@ export default {
     },
     'packages/cli': {
       entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
-      ignoreDependencies: [
-        '@inkeep/open-knowledge-app', // the CLI's `build:assets` script runs `cp -r ../app/dist dist/public`
-        'yjs',
-      ],
+      ignoreDependencies: ['yjs'],
     },
     'packages/desktop': {
       entry: [

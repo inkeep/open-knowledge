@@ -128,6 +128,67 @@ describe('applyAgentConnectionIntents', () => {
     expect(result.report.conflicts[0]?.kind).toBe('unknown-satisfier');
     expect(result.snapshot).toEqual(SNAPSHOT);
   });
+
+  test('keeps the post-apply snapshot when an action carries an error', async () => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              actions: [
+                {
+                  satisfierId: 'claude/mcp/project/config-entry',
+                  agentId: 'claude',
+                  piece: 'mcp',
+                  scope: 'project',
+                  kind: 'config-entry',
+                  desired: 'present',
+                  action: 'failed',
+                  errorId: 'write-failed',
+                },
+              ],
+              conflicts: [],
+              withheld: [],
+              snapshot: SNAPSHOT,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+
+    const result = await applyAgentConnectionIntents([]);
+
+    expect(result.ok).toBe(false);
+    expect(result.report.actions[0]?.errorId).toBe('write-failed');
+    expect(result.snapshot).toEqual(SNAPSHOT);
+  });
+
+  test('treats withheld work without conflicts or action errors as successful', async () => {
+    vi.stubGlobal('window', {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              actions: [],
+              conflicts: [],
+              withheld: ['claude/mcp/project/config-entry'],
+              snapshot: SNAPSHOT,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    );
+
+    const result = await applyAgentConnectionIntents([]);
+
+    expect(result.ok).toBe(true);
+    expect(result.report.withheld).toEqual(['claude/mcp/project/config-entry']);
+    expect(result.snapshot).toEqual(SNAPSHOT);
+  });
 });
 
 describe('what a refused desktop apply carries back', () => {

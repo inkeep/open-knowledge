@@ -85,6 +85,7 @@
         "tests/integration/idb-preload.ts",
         "../../test-support/*.ts",
         "../test-support/*.ts",
+        "../app/package.json",
         "../../oxlint.config.ts",
         "../../lint-plugins/**"
       ]

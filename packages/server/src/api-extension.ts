@@ -1,3 +1,4 @@
+import { createAgentIntegrationsRoutes } from './http/agent-integrations-routes.ts';
 import { createAgentWriteRoutes } from './http/agent-write-routes.ts';
 import { createTestRoutes } from './http/test-routes.ts';
 
@@ -18,13 +19,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension, Hocuspocus } from '@hocuspocus/server';
-import type { EnvTier } from '@inkeep/open-knowledge-core';
 import {
   type AdvisoryWarning,
   AGENT_ICON_COLORS,
   AGENTS_SKILLS_ROOT,
-  AgentIntegrationsApplyRequestSchema,
-  AgentIntegrationsApplySuccessSchema,
   AgentWriteBatchRequestSchema,
   AgentWriteBatchSuccessSchema,
   AgentWriteRequestSchema,
@@ -85,8 +83,7 @@ import type { AcpRegistry, CustomAgentEntry } from './acp/registry.ts';
 import { captureEffect } from './activity-log.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
-import { type AgentRegistryHostSeam, applyAgentRegistryIntents } from './agent-registry-apply.ts';
-import { collectServerHostSnapshot } from './agent-registry-probes.ts';
+import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import {
   AgentSessionCapacityError,
   type AgentSessionManager,
@@ -251,7 +248,6 @@ import {
 import { withParentLock } from './git-handle.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { createAssetRoutes } from './http/asset-routes.ts';
-import { catchErrors } from './http/catch-errors.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
@@ -309,7 +305,6 @@ import type { GuardedFetch } from './link-preview/metadata.ts';
 import {
   checkLocalOpSecurity as checkLocalOpSecurityBase,
   createConcurrencyGuard,
-  isLoopbackRequest,
 } from './local-op-security.ts';
 import { localTargetInventoryFromIndexes } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
@@ -4528,62 +4523,6 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
-  const handleAgentIntegrationsApply = withValidation(
-    AgentIntegrationsApplyRequestSchema,
-    catchErrors(
-      async (req, res, body) => {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'agent-integrations-apply',
-          });
-          return;
-        }
-
-        const envTier: EnvTier = isLoopbackRequest(req) ? 'local-web' : 'remote-web';
-        const { report, snapshot } = await applyAgentRegistryIntents(body.intents, {
-          execute: agentIntegrations?.execute,
-          env: envTier,
-          snapshot: () =>
-            collectServerHostSnapshot({ env: envTier, resolve: agentIntegrations?.probe }),
-          decisionHome: homeDirOverride ?? homedir(),
-          ...(agentIntegrations?.userSkillPresentAnywhere !== undefined
-            ? { userSkillPresentAnywhere: agentIntegrations.userSkillPresentAnywhere }
-            : {}),
-          projectDir,
-        });
-
-        log.info(
-          {
-            actor: actor.kind,
-            applied: report.actions.length,
-            failed: report.actions.filter((action) => action.errorId !== undefined).length,
-            conflicts: report.conflicts.map((conflict) => conflict.kind),
-          },
-          '[agent-integrations] batch applied',
-        );
-
-        successResponse(
-          res,
-          200,
-          AgentIntegrationsApplySuccessSchema,
-          { ...report, snapshot },
-          { handler: 'agent-integrations-apply' },
-        );
-      },
-      {
-        handler: 'agent-integrations-apply',
-        title: 'Failed to apply AI tool connections.',
-      },
-    ),
-    {
-      handler: 'agent-integrations-apply',
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: 'agent-integrations-apply' }),
-    },
-  );
   let lintConfigEpoch = 0;
   function signalLintConfigChanged(): void {
     lintConfigEpoch += 1;
@@ -5050,7 +4989,6 @@ export function createApiExtension(
     '/api/lint/fix': handleLintFix,
     '/api/agent-write': handleAgentWrite,
     '/api/agent-write-batch': handleAgentWriteBatch,
-    '/api/agent-integrations/apply': handleAgentIntegrationsApply,
   };
 
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
@@ -5064,7 +5002,6 @@ export function createApiExtension(
     '/api/test-rescan-backlinks',
     '/api/test-rescan-files',
     '/api/skill/uninstall',
-    '/api/agent-integrations/apply',
   ]);
 
   const apiRouteTable: ApiRouteTable = {
@@ -5410,6 +5347,14 @@ export function createApiExtension(
     mutateFileIndex,
   });
   const assetRoutes = createAssetRoutes({ assetService, log });
+  const agentIntegrationsRoutes = createAgentIntegrationsRoutes({
+    log,
+    checkLocalOpSecurity,
+    getPrincipal,
+    homeDirOverride,
+    projectDir,
+    agentIntegrations,
+  });
   const handoffInstallRoutes = createHandoffInstallRoutes({ checkLocalOpSecurity });
   const skillsInstallRoutes = createSkillsInstallRoutes({
     resolveSkillsRoot,
@@ -5525,6 +5470,7 @@ export function createApiExtension(
   });
   const nativeGroups = [
     assetRoutes,
+    agentIntegrationsRoutes,
     agentWriteRoutes,
     ...(enableTestRoutes ? [testRoutes] : []),
     skillsTrackingRoutes,

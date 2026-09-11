@@ -69,6 +69,7 @@ export interface TestServer {
 }
 
 export interface CreateTestServerOptions {
+  ingressPolicy?: ServerOptions['ingressPolicy'];
   debounce?: ServerOptions['debounce'];
   maxDebounce?: ServerOptions['maxDebounce'];
   stalenessGraceMs?: ServerOptions['stalenessGraceMs'];
@@ -140,6 +141,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
   const srv = createServer({
     contentDir,
     projectDir,
+    ingressPolicy: options.ingressPolicy,
     quiet: true,
     debounce: options.debounce ?? 200,
     maxDebounce: options.maxDebounce ?? 1000,
@@ -177,6 +179,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     httpServer,
     hocuspocus: srv.hocuspocus,
     nativeApi: srv.nativeApi,
+    ingressPolicy: options.ingressPolicy,
     mcpHttpHandler,
     log: getLogger('test-harness'),
     sessionManager: srv.sessionManager,

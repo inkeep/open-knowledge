@@ -63,6 +63,31 @@ function usesLegacyOnlySeam(source: string): boolean {
   return importsServerFactory && !source.includes('nativeApi.dispatch');
 }
 
+function factoryNameForRouteFile(file: string): string {
+  return file
+    .replace('http/', '')
+    .replace('-routes.ts', '')
+    .split('-')
+    .map((segment) => (segment[0] ?? '').toUpperCase() + segment.slice(1))
+    .join('');
+}
+
+function nativeFactoryDivergence(
+  extensionSource: string,
+  routeFiles: readonly string[],
+): { missing: string[]; unexpected: string[] } {
+  const mounted = new Set(
+    [...extensionSource.matchAll(/=\s*create(\w+)Routes\(/g)].flatMap((match) =>
+      match[1] ? [match[1]] : [],
+    ),
+  );
+  const discovered = new Set(routeFiles.map(factoryNameForRouteFile));
+  return {
+    missing: [...discovered].filter((name) => !mounted.has(name)).sort(),
+    unexpected: [...mounted].filter((name) => !discovered.has(name)).sort(),
+  };
+}
+
 describe('native-route unit-tier reachability', () => {
   test('anti-vacuousness: every route file contributes paths and the inventory is non-trivial', () => {
     const { exact, prefixes, perFile } = collectNativePaths();
@@ -77,21 +102,30 @@ describe('native-route unit-tier reachability', () => {
 
   test('the discovered route files and the extension mounts are the same set', () => {
     const ext = readFileSync(join(SERVER_SRC_ROOT, 'api-extension.ts'), 'utf8');
-    const mounted = [...ext.matchAll(/=\s*create(\w+)Routes\(/g)].flatMap((m) =>
-      m[1] ? [m[1]] : [],
-    );
-    const discovered = listNativeRouteFiles(SERVER_SRC_ROOT).map((file) =>
-      file
-        .replace('http/', '')
-        .replace('-routes.ts', '')
-        .split('-')
-        .map((seg) => (seg[0] ?? '').toUpperCase() + seg.slice(1))
-        .join(''),
-    );
     expect(
-      [...new Set(mounted)].sort(),
+      nativeFactoryDivergence(ext, listNativeRouteFiles(SERVER_SRC_ROOT)),
       'mounted (received) vs discovered (expected) name sets diverged — map the diff back to a file/factory via the divergence taxonomy in the comment above this assertion',
-    ).toEqual([...new Set(discovered)].sort());
+    ).toEqual({ missing: [], unexpected: [] });
+  });
+
+  test('the mount comparison rejects an omitted or renamed discovered factory', () => {
+    const ext = readFileSync(join(SERVER_SRC_ROOT, 'api-extension.ts'), 'utf8');
+    const routeFiles = listNativeRouteFiles(SERVER_SRC_ROOT);
+    const witness = routeFiles.map(factoryNameForRouteFile).sort()[0];
+    if (witness === undefined) throw new Error('no native route factory witness was discovered');
+    const mountedFactory = `create${witness}Routes`;
+    const renamedFactory = `createRenamed${witness}Routes`;
+    const omitted = ext.replace(`= ${mountedFactory}(`, '= buildUnmountedRouteGroup(');
+    if (omitted === ext) throw new Error(`${mountedFactory} mount is absent`);
+    expect(nativeFactoryDivergence(omitted, routeFiles)).toEqual({
+      missing: [witness],
+      unexpected: [],
+    });
+    const renamed = ext.replaceAll(mountedFactory, renamedFactory);
+    expect(nativeFactoryDivergence(renamed, routeFiles)).toMatchObject({
+      missing: [witness],
+      unexpected: expect.arrayContaining([`Renamed${witness}`]),
+    });
   });
 
   test('no legacy-only test seam names a natively-owned path', () => {

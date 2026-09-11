@@ -4,6 +4,14 @@
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
+  "exports": {
+    "./test-support/agent-connections": {
+      "@inkeep/source": "./src/lib/agent-connections.ts",
+      "development": "./src/lib/agent-connections.ts",
+      "types": "./src/lib/agent-connections.ts",
+      "default": "./src/lib/agent-connections.ts"
+    }
+  },
   "scripts": {
     "predev": "turbo run build --filter=@inkeep/open-knowledge-core --filter=@inkeep/open-knowledge-server && sh scripts/i18n-compile-unless-skipped.sh && node scripts/copy-excalidraw-assets.mjs",
     "dev": "vite",
