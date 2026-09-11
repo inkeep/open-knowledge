@@ -179,6 +179,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   const { activeDocName, activeProvider } = useDocumentContext();
 
+  const sealUndoStepEvent = useEffectEvent(() => {
+    if (!activeProvider) return;
+    sharedUndoManagerFor(activeProvider.document.getText('source')).stopCapturing();
+  });
+
   const autoSyncOnboardingVariant = resolveAutoSyncOnboarding({
     autoSyncOnboardingDismissed,
     hasRemote: syncStatus?.hasRemote,
@@ -195,6 +200,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       if (detail && activeDocName) {
         rememberPendingSourceNavigation(activeDocName, { kind: 'raw-mdx', detail });
       }
+      sealUndoStepEvent();
       setEditorMode('source');
     }
     window.addEventListener(RAW_MDX_NAV_EVENT, onRawMdxNav);
@@ -452,7 +458,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     function onViewInSource(e: Event) {
       const detail = (e as CustomEvent<ViewInSourceDetail>).detail;
-      if (detail?.docName === activeDocName) setEditorMode('source');
+      if (detail?.docName !== activeDocName) return;
+      sealUndoStepEvent();
+      setEditorMode('source');
     }
     window.addEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);
     return () => window.removeEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);

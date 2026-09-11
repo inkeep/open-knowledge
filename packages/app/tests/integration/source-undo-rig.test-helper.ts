@@ -7,10 +7,6 @@ import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { sharedUndoManagerFor } from '../../src/editor/shared-undo-manager';
 import { sourceModeSetup } from '../../src/editor/source-mode-setup';
-import {
-  createSourceUndoFlipExtension,
-  setSourceViewUndoFlipActive,
-} from '../../src/editor/source-undo-mode-flip';
 
 export type SourceUndoWiring = 'production' | 'legacy';
 
@@ -66,7 +62,6 @@ export function mountSourceUndoEditor(opts: {
           sourceModeSetup,
           yCollab(opts.ytext, opts.awareness, { undoManager }),
           keymap.of(yUndoManagerKeymap),
-          createSourceUndoFlipExtension({ undoManager }),
         ]
       : [basicSetup, yCollab(opts.ytext, opts.awareness, { undoManager })];
   const view = new EditorView({
@@ -75,7 +70,7 @@ export function mountSourceUndoEditor(opts: {
   });
   const setSourceModeActive = (active: boolean) => {
     if (opts.wiring !== 'production') return;
-    setSourceViewUndoFlipActive(view, active);
+    if (!active) undoManager.stopCapturing();
   };
   setSourceModeActive(true);
   return {

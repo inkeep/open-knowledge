@@ -57,10 +57,6 @@ import { createLocalTargetDiagnosticsExtension } from './source-lint/local-targe
 import { createMarkdownLintExtension } from './source-lint/markdown-lint-source';
 import { sourceModeSetup } from './source-mode-setup';
 import { createSourcePolishExtension } from './source-polish';
-import {
-  createSourceUndoFlipExtension,
-  setSourceViewUndoFlipActive,
-} from './source-undo-mode-flip';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 
 const noScrollEffect = StateEffect.define<null>();
@@ -75,7 +71,7 @@ interface SourceEditorProps {
 
 function cleanupSourceEditorEntry(docName: string, entry: CmCacheEntry): void {
   try {
-    setSourceViewUndoFlipActive(entry.view, false);
+    sharedUndoManagerFor(entry.ytext).stopCapturing();
   } finally {
     try {
       parkCmEditor(entry);
@@ -213,7 +209,6 @@ export function SourceEditor({
               keymap.of([indentWithTab]),
               yCollab(ytext, provider.awareness, { undoManager: sharedUndoManagerFor(ytext) }),
               keymap.of(yUndoManagerKeymap),
-              createSourceUndoFlipExtension({ undoManager: sharedUndoManagerFor(ytext) }),
               ...createNestedCMExtensions({
                 themeCompartment,
                 resolvedTheme,
@@ -284,7 +279,6 @@ export function SourceEditor({
       });
       cmEntryRef.current = entry;
       viewRef.current = entry.view;
-      setSourceViewUndoFlipActive(entry.view, isSourceModeActive);
       registerSourceView(docName, entry.view);
       if (claimNoteWindowInitialFocus()) entry.view.focus();
     } catch (err) {
@@ -305,10 +299,8 @@ export function SourceEditor({
 
   useEffect(() => {
     sourceModeActiveRef.current = isSourceModeActive;
-    const view = viewRef.current;
-    if (!view) return;
-    setSourceViewUndoFlipActive(view, isSourceModeActive);
-  }, [isSourceModeActive]);
+    if (!isSourceModeActive) sharedUndoManagerFor(ytext).stopCapturing();
+  }, [isSourceModeActive, ytext]);
 
   useEffect(() => {
     if (import.meta.env.PROD) return;

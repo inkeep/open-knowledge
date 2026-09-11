@@ -14,42 +14,42 @@ interface UndoRow {
   undo: UndoClass;
   why: string;
   contract: string;
-  clearsSourceUndoOnModeReturn?: true;
+  clearsSharedUndoOnWholeTextReplacement?: true;
 }
 
 const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   AGENT_WRITE_ORIGIN: {
     undo: 'agent-session-um',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Typed exemplar for the agent-write origin; real writes carry the per-session session.origin. Undoable only by the server per-session UndoManager, never by a human Cmd+Z. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Typed exemplar for the agent-write origin; real writes carry the per-session session.origin. Undoable only by the server per-session UndoManager, never by a human Cmd+Z. The paired write reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
     contract:
-      'session-undo-manager.test.ts, integration/agent-undo.test.ts, source-undo-mode-flip.test.ts',
+      'session-undo-manager.test.ts, integration/agent-undo.test.ts, shared-undo-manager.test.ts',
   },
   FILE_WATCHER_ORIGIN: {
     undo: 'system-not-undoable',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Disk-to-CRDT intake (paired). A system origin tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
-    contract: 'external-change disk intake (system origin), source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Disk-to-CRDT intake (paired). A system origin tracked by no UndoManager. The paired write reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'external-change disk intake (system origin), shared-undo-manager.test.ts',
   },
   ROLLBACK_ORIGIN: {
     undo: 'system-not-undoable',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Timeline restore rewrites body + fragment as a paired write; deliberately not client-undoable, and it stales pre-rollback client undo items. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
-    contract: 'undo-after-rollback.test.ts, source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Timeline restore rewrites body + fragment as a paired write; deliberately not client-undoable, and it stales pre-rollback client undo items. The paired write reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'undo-after-rollback.test.ts, shared-undo-manager.test.ts',
   },
   MANAGED_RENAME_ORIGIN: {
     undo: 'system-not-undoable',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Managed-rename spine (paired). System origin tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Managed-rename spine (paired). System origin tracked by no UndoManager. The paired write reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
     contract:
-      'attribution-sweep-coverage.test.ts (identity threading), source-undo-mode-flip.test.ts',
+      'attribution-sweep-coverage.test.ts (identity threading), shared-undo-manager.test.ts',
   },
   GENERATED_ARTIFACT_ORIGIN: {
     undo: 'system-not-undoable',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Machine-maintained generated documents are reconciled through a paired system write and are tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Machine-maintained generated documents are reconciled through a paired system write and are tracked by no UndoManager. The paired write reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
     contract:
-      'generated-artifact.test.ts, server-factory.test.ts (generated index wiring), source-undo-mode-flip.test.ts',
+      'generated-artifact.test.ts, server-factory.test.ts (generated index wiring), shared-undo-manager.test.ts',
   },
   MERMAID_SOURCE_ORIGIN: {
     undo: 'system-not-undoable',
@@ -63,21 +63,21 @@ const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   },
   FORM_WRITE_ORIGIN: {
     undo: 'no-undo-manager',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Frontmatter property-panel write to the YAML region of Y.Text; single-root, captured by no editor UndoManager, and one landing while source mode is inactive clears the source undo history on return.',
-    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Frontmatter property-panel write to the YAML region of Y.Text; single-root, captured by no editor UndoManager, and, being partial, it leaves client undo history alone (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'write-surface-undo-exclusion.test.ts, shared-undo-manager.test.ts',
   },
   LINT_FIX_ORIGIN: {
     undo: 'no-undo-manager',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Client markdownlint auto-fix writing Y.Text(source) directly; captured by no editor UndoManager. Driven from the Problems panel and the visual editor, so one can land while source mode is inactive and clear the source undo history on return.',
-    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Client markdownlint auto-fix writing Y.Text(source) directly; captured by no editor UndoManager. Driven from the Problems panel and the visual editor, and, being partial, it leaves client undo history alone (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'write-surface-undo-exclusion.test.ts, shared-undo-manager.test.ts',
   },
   SOURCE_PASTE_ORIGIN: {
     undo: 'no-undo-manager',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Chunked large source-mode paste writing Y.Text(source) directly, bypassing CM6 dispatch; captured by no editor UndoManager. Issued only from the source view paste handler, but the chunked insert yields per animation frame, so a tail chunk can land after a mode flip and clear the source undo history on return.',
-    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Chunked large source-mode paste writing Y.Text(source) directly, bypassing CM6 dispatch; captured by no editor UndoManager. Issued only from the source view paste handler, but the chunked insert yields per animation frame, so a tail chunk can land after a mode flip; being partial, it leaves client undo history alone (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'write-surface-undo-exclusion.test.ts, shared-undo-manager.test.ts',
   },
   PROJECTION_WRITE_ORIGIN: {
     undo: 'client-editor-um',
@@ -86,26 +86,26 @@ const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   },
   TAB_REPLAY_ORIGIN: {
     undo: 'replay-not-undoable',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Recovery replay of buffered updates onto a recycled provider. The replayed bytes are durable but not Cmd+Z-undoable — post-recycle, the last pre-hiccup edits are recovery machinery, not a fresh user action. The replay reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
-    contract: 'undo-recycle-reset.test.ts, source-undo-mode-flip.test.ts',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Recovery replay of buffered updates onto a recycled provider. The replayed bytes are durable but not Cmd+Z-undoable — post-recycle, the last pre-hiccup edits are recovery machinery, not a fresh user action. The replay reaches Y.Text(source) untracked: it leaves client undo history alone unless it replaces the whole text (only an untracked whole-text replacement clears the shared manager).',
+    contract: 'undo-recycle-reset.test.ts, shared-undo-manager.test.ts',
   },
 };
 
 const FACTORY_ORIGIN_ROWS: Record<string, UndoRow> = {
   createSessionOrigin: {
     undo: 'agent-session-um',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Mints the per-session frozen agent-write origin (session.origin); object-identity-unique, added to the session UndoManager trackedOrigins so only that session can undo its writes. Its paired writes reach Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Mints the per-session frozen agent-write origin (session.origin); object-identity-unique, added to the session UndoManager trackedOrigins so only that session can undo its writes. Its paired writes reach Y.Text(source) untracked: an agent `replace` is a whole-text replacement and clears the shared manager; a partial write leaves client undo history alone.',
     contract:
-      'session-undo-manager.test.ts, integration/agent-undo.test.ts, source-undo-mode-flip.test.ts',
+      'session-undo-manager.test.ts, integration/agent-undo.test.ts, shared-undo-manager.test.ts',
   },
   createUndoOrigin: {
     undo: 'agent-undo-system',
-    clearsSourceUndoOnModeReturn: true,
-    why: 'Mints the per-session agent-undo origin (session.undoOrigin); filtered out of its own stack so undo-of-undo never stacks. Idle-LRU eviction destroys the session UndoManager, and a later undo gets the loud no-active-session refusal rather than a wrong-frame pop. Its undo writes reach Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    clearsSharedUndoOnWholeTextReplacement: true,
+    why: 'Mints the per-session agent-undo origin (session.undoOrigin); filtered out of its own stack so undo-of-undo never stacks. Idle-LRU eviction destroys the session UndoManager, and a later undo gets the loud no-active-session refusal rather than a wrong-frame pop. Its undo writes reach Y.Text(source) untracked and leave client undo history alone unless they replace the whole text (only an untracked whole-text replacement clears the shared manager).',
     contract:
-      'integration/agent-undo.test.ts, agent-sessions.eviction.test.ts, source-undo-mode-flip.test.ts',
+      'integration/agent-undo.test.ts, agent-sessions.eviction.test.ts, shared-undo-manager.test.ts',
   },
 };
 
@@ -186,12 +186,12 @@ function enumerateContractTestFiles(): Array<{ owner: string; file: string }> {
   );
 }
 
-function rowsPromisingSourceUndoClear(): Array<[string, UndoRow]> {
+function rowsRuledByWholeTextClear(): Array<[string, UndoRow]> {
   return [
     ...Object.entries(ORIGIN_UNDO_CONTRACT),
     ...Object.entries(FACTORY_ORIGIN_ROWS),
     ...Object.entries(RESERVED_UNDO_ROWS),
-  ].filter(([, row]) => row.clearsSourceUndoOnModeReturn);
+  ].filter(([, row]) => row.clearsSharedUndoOnWholeTextReplacement);
 }
 
 function contractFileHits(file: string): string[] {
@@ -264,10 +264,10 @@ describe('origin-undoability sweep', () => {
     expect(unresolved).toEqual([]);
   });
 
-  test('every ruling that promises a source-undo clear cites the mode-flip contract', () => {
-    expect(rowsPromisingSourceUndoClear().length).toBeGreaterThanOrEqual(11);
-    const missing = rowsPromisingSourceUndoClear()
-      .filter(([, row]) => !row.contract.includes('source-undo-mode-flip.test.ts'))
+  test('every ruling about the whole-text clear cites the shared undo manager contract', () => {
+    expect(rowsRuledByWholeTextClear().length).toBeGreaterThanOrEqual(11);
+    const missing = rowsRuledByWholeTextClear()
+      .filter(([, row]) => !row.contract.includes('shared-undo-manager.test.ts'))
       .map(([owner]) => owner);
 
     expect(missing).toEqual([]);

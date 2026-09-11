@@ -7,8 +7,10 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { registerEditor, unregisterEditor } from '@/editor/active-editor';
+import { RAW_MDX_NAV_EVENT } from '@/editor/extensions/raw-mdx-nav-event';
 import { publishSelectionContext } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { sharedUndoManagerFor } from '@/editor/shared-undo-manager';
 import {
   clearPendingSourceNavigationsForTest,
   peekPendingSourceNavigation,
@@ -1179,4 +1181,38 @@ describe('EditorPane mode switch promotes the preview tab', () => {
 
     expect(promotePreviewTabMock).not.toHaveBeenCalled();
   });
+});
+
+describe('EditorPane ends the undo step on the paths into source that skip handleModeChange', () => {
+  afterEach(() => {
+    cleanup();
+    activeProvider = undefined;
+  });
+
+  for (const entry of [
+    {
+      label: 'View in source',
+      dispatch: () =>
+        window.dispatchEvent(
+          new CustomEvent<ViewInSourceDetail>(VIEW_IN_SOURCE_EVENT, {
+            detail: { docName: 'docs/notes' },
+          }),
+        ),
+    },
+    {
+      label: 'a link from a component that could not be displayed',
+      dispatch: () => window.dispatchEvent(new CustomEvent(RAW_MDX_NAV_EVENT)),
+    },
+  ]) {
+    test(`${entry.label} ends the undo step`, async () => {
+      const ydoc = new Y.Doc();
+      activeProvider = { document: ydoc };
+      await renderEditorPane();
+      const stopCapturing = vi.spyOn(sharedUndoManagerFor(ydoc.getText('source')), 'stopCapturing');
+
+      act(() => entry.dispatch());
+
+      expect(stopCapturing).toHaveBeenCalledTimes(1);
+    });
+  }
 });

@@ -37,7 +37,7 @@ import { useEffect, useRef } from 'react';
 import { yCollab } from 'y-codemirror.next';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
-import { acquireDocUndoManager } from './doc-undo-manager';
+import { sharedUndoManagerFor } from '@/editor/shared-undo-manager';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 
 const darkTheme = okCmTheme({
@@ -63,7 +63,7 @@ export function TextDocEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const ytext = provider.document.getText('source');
-  const undoManager = acquireDocUndoManager(provider, ytext);
+  const undoManager = sharedUndoManagerFor(ytext, provider);
 
   useEffect(() => {
     const el = containerRef.current;

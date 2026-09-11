@@ -756,4 +756,24 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
 
     expect(ytext.toString()).toBe('');
   });
+
+  test('leaving source mode ends the undo step, so typing before and after undoes separately', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-inpane-seal');
+
+    await act(async () => rerender({ visible: true, sourceMode: false }));
+    await act(async () => rerender({ visible: true, sourceMode: true }));
+    const cm = EditorView.findFromDOM(content);
+    if (!cm) throw new Error('no CodeMirror view');
+    await act(async () => {
+      cm.dispatch({
+        changes: { from: cm.state.doc.length, insert: ' tail' },
+        userEvent: 'input.type',
+      });
+    });
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug tail');
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug');
+  });
 });
