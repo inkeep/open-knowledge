@@ -1,4 +1,5 @@
 import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
+import { setupI18n } from '@lingui/core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,12 +13,14 @@ import type {
 } from '@/lib/desktop-bridge-types';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
+const testI18n = setupI18n({ locale: 'en', messages: { en: {}, fr: {} } });
+
 vi.doMock('@lingui/core/macro', () => ({ ...actualLinguiMacro, msg: renderLinguiTemplate }));
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useLingui: () => ({ t: renderLinguiTemplate }),
+  useLingui: () => ({ t: renderLinguiTemplate, i18n: testI18n }),
 }));
 
 const { default: ConsentDialogBody } = await import('./ConsentDialogBody');
@@ -132,12 +135,66 @@ async function expandAdvanced() {
 describe('ConsentDialogBody runtime form behavior', () => {
   afterEach(() => {
     cleanup();
+    testI18n.activate('en');
     setBridge(undefined);
     vi.restoreAllMocks();
   });
 
   test('exports the default component', () => {
     expect(typeof ConsentDialogBody).toBe('function');
+  });
+
+  test.each([
+    { locale: 'en', truncated: false, expected: '54,321' },
+    { locale: 'en', truncated: true, expected: '≥ 54,321' },
+    { locale: 'fr', truncated: false, expected: '54\u202f321' },
+    { locale: 'fr', truncated: true, expected: '≥ 54\u202f321' },
+  ])(
+    'shows the actual probe count in $locale with truncated=$truncated',
+    async ({ locale, truncated, expected }) => {
+      testI18n.activate(locale);
+      setBridge({
+        ...statusBridge([]),
+        onboarding: {
+          probeContent: async () => ({ ok: true, count: 54_321, sample: [], truncated }),
+        },
+      });
+      renderConsentDialog();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('consent-preview').textContent).toBe(
+          `Found ${expected} markdown files`,
+        );
+      });
+    },
+  );
+
+  test.each([
+    { locale: 'en', headline: '5,000', remaining: '4,999' },
+    { locale: 'fr', headline: '5\u202f000', remaining: '4\u202f999' },
+  ])('formats the expanded remaining count in $locale', async ({ locale, headline, remaining }) => {
+    testI18n.activate(locale);
+    setBridge({
+      ...statusBridge([]),
+      onboarding: {
+        probeContent: async () => ({
+          ok: true,
+          count: 5_000,
+          sample: ['docs/README.md'],
+          truncated: false,
+        }),
+      },
+    });
+    renderConsentDialog();
+
+    const previewTrigger = await screen.findByRole('button', {
+      name: `Found ${headline} markdown files`,
+    });
+    expect(previewTrigger.textContent).toBe(`Found ${headline} markdown files`);
+    await userEvent.click(previewTrigger);
+
+    expect(screen.getByText('docs/README.md')).not.toBeNull();
+    expect(screen.getByText(/and .* more/).textContent).toBe(`and ${remaining} more`);
   });
 
   test('advanced controls are collapsed by default and reveal on expand', async () => {

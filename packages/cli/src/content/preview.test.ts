@@ -143,6 +143,17 @@ describe('previewContent', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('warns on a self-referential symlink cycle instead of throwing', () => {
+    writeFileSync(join(testDir, 'real.md'), '# Real');
+    symlinkSync(join(testDir, 'selfie'), join(testDir, 'selfie'));
+
+    const result = previewContent({ projectDir: testDir, contentDir: testDir });
+
+    expect(result.totalCount).toBe(1);
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0]).toContain('broken or cyclic symlink');
+  });
+
   it('warns on broken symlinks instead of throwing', () => {
     writeFileSync(join(testDir, 'real.md'), '# Real');
     symlinkSync(join(testDir, 'nonexistent.md'), join(testDir, 'broken-link.md'));

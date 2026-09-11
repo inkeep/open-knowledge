@@ -23,6 +23,7 @@ const CHECKS: BuildArtifactCheck[] = [
       resolve(DESKTOP_PKG, 'src/main/index.ts'),
       resolve(DESKTOP_PKG, 'src/main/consent-dialog.ts'),
       resolve(DESKTOP_PKG, 'src/main/folder-admission.ts'),
+      resolve(DESKTOP_PKG, 'src/main/fs-walk-budget.ts'),
     ],
   },
   {
