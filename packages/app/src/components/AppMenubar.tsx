@@ -16,8 +16,8 @@ import {
 } from '@/components/ui/menubar';
 import type {
   OkDesktopBridge,
-  OkMenuDispatchRequest,
   OkMenuRendererSnapshot,
+  OkMenuUiDispatchRequest,
 } from '@/lib/desktop-bridge-types';
 import { moveToTrashLabel, revealInFileManagerLabel } from '@/lib/platform-labels';
 
@@ -29,7 +29,7 @@ export function AppMenubar() {
   if (!shouldShowAppMenubar() || bridge == null || bridge.menu == null) return null;
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
 
-  const dispatch = (request: OkMenuDispatchRequest): void => {
+  const dispatch = (request: OkMenuUiDispatchRequest): void => {
     void menu.dispatch(request).catch(() => {});
   };
 

@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import {
   isOkDesktopHost as isOkDesktopHostGate,
+  isSpellcheckLanguageSelectionAvailable,
   isTerminalSettingsAvailable,
 } from './settings-host-gates';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
@@ -158,6 +159,7 @@ export function SettingsDialogShell({
 
   const isOkDesktopHost = isOkDesktopHostGate();
   const terminalSettingsAvailable = isTerminalSettingsAvailable();
+  const spellcheckLanguagesAvailable = isSpellcheckLanguageSelectionAvailable();
 
   const enabledPluginItems: SidebarItem[] = LINT_PLUGIN_META.filter(
     (p) => projectConfig?.contentRules?.[p.id]?.enabled === true,
@@ -187,7 +189,32 @@ export function SettingsDialogShell({
       label: t`User`,
       enabled: true,
       items: [
-        { id: 'preferences', label: t`Preferences` },
+        {
+          id: 'preferences',
+          label: t`Preferences`,
+          subsections: [
+            ...(isOkDesktopHost
+              ? [
+                  {
+                    id: 'spellcheck',
+                    label: t`Check spelling while typing`,
+                    anchor: 'spellcheck.enabled',
+                    keywords: [t({ message: 'spellcheck', context: 'settings search keyword' })],
+                  },
+                ]
+              : []),
+            ...(spellcheckLanguagesAvailable
+              ? [
+                  {
+                    id: 'spellcheck-languages',
+                    label: t`Spelling languages`,
+                    anchor: 'spellcheck.languages',
+                    keywords: [t({ message: 'spellcheck', context: 'settings search keyword' })],
+                  },
+                ]
+              : []),
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
         { id: 'user-plugins-manage', label: t`Plugins` },
@@ -288,6 +315,14 @@ export function SettingsDialogShell({
           electronDragBandClearance(),
         )}
         data-testid="settings-dialog"
+        onEscapeKeyDown={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('[data-slot="combobox-chip-input"][aria-expanded="true"]')
+          ) {
+            event.preventDefault();
+          }
+        }}
       >
         <DialogTitle className="sr-only">
           <Trans>Settings</Trans>

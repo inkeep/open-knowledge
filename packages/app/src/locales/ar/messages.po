@@ -2732,6 +2732,8 @@ msgstr "سحب شجرة عمل"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "التدقيق الإملائي أثناء الكتابة"
 
@@ -3867,6 +3869,14 @@ msgstr "تعذّرت إضافة ذلك التعليق."
 msgid "Couldn't apply the change: {0}"
 msgstr "تعذّر تطبيق التغيير: {0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "تعذّر تغيير التدقيق الإملائي. حاول مرة أخرى."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "تعذّر تغيير لغات التدقيق الإملائي. حاول مرة أخرى."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "تعذر التحقق مما إذا كان {filePath} لا يزال متعارضًا — تجري إعادة المحاولة."
@@ -4192,6 +4202,14 @@ msgstr "تعذّرت قراءة التعليقات المنتظرة للإرسا
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "تعذّرت قراءة التعليقات المنتظرة للإرسال: {0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "تعذّرت قراءة إعداد التدقيق الإملائي."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "تعذّر قراءة لغات التدقيق الإملائي."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5699,6 +5717,10 @@ msgstr "لوحة Excalidraw"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "سيُسحب الفرع الموجود <0>{trimmed}</0> إلى نافذته الخاصة، تحت <1>.ok/worktrees/</1>."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "قد لا يتم تحديث التسطيرات الموجودة على الفور."
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8755,6 +8777,10 @@ msgstr "جديد من قالب…"
 msgid "New ignore pattern"
 msgstr "نمط تجاهل جديد"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "قد تحتاج اللغات الجديدة إلى اتصال بالإنترنت وبعض الوقت حتى تصبح متاحة."
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "اسم جديد لنسخة {editor}"
@@ -9036,6 +9062,10 @@ msgstr "لا روابط واردة"
 msgid "No language match."
 msgstr "لا توجد لغة مطابقة."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "لا توجد لغة مطابقة."
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "لا توجد روابط بعد. أضف روابط ويكي أو روابط Markdown لبناء رسم بياني."
@@ -9185,6 +9215,10 @@ msgstr "لم يُعثر على مهارات."
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "بلا مسافات — استخدم <0>-</0> بدلًا منها."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "لا تتوفر أي لغة للتدقيق الإملائي."
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10950,6 +10984,14 @@ msgstr "نسخة للقراءة فقط من كتلة MirrorSource في مستن�
 msgid "Read-only file in the {name} skill"
 msgstr "ملف للقراءة فقط في مهارة {name}"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "جارٍ قراءة اللغات الحالية…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "جارٍ قراءة الإعداد الحالي…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "جارٍ قراءة شجرة العمل"
@@ -11149,8 +11191,10 @@ msgstr "إزالة"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "إزالة {0}"
 
@@ -11542,11 +11586,15 @@ msgid "Reset {0} to default"
 msgstr "إعادة تعيين {0} إلى الافتراضي"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "إعادة تعيين {labelText} إلى الافتراضي"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "إعادة التعيين إلى الافتراضي"
 
@@ -12012,6 +12060,10 @@ msgstr "البحث في المجلدات"
 msgid "Search icons..."
 msgstr "البحث عن أيقونات..."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "البحث عن اللغات"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12170,6 +12222,10 @@ msgstr "تحديد عنصر القائمة"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "تحديد التكرار التالي"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "اختيار لغات التدقيق الإملائي"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13072,6 +13128,24 @@ msgstr "مسافة للقفز، سهم لأسفل للانحناء. هذه هي 
 msgid "Spaces aren't allowed in the path"
 msgstr "المسافات غير مسموح بها في المسار"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "التدقيق الإملائي متوقف، لكن تعذّر حفظ التغيير ولن يُطبَّق بعد إعادة التشغيل."
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "التدقيق الإملائي مُفعَّل، لكن تعذّر حفظ التغيير ولن يُطبَّق بعد إعادة التشغيل."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "التدقيق الإملائي"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "لغات التدقيق الإملائي"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "تقسيم عنصر القائمة"
@@ -13689,6 +13763,10 @@ msgstr "يحتوي هذا المجلد بالفعل على شيفرة لم تك�
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "ذلك المجلد ليس مشروع OpenKnowledge بعد. هل تهيّئه وتفتحه؟"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "هذه اللغة غير متاحة للتدقيق الإملائي."
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14893,6 +14971,10 @@ msgstr "تغييرات غير مودعة"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "تسطير"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "يضع خطًا تحت الكلمات الخاطئة إملائيًا في المحرر."
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"

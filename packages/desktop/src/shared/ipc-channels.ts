@@ -41,6 +41,7 @@ import type {
   OkLocalOpAuthStatusResponse,
   OkMenuDispatchCommand,
   OkMenuDispatchRequest,
+  OkMenuDispatchResult,
   OkMenuDispatchRole,
   OkMenuRendererSnapshot,
   OkNoteWindowMainAction,
@@ -82,6 +83,7 @@ export type { SkillCostTiers };
 export type MenuDispatchRole = OkMenuDispatchRole;
 export type MenuDispatchCommand = OkMenuDispatchCommand;
 export type MenuDispatchRequest = OkMenuDispatchRequest;
+export type MenuDispatchResult = OkMenuDispatchResult;
 export type MenuRendererSnapshot = OkMenuRendererSnapshot;
 
 export type { OkSharingSetModeResult, OkSharingStatusResult };
@@ -655,7 +657,7 @@ export interface RequestChannels {
   };
   'ok:menu:dispatch': {
     args: [request: MenuDispatchRequest];
-    result: MenuRendererSnapshot | undefined;
+    result: MenuDispatchResult;
   };
 
   'ok:uninstall:dispatch': {

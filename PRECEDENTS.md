@@ -104,7 +104,7 @@ Titles index for the architectural precedents that Open Knowledge code cites as 
 ## Project locality for LLM-functional resources (precedents 50, 51)
 
 50. **Project locality for LLM-functional + reproducibility-sensitive resources.**
-51. **Every overlay primitive carries a one-line `motion-reduce:` opt-in inline on its Content (and SubContent where present) — the only OK divergence from shadcn `radix-nova` upstream motion across the 7 overlay primitives (Dialog, Sheet, Popover, Select, Dropdown-menu, Context-menu, Tooltip).**
+51. **Every overlay primitive carries a one-line `motion-reduce:` opt-in inline on its Content (and SubContent where present) — the only OK divergence from shadcn `radix-nova` upstream motion across the original 7 Radix overlay primitives (Dialog, Sheet, Popover, Select, Dropdown-menu, Context-menu, Tooltip).**
 
 ## ~~Two-tier overlay-motion system — documented forks of the radix-nova preset~~ (precedent 52 — RETRACTED)
 

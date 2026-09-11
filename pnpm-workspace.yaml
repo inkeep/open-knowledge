@@ -125,8 +125,13 @@ overrides:
   # `@codemirror/state` range and raise this to match.
   '@codemirror/state': 6.7.1
   '@codemirror/view': 6.43.3
+  # UPSTREAM(@base-ui/react@1.8.0): Direct/transitive Floating UI floors supersede the historical freeze; changes need regression coverage of Settings, ShareBranchSwitchDialog and CreateProjectDialog, not just the spelling-language picker.
+  '@floating-ui/core': 1.8.0
+  '@floating-ui/dom': 1.8.0
+  '@floating-ui/react-dom': 2.1.9
+  '@floating-ui/utils': 0.2.12
   # Radix UI graph pinned to the versions the bun lockfile resolved. A fresh
-  # pnpm resolution floats the whole @radix-ui/* + floating-ui graph past the
+  # pnpm resolution floats the whole @radix-ui/* graph past the
   # bun baseline (e.g. react-dialog 1.1.15 -> 1.1.19, react-presence 1.1.6 ->
   # 1.1.7, react-primitive 2.1.6 -> 2.1.7); the newer dialog/presence/
   # dismissable-layer stack shifts effect + timer flush ordering enough to break
@@ -134,10 +139,6 @@ overrides:
   # polling). This toolchain cutover must be behavior-preserving, so the runtime
   # Radix graph is held at the bun baseline. Revisit as a deliberate, separately
   # tested upgrade -- not as a side effect of the package-manager swap.
-  '@floating-ui/core': 1.7.5
-  '@floating-ui/dom': 1.7.6
-  '@floating-ui/react-dom': 2.1.8
-  '@floating-ui/utils': 0.2.11
   '@radix-ui/number': 1.1.1
   '@radix-ui/primitive': 1.1.4
   '@radix-ui/react-accessible-icon': 1.1.7

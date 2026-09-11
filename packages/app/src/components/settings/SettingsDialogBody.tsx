@@ -23,6 +23,7 @@ import { SearchSection } from './SearchSection';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 import { SkillsManagerSection } from './SkillsManagerSection';
 import { SlidesPluginSection } from './SlidesPluginSection';
+import { SpellingSettings } from './SpellingSettings';
 import { SyncSection } from './SyncSection';
 import { BoundSchemaSection } from './schema-section';
 import { FIELDS_USER_PREFERENCES } from './settings-fields';
@@ -55,7 +56,10 @@ export function SettingsDialogBody({
         scopeBadge="user"
         binding={userBinding}
         fields={FIELDS_USER_PREFERENCES}
-        slotsAfter={{ 'appearance.theme': <OkCliPathRow /> }}
+        slotsAfter={{
+          'appearance.theme': <OkCliPathRow />,
+          'appearance.language': <SpellingSettings />,
+        }}
       />
     ) : (
       <SectionSkeleton />

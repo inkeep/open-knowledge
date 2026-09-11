@@ -185,6 +185,73 @@ describe('SettingsDialogBody preferences runtime', () => {
     );
   });
 
+  test('places the spelling rows after the interface Language row, keeping the CLI row', async () => {
+    Object.defineProperty(window, 'okDesktop', {
+      value: {
+        platform: 'win32',
+        menu: { dispatch: async () => ({ spellCheckEnabled: true }) },
+        spellcheck: {
+          setEnabled: async () => ({ ok: true, enabled: true, saved: true }),
+          languages: async () => ({
+            kind: 'spelling-languages-query',
+            ok: true,
+            state: { available: ['en-US', 'vi'], selected: ['en-US'], defaults: ['en-US'] },
+          }),
+          setLanguages: async () => ({
+            kind: 'spelling-languages-set',
+            ok: true,
+            state: { available: ['en-US', 'vi'], selected: ['en-US'], defaults: ['en-US'] },
+          }),
+        },
+        integrations: {
+          status: async () => ({
+            available: true,
+            editors: [],
+            skills: [],
+            path: { shellDetected: true, rcFilesToTouch: ['~/.zshrc'], installed: false },
+          }),
+          setComponent: async () => ({ ok: true }),
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const { binding } = makeBinding();
+      const { container } = renderPreferences(binding);
+
+      const row = await screen.findByTestId('settings-spellcheck-row');
+      const languagesRow = await screen.findByTestId('settings-spellcheck-languages-row');
+      const language = container.querySelector('[data-field="appearance.language"]');
+      const wordWrap = container.querySelector('[data-field="editor.wordWrap"]');
+      expect(language).toBeTruthy();
+      expect(wordWrap).toBeTruthy();
+      expect(language?.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      expect(row.compareDocumentPosition(languagesRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      expect(
+        languagesRow.compareDocumentPosition(wordWrap as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(await screen.findByTestId('ok-cli-path-row')).toBeTruthy();
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: test-only global teardown.
+      (window as any).okDesktop = undefined;
+    }
+  });
+
+  test('shows no desktop spelling controls without a desktop host', async () => {
+    const { binding } = makeBinding();
+    renderPreferences(binding);
+
+    await screen.findByText('Word wrap');
+    expect(screen.queryByTestId('settings-spelling')).toBeNull();
+    expect(screen.queryByTestId('settings-spellcheck-row')).toBeNull();
+    expect(screen.queryByTestId('settings-spellcheck-languages-row')).toBeNull();
+  });
+
   test('commits editor.wordWrap changes through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();

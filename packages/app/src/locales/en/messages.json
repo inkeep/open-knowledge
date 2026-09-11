@@ -404,6 +404,7 @@
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4d0VYJ": ["We’ll create a safe theme ID from this name."],
+    "4fBHOP": ["Spelling languages"],
     "4g19V6": ["Failed to update property"],
     "4gIB21": [
       "The server will accept requests for ",
@@ -717,6 +718,7 @@
       ["0"],
       " — that folder is not this skill. Rename or delete one of the two to resolve."
     ],
+    "8HxtjY": ["That language isn't available for spell checking."],
     "8Jm2EP": ["Toggle heading levels 1 through 6."],
     "8L0EPw": ["or paste a token"],
     "8OGgNM": ["Open or close visual-editor find."],
@@ -1004,6 +1006,7 @@
     "BgV29F": ["Visual editor find input focused"],
     "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "BhLPRk": ["Reverted \"", ["name"], "\" to the installed version"],
+    "BiVBP9": ["Couldn't read the spelling languages."],
     "BjitBo": ["Download ", ["0"]],
     "BkGtRl": [
       "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
@@ -1162,6 +1165,7 @@
     ],
     "DmkTrb": ["Couldn’t create this theme. Try again."],
     "Dnn2XG": ["Automatic"],
+    "DpeNOR": ["Reading the current setting…"],
     "DpjYd6": ["Jump to the anchored text"],
     "DqyItq": [
       "OpenKnowledge logs across projects. No project is open, so project server logs are not included."
@@ -1232,6 +1236,7 @@
     "EWPtMO": ["Code"],
     "EWX92Z": ["Collapse Ask AI"],
     "EZVxVz": ["Replace the active match from the replace field."],
+    "EZkj6G": ["Underlines misspelled words in the editor."],
     "E_A2Nq": ["Link ready but could not copy to clipboard."],
     "E_tNGD": ["Connected as @", ["login"]],
     "EarrCe": ["Search emoji"],
@@ -1240,6 +1245,7 @@
     "EbjWsS": ["Current commit"],
     "EcM3k7": ["Failed to clean up pending ", ["kind"]],
     "EdQY6l": ["None"],
+    "EeCARZ": ["New languages may need an internet connection and time to become available."],
     "EeUucb": ["Rule editing is available for the project's root markdownlint config"],
     "Ef6ukL": ["via parent"],
     "Ef7StM": ["Unknown"],
@@ -1588,6 +1594,7 @@
     "IQgeSn": ["Failed to save the schema field"],
     "IR6Txi": ["Align left"],
     "IRv9cH": ["Cloned ", ["repoName"], "."],
+    "IW2KMF": ["Couldn't change spell checking. Try again."],
     "IWGfGF": ["Checking your GitHub connection"],
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
     "IX_uXB": ["my-feature"],
@@ -2472,6 +2479,7 @@
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
     "TbjyhA": ["Docs"],
+    "TcAQRZ": ["Select spelling languages"],
     "TdlVEN": [
       "This field carries additional schema keywords the editor does not show — they are preserved on save."
     ],
@@ -2964,6 +2972,7 @@
     "ZSoojc": ["Clone failed — check the URL and try again (", ["status"], ")"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
     "ZVOhXM": ["Failed to update sync — ", ["detail"]],
+    "ZVpN5V": ["Reading the current languages…"],
     "ZW2yR_": ["Add custom path"],
     "ZW3mlR": ["Diff render mode"],
     "ZWgr0b": ["In a subfolder"],
@@ -2983,6 +2992,7 @@
     "Zhe80e": ["Restore to edit ", ["burstNumber"], " of ", ["docName"]],
     "ZhhOwV": ["Quote"],
     "ZjtgI-": ["Command palette"],
+    "ZlCe_H": ["No spelling languages are available."],
     "Zon_qG": ["Mirror source <0>", ["label"], "</0>"],
     "ZptNUh": ["Show ", ["hidden"], " more"],
     "Zs3d0w": [
@@ -3318,6 +3328,7 @@
     "czQDKY": ["Each push is one commit to your remote."],
     "d-GtJt": ["View in Source Markdown"],
     "d-RYHO": ["Excalidraw board"],
+    "d0x8mP": ["Couldn't read the spell checking setting."],
     "d1JjXo": [
       "Your local copy of branch <0>",
       ["branch"],
@@ -3614,6 +3625,7 @@
       ". That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
     ],
     "g9Nj4l": ["// note"],
+    "g9c235": ["spellcheck"],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBCeDq": ["No common ancestor — both branches added this file (add/add conflict)."],
     "gBbxn_": ["Checking sign-in status"],
@@ -3772,6 +3784,9 @@
     "hLKfZe": ["Use a token instead"],
     "hLod4_": ["Convert to template"],
     "hLy8b1": ["Updated to Version ", ["version"]],
+    "hNUywL": [
+      "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+    ],
     "hPQBsa": [
       "Reserved files are named index.md and log.md in lowercase. On a case-sensitive filesystem, Index.md is read as an ordinary document and loses its meaning."
     ],
@@ -3829,6 +3844,7 @@
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
     "i3f2kh": ["No matching commands."],
+    "i6o7XB": ["Search languages"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
     "i94lQe": ["OpenKnowledge checked for conflicts"],
     "i9OyGp": ["Undo or redo"],
@@ -4160,6 +4176,9 @@
     "l9s3IX": [["agentName"], " couldn't start a conversation."],
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Agent connections"],
+    "lBfjKC": [
+      "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+    ],
     "lCC_D5": ["Subscribing..."],
     "lGs_bQ": ["Page <0>*</0>"],
     "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
@@ -4722,6 +4741,7 @@
     "roAe2K": ["Link URL"],
     "roiUQQ": ["This page doesn't link to anything yet."],
     "rppgXF": ["Disconnecting"],
+    "rqvcnf": ["No languages match."],
     "rssK8c": ["Ignore patterns (raw text)"],
     "rtdR4v": ["Show or hide Files"],
     "rtir7c": ["unknown"],
@@ -5088,6 +5108,7 @@
       ["0"],
       "). Check the API key and the model id."
     ],
+    "v_kS4a": ["Couldn't change the spelling languages. Try again."],
     "vallqD": ["OpenKnowledge looked at the link graph"],
     "vbK_ZG": ["Files sidebar"],
     "vbMHjo": ["Go to line ", ["0"]],
@@ -5113,6 +5134,7 @@
         }
       ]
     ],
+    "vmahUq": ["Existing underlines may not update immediately."],
     "vp5vfW": ["1 hour"],
     "vppAju": ["Where newly added attachments are placed."],
     "vqJXNe": ["Install the <0>open-knowledge-discovery</0> skill"],

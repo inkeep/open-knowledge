@@ -2728,6 +2728,8 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr ""
 
@@ -3863,6 +3865,14 @@ msgstr ""
 msgid "Couldn't apply the change: {0}"
 msgstr ""
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr ""
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr ""
@@ -4187,6 +4197,14 @@ msgstr ""
 #. placeholder {0}: err.message
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
+msgstr ""
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -5694,6 +5712,10 @@ msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -8751,6 +8773,10 @@ msgstr ""
 msgid "New ignore pattern"
 msgstr ""
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr ""
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr ""
@@ -9032,6 +9058,10 @@ msgstr ""
 msgid "No language match."
 msgstr ""
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr ""
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr ""
@@ -9180,6 +9210,10 @@ msgstr ""
 
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
 msgstr ""
 
 #: src/components/PackCardGrid.tsx
@@ -10946,6 +10980,14 @@ msgstr ""
 msgid "Read-only file in the {name} skill"
 msgstr ""
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr ""
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr ""
@@ -11145,8 +11187,10 @@ msgstr ""
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr ""
 
@@ -11538,11 +11582,15 @@ msgid "Reset {0} to default"
 msgstr ""
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr ""
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr ""
 
@@ -12008,6 +12056,10 @@ msgstr ""
 msgid "Search icons..."
 msgstr ""
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr ""
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12165,6 +12217,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -13068,6 +13124,24 @@ msgstr ""
 msgid "Spaces aren't allowed in the path"
 msgstr ""
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr ""
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr ""
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr ""
@@ -13684,6 +13758,10 @@ msgstr ""
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
+msgstr ""
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -14888,6 +14966,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
+msgstr ""
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx

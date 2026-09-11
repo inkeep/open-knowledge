@@ -159,6 +159,35 @@ describe('buildSettingsSearchIndex', () => {
     expect(disabled.some((e) => e.id.startsWith('subsection:'))).toBe(false);
   });
 
+  test('a subsection can carry its own search synonyms alongside the inherited context', () => {
+    const groups: SidebarGroup[] = [
+      {
+        id: 'user',
+        label: 'User',
+        enabled: true,
+        items: [
+          {
+            id: 'preferences',
+            label: 'Preferences',
+            subsections: [
+              {
+                id: 'spellcheck',
+                label: 'Check spelling while typing',
+                anchor: 'spellcheck.enabled',
+                keywords: ['spellcheck'],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const entries = buildSettingsSearchIndex({ groups, translate });
+    const sub = entries.find((e) => e.id === 'subsection:preferences:spellcheck');
+
+    expect(sub?.keywords).toEqual(['User', 'Preferences', 'spellcheck']);
+    expect(matchesCommandQuery(sub?.label ?? '', 'spellcheck', sub?.keywords ?? [])).toBe(true);
+  });
+
   test('theme field indexed only when the theme plugin is a visible section', () => {
     const withTheme = buildSettingsSearchIndex({
       groups: groupsFixture({ themeVisible: true }),

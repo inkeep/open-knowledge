@@ -2732,6 +2732,8 @@ msgstr "Extraer worktree"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "Comprobar la ortografía al escribir"
 
@@ -3867,6 +3869,14 @@ msgstr "No se pudo añadir ese comentario."
 msgid "Couldn't apply the change: {0}"
 msgstr "No se pudo aplicar el cambio: {0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "No se pudo cambiar la corrección ortográfica. Inténtalo de nuevo."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "No se pudieron cambiar los idiomas de la corrección ortográfica. Inténtalo de nuevo."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "No se pudo comprobar si {filePath} sigue en conflicto: reintentando."
@@ -4192,6 +4202,14 @@ msgstr "No se pudieron leer los comentarios pendientes de envío; no se envió n
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "No se pudieron leer los comentarios pendientes de envío: {0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "No se pudo leer la configuración de corrección ortográfica."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "No se pudieron leer los idiomas de la corrección ortográfica."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5699,6 +5717,10 @@ msgstr "Lienzo de Excalidraw"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "La rama existente <0>{trimmed}</0> se extraerá en su propia ventana, dentro de <1>.ok/worktrees/</1>."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "Puede que los subrayados existentes no se actualicen de inmediato."
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8755,6 +8777,10 @@ msgstr "Nuevo desde plantilla…"
 msgid "New ignore pattern"
 msgstr "Patrón de exclusión nuevo"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "Los idiomas nuevos pueden necesitar conexión a internet y algo de tiempo para estar disponibles."
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "Nombre nuevo para la versión de {editor}"
@@ -9036,6 +9062,10 @@ msgstr "Sin entrantes"
 msgid "No language match."
 msgstr "Ningún idioma coincide."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "Ningún idioma coincide."
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "Todavía no hay enlaces. Añade enlaces wiki o enlaces markdown para construir un grafo."
@@ -9185,6 +9215,10 @@ msgstr "No se encontraron habilidades."
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "Sin espacios: usa <0>-</0> en su lugar."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "No hay idiomas disponibles para la corrección ortográfica."
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10950,6 +10984,14 @@ msgstr "Copia de solo lectura de un bloque MirrorSource de otro documento. Edít
 msgid "Read-only file in the {name} skill"
 msgstr "Archivo de solo lectura en la habilidad {name}"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "Leyendo los idiomas actuales…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "Leyendo la configuración actual…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "Leyendo el árbol de trabajo"
@@ -11149,8 +11191,10 @@ msgstr "Quitar"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "Quitar {0}"
 
@@ -11542,11 +11586,15 @@ msgid "Reset {0} to default"
 msgstr "Restablecer {0} al valor por defecto"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "Restablecer {labelText} al valor por defecto"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "Restablecer al valor por defecto"
 
@@ -12012,6 +12060,10 @@ msgstr "Buscar carpetas"
 msgid "Search icons..."
 msgstr "Buscar iconos..."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "Buscar idiomas"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12170,6 +12222,10 @@ msgstr "Seleccionar elemento de lista"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Seleccionar la aparición siguiente"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "Seleccionar idiomas de corrección ortográfica"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13072,6 +13128,24 @@ msgstr "Espacio para saltar, flecha abajo para agacharse. Ese es todo el juego."
 msgid "Spaces aren't allowed in the path"
 msgstr "No se permiten espacios en la ruta"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "La corrección ortográfica está desactivada, pero el cambio no se pudo guardar y no se aplicará después de reiniciar."
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "La corrección ortográfica está activada, pero el cambio no se pudo guardar y no se aplicará después de reiniciar."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "corrección ortográfica"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "Idiomas de la corrección ortográfica"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "Dividir el elemento de lista"
@@ -13689,6 +13763,10 @@ msgstr "Esa carpeta ya contiene código que Open Knowledge no escribió y que es
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "Esa carpeta todavía no es un proyecto de OpenKnowledge. ¿Inicializarla y abrirla?"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "Ese idioma no está disponible para la corrección ortográfica."
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14893,6 +14971,10 @@ msgstr "Cambios sin confirmar"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "Subrayado"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "Subraya las palabras mal escritas en el editor."
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"

@@ -1216,6 +1216,11 @@ Homepage: https://babel.dev/docs/en/next/babel-preset-typescript
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
+### `@babel/runtime@7.29.7`
+Homepage: https://babel.dev/docs/en/next/babel-runtime
+
+Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
 ### `@babel/template@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-template
 
@@ -1230,6 +1235,16 @@ Copyright (c) 2014-present Sebastian McKenzie and other contributors
 Homepage: https://babel.dev/docs/en/next/babel-types
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
+### `@base-ui/react@1.8.0`
+Homepage: https://base-ui.com
+
+Copyright (c) 2019 Material-UI SAS
+
+### `@base-ui/utils@0.4.0`
+Homepage: https://github.com/mui/base-ui
+
+Copyright (c) 2019 Material-UI SAS
 
 ### `@borewit/text-codec@0.2.2`
 Homepage: https://github.com/Borewit/text-codec
@@ -1389,22 +1404,22 @@ Homepage: https://github.com/excalidraw/random-username
 
 Copyright (c) 2021 dwelle
 
-### `@floating-ui/core@1.7.5`
+### `@floating-ui/core@1.8.0`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/dom@1.7.6`
+### `@floating-ui/dom@1.8.0`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/react-dom@2.1.8`
+### `@floating-ui/react-dom@2.1.9`
 Homepage: https://floating-ui.com/docs/react-dom
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/utils@0.2.11`
+### `@floating-ui/utils@0.2.12`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
@@ -5304,6 +5319,11 @@ Copyright (c) Vsevolod Strukchinsky <floatdrop@gmail.com> (github.com/floatdrop)
 Homepage: https://github.com/nodejs/require-in-the-middle#readme
 
 Copyright (c) 2016-2019, Thomas Watson Steen Copyright (c) 2019-2025, Elasticsearch B.V. Copyright (c) 2025+, require-in-the-middle contributors
+
+### `reselect@5.3.0`
+Homepage: https://github.com/reduxjs/reselect
+
+Copyright (c) 2015-2018 Reselect Contributors
 
 ### `resolve@1.22.12`
 Homepage: ssh://github.com/browserify/resolve

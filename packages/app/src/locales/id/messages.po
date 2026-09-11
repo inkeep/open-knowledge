@@ -2728,6 +2728,8 @@ msgstr "Ambil worktree"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "Periksa ejaan saat mengetik"
 
@@ -3863,6 +3865,14 @@ msgstr "Komentar itu tidak bisa ditambahkan."
 msgid "Couldn't apply the change: {0}"
 msgstr "Perubahannya tidak bisa diterapkan: {0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "Tidak dapat mengubah pemeriksaan ejaan. Coba lagi."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "Tidak dapat mengubah bahasa pemeriksaan ejaan. Coba lagi."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "Tidak dapat memeriksa apakah {filePath} masih berkonflik — mencoba lagi."
@@ -4188,6 +4198,14 @@ msgstr "Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang diki
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "Komentar yang menunggu dikirim tidak bisa dibaca: {0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "Tidak dapat membaca pengaturan pemeriksaan ejaan."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "Tidak dapat membaca bahasa pemeriksaan ejaan."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5695,6 +5713,10 @@ msgstr "Kanvas Excalidraw"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "Cabang yang sudah ada <0>{trimmed}</0> akan diambil ke jendelanya sendiri, di bawah <1>.ok/worktrees/</1>."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "Garis bawah yang sudah ada mungkin tidak langsung diperbarui."
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8751,6 +8773,10 @@ msgstr "Baru dari Templat…"
 msgid "New ignore pattern"
 msgstr "Pola abaikan baru"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "Bahasa baru mungkin memerlukan koneksi internet dan waktu agar tersedia."
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "Nama baru untuk versi {editor}"
@@ -9032,6 +9058,10 @@ msgstr "Tidak Ada Masuk"
 msgid "No language match."
 msgstr "Tidak ada bahasa yang cocok."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "Tidak ada bahasa yang cocok."
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "Belum ada tautan. Tambahkan tautan wiki atau tautan markdown untuk membangun sebuah graf."
@@ -9181,6 +9211,10 @@ msgstr "Tidak ada keterampilan yang ditemukan."
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "Tanpa spasi — gunakan <0>-</0> saja."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "Tidak ada bahasa yang tersedia untuk pemeriksaan ejaan."
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10946,6 +10980,14 @@ msgstr "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di su
 msgid "Read-only file in the {name} skill"
 msgstr "Berkas hanya-baca di keterampilan {name}"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "Membaca bahasa saat ini…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "Membaca pengaturan saat ini…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "Membaca working tree"
@@ -11145,8 +11187,10 @@ msgstr "Hapus"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "Hapus {0}"
 
@@ -11538,11 +11582,15 @@ msgid "Reset {0} to default"
 msgstr "Setel ulang {0} ke bawaan"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "Setel ulang {labelText} ke bawaan"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "Setel ulang ke bawaan"
 
@@ -12008,6 +12056,10 @@ msgstr "Cari folder"
 msgid "Search icons..."
 msgstr "Cari ikon..."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "Cari bahasa"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12166,6 +12218,10 @@ msgstr "Pilih item daftar"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "Pilih kemunculan berikutnya"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "Pilih bahasa pemeriksaan ejaan"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13068,6 +13124,24 @@ msgstr "Spasi untuk melompat, panah bawah untuk menunduk. Hanya itu permainannya
 msgid "Spaces aren't allowed in the path"
 msgstr "Spasi tidak diperbolehkan di jalur"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "Pemeriksaan ejaan nonaktif, tetapi perubahan tidak dapat disimpan dan tidak akan berlaku setelah dimulai ulang."
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "Pemeriksaan ejaan aktif, tetapi perubahan tidak dapat disimpan dan tidak akan berlaku setelah dimulai ulang."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "pemeriksaan ejaan"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "Bahasa pemeriksaan ejaan"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "Pisahkan item daftar"
@@ -13685,6 +13759,10 @@ msgstr "Folder itu sudah berisi kode yang tidak ditulis Open Knowledge, dan kepe
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "Folder itu belum menjadi proyek OpenKnowledge. Inisialisasi lalu buka?"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "Bahasa itu tidak tersedia untuk pemeriksaan ejaan."
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14889,6 +14967,10 @@ msgstr "Perubahan yang belum di-commit"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "Garis bawah"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "Menggarisbawahi kata yang salah eja di penyunting."
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"

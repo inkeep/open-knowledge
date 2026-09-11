@@ -367,6 +367,22 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         },
         spellcheck: {
           toggle: async () => false,
+          languages: async () => ({
+            kind: 'spelling-languages-query' as const,
+            ok: true as const,
+            state: { available: [], selected: [], defaults: [] },
+          }),
+          setLanguages: async () => ({
+            kind: 'spelling-languages-set' as const,
+            ok: true as const,
+            state: { available: [], selected: [], defaults: [] },
+          }),
+          setEnabled: async (enabled: boolean) => ({
+            kind: 'spellcheck-enabled-set' as const,
+            ok: true as const,
+            enabled,
+            saved: true,
+          }),
         },
         integrations: {
           status: async () => ({

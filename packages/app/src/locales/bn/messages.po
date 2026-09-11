@@ -2728,6 +2728,8 @@ msgstr "ওয়ার্কট্রি চেক আউট করুন"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "টাইপ করার সময় বানান দেখুন"
 
@@ -3863,6 +3865,14 @@ msgstr "ওই মন্তব্যটি যোগ করা যায়ন�
 msgid "Couldn't apply the change: {0}"
 msgstr "পরিবর্তনটি প্রয়োগ করা যায়নি: {0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "বানান পরীক্ষা পরিবর্তন করা যায়নি। আবার চেষ্টা করুন।"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "বানান পরীক্ষার ভাষা পরিবর্তন করা যায়নি। আবার চেষ্টা করুন।"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "{filePath}-এ এখনও কনফ্লিক্ট আছে কি না যাচাই করা যায়নি — আবার চেষ্টা করা হচ্ছে।"
@@ -4188,6 +4198,14 @@ msgstr "পাঠানোর অপেক্ষায় থাকা মন্
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "পাঠানোর অপেক্ষায় থাকা মন্তব্যগুলো পড়া যায়নি: {0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "বানান পরীক্ষার সেটিং পড়া যায়নি।"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "বানান পরীক্ষার ভাষা পড়া যায়নি।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5695,6 +5713,10 @@ msgstr "Excalidraw ক্যানভাস"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "বিদ্যমান ব্রাঞ্চ <0>{trimmed}</0> <1>.ok/worktrees/</1>-এর নিচে নিজের জানালায় চেক আউট করা হবে।"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "বিদ্যমান আন্ডারলাইনগুলো সঙ্গে সঙ্গে আপডেট নাও হতে পারে।"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8751,6 +8773,10 @@ msgstr "টেমপ্লেট থেকে নতুন…"
 msgid "New ignore pattern"
 msgstr "নতুন উপেক্ষার প্যাটার্ন"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "নতুন ভাষা পেতে ইন্টারনেট সংযোগ এবং কিছুটা সময় লাগতে পারে।"
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "{editor} সংস্করণের জন্য নতুন নাম"
@@ -9032,6 +9058,10 @@ msgstr "কোনো আগত নেই"
 msgid "No language match."
 msgstr "কোনো ভাষা মেলে না।"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "কোনো ভাষা মেলেনি।"
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "এখনও কোনো লিংক নেই। গ্রাফ গড়তে উইকি লিংক বা markdown লিংক যোগ করুন।"
@@ -9181,6 +9211,10 @@ msgstr "কোনো স্কিল পাওয়া যায়নি।"
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "ফাঁকা জায়গা নয় — বদলে <0>-</0> ব্যবহার করুন।"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "বানান পরীক্ষার জন্য কোনো ভাষা উপলব্ধ নেই।"
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10946,6 +10980,14 @@ msgstr "অন্য নথির একটি MirrorSource ব্লকের �
 msgid "Read-only file in the {name} skill"
 msgstr "{name} স্কিলের শুধু-পড়ার ফাইল"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "বর্তমান ভাষাগুলো পড়া হচ্ছে…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "বর্তমান সেটিং পড়া হচ্ছে…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "ওয়ার্কিং ট্রি পড়া হচ্ছে"
@@ -11145,8 +11187,10 @@ msgstr "সরান"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "{0} সরান"
 
@@ -11538,11 +11582,15 @@ msgid "Reset {0} to default"
 msgstr "{0} ডিফল্টে রিসেট করুন"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "{labelText} ডিফল্টে রিসেট করুন"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "ডিফল্টে রিসেট করুন"
 
@@ -12008,6 +12056,10 @@ msgstr "ফোল্ডার খুঁজুন"
 msgid "Search icons..."
 msgstr "আইকন খুঁজুন..."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "ভাষা খুঁজুন"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12166,6 +12218,10 @@ msgstr "তালিকার আইটেম নির্বাচন করু
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "পরবর্তী উপস্থিতি নির্বাচন করুন"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "বানান পরীক্ষার ভাষা নির্বাচন করুন"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13068,6 +13124,24 @@ msgstr "লাফাতে স্পেস, নিচু হতে নিচে�
 msgid "Spaces aren't allowed in the path"
 msgstr "পাথে স্পেস অনুমোদিত নয়"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "বানান পরীক্ষা বন্ধ আছে, তবে পরিবর্তনটি সংরক্ষণ করা যায়নি এবং পুনরায় চালুর পরে কার্যকর হবে না।"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "বানান পরীক্ষা চালু আছে, তবে পরিবর্তনটি সংরক্ষণ করা যায়নি এবং পুনরায় চালুর পরে কার্যকর হবে না।"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "বানান পরীক্ষা"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "বানান পরীক্ষার ভাষা"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "তালিকা আইটেম ভাগ করুন"
@@ -13685,6 +13759,10 @@ msgstr "ওই ফোল্ডারে ইতিমধ্যেই এমন �
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "ওই ফোল্ডারটি এখনও একটি OpenKnowledge প্রকল্প নয়। এটি চালু করে খুলবেন?"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "সেই ভাষাটি বানান পরীক্ষার জন্য উপলব্ধ নয়।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14889,6 +14967,10 @@ msgstr "কমিট না করা পরিবর্তন"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "নিম্নরেখা"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "সম্পাদকে ভুল বানানের শব্দগুলিতে আন্ডারলাইন দেয়।"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"

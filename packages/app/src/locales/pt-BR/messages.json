@@ -473,6 +473,7 @@
     "4buZWd": ["Herdado de ", ["path"]],
     "4c_a6S": ["Ainda não há nada definido."],
     "4d0VYJ": ["Criaremos um ID de tema seguro a partir deste nome."],
+    "4fBHOP": ["Idiomas da verificação ortográfica"],
     "4g19V6": ["Falha ao atualizar a propriedade"],
     "4gIB21": [
       "O servidor aceitará solicitações para ",
@@ -849,6 +850,7 @@
       ["0"],
       " — essa pasta não é esta habilidade. Renomeie ou exclua uma das duas para resolver."
     ],
+    "8HxtjY": ["Esse idioma não está disponível para a verificação ortográfica."],
     "8Jm2EP": ["Liga ou desliga os níveis de título de 1 a 6."],
     "8L0EPw": ["ou cole um token"],
     "8OGgNM": ["Abre ou fecha a busca do editor visual."],
@@ -1171,6 +1173,7 @@
     "BgV29F": ["Campo de busca do editor visual em foco"],
     "Bgaa_U": ["Falha ao atualizar a configuração de desempenho — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
+    "BiVBP9": ["Não foi possível ler os idiomas da verificação ortográfica."],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
       "Desfaz, refaz ou percorre as mudanças de seleção no painel Editar código ou em um campo de propriedade em formato de código."
@@ -1357,6 +1360,7 @@
     ],
     "DmkTrb": ["Não foi possível criar este tema. Tente novamente."],
     "Dnn2XG": ["Automático"],
+    "DpeNOR": ["Lendo a configuração atual…"],
     "DpjYd6": ["Ir para o texto ancorado"],
     "DqyItq": [
       "Logs do OpenKnowledge de vários projetos. Nenhum projeto está aberto, por isso os logs do servidor do projeto não são incluídos."
@@ -1429,6 +1433,7 @@
     "EWPtMO": ["Código"],
     "EWX92Z": ["Recolher Perguntar à IA"],
     "EZVxVz": ["Substitui a ocorrência ativa pelo conteúdo do campo de substituição."],
+    "EZkj6G": ["Sublinha as palavras com erros de ortografia no editor."],
     "E_A2Nq": ["O link está pronto, mas não foi possível copiá-lo para a área de transferência."],
     "E_tNGD": ["Conectado como @", ["login"]],
     "EarrCe": ["Buscar emoji"],
@@ -1437,6 +1442,9 @@
     "EbjWsS": ["Commit atual"],
     "EcM3k7": ["Falha ao limpar ", ["kind"], " pendente"],
     "EdQY6l": ["Nenhum"],
+    "EeCARZ": [
+      "Novos idiomas podem precisar de conexão com a internet e de algum tempo para ficarem disponíveis."
+    ],
     "EeUucb": [
       "A edição de regras está disponível para a configuração raiz do markdownlint do projeto"
     ],
@@ -1840,6 +1848,7 @@
     "IQgeSn": ["Falha ao salvar o campo do esquema"],
     "IR6Txi": ["Alinhar à esquerda"],
     "IRv9cH": [["repoName"], " clonado."],
+    "IW2KMF": ["Não foi possível alterar a verificação ortográfica. Tente novamente."],
     "IWGfGF": ["Verificando sua conexão com o GitHub"],
     "IX7-sq": ["Algo deu errado ao abrir \"", ["docName"], "\"."],
     "IX_uXB": ["meu-recurso"],
@@ -2820,6 +2829,7 @@
     "T_wG4n": ["Não foi possível verificar sua conexão com o GitHub."],
     "Ta25TG": ["Ainda não há histórico"],
     "TbjyhA": ["Documentos"],
+    "TcAQRZ": ["Selecionar idiomas de verificação ortográfica"],
     "TdlVEN": [
       "Este campo carrega palavras-chave de esquema adicionais que o editor não mostra — elas são preservadas ao salvar."
     ],
@@ -3390,6 +3400,7 @@
     "ZSoojc": ["Falha ao clonar — verifique a URL e tente novamente (", ["status"], ")"],
     "ZU8VV_": ["Falha ao remover: ", ["error"]],
     "ZVOhXM": ["Falha ao atualizar a sincronização — ", ["detail"]],
+    "ZVpN5V": ["Lendo os idiomas atuais…"],
     "ZW2yR_": ["Adicionar caminho personalizado"],
     "ZW3mlR": ["Modo de exibição das diferenças"],
     "ZWgr0b": ["Em uma subpasta"],
@@ -3411,6 +3422,7 @@
     "Zhe80e": ["Restaurar até a edição ", ["burstNumber"], " de ", ["docName"]],
     "ZhhOwV": ["Citação"],
     "ZjtgI-": ["Paleta de comandos"],
+    "ZlCe_H": ["Nenhum idioma está disponível para a verificação ortográfica."],
     "Zon_qG": ["Fonte do espelho <0>", ["label"], "</0>"],
     "ZptNUh": ["Mostrar mais ", ["hidden"]],
     "Zs3d0w": [
@@ -3777,6 +3789,7 @@
     "czQDKY": ["Cada push é um commit no seu remoto."],
     "d-GtJt": ["Ver no Markdown de origem"],
     "d-RYHO": ["Quadro do Excalidraw"],
+    "d0x8mP": ["Não foi possível ler a configuração de verificação ortográfica."],
     "d1JjXo": [
       "Sua cópia local do ramo <0>",
       ["branch"],
@@ -4139,6 +4152,7 @@
       ". Aquela pasta vira um link simbólico para esta, então o agente dela lê tudo o que for colocado aqui. Esta pasta continua real. Habilidades em conflito cancelam a mesclagem."
     ],
     "g9Nj4l": ["// nota"],
+    "g9c235": ["verificação ortográfica"],
     "gAhHu7": ["A correção automática só vale para problemas com uma correção mecânica conhecida."],
     "gBCeDq": ["Sem ancestral comum: os dois ramos adicionaram este arquivo (conflito add/add)."],
     "gBbxn_": ["Verificando o estado da sessão"],
@@ -4313,6 +4327,9 @@
     "hLKfZe": ["Usar um token em vez disso"],
     "hLod4_": ["Converter em modelo"],
     "hLy8b1": ["Atualizado para a versão ", ["version"]],
+    "hNUywL": [
+      "A verificação ortográfica está ativada, mas a alteração não pôde ser salva e não será aplicada após reiniciar."
+    ],
     "hPQBsa": [
       "Os arquivos reservados são nomeados index.md e log.md em letras minúsculas. Em um sistema de arquivos que diferencia maiúsculas de minúsculas, Index.md é lido como um documento comum e perde seu significado."
     ],
@@ -4378,6 +4395,7 @@
     "i09An-": ["Uma versão anterior foi restaurada (", ["0"], ")"],
     "i1flq_": ["Sugestões de link wiki"],
     "i3f2kh": ["Nenhum comando corresponde."],
+    "i6o7XB": ["Pesquisar idiomas"],
     "i92eAT": ["Vamos criar um repositório e começar a sincronizar — sem precisar de terminal."],
     "i94lQe": ["OpenKnowledge verificou se há conflitos"],
     "i9OyGp": ["Desfazer ou refazer"],
@@ -4732,6 +4750,9 @@
     "l9s3IX": [["agentName"], " não conseguiu iniciar uma conversa."],
     "lAiyU_": ["Só o documento atual usa <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Conexões de agentes"],
+    "lBfjKC": [
+      "A verificação ortográfica está desativada, mas a alteração não pôde ser salva e não será aplicada após reiniciar."
+    ],
     "lCC_D5": ["Assinando..."],
     "lGs_bQ": ["Página <0>*</0>"],
     "lHCR4I": ["Esvazie o campo para voltar ao endpoint padrão da OpenAI."],
@@ -5350,6 +5371,7 @@
     "roAe2K": ["URL do link"],
     "roiUQQ": ["Esta página ainda não aponta para nada."],
     "rppgXF": ["Desconectando"],
+    "rqvcnf": ["Nenhum idioma corresponde."],
     "rssK8c": ["Padrões de exclusão (texto puro)"],
     "rtdR4v": ["Mostrar ou ocultar Arquivos"],
     "rtir7c": ["desconhecido"],
@@ -5763,6 +5785,7 @@
       ["0"],
       "). Verifique a chave de API e o id do modelo."
     ],
+    "v_kS4a": ["Não foi possível alterar os idiomas da verificação ortográfica. Tente novamente."],
     "vallqD": ["OpenKnowledge consultou o grafo de links"],
     "vbK_ZG": ["Barra lateral Arquivos"],
     "vbMHjo": ["Ir para a linha ", ["0"]],
@@ -5791,6 +5814,7 @@
         }
       ]
     ],
+    "vmahUq": ["Os sublinhados existentes podem não ser atualizados imediatamente."],
     "vp5vfW": ["1 hora"],
     "vppAju": ["Onde os anexos recém-adicionados são colocados."],
     "vqJXNe": ["Instalar a habilidade <0>open-knowledge-discovery</0>"],

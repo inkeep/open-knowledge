@@ -420,6 +420,12 @@ import { createSlidesWindow, slidesWindowChrome } from './slides-window.ts';
 import { realIsExecutableFile, resolveSlidev } from './slidev-resolve.ts';
 import { findFreePort, probeSlidevReady, realSpawnSlidev } from './slidev-server.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
+import {
+  querySpellingLanguages,
+  replaceSpellingLanguages,
+  type SpellcheckLanguagesDeps,
+  setSpellcheckEnabled,
+} from './spellcheck-languages.ts';
 import { popSpellcheckMenu } from './spellcheck-menu.ts';
 import { dispatchStartupToastAcrossLoads } from './startup-toast-dispatch.ts';
 import { beginRoot, childSpan, endRoot, injectTraceparent } from './startup-trace.ts';
@@ -884,12 +890,35 @@ export function clearPendingSchemaIncompatibility(): void {
   pendingSchemaIncompatibility = null;
 }
 
-function setSpellCheckEnabledAppWide(enabled: boolean): void {
+function setSpellCheckEnabledAppWide(enabled: boolean): boolean {
   session.defaultSession.setSpellCheckerEnabled(enabled);
   appState = setSpellCheckEnabledState(appState, enabled);
-  saveAppState(appState);
+  const saved = saveAppState(appState);
   refreshApplicationMenu();
+  return saved;
 }
+
+const spellcheckLanguagesDeps: SpellcheckLanguagesDeps = {
+  availableLanguages: () => session.defaultSession.availableSpellCheckerLanguages,
+  selectedLanguages: () => session.defaultSession.getSpellCheckerLanguages(),
+  defaultLanguages: () => {
+    const locale = app.getLocale();
+    return [
+      session.defaultSession.availableSpellCheckerLanguages.includes(locale) ? locale : 'en-US',
+    ];
+  },
+  applyLanguages: (languages) => {
+    session.defaultSession.setSpellCheckerLanguages([...languages]);
+  },
+  isEnabled: () => appState.spellCheckEnabled,
+  applyEnabledToEngine: (enabled) => {
+    session.defaultSession.setSpellCheckerEnabled(enabled);
+  },
+  setEnabledAppWide: setSpellCheckEnabledAppWide,
+  reportFailure: (operation, err) => {
+    getLogger('spellcheck-languages').warn({ err, operation }, 'spelling preference change failed');
+  },
+};
 
 function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   session.defaultSession.setSpellCheckerEnabled(appState.spellCheckEnabled);
@@ -4344,6 +4373,12 @@ function registerIpcHandlers() {
       case 'role':
         applyMenuDispatchRole(request.role, event.sender);
         return undefined;
+      case 'spelling-languages-query':
+        return querySpellingLanguages(spellcheckLanguagesDeps);
+      case 'spelling-languages-set':
+        return replaceSpellingLanguages(spellcheckLanguagesDeps, request.languages);
+      case 'spellcheck-enabled-set':
+        return setSpellcheckEnabled(spellcheckLanguagesDeps, request.enabled);
       default: {
         const _exhaustive: never = request;
         return _exhaustive;

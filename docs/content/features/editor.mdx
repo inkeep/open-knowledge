@@ -110,7 +110,11 @@ Spell checking uses the native macOS spellchecker on macOS (language follows you
 | **Add to Dictionary** | Teaches your system dictionary the word — persistent and, on macOS, shared with your other Mac apps (Safari, Notes). |
 | **Disable Spell Check** | Turns spell checking off app-wide. The choice persists across relaunches. |
 
-While spell check is off, right-clicking any editable text offers **Enable Spell Check**, and the menu bar carries the same toggle as **Edit ▸ Check Spelling While Typing** (see [Edit menu](#edit-menu)) — flip either to bring the squiggles back.
+While spell check is off, right-clicking any editable text offers **Enable Spell Check**, and the menu bar carries the same toggle as **Edit ▸ Check Spelling While Typing** (see [Edit menu](#edit-menu)). You can also change **Check spelling while typing** in **Settings → User → Preferences**, beside **Language**. These controls share the same app-wide preference.
+
+On Windows and Linux, **Spelling languages** lets you check multiple languages together, such as English and Vietnamese, independently of the interface language. The choice applies across projects in the same desktop profile and survives a restart. Keep at least one language selected; use the spelling toggle to turn checking off without losing your languages. On macOS, checking languages remain managed by macOS.
+
+Uncached dictionaries may download from Google's dictionary CDN; document text and typed words are not sent to Google for spell checking ([Electron's spellchecker documentation](https://www.electronjs.org/docs/latest/tutorial/spellchecker#does-the-spellchecker-use-any-google-services)). Downloads need an internet connection, and existing underlines may not update immediately after changing languages.
 
 Surfaces with their own specialized right-click menus — asset and wiki-link chips, the [file sidebar](#right-click-context-menus), editor tabs — keep them; the editor menu never doubles up on top. In the web build the browser's own context menu fills this role.
 

@@ -750,7 +750,69 @@ export type OkMenuDispatchRequest =
   | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
   | { readonly kind: 'command'; readonly command: OkMenuDispatchCommand }
   | { readonly kind: 'open-recent-project'; readonly path: string }
-  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
+  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole }
+  | { readonly kind: 'spelling-languages-query' }
+  | { readonly kind: 'spelling-languages-set'; readonly languages: readonly string[] }
+  | { readonly kind: 'spellcheck-enabled-set'; readonly enabled: boolean };
+
+export type OkSpellingLanguagesSetReason =
+  | 'invalid-request'
+  | 'empty-selection'
+  | 'unsupported-language'
+  | 'engine-error';
+
+export interface OkSpellingLanguagesState {
+  readonly available: readonly string[];
+  readonly selected: readonly string[];
+  readonly defaults: readonly string[];
+}
+
+export type OkSpellingLanguagesQueryResult =
+  | {
+      readonly kind: 'spelling-languages-query';
+      readonly ok: true;
+      readonly state: OkSpellingLanguagesState;
+    }
+  | {
+      readonly kind: 'spelling-languages-query';
+      readonly ok: false;
+      readonly reason: 'engine-error';
+    };
+
+export type OkSpellingLanguagesSetResult =
+  | {
+      readonly kind: 'spelling-languages-set';
+      readonly ok: true;
+      readonly state: OkSpellingLanguagesState;
+    }
+  | {
+      readonly kind: 'spelling-languages-set';
+      readonly ok: false;
+      readonly reason: OkSpellingLanguagesSetReason;
+    };
+
+export type OkSpellcheckEnabledSetResult =
+  | {
+      readonly kind: 'spellcheck-enabled-set';
+      readonly ok: true;
+      readonly enabled: boolean;
+      readonly saved: boolean;
+    }
+  | {
+      readonly kind: 'spellcheck-enabled-set';
+      readonly ok: false;
+      readonly reason: 'engine-error' | 'invalid-request';
+    };
+
+export type OkSpellingDispatchResult =
+  | OkSpellingLanguagesQueryResult
+  | OkSpellingLanguagesSetResult
+  | OkSpellcheckEnabledSetResult;
+
+export type OkMenuUiDispatchRequest = Exclude<
+  OkMenuDispatchRequest,
+  { readonly kind: OkSpellingDispatchResult['kind'] }
+>;
 
 export interface OkMenuRendererSnapshot {
   readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
@@ -761,6 +823,8 @@ export interface OkMenuRendererSnapshot {
   readonly activeTarget: OkEditorActiveTargetSnapshot;
   readonly viewMenuState: OkEditorViewMenuStateSnapshot;
 }
+
+export type OkMenuDispatchResult = OkMenuRendererSnapshot | OkSpellingDispatchResult | undefined;
 
 export interface OkBugReportSendInput {
   zipPath: string;
@@ -1225,6 +1289,9 @@ export interface OkDesktopBridge {
 
   spellcheck: {
     toggle(): Promise<boolean>;
+    languages(): Promise<OkSpellingLanguagesQueryResult>;
+    setLanguages(languages: readonly string[]): Promise<OkSpellingLanguagesSetResult>;
+    setEnabled(enabled: boolean): Promise<OkSpellcheckEnabledSetResult>;
   };
 
   integrations: {
@@ -1285,7 +1352,7 @@ export interface OkDesktopBridge {
   };
 
   menu: {
-    dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
+    dispatch(request: OkMenuUiDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
 
   startup: {

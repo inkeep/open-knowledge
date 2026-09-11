@@ -35,7 +35,7 @@ import type {
   OkMenuAction,
   OkMenuActionDispatch,
   OkMenuActionOrigin,
-  OkMenuDispatchRequest,
+  OkMenuUiDispatchRequest,
   OkNoteWindowMainAction,
   OkNoteWindowMainActionResult,
   OkOnboardingShowPayload,
@@ -68,6 +68,12 @@ import type {
   ProjectIntegrationsStatus,
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
+import {
+  asMenuRendererSnapshot,
+  asSpellcheckEnabledSetResult,
+  asSpellingLanguagesQueryResult,
+  asSpellingLanguagesSetResult,
+} from '../shared/menu-dispatch-results.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
@@ -662,6 +668,21 @@ const bridge: OkDesktopBridge = {
 
   spellcheck: {
     toggle: () => invoke('ok:spellcheck:toggle'),
+    languages: async () =>
+      asSpellingLanguagesQueryResult(
+        await invoke('ok:menu:dispatch', { kind: 'spelling-languages-query' }),
+      ),
+    setLanguages: async (languages: readonly string[]) =>
+      asSpellingLanguagesSetResult(
+        await invoke('ok:menu:dispatch', {
+          kind: 'spelling-languages-set',
+          languages: [...languages],
+        }),
+      ),
+    setEnabled: async (enabled: boolean) =>
+      asSpellcheckEnabledSetResult(
+        await invoke('ok:menu:dispatch', { kind: 'spellcheck-enabled-set', enabled }),
+      ),
   },
 
   integrations: {
@@ -750,7 +771,8 @@ const bridge: OkDesktopBridge = {
   },
 
   menu: {
-    dispatch: (request: OkMenuDispatchRequest) => invoke('ok:menu:dispatch', request),
+    dispatch: async (request: OkMenuUiDispatchRequest) =>
+      asMenuRendererSnapshot(await invoke('ok:menu:dispatch', request)),
   },
 
   startup: {

@@ -2732,6 +2732,8 @@ msgstr "簽出 worktree"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "輸入時檢查拼字"
 
@@ -3867,6 +3869,14 @@ msgstr "無法加上那則註解。"
 msgid "Couldn't apply the change: {0}"
 msgstr "無法套用這項變更：{0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "無法變更拼字檢查。請重試。"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "無法變更拼字檢查語言。請重試。"
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "無法確認 {filePath} 是否仍有衝突 — 正在重試。"
@@ -4192,6 +4202,14 @@ msgstr "無法讀取等著傳送的註解——什麼都沒有送出。"
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "無法讀取等著傳送的註解：{0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "無法讀取拼字檢查設定。"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "無法讀取拼字檢查語言。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5699,6 +5717,10 @@ msgstr "Excalidraw 畫布"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "既有的分支 <0>{trimmed}</0> 會被簽出到自己的視窗中，位置在 <1>.ok/worktrees/</1> 底下。"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "既有的底線可能不會立即更新。"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8755,6 +8777,10 @@ msgstr "從範本新增…"
 msgid "New ignore pattern"
 msgstr "新的忽略模式"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "新語言可能需要連線網路並等待一段時間才能使用。"
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "{editor} 版本的新名稱"
@@ -9036,6 +9062,10 @@ msgstr "沒有連入"
 msgid "No language match."
 msgstr "沒有相符的語言。"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "沒有相符的語言。"
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "還沒有連結。加上維基連結或 markdown 連結來建立關係圖。"
@@ -9185,6 +9215,10 @@ msgstr "找不到技能。"
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "不能有空格——請改用 <0>-</0>。"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "沒有可用於拼字檢查的語言。"
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10950,6 +10984,14 @@ msgstr "來自另一份文件的 MirrorSource 區塊的唯讀副本。在來源�
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 技能中的唯讀檔案"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "正在讀取目前的語言…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "正在讀取目前設定…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "正在讀取工作區"
@@ -11149,8 +11191,10 @@ msgstr "移除"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "移除 {0}"
 
@@ -11542,11 +11586,15 @@ msgid "Reset {0} to default"
 msgstr "把 {0} 重設為預設值"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "把 {labelText} 重設為預設值"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "重設為預設值"
 
@@ -12012,6 +12060,10 @@ msgstr "搜尋資料夾"
 msgid "Search icons..."
 msgstr "搜尋圖示..."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "搜尋語言"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12170,6 +12222,10 @@ msgstr "選取清單項目"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "選取下一個出現的位置"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "選擇拼字檢查語言"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13072,6 +13128,24 @@ msgstr "空白鍵跳躍，下方向鍵蹲下。整個遊戲就這麼簡單。"
 msgid "Spaces aren't allowed in the path"
 msgstr "路徑中不允許有空格"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "拼字檢查已關閉，但此變更未能儲存，重新啟動後不會生效。"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "拼字檢查已開啟，但此變更未能儲存，重新啟動後不會生效。"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "拼字檢查"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "拼字檢查語言"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "分割清單項目"
@@ -13689,6 +13763,10 @@ msgstr "該資料夾中已有並非 Open Knowledge 寫入的程式碼，同一�
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "那個資料夾還不是 OpenKnowledge 專案。要初始化並開啟它嗎？"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "該語言不支援拼字檢查。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14893,6 +14971,10 @@ msgstr "尚未提交的變更"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "底線"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "在編輯器中為拼字錯誤的字詞加上底線。"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"

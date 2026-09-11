@@ -403,6 +403,7 @@
     "4buZWd": ["Diwarisi dari ", ["path"]],
     "4c_a6S": ["Belum ada yang disetel."],
     "4d0VYJ": ["Kami akan membuat ID tema yang aman dari nama ini."],
+    "4fBHOP": ["Bahasa pemeriksaan ejaan"],
     "4g19V6": ["Gagal memperbarui properti"],
     "4gIB21": [
       "Server akan menerima permintaan untuk ",
@@ -732,6 +733,7 @@
       ["0"],
       " — folder itu bukan keterampilan ini. Ganti nama atau hapus salah satu dari keduanya untuk menyelesaikannya."
     ],
+    "8HxtjY": ["Bahasa itu tidak tersedia untuk pemeriksaan ejaan."],
     "8Jm2EP": ["Menyalakan atau mematikan tingkat judul 1 sampai 6."],
     "8L0EPw": ["atau tempelkan sebuah token"],
     "8OGgNM": ["Membuka atau menutup pencarian penyunting visual."],
@@ -1002,6 +1004,7 @@
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
     "Bgaa_U": ["Gagal memperbarui pengaturan performa — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
+    "BiVBP9": ["Tidak dapat membaca bahasa pemeriksaan ejaan."],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
       "Membatalkan, mengulangi, atau menelusuri perubahan pilihan di panel Sunting sumber atau bidang properti berbentuk kode."
@@ -1163,6 +1166,7 @@
     ],
     "DmkTrb": ["Tema ini tidak dapat dibuat. Coba lagi."],
     "Dnn2XG": ["Otomatis"],
+    "DpeNOR": ["Membaca pengaturan saat ini…"],
     "DpjYd6": ["Lompat ke teks berjangkar"],
     "DqyItq": [
       "Log OpenKnowledge lintas proyek. Tidak ada proyek yang terbuka, jadi log server proyek tidak disertakan."
@@ -1233,6 +1237,7 @@
     "EWPtMO": ["Kode"],
     "EWX92Z": ["Ciutkan Tanya AI"],
     "EZVxVz": ["Mengganti kecocokan yang aktif dengan isi bidang penggantian."],
+    "EZkj6G": ["Menggarisbawahi kata yang salah eja di penyunting."],
     "E_A2Nq": ["Tautan siap, tetapi tidak dapat disalin ke papan klip."],
     "E_tNGD": ["Terhubung sebagai @", ["login"]],
     "EarrCe": ["Cari emoji"],
@@ -1241,6 +1246,7 @@
     "EbjWsS": ["Commit saat ini"],
     "EcM3k7": ["Gagal membersihkan ", ["kind"], " yang tertunda"],
     "EdQY6l": ["Tidak ada"],
+    "EeCARZ": ["Bahasa baru mungkin memerlukan koneksi internet dan waktu agar tersedia."],
     "EeUucb": ["Penyuntingan aturan tersedia untuk konfigurasi markdownlint di akar proyek"],
     "Ef6ukL": ["lewat folder induk"],
     "Ef7StM": ["Tidak diketahui"],
@@ -1610,6 +1616,7 @@
     "IQgeSn": ["Gagal menyimpan bidang skema"],
     "IR6Txi": ["Rata kiri"],
     "IRv9cH": [["repoName"], " dikloning."],
+    "IW2KMF": ["Tidak dapat mengubah pemeriksaan ejaan. Coba lagi."],
     "IWGfGF": ["Memeriksa koneksi GitHub Anda"],
     "IX7-sq": ["Ada yang tidak beres saat membuka \"", ["docName"], "\"."],
     "IX_uXB": ["fitur-saya"],
@@ -2481,6 +2488,7 @@
     "T_wG4n": ["Kami tidak bisa memeriksa koneksi GitHub Anda."],
     "Ta25TG": ["Belum ada riwayat"],
     "TbjyhA": ["Dokumen"],
+    "TcAQRZ": ["Pilih bahasa pemeriksaan ejaan"],
     "TdlVEN": [
       "Bidang ini membawa kata kunci skema tambahan yang tidak ditampilkan penyunting — semuanya dipertahankan saat disimpan."
     ],
@@ -2991,6 +2999,7 @@
     "ZSoojc": ["Kloning gagal — periksa URL lalu coba lagi (", ["status"], ")"],
     "ZU8VV_": ["Gagal menghapus: ", ["error"]],
     "ZVOhXM": ["Gagal memperbarui sinkronisasi — ", ["detail"]],
+    "ZVpN5V": ["Membaca bahasa saat ini…"],
     "ZW2yR_": ["Tambahkan jalur khusus"],
     "ZW3mlR": ["Mode render perbedaan"],
     "ZWgr0b": ["Di subfolder"],
@@ -3010,6 +3019,7 @@
     "Zhe80e": ["Pulihkan hingga suntingan ", ["burstNumber"], " pada ", ["docName"]],
     "ZhhOwV": ["Kutipan"],
     "ZjtgI-": ["Palet perintah"],
+    "ZlCe_H": ["Tidak ada bahasa yang tersedia untuk pemeriksaan ejaan."],
     "Zon_qG": ["Sumber cermin <0>", ["label"], "</0>"],
     "ZptNUh": ["Tampilkan ", ["hidden"], " lagi"],
     "Zs3d0w": [
@@ -3351,6 +3361,7 @@
     "czQDKY": ["Setiap push adalah satu commit ke remote Anda."],
     "d-GtJt": ["Lihat di sumber Markdown"],
     "d-RYHO": ["Papan Excalidraw"],
+    "d0x8mP": ["Tidak dapat membaca pengaturan pemeriksaan ejaan."],
     "d1JjXo": [
       "Salinan lokal cabang <0>",
       ["branch"],
@@ -3626,6 +3637,7 @@
       ". Folder itu menjadi symlink ke folder ini, jadi agennya membaca semua yang ditaruh di sini. Folder ini tetap nyata. Keterampilan yang berkonflik membatalkan penggabungan."
     ],
     "g9Nj4l": ["// catatan"],
+    "g9c235": ["pemeriksaan ejaan"],
     "gAhHu7": [
       "Perbaikan otomatis hanya berlaku untuk masalah yang punya perbaikan mekanis yang diketahui."
     ],
@@ -3791,6 +3803,9 @@
     "hLKfZe": ["Pakai token saja"],
     "hLod4_": ["Ubah menjadi templat"],
     "hLy8b1": ["Diperbarui ke Versi ", ["version"]],
+    "hNUywL": [
+      "Pemeriksaan ejaan aktif, tetapi perubahan tidak dapat disimpan dan tidak akan berlaku setelah dimulai ulang."
+    ],
     "hPQBsa": [
       "File yang dicadangkan diberi nama index.md dan log.md dalam huruf kecil. Pada sistem file peka huruf besar-kecil, Index.md dibaca sebagai dokumen biasa dan kehilangan maknanya."
     ],
@@ -3856,6 +3871,7 @@
     "i09An-": ["Versi terdahulu dipulihkan (", ["0"], ")"],
     "i1flq_": ["Saran tautan wiki"],
     "i3f2kh": ["Tidak ada perintah yang cocok."],
+    "i6o7XB": ["Cari bahasa"],
     "i92eAT": [
       "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa perlu terminal."
     ],
@@ -4192,6 +4208,9 @@
     "l9s3IX": [["agentName"], " tidak dapat memulai percakapan."],
     "lAiyU_": ["Hanya dokumen saat ini yang memakai <0>#", ["tag"], "</0>."],
     "lBN3T6": ["Koneksi agen"],
+    "lBfjKC": [
+      "Pemeriksaan ejaan nonaktif, tetapi perubahan tidak dapat disimpan dan tidak akan berlaku setelah dimulai ulang."
+    ],
     "lCC_D5": ["Berlangganan..."],
     "lGs_bQ": ["Halaman <0>*</0>"],
     "lHCR4I": ["Kosongkan bidang ini untuk kembali ke endpoint OpenAI bawaan."],
@@ -4742,6 +4761,7 @@
     "roAe2K": ["URL tautan"],
     "roiUQQ": ["Halaman ini belum menaut ke apa pun."],
     "rppgXF": ["Memutus koneksi"],
+    "rqvcnf": ["Tidak ada bahasa yang cocok."],
     "rssK8c": ["Pola abaikan (teks mentah)"],
     "rtdR4v": ["Tampilkan atau sembunyikan Berkas"],
     "rtir7c": ["tidak diketahui"],
@@ -5096,6 +5116,7 @@
       ["0"],
       "). Periksa kunci API dan id modelnya."
     ],
+    "v_kS4a": ["Tidak dapat mengubah bahasa pemeriksaan ejaan. Coba lagi."],
     "vallqD": ["OpenKnowledge melihat grafik tautan"],
     "vbK_ZG": ["Bilah sisi Berkas"],
     "vbMHjo": ["Ke baris ", ["0"]],
@@ -5126,6 +5147,7 @@
         }
       ]
     ],
+    "vmahUq": ["Garis bawah yang sudah ada mungkin tidak langsung diperbarui."],
     "vp5vfW": ["1 jam"],
     "vppAju": ["Tempat lampiran yang baru ditambahkan diletakkan."],
     "vqJXNe": ["Pasang skill <0>open-knowledge-discovery</0>"],

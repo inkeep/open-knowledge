@@ -2732,6 +2732,8 @@ msgstr "워크트리 체크아웃"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Check spelling while typing"
 msgstr "입력하는 동안 맞춤법 검사"
 
@@ -3867,6 +3869,14 @@ msgstr "댓글 추가에 실패했습니다."
 msgid "Couldn't apply the change: {0}"
 msgstr "변경사항을 적용하지 못했습니다: {0}"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't change spell checking. Try again."
+msgstr "맞춤법 검사를 변경할 수 없습니다. 다시 시도하세요."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't change the spelling languages. Try again."
+msgstr "맞춤법 검사 언어를 변경하지 못했습니다. 다시 시도하세요."
+
 #: src/components/DiffViewBoundary.tsx
 msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
@@ -4192,6 +4202,14 @@ msgstr "전송 대기 댓글을 읽지 못했습니다. 전송된 댓글 없음.
 #: src/comments/store.ts
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "전송 대기 댓글을 읽지 못했습니다: {0}"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Couldn't read the spell checking setting."
+msgstr "맞춤법 검사 설정을 읽을 수 없습니다."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Couldn't read the spelling languages."
+msgstr "맞춤법 검사 언어를 읽지 못했습니다."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Couldn't read the working tree. Check the server logs."
@@ -5699,6 +5717,10 @@ msgstr "Excalidraw 캔버스"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "기존 브랜치 <0>{trimmed}</0>는 별도 창의 <1>.ok/worktrees/</1> 아래에 체크아웃됩니다."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Existing underlines may not update immediately."
+msgstr "기존 밑줄은 즉시 업데이트되지 않을 수 있습니다."
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -8755,6 +8777,10 @@ msgstr "템플릿에서 새로 만들기…"
 msgid "New ignore pattern"
 msgstr "새 무시 패턴"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "New languages may need an internet connection and time to become available."
+msgstr "새 언어는 인터넷 연결과 사용할 수 있게 되기까지 시간이 필요할 수 있습니다."
+
 #: src/components/SkillForkDialog.tsx
 msgid "New name for the {editor} version"
 msgstr "{editor} 버전의 새 이름"
@@ -9036,6 +9062,10 @@ msgstr "들어오는 링크 없음"
 msgid "No language match."
 msgstr "일치하는 언어가 없습니다."
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No languages match."
+msgstr "일치하는 언어가 없습니다."
+
 #: src/components/GraphView.tsx
 msgid "No links yet. Add wiki links or markdown links to build a graph."
 msgstr "아직 링크가 없습니다. 위키 링크나 Markdown 링크를 추가하여 그래프를 만드세요."
@@ -9185,6 +9215,10 @@ msgstr "스킬을 찾지 못했습니다."
 #: src/components/SkillRenameDialog.tsx
 msgid "No spaces — use <0>-</0> instead."
 msgstr "공백은 사용할 수 없습니다. <0>-</0>을 대신 사용하세요."
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "No spelling languages are available."
+msgstr "맞춤법 검사에 사용할 수 있는 언어가 없습니다."
 
 #: src/components/PackCardGrid.tsx
 msgid "No starter packs available."
@@ -10950,6 +10984,14 @@ msgstr "다른 문서의 MirrorSource 블록을 읽기 전용으로 복사한 �
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 스킬의 읽기 전용 파일"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Reading the current languages…"
+msgstr "현재 언어를 읽는 중…"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Reading the current setting…"
+msgstr "현재 설정을 읽는 중…"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Reading working tree"
 msgstr "작업 트리를 읽는 중"
@@ -11149,8 +11191,10 @@ msgstr "제거"
 
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
+#. placeholder {0}: languageLabel(code)
 #: src/components/acp/PendingImageStrip.tsx
 #: src/components/ImageAttachments.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Remove {0}"
 msgstr "{0} 제거"
 
@@ -11542,11 +11586,15 @@ msgid "Reset {0} to default"
 msgstr "{0} 기본값으로 초기화"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset {labelText} to default"
 msgstr "기본값으로 {labelText} 재설정"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+#: src/components/settings/SpellcheckRow.tsx
 msgid "Reset to default"
 msgstr "기본값으로 재설정"
 
@@ -12012,6 +12060,10 @@ msgstr "폴더 검색"
 msgid "Search icons..."
 msgstr "아이콘 검색…"
 
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Search languages"
+msgstr "언어 검색"
+
 #. placeholder {0}: formatShortcut('find')
 #: src/components/CommandPalette.tsx
 msgid "Search matches file names, paths, and folders. Open a file to search its body <0>{0}</0>."
@@ -12170,6 +12222,10 @@ msgstr "목록 항목 선택"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select next occurrence"
 msgstr "다음 발생 항목 선택"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Select spelling languages"
+msgstr "맞춤법 검사 언어 선택"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select the full source document."
@@ -13072,6 +13128,24 @@ msgstr "스페이스로 점프하고 아래쪽 화살표로 숙입니다. 게임
 msgid "Spaces aren't allowed in the path"
 msgstr "경로에는 공백을 사용할 수 없습니다"
 
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is off, but the change couldn't be saved and won't apply after a restart."
+msgstr "맞춤법 검사가 꺼져 있지만 변경 사항을 저장하지 못해 다시 시작한 뒤에는 적용되지 않습니다."
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Spell checking is on, but the change couldn't be saved and won't apply after a restart."
+msgstr "맞춤법 검사가 켜져 있지만 변경 사항을 저장하지 못해 다시 시작한 뒤에는 적용되지 않습니다."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "spellcheck"
+msgstr "맞춤법 검사"
+
+#: src/components/settings/SettingsDialogShell.tsx
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "Spelling languages"
+msgstr "맞춤법 검사 언어"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
 msgstr "목록 항목 분할"
@@ -13689,6 +13763,10 @@ msgstr "해당 폴더에는 Open Knowledge가 작성하지 않은 코드가 이�
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "해당 폴더는 아직 OpenKnowledge 프로젝트가 아닙니다. 초기화하고 여시겠습니까?"
+
+#: src/components/settings/SpellcheckLanguagesRow.tsx
+msgid "That language isn't available for spell checking."
+msgstr "해당 언어는 맞춤법 검사에서 지원되지 않습니다."
 
 #: src/components/acp/ThreadView.tsx
 msgid "That message already went out — your edit wasn't applied."
@@ -14893,6 +14971,10 @@ msgstr "커밋되지 않은 변경 사항"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Underline"
 msgstr "밑줄"
+
+#: src/components/settings/SpellcheckRow.tsx
+msgid "Underlines misspelled words in the editor."
+msgstr "편집기에서 맞춤법이 틀린 단어에 밑줄을 표시합니다."
 
 #: src/components/ActivityModeContent.tsx
 msgid "Undid {dropCount} edits on {docName}"
