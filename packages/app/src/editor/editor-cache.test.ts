@@ -5,7 +5,6 @@ import type { Editor } from '@tiptap/core';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
-import { getSourceViewForDoc, registerSourceView } from './active-source-view';
 import {
   __consumeRenameSnapshot,
   __getActivityMountList,
@@ -36,6 +35,7 @@ import {
   type TiptapCacheEntry,
   VIEW_COUNT_CACHE_THRESHOLD,
 } from './editor-cache';
+import { getMarkdownSourceViewForDoc, registerFullPageCmView } from './full-page-cm-views';
 import {
   __mountPromiseCacheSize,
   __mountPromiseSettled,
@@ -1139,12 +1139,12 @@ describe('CM6 cache — lifecycle', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    registerSourceView(h.docName, entry.view);
-    expect(getSourceViewForDoc(h.docName)).toBe(entry.view);
+    registerFullPageCmView(h.docName, entry.view, 'sourceEditor');
+    expect(getMarkdownSourceViewForDoc(h.docName)).toBe(entry.view);
 
     expect(evictCmEditor(h.docName)).toBe(true);
 
-    expect(getSourceViewForDoc(h.docName)).toBeNull();
+    expect(getMarkdownSourceViewForDoc(h.docName)).toBeNull();
   });
 
   test('5 park-mount cycles work for CM6', () => {

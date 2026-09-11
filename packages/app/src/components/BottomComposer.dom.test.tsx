@@ -1,16 +1,13 @@
+import type { EditorView as CodeMirrorView } from '@codemirror/view';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  type ReactNode,
-  type Ref,
-  StrictMode,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-} from 'react';
+import type { Editor } from '@tiptap/core';
+import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
+import { FULL_PAGE_CM_HOST_SELECTORS, type FullPageCmHost } from '@/editor/document-scrollports';
+import type { EditorSurface } from '@/editor/selection-stats';
 import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import {
   getDefaultRegisteredAgent,
@@ -251,13 +248,18 @@ const ALL_INSTALLED: Record<string, { installed: boolean | null }> = {
 
 async function renderComposer(
   docName = 'notes',
-  extra: Partial<{ dismissed: boolean; onDismiss: () => void; onReopen: () => void }> = {},
+  props: Partial<{ dismissed: boolean; onDismiss: () => void; onReopen: () => void }> = {},
+  options: { strict?: boolean; surface?: EditorSurface } = {},
 ) {
   const { BottomComposer } = await import('./BottomComposer');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
-  return render(<BottomComposer docName={docName} surface="wysiwyg" {...extra} />, {
-    wrapper: TooltipProvider,
-  });
+  return render(
+    <BottomComposer docName={docName} surface={options.surface ?? 'wysiwyg'} {...props} />,
+    {
+      reactStrictMode: options.strict,
+      wrapper: TooltipProvider,
+    },
+  );
 }
 
 async function renderComposerWithTerminal(
@@ -428,12 +430,7 @@ describe('BottomComposer (shell behavior)', () => {
   });
 
   test('mounting never steals focus, even under StrictMode effect double-invoke', async () => {
-    const { BottomComposer } = await import('./BottomComposer');
-    render(
-      <StrictMode>
-        <BottomComposer docName="notes" surface="wysiwyg" />
-      </StrictMode>,
-    );
+    await renderComposer('notes', {}, { strict: true });
     expect(document.activeElement).not.toBe(getInput());
   });
 
@@ -1203,6 +1200,24 @@ describe('BottomComposer (dismiss / reopen)', () => {
 
     expect(onReopen).toHaveBeenCalledTimes(1);
   });
+
+  test('⇧⌘L reads the current dismissed state, so a dismiss on a live instance still reopens', async () => {
+    const onReopen = vi.fn(() => {});
+    const { BottomComposer } = await import('./BottomComposer');
+    const { rerender } = await renderComposer('notes', { onReopen });
+
+    rerender(<BottomComposer docName="notes" surface="wysiwyg" onReopen={onReopen} dismissed />);
+    dispatchOpenAskAiShortcut();
+
+    expect(
+      onReopen,
+      'the open-Ask-AI subscription has no deps, so it is built once at mount and never rebuilt, ' +
+        'and dismissing returns null only after every hook has run, which keeps that one ' +
+        'subscription alive on the same instance. Reading `dismissed` and `onReopen` out of the ' +
+        'mount closure instead of at call time would route a post-dismiss ⇧⌘L to the focus ' +
+        'branch, where the input ref is already null, and the composer would never reopen',
+    ).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('BottomComposer (conflict footer stacking)', () => {
@@ -1350,11 +1365,31 @@ describe('BottomComposer (queued-comments chip lifecycle)', () => {
 });
 
 describe('BottomComposer (end-of-document scroll compensation)', () => {
+  const PORT_BOTTOM = 700;
+  const CARD_TOP = 600;
+  const CARET_INSIDE_THE_GAP = 700;
+  const CARET_INSIDE_THE_GAP_AFTER_A_REVEAL = 900;
   const planted: HTMLElement[] = [];
+  const registered: Array<{ docName: string; editor: Editor }> = [];
+  const registeredCmViews: Array<{ docName: string; view: CodeMirrorView }> = [];
 
-  function plantScrollport(scrollTop: number): { el: HTMLElement; writes: number[] } {
-    const el = document.createElement('div');
-    el.className = 'editor-doc-scroll';
+  async function registerCaseEditor(docName: string, editor: Editor): Promise<void> {
+    const { registerEditor } = await import('@/editor/active-editor');
+    registerEditor(docName, editor);
+    registered.push({ docName, editor });
+  }
+
+  async function registerCaseCmView(
+    docName: string,
+    host: FullPageCmHost,
+    view: CodeMirrorView,
+  ): Promise<void> {
+    const { registerFullPageCmView } = await import('@/editor/full-page-cm-views');
+    registerFullPageCmView(docName, view, host);
+    registeredCmViews.push({ docName, view });
+  }
+
+  function trackScroll(el: HTMLElement, scrollTop: number): number[] {
     const writes: number[] = [];
     let current = scrollTop;
     Object.defineProperty(el, 'scrollHeight', { value: 1000, configurable: true });
@@ -1367,9 +1402,37 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
         writes.push(next);
       },
     });
+    el.getBoundingClientRect = () => new DOMRect(0, 0, 0, PORT_BOTTOM);
+    return writes;
+  }
+
+  function plantScrollport(scrollTop: number): { el: HTMLElement; writes: number[] } {
+    const el = document.createElement('div');
+    el.className = 'editor-doc-scroll';
+    const writes = trackScroll(el, scrollTop);
     document.body.appendChild(el);
     planted.push(el);
     return { el, writes };
+  }
+
+  function plantCmScrollport(
+    host: FullPageCmHost,
+    scrollTop: number,
+  ): { scroller: HTMLElement; writes: number[] } {
+    const outer = document.createElement('div');
+    outer.className = 'editor-doc-scroll';
+    const selector = FULL_PAGE_CM_HOST_SELECTORS[host];
+    const hostEl = document.createElement('div');
+    if (selector.startsWith('[')) hostEl.setAttribute(selector.slice(1, -1), '');
+    else hostEl.className = selector.slice(1);
+    const scroller = document.createElement('div');
+    scroller.className = 'cm-scroller';
+    const writes = trackScroll(scroller, scrollTop);
+    hostEl.append(scroller);
+    outer.append(hostEl);
+    document.body.append(outer);
+    planted.push(outer);
+    return { scroller, writes };
   }
 
   function plantPortal(attributes: Record<string, string>): HTMLElement {
@@ -1384,20 +1447,46 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
   }
 
   let nowSpy: ReturnType<typeof vi.spyOn> | null = null;
+  let realGetBoundingClientRect: (this: Element) => DOMRect;
+
+  function giveTheCardALayoutBox(): void {
+    realGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      return this.matches('[data-testid="ask-ai-composer-card"]')
+        ? new DOMRect(0, CARD_TOP, 0, PORT_BOTTOM - CARD_TOP)
+        : realGetBoundingClientRect.call(this);
+    };
+  }
 
   const nextFrame = () =>
     act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    const { __resetScrollRestoreCoordination } = await import(
+      '@/editor/scroll-restore-coordination'
+    );
+    __resetScrollRestoreCoordination();
     nowSpy = vi.spyOn(performance, 'now').mockReturnValue(0);
+    giveTheCardALayoutBox();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    Element.prototype.getBoundingClientRect = realGetBoundingClientRect;
     vi.useRealTimers();
     nowSpy?.mockRestore();
     nowSpy = null;
+    const { unregisterEditor } = await import('@/editor/active-editor');
+    for (const { docName, editor } of registered.splice(0)) unregisterEditor(docName, editor);
+    const { unregisterFullPageCmView } = await import('@/editor/full-page-cm-views');
+    for (const { docName, view } of registeredCmViews.splice(0)) {
+      unregisterFullPageCmView(docName, view);
+    }
+    const { __resetScrollRestoreCoordination } = await import(
+      '@/editor/scroll-restore-coordination'
+    );
+    __resetScrollRestoreCoordination();
     for (const el of planted.splice(0)) el.remove();
   });
 
@@ -1424,6 +1513,301 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
       midDocument.writes,
       'a scrollport parked mid-document must be left alone. Dropping the pinned filter turns ' +
         'every composer resize into a scroll-jack to the end of every enumerated surface',
+    ).toHaveLength(0);
+  });
+
+  function caretEditorStub(port: { el: HTMLElement }, caretDocY: number): Editor {
+    const dom = document.createElement('div');
+    port.el.appendChild(dom);
+    dom.getClientRects = () => [new DOMRect(0, 0, 0, 18)] as unknown as DOMRectList;
+    return {
+      isDestroyed: false,
+      editorView: {
+        dom,
+        state: { selection: { head: 1 } },
+        coordsAtPos: () => ({
+          top: caretDocY - port.el.scrollTop - 18,
+          bottom: caretDocY - port.el.scrollTop,
+          left: 0,
+          right: 0,
+        }),
+      },
+    } as unknown as Editor;
+  }
+
+  function caretCmViewStub(scroller: HTMLElement, caretDocY: number): CodeMirrorView {
+    return {
+      scrollDOM: scroller,
+      state: { selection: { main: { head: 1 } } },
+      coordsAtPos: () => ({
+        top: caretDocY - scroller.scrollTop - 18,
+        bottom: caretDocY - scroller.scrollTop,
+        left: 0,
+        right: 0,
+      }),
+    } as unknown as CodeMirrorView;
+  }
+
+  test('reveals the caret when the composer opens and leaves the scrollport alone on a document switch', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const port = plantScrollport(100);
+    const opened = caretEditorStub(port, CARET_INSIDE_THE_GAP);
+    const switchedTo = caretEditorStub(port, CARET_INSIDE_THE_GAP_AFTER_A_REVEAL);
+    await registerCaseEditor('opened-doc', opened);
+    await registerCaseEditor('switched-doc', switchedTo);
+
+    const { rerender } = await renderComposer('opened-doc', {}, { strict: true });
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'the composer arriving over the document is the transition this reveal exists for. This ' +
+        'case renders with `reactStrictMode` because the reveal effect schedules a frame its own ' +
+        'cleanup cancels: a double-invoked mount has to re-schedule and still reveal',
+    ).not.toHaveLength(0);
+
+    const afterOpen = port.writes.length;
+    rerender(<BottomComposer docName="switched-doc" surface="wysiwyg" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes.length,
+      'switching documents under an already-mounted, already-open composer is not the card ' +
+        'arriving over a caret. Scrolling `.editor-doc-scroll` here is a delta ' +
+        'ScrollPreservingContainer did not write, so it reads as an external scroll and abandons ' +
+        'the restore it is mid-way through. The reveal effect keys on `dismissed` alone so a ' +
+        'switch never re-runs it. `switched-doc` deliberately carries a caret BELOW the ' +
+        'occlusion line the first reveal left behind, so widening those dependencies produces a ' +
+        'write and reds this assertion. Give both stubs the same caret and it passes either way',
+    ).toBe(afterOpen);
+  });
+
+  test('a document switch inside the pending reveal frame reveals neither document', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const port = plantScrollport(100);
+    await registerCaseEditor('arrived-over-doc', caretEditorStub(port, CARET_INSIDE_THE_GAP));
+    await registerCaseEditor(
+      'switched-under-doc',
+      caretEditorStub(port, CARET_INSIDE_THE_GAP_AFTER_A_REVEAL),
+    );
+
+    const { rerender } = await renderComposer('arrived-over-doc');
+    rerender(<BottomComposer docName="switched-under-doc" surface="wysiwyg" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'the reveal reads the card geometry a frame after the effect schedules it, and a switch ' +
+        'inside that window re-aims it: the frame was scheduled for the document the card ' +
+        'arrived over, and the document under the card is now a different one. Revealing either ' +
+        'scrolls `.editor-doc-scroll` during the switch restore, which is the write the ' +
+        'doc-switch case above exists to forbid',
+    ).toHaveLength(0);
+  });
+
+  test('a surface toggle under a mounted composer reveals neither surface', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const wysiwygPort = plantScrollport(100);
+    const cmPort = plantCmScrollport('textDocEditor', 100);
+    await registerCaseEditor('toggled-doc', caretEditorStub(wysiwygPort, CARET_INSIDE_THE_GAP));
+    await registerCaseCmView(
+      'toggled-doc',
+      'textDocEditor',
+      caretCmViewStub(cmPort.scroller, CARET_INSIDE_THE_GAP),
+    );
+
+    const { rerender } = await renderComposer('toggled-doc');
+    await nextFrame();
+    await nextFrame();
+    const afterOpen = wysiwygPort.writes.length;
+
+    rerender(<BottomComposer docName="toggled-doc" surface="source" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      cmPort.writes,
+      'toggling into source mode under an already-open card is not the card arriving. ' +
+        'mode-switch-landing owns where the source view lands, and a reveal firing here writes a ' +
+        'scroll delta that landing did not make. The reveal effect keys on `dismissed` alone so ' +
+        'the toggle never re-runs it, and adding `effectiveSurface` back to those dependencies ' +
+        'produces a write here',
+    ).toHaveLength(0);
+    expect(wysiwygPort.writes.length).toBe(afterOpen);
+  });
+
+  test('a surface toggle inside the pending reveal frame reveals neither surface', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const wysiwygPort = plantScrollport(100);
+    const cmPort = plantCmScrollport('textDocEditor', 100);
+    await registerCaseEditor('mid-frame-doc', caretEditorStub(wysiwygPort, CARET_INSIDE_THE_GAP));
+    await registerCaseCmView(
+      'mid-frame-doc',
+      'textDocEditor',
+      caretCmViewStub(cmPort.scroller, CARET_INSIDE_THE_GAP),
+    );
+
+    const { rerender } = await renderComposer('mid-frame-doc');
+    rerender(<BottomComposer docName="mid-frame-doc" surface="source" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      wysiwygPort.writes,
+      'the frame was scheduled for the surface the card arrived over, and the surface under the ' +
+        'card is now a different one. Dropping the surface half of the in-frame staleness check ' +
+        'lets that frame reveal the visual editor caret while the document is painting its ' +
+        'source view',
+    ).toHaveLength(0);
+    expect(cmPort.writes).toHaveLength(0);
+  });
+
+  test('reveals the caret on a CodeMirror surface, not only in the visual editor', async () => {
+    const port = plantCmScrollport('textDocEditor', 100);
+    await registerCaseCmView(
+      'text-doc',
+      'textDocEditor',
+      caretCmViewStub(port.scroller, CARET_INSIDE_THE_GAP),
+    );
+
+    await renderComposer('text-doc', {}, { surface: 'source' });
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'the component has to forward the surface it was given rather than reveal only on ' +
+        'wysiwyg. Restoring a wysiwyg-only guard here leaves every CodeMirror surface with the ' +
+        'caret under the card, which is the bug, and the module-level caret-reveal tests cannot ' +
+        'see it because they call the module directly',
+    ).not.toHaveLength(0);
+  });
+
+  test('a CodeMirror host that registers after the arrival frame is not chased', async () => {
+    const port = plantCmScrollport('textDocEditor', 100);
+
+    await renderComposer('late-host-doc', {}, { surface: 'source' });
+    await nextFrame();
+    await nextFrame();
+
+    await registerCaseCmView(
+      'late-host-doc',
+      'textDocEditor',
+      caretCmViewStub(port.scroller, CARET_INSIDE_THE_GAP),
+    );
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'a lazily loaded text or Mermaid host can finish mounting after the one reveal frame. ' +
+        'Leaving that arrival alone is deliberate. All three full-page CodeMirror hosts build ' +
+        'their EditorView with no selection, so a view that registers this late has its caret ' +
+        'at position 0, which a bottom-anchored card cannot occlude. Subscribing to ' +
+        'subscribeFullPageCmViewRegistry to retry would turn the one-shot reveal into a ' +
+        'deferred write against a scrollport that mode-switch landing or scroll restore is ' +
+        'still placing, which is the write the document-switch cases above and the ' +
+        'yielded-frame cases below forbid. The stub caret here sits inside the gap, so a retry ' +
+        'implementation reds this',
+    ).toHaveLength(0);
+  });
+
+  test('a remount with the composer still open reveals again', async () => {
+    const port = plantScrollport(100);
+    const editor = caretEditorStub(port, CARET_INSIDE_THE_GAP);
+    await registerCaseEditor('remounted-doc', editor);
+
+    const { unmount } = await renderComposer('remounted-doc', {}, { strict: true });
+    await nextFrame();
+    await nextFrame();
+    expect(port.writes).not.toHaveLength(0);
+
+    unmount();
+    port.el.scrollTop = 100;
+    const beforeRemount = port.writes.length;
+
+    await renderComposer('remounted-doc', {}, { strict: true });
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes.length,
+      'the composer unmounts whenever the terminal or agents column opens, so closing one puts ' +
+        'the card back over a document it never left. That is the card arriving, not a switch ' +
+        'underneath a mounted one, so a fresh mount reveals again',
+    ).toBeGreaterThan(beforeRemount);
+  });
+
+  test('a reveal frame yields to a held scroll suppression, and a reopen recovers it', async () => {
+    const { acquireScrollRestoreSuppression } = await import(
+      '@/editor/scroll-restore-coordination'
+    );
+    const { BottomComposer } = await import('./BottomComposer');
+    const port = plantScrollport(100);
+    const editor = caretEditorStub(port, CARET_INSIDE_THE_GAP);
+    await registerCaseEditor('held-doc', editor);
+    const held = acquireScrollRestoreSuppression('held-doc', 'navigation');
+
+    const { rerender } = await renderComposer('held-doc', {}, { strict: true });
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'a landing or a navigation seam owns the scrollport while it holds a suppression, and it ' +
+        'will place the document itself. The reveal has to yield rather than fight it',
+    ).toHaveLength(0);
+
+    held.release();
+    rerender(<BottomComposer docName="held-doc" surface="wysiwyg" dismissed />);
+    await nextFrame();
+    rerender(<BottomComposer docName="held-doc" surface="wysiwyg" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'yielding costs the caret its reveal for that arrival, so it stays where the seam left it ' +
+        'until the card arrives again. Closing and reopening flips `dismissed`, which is the ' +
+        'only dependency the reveal effect has, so it re-runs and reveals',
+    ).not.toHaveLength(0);
+  });
+
+  test('a reveal frame that yielded does not fire on the next document switch', async () => {
+    const { acquireScrollRestoreSuppression } = await import(
+      '@/editor/scroll-restore-coordination'
+    );
+    const { BottomComposer } = await import('./BottomComposer');
+    const port = plantScrollport(100);
+    const yielded = caretEditorStub(port, CARET_INSIDE_THE_GAP);
+    const switchedTo = caretEditorStub(port, CARET_INSIDE_THE_GAP_AFTER_A_REVEAL);
+    await registerCaseEditor('yielded-doc', yielded);
+    await registerCaseEditor('after-yield-doc', switchedTo);
+    const held = acquireScrollRestoreSuppression('yielded-doc', 'navigation');
+
+    const { rerender } = await renderComposer('yielded-doc', {}, { strict: true });
+    await nextFrame();
+    await nextFrame();
+    expect(
+      port.writes,
+      'precondition: the frame has to reach the held suppression and yield, or the switch ' +
+        'below measures a latch that was never at risk',
+    ).toHaveLength(0);
+
+    held.release();
+    rerender(<BottomComposer docName="after-yield-doc" surface="wysiwyg" />);
+    await nextFrame();
+    await nextFrame();
+
+    expect(
+      port.writes,
+      'a frame that yielded to a seam must not be retried on the next document switch, or the ' +
+        'reveal lands against a scrollport ScrollPreservingContainer is restoring and the ' +
+        'restore is abandoned. The effect does not re-run on a switch, so a yield costs that ' +
+        'arrival its reveal and nothing carries over',
     ).toHaveLength(0);
   });
 

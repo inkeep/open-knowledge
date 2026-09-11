@@ -5,7 +5,10 @@ import {
   CONFLICT_SCROLLPORT_SELECTOR,
   DOCUMENT_SCROLL_HOST_SELECTOR,
   DOCUMENT_SCROLLPORT_SELECTORS,
+  type DocumentScrollportSelector,
   FULL_PAGE_CM_HOST_SELECTORS,
+  FULL_PAGE_CM_SCROLLPORTS,
+  type FullPageCmHost,
 } from './editor/document-scrollports';
 import {
   type CssBlock,
@@ -29,16 +32,12 @@ const INSET_VAR_ALLOWED_OUTSIDE_GLOBALS_CSS = [
 
 type InsetKind = 'content' | 'host';
 
-type FullPageCmHostKey = keyof typeof FULL_PAGE_CM_HOST_SELECTORS;
-
-type DocumentScrollportSelector = (typeof DOCUMENT_SCROLLPORT_SELECTORS)[number];
-
-interface FullPageCmSurface {
+interface FullPageCmInsetSurface {
   component: string;
   insetKind: InsetKind;
 }
 
-const FULL_PAGE_CM_SURFACES: Readonly<Record<FullPageCmHostKey, FullPageCmSurface>> = {
+const FULL_PAGE_CM_SURFACES: Readonly<Record<FullPageCmHost, FullPageCmInsetSurface>> = {
   textDocEditor: { component: 'components/TextDocEditor.tsx', insetKind: 'content' },
   sourceEditor: { component: 'editor/SourceEditor.tsx', insetKind: 'content' },
   mermaidDocEditor: { component: 'components/MermaidDocEditor.tsx', insetKind: 'host' },
@@ -46,7 +45,7 @@ const FULL_PAGE_CM_SURFACES: Readonly<Record<FullPageCmHostKey, FullPageCmSurfac
 
 const FULL_PAGE_CM_SURFACE_CASES = Object.entries(FULL_PAGE_CM_SURFACES).map(([host, surface]) => ({
   ...surface,
-  hostSelector: FULL_PAGE_CM_HOST_SELECTORS[host as FullPageCmHostKey],
+  hostSelector: FULL_PAGE_CM_HOST_SELECTORS[host as FullPageCmHost],
 }));
 
 interface ComposerInsetRule {
@@ -62,15 +61,15 @@ const COMPOSER_INSET_RULES: readonly ComposerInsetRule[] = [
   },
   {
     prelude: `${FULL_PAGE_CM_HOST_SELECTORS.sourceEditor} .cm-content`,
-    scrollport: DOCUMENT_SCROLL_HOST_SELECTOR,
+    scrollport: FULL_PAGE_CM_SCROLLPORTS.sourceEditor,
   },
   {
     prelude: `${FULL_PAGE_CM_HOST_SELECTORS.textDocEditor} .cm-content`,
-    scrollport: `${FULL_PAGE_CM_HOST_SELECTORS.textDocEditor} .cm-scroller`,
+    scrollport: FULL_PAGE_CM_SCROLLPORTS.textDocEditor,
   },
   {
     prelude: FULL_PAGE_CM_HOST_SELECTORS.mermaidDocEditor,
-    scrollport: `${FULL_PAGE_CM_HOST_SELECTORS.mermaidDocEditor} .cm-scroller`,
+    scrollport: FULL_PAGE_CM_SCROLLPORTS.mermaidDocEditor,
   },
   { prelude: CONFLICT_SCROLLPORT_SELECTOR, scrollport: CONFLICT_SCROLLPORT_SELECTOR },
   {

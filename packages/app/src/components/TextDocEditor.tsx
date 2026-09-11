@@ -19,6 +19,7 @@ import { useEffect, useRef } from 'react';
 import { yCollab } from 'y-codemirror.next';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
+import { registerFullPageCmView, unregisterFullPageCmView } from '@/editor/full-page-cm-views';
 import { acquireDocUndoManager } from './doc-undo-manager';
 import { loadCodeMirrorLanguageForExtension } from './text-viewer-languages';
 
@@ -71,6 +72,7 @@ export function TextDocEditor({
       }),
       parent: el,
     });
+    registerFullPageCmView(docName, view, 'textDocEditor');
     let disposed = false;
     const extension = extensionOf(docName) || null;
     if (extension) {
@@ -84,6 +86,7 @@ export function TextDocEditor({
     }
     return () => {
       disposed = true;
+      unregisterFullPageCmView(docName, view);
       view.destroy();
     };
   }, [ytext, provider, resolvedTheme, docName, undoManager]);

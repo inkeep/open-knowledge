@@ -21,17 +21,13 @@ vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
 
-vi.doMock('@/editor/components/Mermaid', () => ({
-  MermaidView: () => <div data-testid="mermaid-view" />,
-}));
+const { TextDocEditor } = await import('./TextDocEditor');
 
-const { MermaidDocEditor } = await import('./MermaidDocEditor');
+const DOC_NAME = 'notes/scratch.txt';
 
-const DOC_NAME = 'diagram.mmd';
+const HOST_SELECTOR = FULL_PAGE_CM_HOST_SELECTORS.textDocEditor;
 
-const HOST_SELECTOR = FULL_PAGE_CM_HOST_SELECTORS.mermaidDocEditor;
-
-function mountMermaidDocEditor(isSourceMode: boolean): {
+function mountTextDocEditor(): {
   container: HTMLElement;
   unmount: () => void;
   dispose: () => void;
@@ -44,9 +40,7 @@ function mountMermaidDocEditor(isSourceMode: boolean): {
     on() {},
     off() {},
   } as unknown as HocuspocusProvider;
-  const { container, unmount } = render(
-    <MermaidDocEditor docName={DOC_NAME} provider={provider} isSourceMode={isSourceMode} />,
-  );
+  const { container, unmount } = render(<TextDocEditor docName={DOC_NAME} provider={provider} />);
   return {
     container,
     unmount,
@@ -63,9 +57,9 @@ afterEach(() => {
   if (entry) unregisterFullPageCmView(DOC_NAME, entry.view);
 });
 
-describe('MermaidDocEditor host contract', () => {
+describe('TextDocEditor host contract', () => {
   test('renders the host attribute used by the composer-inset selector', () => {
-    const { container, unmount, dispose } = mountMermaidDocEditor(false);
+    const { container, unmount, dispose } = mountTextDocEditor();
 
     expect(container.querySelector(HOST_SELECTOR)).not.toBeNull();
 
@@ -73,33 +67,33 @@ describe('MermaidDocEditor host contract', () => {
     dispose();
   });
 
-  test('registers its source pane CodeMirror under the mermaidDocEditor host in source mode', () => {
-    const { container, unmount, dispose } = mountMermaidDocEditor(true);
+  test('registers its CodeMirror under the textDocEditor host while it is mounted', () => {
+    const { container, unmount, dispose } = mountTextDocEditor();
 
     const entry = getFullPageCmEntryForDoc(DOC_NAME);
 
     expect(
       entry,
-      'a mermaid doc in source mode that registers nothing is unreachable from the composer caret ' +
-        'reveal, so opening the composer over a mid-document caret buries it',
+      'an editable text doc that registers nothing is unreachable from the composer caret reveal, ' +
+        'so opening the composer over a mid-document caret buries it',
     ).not.toBeNull();
-    expect(entry?.host).toBe('mermaidDocEditor');
+    expect(entry?.host).toBe('textDocEditor');
     expect(
       entry?.view.scrollDOM,
-      'the registered view must be the CodeMirror the source pane mounted, and its scrollDOM must ' +
-        'be the element the mermaidDocEditor scrollport selector matches',
+      'the registered view must be the CodeMirror this component mounted, and its scrollDOM must ' +
+        'be the element the textDocEditor scrollport selector matches',
     ).toBe(container.querySelector(`${HOST_SELECTOR} .cm-scroller`));
 
     unmount();
     dispose();
   });
 
-  test('leaves the markdown source-editor accessor empty in source mode', () => {
-    const { unmount, dispose } = mountMermaidDocEditor(true);
+  test('leaves the markdown source-editor accessor empty', () => {
+    const { unmount, dispose } = mountTextDocEditor();
 
     expect(
       getMarkdownSourceViewForDoc(DOC_NAME),
-      'a mermaid source pane holds no markdown, so the markdown outline and landing resolvers must ' +
+      'a text doc CodeMirror holds no markdown, so the markdown outline and landing resolvers must ' +
         'not find it here',
     ).toBeNull();
 
@@ -107,17 +101,8 @@ describe('MermaidDocEditor host contract', () => {
     dispose();
   });
 
-  test('registers nothing in diagram mode, where there is no caret to reveal', () => {
-    const { unmount, dispose } = mountMermaidDocEditor(false);
-
-    expect(getFullPageCmEntryForDoc(DOC_NAME)).toBeNull();
-
-    unmount();
-    dispose();
-  });
-
-  test('unregisters its source pane CodeMirror when it unmounts', () => {
-    const { unmount, dispose } = mountMermaidDocEditor(true);
+  test('unregisters its CodeMirror when it unmounts', () => {
+    const { unmount, dispose } = mountTextDocEditor();
     expect(getFullPageCmEntryForDoc(DOC_NAME)).not.toBeNull();
 
     unmount();

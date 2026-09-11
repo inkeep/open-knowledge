@@ -22,7 +22,7 @@ import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
 import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
-import { unregisterSourceView } from './active-source-view';
+import { unregisterFullPageCmView } from './full-page-cm-views';
 import { getMountId } from './mount-id-registry';
 import { invalidateMountPromise } from './mount-promise';
 import { scrollSuppressionHolder } from './scroll-restore-coordination';
@@ -657,7 +657,7 @@ export function evictCmEditor(docName: string): boolean {
   const entry = cmCache.get(docName);
   if (!entry) return false;
 
-  unregisterSourceView(docName, entry.view);
+  unregisterFullPageCmView(docName, entry.view);
 
   try {
     entry.view.destroy();

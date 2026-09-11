@@ -2,9 +2,8 @@
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import type { EditorView } from '@tiptap/pm/view';
 import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -33,17 +32,13 @@ import {
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { getEditorForDoc } from '@/editor/active-editor';
 import {
   type ComposerAttachmentDropPolicy,
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
-import {
-  DOCUMENT_SCROLL_HOST_SELECTOR,
-  documentScrollports,
-  isPinnedToEnd,
-} from '@/editor/document-scrollports';
+import { revealCaretAboveComposerCard } from '@/editor/caret-reveal';
+import { documentScrollports, isPinnedToEnd } from '@/editor/document-scrollports';
 import type { SuggestionPopupLabel } from '@/editor/extensions/suggestion-floating-ui';
 import { isScrollRestoreSuppressed } from '@/editor/scroll-restore-coordination';
 import {
@@ -54,7 +49,6 @@ import {
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
 import { useComposerAttachments } from '@/editor/use-composer-attachments';
-import { getEditorView } from '@/editor/utils/get-editor-view';
 import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
@@ -141,21 +135,12 @@ export const COMPOSER_SUGGESTION_POPUP_LABELS = [
   'composer-mention',
   'composer-slash',
 ] as const satisfies readonly SuggestionPopupLabel[];
+const ASK_COMPOSER_HEIGHT_RESERVE_PX = 56;
+
 const COMPOSER_PORTAL_SELECTOR = [
   ...COMPOSER_SUGGESTION_POPUP_LABELS.map((label) => `[data-suggestion-popup="${label}"]`),
   `[${COMPOSER_PORTAL_ATTRIBUTE}]`,
 ].join(',');
-
-function safeCaretCoords(
-  view: EditorView,
-  pos: number,
-): ReturnType<EditorView['coordsAtPos']> | null {
-  try {
-    return view.coordsAtPos(pos);
-  } catch {
-    return null;
-  }
-}
 
 export function BottomComposer({
   docName,
@@ -217,7 +202,6 @@ export function BottomComposer({
   useEffect(() => {
     if (folderMode || docName == null) return;
     const root = document.documentElement;
-    let caretFrame: number | null = null;
     const followBottom = () => {
       clampRef.current?.();
       if (isScrollRestoreSuppressed(docName)) return;
@@ -264,24 +248,6 @@ export function BottomComposer({
       };
       frame = requestAnimationFrame(step);
     };
-    const revealCaret = () => {
-      if (effectiveSurface !== 'wysiwyg') return;
-      caretFrame = requestAnimationFrame(() => {
-        caretFrame = null;
-        if (isScrollRestoreSuppressed(docName)) return;
-        const editor = getEditorForDoc(docName);
-        const box = cardRef.current;
-        if (!editor || editor.isDestroyed || !box) return;
-        const view = getEditorView(editor);
-        if (!view) return;
-        const caret = safeCaretCoords(view, view.state.selection.head);
-        if (caret === null) return;
-        const overlap = caret.bottom - (box.getBoundingClientRect().top - 28);
-        if (overlap <= 0) return;
-        const scroller = view.dom.closest(DOCUMENT_SCROLL_HOST_SELECTOR);
-        if (scroller instanceof HTMLElement) scroller.scrollTop += overlap;
-      });
-    };
     const card = cardRef.current;
     if (dismissed || !card) {
       followBottom();
@@ -292,33 +258,58 @@ export function BottomComposer({
     }
     const apply = () => {
       followBottom();
-      root.style.setProperty('--ask-composer-height', `${card.offsetHeight + 56}px`);
+      root.style.setProperty(
+        '--ask-composer-height',
+        `${card.offsetHeight + ASK_COMPOSER_HEIGHT_RESERVE_PX}px`,
+      );
     };
     apply();
-    revealCaret();
     const observer = new ResizeObserver(apply);
     observer.observe(card);
     return () => {
       observer.disconnect();
-      if (caretFrame !== null) cancelAnimationFrame(caretFrame);
-      caretFrame = null;
       followBottom();
       root.style.removeProperty('--ask-composer-height');
     };
-  }, [dismissed, effectiveSurface, docName, folderMode]);
+  }, [dismissed, docName, folderMode]);
 
-  const dismissedRef = useRef(dismissed);
-  const onReopenRef = useRef(onReopen);
-  useEffect(() => {
-    dismissedRef.current = dismissed;
-    onReopenRef.current = onReopen;
+  const openAndFocus = useEffectEvent(() => {
+    if (dismissed) onReopen?.();
+    else inputRef.current?.focus();
   });
 
+  const readPaintedOver = useEffectEvent(() => ({
+    docName: activeDocOrNull,
+    effectiveSurface,
+  }));
+
   useEffect(() => {
-    const openAndFocus = () => {
-      if (dismissedRef.current) onReopenRef.current?.();
-      else inputRef.current?.focus();
-    };
+    if (dismissed) return;
+    const arrivedOver = readPaintedOver();
+    const arrivedOverDoc = arrivedOver.docName;
+    if (arrivedOverDoc == null) return;
+    const arrivedOverSurface = arrivedOver.effectiveSurface;
+    const frame = requestAnimationFrame(() => {
+      const paintedOver = readPaintedOver();
+      if (
+        paintedOver.docName !== arrivedOverDoc ||
+        paintedOver.effectiveSurface !== arrivedOverSurface
+      ) {
+        return;
+      }
+      if (isScrollRestoreSuppressed(arrivedOverDoc)) return;
+      const card = cardRef.current;
+      if (!card) return;
+      revealCaretAboveComposerCard({
+        docName: arrivedOverDoc,
+        surface: arrivedOverSurface,
+        card,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dismissed]);
+
+  useEffect(() => {
     return subscribeToOpenAskAiComposer(openAndFocus);
   }, []);
 

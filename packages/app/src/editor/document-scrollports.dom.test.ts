@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import {
+  DOCUMENT_SCROLLPORT_SELECTORS,
   documentScrollports,
   FULL_PAGE_CM_HOST_SELECTORS,
+  FULL_PAGE_CM_SCROLLPORTS,
+  type FullPageCmHost,
   isPinnedToEnd,
   SCROLL_PIN_SLACK_PX,
 } from './document-scrollports';
 
+const FULL_PAGE_CM_HOSTS = Object.keys(FULL_PAGE_CM_HOST_SELECTORS) as FullPageCmHost[];
+
 function buildEditorTree(): {
   outer: HTMLElement;
   conflictScroller: HTMLElement;
-  hostScrollers: Record<keyof typeof FULL_PAGE_CM_HOST_SELECTORS, HTMLElement>;
+  hostScrollers: Record<FullPageCmHost, HTMLElement>;
   codeBlockScroller: HTMLElement;
 } {
   const container = document.createElement('div');
@@ -127,4 +132,68 @@ describe('isPinnedToEnd decides which scrollports the composer may re-clamp', ()
   ] as const)('%s', (_label, scrollHeight, clientHeight, scrollTop, expected) => {
     expect(isPinnedToEnd(withGeometry(scrollHeight, clientHeight, scrollTop))).toBe(expected);
   });
+});
+
+describe('FULL_PAGE_CM_SCROLLPORTS names the element each full-page CodeMirror host actually scrolls', () => {
+  test('every registered full-page CodeMirror host has a scrollport entry', () => {
+    expect(
+      Object.keys(FULL_PAGE_CM_SCROLLPORTS).sort(),
+      'a host registered in FULL_PAGE_CM_HOST_SELECTORS with no scrollport entry is a surface the ' +
+        'composer can paint over and never scroll, which is the whole shape of this bug',
+    ).toEqual([...FULL_PAGE_CM_HOSTS].sort());
+  });
+
+  test('every scrollport entry is one of the selectors documentScrollports already queries', () => {
+    expect(
+      DOCUMENT_SCROLLPORT_SELECTORS,
+      'the caret reveal must scroll an element that also reserves the composer inset. A scrollport ' +
+        'outside this list reserves no inset, so scrolling it puts the caret line under the card again',
+    ).toEqual(expect.arrayContaining(Object.values(FULL_PAGE_CM_SCROLLPORTS)));
+  });
+
+  test.each(FULL_PAGE_CM_HOSTS)(
+    'the %s scrollport resolves from that host cm-scroller onto an enumerated scrollport',
+    (host) => {
+      const { hostScrollers } = buildEditorTree();
+
+      const resolved = hostScrollers[host].closest(FULL_PAGE_CM_SCROLLPORTS[host]);
+
+      expect(
+        resolved,
+        `\`FULL_PAGE_CM_SCROLLPORTS.${host}\` must resolve from this host own \`scrollDOM\` via ` +
+          '`closest`. Resolving to nothing leaves the reveal with no element to scroll',
+      ).not.toBeNull();
+      expect(documentScrollports()).toContain(resolved);
+    },
+  );
+
+  test('markdown source mode falls through its own non-scrolling cm-scroller to the outer document scroller', () => {
+    const { outer, hostScrollers } = buildEditorTree();
+
+    const resolved = hostScrollers.sourceEditor.closest(FULL_PAGE_CM_SCROLLPORTS.sourceEditor);
+
+    expect(
+      resolved,
+      'the source editor `.cm-scroller` reserves the composer inset on its `.cm-content` but never ' +
+        'scrolls: the outer `.editor-doc-scroll` does. This host is why the table names a ' +
+        'scrollport per host instead of assuming every full-page CodeMirror scrolls itself',
+    ).toBe(outer);
+    expect(resolved).not.toBe(hostScrollers.sourceEditor);
+  });
+
+  test.each(['textDocEditor', 'mermaidDocEditor'] as const)(
+    'the %s host resolves to its own cm-scroller, not to the outer document scroller',
+    (host) => {
+      const { outer, hostScrollers } = buildEditorTree();
+
+      const resolved = hostScrollers[host].closest(FULL_PAGE_CM_SCROLLPORTS[host]);
+
+      expect(resolved).toBe(hostScrollers[host]);
+      expect(
+        resolved,
+        `\`${host}\` scrolls itself. Resolving it to the outer document scroller would scroll an ` +
+          'element that is not moving under the caret',
+      ).not.toBe(outer);
+    },
+  );
 });

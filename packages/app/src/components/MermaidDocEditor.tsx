@@ -18,6 +18,7 @@ import type * as Y from 'yjs';
 import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
+import { registerFullPageCmView, unregisterFullPageCmView } from '@/editor/full-page-cm-views';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { acquireDocUndoManager } from './doc-undo-manager';
 
@@ -54,10 +55,12 @@ export function replaceYText(ytext: Y.Text, next: string, origin?: unknown): voi
 }
 
 function MermaidSourcePane({
+  docName,
   ytext,
   provider,
   undoManager,
 }: {
+  docName: string;
   ytext: Y.Text;
   provider: HocuspocusProvider;
   undoManager: Y.UndoManager;
@@ -84,8 +87,12 @@ function MermaidSourcePane({
       }),
       parent: el,
     });
-    return () => view.destroy();
-  }, [ytext, provider, resolvedTheme, undoManager]);
+    registerFullPageCmView(docName, view, 'mermaidDocEditor');
+    return () => {
+      unregisterFullPageCmView(docName, view);
+      view.destroy();
+    };
+  }, [docName, ytext, provider, resolvedTheme, undoManager]);
 
   return <div ref={containerRef} className="h-full min-h-0 overflow-auto" />;
 }
@@ -166,6 +173,7 @@ export function acquireMermaidUndoManager(
 }
 
 export function MermaidDocEditor({
+  docName,
   provider,
   isSourceMode,
 }: {
@@ -219,7 +227,12 @@ export function MermaidDocEditor({
     >
       <div className="min-h-0 flex-1 overflow-hidden">
         {isSourceMode ? (
-          <MermaidSourcePane ytext={ytext} provider={provider} undoManager={undoManager} />
+          <MermaidSourcePane
+            docName={docName}
+            ytext={ytext}
+            provider={provider}
+            undoManager={undoManager}
+          />
         ) : (
           <div className="flex h-full min-h-0 flex-col p-3">
             <MermaidView chart={source} editBinding={editBinding} className="min-h-0 flex-1" />

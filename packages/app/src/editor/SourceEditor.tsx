@@ -28,9 +28,9 @@ import { useConfigContext } from '@/lib/config-provider';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
-import { registerSourceView, unregisterSourceView } from './active-source-view';
 import { createSourceClipboardExtension } from './clipboard/index.ts';
 import { type CmCacheEntry, mountCmEditor, parkCmEditor } from './editor-cache';
+import { registerFullPageCmView, unregisterFullPageCmView } from './full-page-cm-views';
 import { useDocLintConfig } from './lint-config-client';
 import { startSourceLanding } from './mode-switch-landing';
 import { getMountId } from './mount-id-registry';
@@ -79,7 +79,7 @@ function cleanupSourceEditorEntry(docName: string, entry: CmCacheEntry): void {
     try {
       parkCmEditor(entry);
     } finally {
-      unregisterSourceView(docName, entry.view);
+      unregisterFullPageCmView(docName, entry.view);
     }
   }
 }
@@ -291,7 +291,7 @@ export function SourceEditor({
       cmEntryRef.current = entry;
       viewRef.current = entry.view;
       setSourceViewUndoFlipActive(entry.view, isSourceModeActive);
-      registerSourceView(docName, entry.view);
+      registerFullPageCmView(docName, entry.view, 'sourceEditor');
       if (claimNoteWindowInitialFocus()) entry.view.focus();
     } catch (err) {
       console.error('[SourceEditor] mountCmEditor failed', err);

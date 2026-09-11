@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { getCollector } from '../lib/perf/collector.ts';
 import { registerEditor, unregisterEditor } from './active-editor.ts';
-import { registerSourceView, unregisterSourceView } from './active-source-view.ts';
+import { registerFullPageCmView, unregisterFullPageCmView } from './full-page-cm-views.ts';
 import {
   buildSourceLandingNav,
   buildWysiwygLandingNav,
@@ -413,7 +413,7 @@ describe('captureModeSwitchAnchor', () => {
       [{ width: 100, height: 400 } as DOMRect] as unknown as DOMRectList;
     document.body.appendChild(container);
     const view = { posAtCoords: () => source.indexOf('target para') } as unknown as CodeMirrorView;
-    registerSourceView('doc-fwd', view);
+    registerFullPageCmView('doc-fwd', view, 'sourceEditor');
     try {
       captureModeSwitchAnchor({ from: 'source', to: 'wysiwyg', docName: 'doc-fwd', ytext });
       const nav = peekPendingWysiwygNavigation('doc-fwd');
@@ -421,7 +421,7 @@ describe('captureModeSwitchAnchor', () => {
       expect(nav?.anchor.content).toBe('target para');
       expect(peekPendingSourceNavigation('doc-fwd')).toBeNull();
     } finally {
-      unregisterSourceView('doc-fwd', view);
+      unregisterFullPageCmView('doc-fwd', view);
       container.remove();
     }
   });

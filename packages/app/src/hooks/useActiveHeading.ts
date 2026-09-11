@@ -1,6 +1,9 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { getSourceViewForDoc, subscribeSourceViewRegistry } from '@/editor/active-source-view';
+import {
+  getMarkdownSourceViewForDoc,
+  subscribeFullPageCmViewRegistry,
+} from '@/editor/full-page-cm-views';
 import { sourceHeadingLines } from '@/editor/source-heading-lines';
 
 function domHeadingTop(slug: string): number | null {
@@ -31,8 +34,8 @@ export function useActiveHeading(
   const rafRef = useRef<number | null>(null);
 
   const sourceView = useSyncExternalStore(
-    subscribeSourceViewRegistry,
-    () => (docName ? getSourceViewForDoc(docName) : null),
+    subscribeFullPageCmViewRegistry,
+    () => (docName ? getMarkdownSourceViewForDoc(docName) : null),
     () => null,
   );
 

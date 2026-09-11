@@ -15,6 +15,7 @@ import {
 } from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import { FULL_PAGE_CM_HOST_SELECTORS } from '@/editor/document-scrollports';
+import { getFullPageCmEntryForDoc } from '@/editor/full-page-cm-views';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';
@@ -150,6 +151,28 @@ describe('SourceEditor host contract', () => {
     await findCmContent(container);
 
     expect(container.querySelector(FULL_PAGE_CM_HOST_SELECTORS.sourceEditor)).not.toBeNull();
+  });
+
+  test('registers its CodeMirror under the sourceEditor host while it is mounted', async () => {
+    const docName = 'source-full-page-cm-host';
+    const { provider, ytext } = makeProvider(docName);
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+
+    await findCmContent(container);
+    const entry = getFullPageCmEntryForDoc(docName);
+
+    expect(
+      entry?.host,
+      'the host this component records is what picks its scrollport, and `sourceEditor` is the ' +
+        'only one that resolves through an ANCESTOR. Recording any other host sends the caret ' +
+        'reveal at this surface own `.cm-scroller`, which never scrolls, and drops markdown out ' +
+        'of `getMarkdownSourceViewForDoc` so the outline and the mode-switch landing anchor go ' +
+        'with it',
+    ).toBe('sourceEditor');
+    expect(
+      entry?.view.scrollDOM,
+      'the registered view must be the CodeMirror this component mounted',
+    ).toBe(container.querySelector(`${FULL_PAGE_CM_HOST_SELECTORS.sourceEditor} .cm-scroller`));
   });
 });
 
