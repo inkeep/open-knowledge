@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
 
 const WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), '..', 'workflows');
 const workflow = readFileSync(join(WORKFLOWS, 'linear-release.yml'), 'utf8');
@@ -44,6 +45,26 @@ const UNDELIVERABLE_POST_ONLY_WARNS =
   /if ! curl[\s\S]*?; then\n\s+echo "::warning::Linear stamping failure alert failed to POST\."\n\s+fi/;
 
 describe('linear release stamping workflow', () => {
+  test('restores workflow revision scripts after checking out historical release code', () => {
+    const labels = stepLabels(workflow);
+    const expected = [
+      'Checkout at the release tag',
+      'Restore stamping scripts from workflow revision',
+      'Derive channel, version, and scan range',
+    ];
+    expect(labels.filter((label) => expected.includes(label))).toEqual(expected);
+    const restore = Object.values(parse(workflow).jobs)
+      .flatMap((job) => job.steps)
+      .find((step) => step.name === 'Restore stamping scripts from workflow revision');
+    expect(restore.env.WORKFLOW_SHA).toBe('${{ github.workflow_sha }}');
+    expect(restore.run).toBe(
+      'git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/',
+    );
+    expect(workflow).toContain(
+      'run: node .github/scripts/derive-release-stamp.mjs "${RELEASE_TAG}"',
+    );
+  });
+
   test('a failed stamp pages the releases channel', () => {
     const alert = alertBlock(workflow);
     expect(alert).toMatch(/^ {8}if: failure\(\) \|\| cancelled\(\)$/m);
@@ -56,6 +77,9 @@ describe('linear release stamping workflow', () => {
     expect(text).toContain('${TAG}');
     expect(text).toContain('${RUN_URL}');
     expect(text).toContain('${OUTCOME}');
+    expect(text).toContain('dispatch linear-release.yml fresh on main');
+    expect(text).toContain('release_tag=${TAG}');
+    expect(text).toContain('re-running the old run keeps its old code');
 
     expect(alert).toMatch(OUTCOME_BRANCH);
     expect(alert).toContain('JOB_STATUS: ${{ job.status }}');
