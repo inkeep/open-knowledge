@@ -841,7 +841,6 @@ const bridge: OkDesktopBridge = {
     claudePreflight: () => invoke('ok:terminal:claude-assist', { action: 'preflight' }),
     cliPreflight: (cli) => invoke('ok:terminal:cli-preflight', { cli }),
     cliInstalledMap: () => invoke('ok:terminal:cli-installed-map'),
-    rewireClaudeMcp: () => invoke('ok:terminal:claude-assist', { action: 'rewire' }),
   },
 
   accessibility: {

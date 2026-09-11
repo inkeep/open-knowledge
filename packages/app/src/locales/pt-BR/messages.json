@@ -1713,6 +1713,11 @@
     "GuaJb-": ["Abrir o rascunho de e-mail"],
     "GubkSu": ["Usar um pacote inicial"],
     "GuqOb1": ["Falha ao carregar os títulos"],
+    "GwYdEF": [
+      "O ",
+      ["displayName"],
+      " está instalado, mas as ferramentas do OpenKnowledge ainda não estão conectadas a ele."
+    ],
     "GwpcXB": ["Redigindo…"],
     "Gx0VS1": ["ex.: drafts/ ou *.draft.md"],
     "GzPQ2f": ["Fique por dentro"],
@@ -3495,9 +3500,6 @@
       "Uma base de conhecimento que segue o Open Knowledge Format do Google, uma forma comum de organizar o que você sabe. Escolha isto se quiser que suas notas funcionem bem com outras ferramentas que entendem o formato."
     ],
     "_azghp": ["Alteração anterior"],
-    "_bth6g": [
-      "O Claude Code está instalado, mas as ferramentas do OpenKnowledge ainda não estão conectadas a ele."
-    ],
     "_ci9Bj": ["O servidor retornou uma resposta de pasta incompleta."],
     "_eguJc": ["Enviando"],
     "_fQGOp": ["Espaços não são permitidos no caminho"],
@@ -3762,9 +3764,6 @@
     "ciozf1": ["Habilidade já em projeto"],
     "cjtjry": ["Volta pelo histórico de navegação do OpenKnowledge."],
     "cklVjM": ["Linha do tempo"],
-    "cn1sLi": [
-      "Não deu para conectar as ferramentas do OpenKnowledge ao Claude Code. Tente de novo."
-    ],
     "cnGeoo": ["Excluir"],
     "cqQyPB": ["Nome da pasta"],
     "crqzW5": ["Ferramentas de IA"],
@@ -5269,6 +5268,9 @@
     "qkqG0b": ["Aceitar a versão remota"],
     "qlAIQ1": ["Remoto"],
     "qo4zCg": ["O caminho não pode conter barras invertidas"],
+    "qoN0PD": [
+      "Reinicie esta sessão do terminal para usar as ferramentas do OpenKnowledge recém-instaladas."
+    ],
     "qpQwGC": ["Descreva no que você está trabalhando e o agente prepara tudo para você."],
     "qr2gAH": ["Escolha o que o OpenKnowledge configura para ", ["0"], "."],
     "qribBG": ["esquema ", ["deleteTarget"]],

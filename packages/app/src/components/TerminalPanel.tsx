@@ -24,11 +24,10 @@ import { Terminal } from '@xterm/xterm';
 import { useTheme } from 'next-themes';
 import { use, useEffect, useRef, useState } from 'react';
 import { ConfigContext } from '@/lib/config-context';
-import type { ClaudeReadiness, OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
 import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
-import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import {
@@ -36,6 +35,7 @@ import {
   terminalCommandFor,
   windowsTerminalCommandFor,
 } from './handoff/terminal-command-events';
+import { TerminalAgentConnectionBanner } from './TerminalAgentConnectionBanner';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { TerminalCliUnverifiedBanner } from './TerminalCliUnverifiedBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
@@ -144,7 +144,7 @@ function TerminalSession({
   const initialXtermThemeRef = useRef(xtermTheme);
   const [status, setStatus] = useState<SessionStatus>('starting');
   const [hasOutput, setHasOutput] = useState(false);
-  const [readiness, setReadiness] = useState<ClaudeReadiness | null>(null);
+  const [connectionCli, setConnectionCli] = useState<TerminalCli | null>(null);
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
   const [shellNotice, setShellNotice] = useState<Extract<
     OkPtyNotice,
@@ -160,9 +160,7 @@ function TerminalSession({
   const terminalInputEnabledRef = useRef(false);
   const terminalInputRef = useRef<(data: string) => void>(() => undefined);
   const [cliNotice, setCliNotice] = useState<
-    | { cli: TerminalCli; kind: 'unverified' }
-    | { cli: Exclude<TerminalCli, 'claude'>; kind: 'not-found' }
-    | null
+    { cli: TerminalCli; kind: 'unverified' } | { cli: TerminalCli; kind: 'not-found' } | null
   >(null);
 
   const configCtx = use(ConfigContext);
@@ -180,6 +178,8 @@ function TerminalSession({
     const container = containerRef.current;
     if (!container) return;
 
+    setConnectionCli(null);
+    setCliNotice(null);
     setManualSubmitNotice(false);
     setSupportFileNotice(null);
     setShellNotice(null);
@@ -618,7 +618,7 @@ function TerminalSession({
         try {
           const fresh = await bridge.terminal.claudePreflight();
           if (fresh.claude === 'present') {
-            if (!cancelled) setReadiness(fresh);
+            if (!cancelled) setConnectionCli('claude');
             return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
               autoApproveOkTools:
@@ -627,7 +627,7 @@ function TerminalSession({
           }
           if (!cancelled) {
             if (fresh.claude === 'not-found') {
-              setReadiness(fresh);
+              setCliNotice({ cli: 'claude', kind: 'not-found' });
             } else {
               setCliNotice({ cli: 'claude', kind: 'unverified' });
             }
@@ -645,6 +645,7 @@ function TerminalSession({
           res = await bridge.terminal.cliPreflight(intent.cli);
         }
         if (res.onPath === 'present') {
+          if (!cancelled) setConnectionCli(intent.cli);
           return buildLaunch({
             autoApproveOkTools:
               intent.cli === 'codex' &&
@@ -917,11 +918,11 @@ function TerminalSession({
 
   return (
     <div className="flex h-full w-full flex-col">
-      {status === 'running' && readiness ? (
-        <ClaudeReadinessBanner
-          readiness={readiness}
-          bridge={bridge}
-          onDismiss={() => setReadiness(null)}
+      {status === 'running' && connectionCli !== null ? (
+        <TerminalAgentConnectionBanner
+          key={connectionCli}
+          cli={connectionCli}
+          onRestart={onRestart}
         />
       ) : null}
       {status === 'running' && cliNotice ? (

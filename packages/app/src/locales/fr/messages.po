@@ -787,6 +787,10 @@ msgstr "CLI {displayName}, {hint}"
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "{displayName} is installed, but OpenKnowledge tools aren't connected to it yet."
+msgstr "{displayName} est installé, mais les outils OpenKnowledge n'y sont pas encore connectés."
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -2880,13 +2884,9 @@ msgstr "Claude"
 msgid "Claude CLI"
 msgstr "CLI Claude"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Claude Code (claude) isn't installed or on your PATH."
 msgstr "Claude Code (claude) n'est pas installé ni présent dans votre PATH."
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."
-msgstr "Claude Code est installé, mais les outils OpenKnowledge n'y sont pas encore connectés."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Claude Desktop"
@@ -3422,7 +3422,7 @@ msgstr "Se connecter à GitHub"
 msgid "Connect to GitHub Enterprise Server"
 msgstr "Se connecter à GitHub Enterprise Server"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Connect tools"
 msgstr "Connecter les outils"
 
@@ -3872,16 +3872,13 @@ msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "Impossible de vérifier si {filePath} est toujours en conflit — nouvelle tentative."
 
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
 msgstr "Impossible de vérifier quels outils sont connectés."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
 msgstr "Impossible d'effacer la clé — veuillez réessayer."
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Couldn't connect OpenKnowledge tools to Claude Code. Please try again."
-msgstr "Impossible de connecter les outils OpenKnowledge à Claude Code. Veuillez réessayer."
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
@@ -6530,7 +6527,7 @@ msgstr "Fichiers générés"
 msgid "Get {displayName}"
 msgstr "Obtenir {displayName}"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Get Claude Code"
 msgstr "Obtenir Claude Code"
 
@@ -11608,9 +11605,14 @@ msgstr "Ressources"
 msgid "Restart server"
 msgstr "Redémarrer le serveur"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TerminalExitNotice.tsx
 msgid "Restart terminal"
 msgstr "Redémarrer le terminal"
+
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
+msgstr "Redémarrez cette session de terminal pour utiliser les outils OpenKnowledge nouvellement installés."
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restart with this app's version"
@@ -11711,6 +11713,7 @@ msgstr "Récupération…"
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "Réessayer"

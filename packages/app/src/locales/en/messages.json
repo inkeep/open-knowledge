@@ -1484,6 +1484,10 @@
     "GuaJb-": ["Open email draft"],
     "GubkSu": ["Use a starter pack"],
     "GuqOb1": ["Failed to load headings"],
+    "GwYdEF": [
+      ["displayName"],
+      " is installed, but OpenKnowledge tools aren't connected to it yet."
+    ],
     "GwpcXB": ["Drafting…"],
     "Gx0VS1": ["e.g. drafts/ or *.draft.md"],
     "GzPQ2f": ["Stay in the loop"],
@@ -3067,7 +3071,6 @@
       "A knowledge base that follows Google's Open Knowledge Format, a shared way of organizing what you know. Pick this if you want your notes to work well with other tools that understand the format."
     ],
     "_azghp": ["Previous change"],
-    "_bth6g": ["Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."],
     "_ci9Bj": ["Server returned an incomplete folder response."],
     "_eguJc": ["Uploading"],
     "_fQGOp": ["Spaces aren't allowed in the path"],
@@ -3302,7 +3305,6 @@
     "ciozf1": ["Skill already in project"],
     "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
     "cklVjM": ["Timeline"],
-    "cn1sLi": ["Couldn't connect OpenKnowledge tools to Claude Code. Please try again."],
     "cnGeoo": ["Delete"],
     "cqQyPB": ["Folder name"],
     "crqzW5": ["AI tools"],
@@ -4642,6 +4644,7 @@
     "qkqG0b": ["Take upstream"],
     "qlAIQ1": ["Remote"],
     "qo4zCg": ["Path cannot contain backslashes"],
+    "qoN0PD": ["Restart this terminal session to use the newly installed OpenKnowledge tools."],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
     "qr2gAH": ["Choose what OpenKnowledge sets up for ", ["0"], "."],
     "qribBG": ["schema ", ["deleteTarget"]],

@@ -79,20 +79,16 @@ vi.doMock('@xterm/xterm/css/xterm.css', () => ({}));
 
 const WIRED: ClaudeReadiness = {
   claude: 'present',
-  mcp: 'wired',
   mcpPreApprovable: true,
   okToolsAutoApprovable: true,
 };
 const WIRED_FOREIGN_PROJECT: ClaudeReadiness = {
   claude: 'present',
-  mcp: 'wired',
   mcpPreApprovable: false,
   okToolsAutoApprovable: false,
 };
 const WIRED_GLOBAL_ONLY: ClaudeReadiness = {
   claude: 'present',
-  mcp: 'wired',
-  mcpScopes: { global: true, project: false },
   mcpPreApprovable: false,
   okToolsAutoApprovable: true,
 };
@@ -145,7 +141,6 @@ function makeBridge(
     }),
     claudePreflight: vi.fn(async () => preflight),
     cliPreflight: vi.fn(async (_cli: TerminalCli) => cliReadiness),
-    rewireClaudeMcp: vi.fn(async () => preflight),
   };
   return {
     bridge: {
@@ -486,7 +481,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   }, 10_000);
 
   test('stagePaste is DROPPED when the bake was suppressed — staged text in the bare-shell fallback would execute', async () => {
-    const { bridge, terminal } = makeBridge({ claude: 'not-found', mcp: 'needs-rewire' });
+    const { bridge, terminal } = makeBridge({ claude: 'not-found' });
     render(
       <TerminalPanel
         bridge={bridge}
@@ -501,7 +496,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('spawns a plain shell (no launchCommand) when claude is not found, and surfaces the banner', async () => {
-    const { bridge, terminal } = makeBridge({ claude: 'not-found', mcp: 'needs-rewire' });
+    const { bridge, terminal } = makeBridge({ claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
@@ -512,7 +507,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   });
 
   test('bakes a BARE claude command (no pre-approval) when claude is present but OK tools need a rewire', async () => {
-    const { bridge, terminal } = makeBridge({ claude: 'present', mcp: 'needs-rewire' });
+    const { bridge, terminal } = makeBridge({ claude: 'present' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
@@ -556,7 +551,6 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
   test('claude launch-time verdict UNKNOWN spawns a plain shell + surfaces the UNVERIFIED banner (never "isn\'t installed")', async () => {
     const { bridge, terminal } = makeBridge({
       claude: 'unknown',
-      mcp: 'needs-rewire',
       mcpPreApprovable: false,
     });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: 'hi', cli: 'claude', nonce: 1 }} />);
@@ -733,22 +727,16 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
 describe('the two --settings halves are gated independently, across all four MCP scope states', () => {
   const PROJECT_ONLY: ClaudeReadiness = {
     claude: 'present',
-    mcp: 'wired',
-    mcpScopes: { global: false, project: true },
     mcpPreApprovable: true,
     okToolsAutoApprovable: true,
   };
   const BOTH_SCOPES: ClaudeReadiness = {
     claude: 'present',
-    mcp: 'wired',
-    mcpScopes: { global: true, project: true },
     mcpPreApprovable: true,
     okToolsAutoApprovable: true,
   };
   const NEITHER_SCOPE: ClaudeReadiness = {
     claude: 'present',
-    mcp: 'needs-rewire',
-    mcpScopes: { global: false, project: false },
     mcpPreApprovable: false,
     okToolsAutoApprovable: false,
   };
@@ -791,8 +779,6 @@ describe('the two --settings halves are gated independently, across all four MCP
   test('a foreign project entry named open-knowledge bakes NOTHING, even alongside a legit global entry', async () => {
     const baked = await bakeClaudeLaunch({
       claude: 'present',
-      mcp: 'wired',
-      mcpScopes: { global: true, project: false },
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });

@@ -787,6 +787,10 @@ msgstr "{displayName} CLI, {hint}"
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "{displayName} is installed, but OpenKnowledge tools aren't connected to it yet."
+msgstr "{displayName} 설치됨. OpenKnowledge 도구 연결 대기 중."
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -2880,13 +2884,9 @@ msgstr "Claude"
 msgid "Claude CLI"
 msgstr "Claude CLI"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Claude Code (claude) isn't installed or on your PATH."
 msgstr "Claude Code (claude) 미설치 또는 PATH 미등록"
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."
-msgstr "Claude Code 설치됨. OpenKnowledge 도구 연결 대기 중."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Claude Desktop"
@@ -3422,7 +3422,7 @@ msgstr "GitHub에 연결"
 msgid "Connect to GitHub Enterprise Server"
 msgstr "GitHub Enterprise Server에 연결"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Connect tools"
 msgstr "도구 연결"
 
@@ -3872,16 +3872,13 @@ msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
 
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
 msgstr "어떤 도구가 연결되었는지 확인하지 못했습니다."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
 msgstr "키를 지우지 못했습니다. 다시 시도합니다."
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Couldn't connect OpenKnowledge tools to Claude Code. Please try again."
-msgstr "OpenKnowledge 도구와 Claude Code 연결 실패. 다시 시도하세요."
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
@@ -6530,7 +6527,7 @@ msgstr "생성된 파일"
 msgid "Get {displayName}"
 msgstr "{displayName} 가져오기"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Get Claude Code"
 msgstr "Claude Code 받기"
 
@@ -11608,9 +11605,14 @@ msgstr "리소스"
 msgid "Restart server"
 msgstr "서버 재시작"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TerminalExitNotice.tsx
 msgid "Restart terminal"
 msgstr "터미널 재시작"
+
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
+msgstr "새로 설치한 OpenKnowledge 도구를 사용하려면 이 터미널 세션을 다시 시작하세요."
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restart with this app's version"
@@ -11711,6 +11713,7 @@ msgstr "가져오는 중…"
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "다시 시도"

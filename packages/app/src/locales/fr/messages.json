@@ -1761,6 +1761,10 @@
     "GuaJb-": ["Ouvrir le brouillon d'e-mail"],
     "GubkSu": ["Utiliser un pack de démarrage"],
     "GuqOb1": ["Échec du chargement des titres"],
+    "GwYdEF": [
+      ["displayName"],
+      " est installé, mais les outils OpenKnowledge n'y sont pas encore connectés."
+    ],
     "GwpcXB": ["Rédaction…"],
     "Gx0VS1": ["par ex. drafts/ ou *.draft.md"],
     "GzPQ2f": ["Restez informé"],
@@ -3607,9 +3611,6 @@
       "Une base de connaissances qui suit l'Open Knowledge Format de Google, une manière commune d'organiser ce que vous savez. Choisissez ceci si vous voulez que vos notes fonctionnent bien avec les autres outils qui comprennent ce format."
     ],
     "_azghp": ["Modification précédente"],
-    "_bth6g": [
-      "Claude Code est installé, mais les outils OpenKnowledge n'y sont pas encore connectés."
-    ],
     "_ci9Bj": ["Le serveur a renvoyé une réponse de dossier incomplète."],
     "_eguJc": ["Envoi en cours"],
     "_fQGOp": ["Les espaces ne sont pas autorisés dans le chemin"],
@@ -3888,9 +3889,6 @@
     "ciozf1": ["Compétence déjà en projet"],
     "cjtjry": ["Recule dans l'historique de navigation d'OpenKnowledge."],
     "cklVjM": ["Chronologie"],
-    "cn1sLi": [
-      "Impossible de connecter les outils OpenKnowledge à Claude Code. Veuillez réessayer."
-    ],
     "cnGeoo": ["Supprimer"],
     "cqQyPB": ["Nom du dossier"],
     "crqzW5": ["Outils IA"],
@@ -5429,6 +5427,9 @@
     "qkqG0b": ["Prendre la version amont"],
     "qlAIQ1": ["Distant"],
     "qo4zCg": ["Le chemin ne peut pas contenir d'antislash"],
+    "qoN0PD": [
+      "Redémarrez cette session de terminal pour utiliser les outils OpenKnowledge nouvellement installés."
+    ],
     "qpQwGC": ["Décrivez ce sur quoi vous travaillez et l'agent le met en place pour vous."],
     "qr2gAH": ["Choisissez ce qu’OpenKnowledge configure pour ", ["0"], "."],
     "qribBG": ["schéma ", ["deleteTarget"]],

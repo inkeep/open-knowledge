@@ -1,6 +1,9 @@
 import { AGENT_REGISTRY, type ApplyReport, type HostSnapshot } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { applyAgentConnectionIntents } from './agent-connections.ts';
+import {
+  applyAgentConnectionIntents,
+  subscribeAgentConnectionChanges,
+} from './agent-connections.ts';
 
 const SNAPSHOT: HostSnapshot = {
   probes: { env: 'local-web', satisfiers: {} },
@@ -15,6 +18,46 @@ afterEach(() => {
 });
 
 describe('applyAgentConnectionIntents', () => {
+  test('a failing subscriber cannot fail a completed save or prevent other notifications', async () => {
+    const apply = vi.fn(async () => ({
+      ok: true as const,
+      report: EMPTY_REPORT,
+      snapshot: SNAPSHOT,
+    }));
+    vi.stubGlobal('window', { okDesktop: { agentIntegrations: { apply } } });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failure = new Error('subscriber failed');
+    const stopFailing = subscribeAgentConnectionChanges(() => {
+      throw failure;
+    });
+    const notified = vi.fn();
+    const stopListening = subscribeAgentConnectionChanges(notified);
+    const intent = {
+      satisfierId: AGENT_REGISTRY.claude.satisfiers[0].id,
+      desired: 'present' as const,
+    };
+    try {
+      await applyAgentConnectionIntents([]);
+      expect(notified).not.toHaveBeenCalled();
+      expect(warning).not.toHaveBeenCalled();
+      const result = await applyAgentConnectionIntents([intent]);
+      expect(result.ok).toBe(true);
+      expect(notified).toHaveBeenCalledExactlyOnceWith(result);
+      expect(warning).toHaveBeenCalledExactlyOnceWith(
+        '[agent-connections] change listener failed:',
+        failure,
+      );
+      stopListening();
+      stopFailing();
+      await applyAgentConnectionIntents([intent]);
+      expect(notified).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenCalledTimes(1);
+    } finally {
+      stopListening();
+      stopFailing();
+    }
+  });
+
   test('uses the desktop batch bridge when it is available', async () => {
     const apply = vi.fn(async () => ({
       ok: true as const,

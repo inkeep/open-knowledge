@@ -787,6 +787,10 @@ msgstr "{displayName} CLI，{hint}"
 msgid "{displayName} Desktop"
 msgstr "{displayName} Desktop"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "{displayName} is installed, but OpenKnowledge tools aren't connected to it yet."
+msgstr "{displayName} 已安裝，但 OpenKnowledge 工具還沒有連到它。"
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -2880,13 +2884,9 @@ msgstr "Claude"
 msgid "Claude CLI"
 msgstr "Claude CLI"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Claude Code (claude) isn't installed or on your PATH."
 msgstr "Claude Code（claude）未安裝，也不在你的 PATH 中。"
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."
-msgstr "Claude Code 已安裝，但 OpenKnowledge 工具還沒有連到它。"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Claude Desktop"
@@ -3422,7 +3422,7 @@ msgstr "連接到 GitHub"
 msgid "Connect to GitHub Enterprise Server"
 msgstr "連接到 GitHub Enterprise Server"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Connect tools"
 msgstr "連接工具"
 
@@ -3872,16 +3872,13 @@ msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr "無法確認 {filePath} 是否仍有衝突 — 正在重試。"
 
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
 msgstr "無法檢查哪些工具已連接。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
 msgstr "無法清除金鑰——請再試一次。"
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Couldn't connect OpenKnowledge tools to Claude Code. Please try again."
-msgstr "無法把 OpenKnowledge 工具連接到 Claude Code。請再試一次。"
 
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
@@ -6530,7 +6527,7 @@ msgstr "產生的文件"
 msgid "Get {displayName}"
 msgstr "取得 {displayName}"
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Get Claude Code"
 msgstr "取得 Claude Code"
 
@@ -11608,9 +11605,14 @@ msgstr "資源"
 msgid "Restart server"
 msgstr "重新啟動伺服器"
 
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TerminalExitNotice.tsx
 msgid "Restart terminal"
 msgstr "重新啟動終端機"
+
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
+msgstr "請重新啟動此終端工作階段，以使用新安裝的 OpenKnowledge 工具。"
 
 #: src/lib/install-server-drift-listener.ts
 msgid "Restart with this app's version"
@@ -11711,6 +11713,7 @@ msgstr "擷取中…"
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr "重試"

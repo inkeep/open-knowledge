@@ -25,7 +25,7 @@ function reportSucceeded(report: ApplyReport): boolean {
   );
 }
 
-export async function applyAgentConnectionIntents(
+async function requestAgentConnectionIntents(
   intents: readonly ApplyIntent[],
 ): Promise<ApplyAgentConnectionsResult> {
   const bridge = globalThis.window?.okDesktop;
@@ -89,4 +89,32 @@ export async function applyAgentConnectionIntents(
     report,
     snapshot: parsed.data.snapshot as unknown as HostSnapshot,
   };
+}
+
+const connectionChangeListeners = new Set<(result: ApplyAgentConnectionsResult) => void>();
+
+export function subscribeAgentConnectionChanges(
+  listener: (result: ApplyAgentConnectionsResult) => void,
+): () => void {
+  connectionChangeListeners.add(listener);
+  return () => {
+    connectionChangeListeners.delete(listener);
+  };
+}
+
+export async function applyAgentConnectionIntents(
+  intents: readonly ApplyIntent[],
+): Promise<ApplyAgentConnectionsResult> {
+  const result = await requestAgentConnectionIntents(intents);
+  if (intents.length > 0) {
+    const listeners = [...connectionChangeListeners];
+    for (const listener of listeners) {
+      try {
+        listener(result);
+      } catch (err) {
+        console.warn('[agent-connections] change listener failed:', err);
+      }
+    }
+  }
+  return result;
 }

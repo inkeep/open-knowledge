@@ -244,7 +244,10 @@ beforeEach(() => {
   >;
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 async function expandInApp(): Promise<void> {
   fireEvent.click(await screen.findByTestId('configure-agents-in-app-show-more'));

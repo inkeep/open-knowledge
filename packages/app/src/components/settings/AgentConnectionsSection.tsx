@@ -62,6 +62,7 @@ import {
   connectionLabel,
   connectionsFromSnapshot,
   hasConfigurableCell,
+  hasPairedConnectionRows,
   installedCount,
   intentsForParts,
   partsForConnection,
@@ -371,6 +372,7 @@ export function AgentConnectionsSection({
   const [configureId, setConfigureId] = useState<AgentId | null>(null);
   const [removeId, setRemoveId] = useState<AgentId | null>(null);
   const switchRevertKey = useRef<string | null>(null);
+  const requestVersion = useRef(0);
 
   const catalog = useQuery({
     queryKey: ['acp-catalog'],
@@ -388,15 +390,16 @@ export function AgentConnectionsSection({
   // biome-ignore lint/correctness/useExhaustiveDependencies: the retry counter re-fires the same read
   useEffect(() => {
     let active = true;
+    const version = ++requestVersion.current;
     void applyConnections([])
       .then((result) => {
-        if (!active) return;
+        if (!active || requestVersion.current !== version) return;
         if (result.snapshot !== null) setSnapshot(result.snapshot);
         setReadFailed(!readProducedFacts(result.snapshot));
         setReadOnly(result.unavailable === true);
       })
       .catch(() => {
-        if (active) setReadFailed(true);
+        if (active && requestVersion.current === version) setReadFailed(true);
       });
     return () => {
       active = false;
@@ -415,6 +418,7 @@ export function AgentConnectionsSection({
     intents: readonly ApplyIntent[],
   ): Promise<ApplyAgentConnectionsResult> {
     const result = await applyConnections(intents);
+    requestVersion.current += 1;
     if (result.snapshot !== null) setSnapshot(result.snapshot);
     setReadFailed(!readProducedFacts(result.snapshot));
     if (result.unavailable === true) setReadOnly(true);
@@ -435,10 +439,6 @@ export function AgentConnectionsSection({
       (id): id is AgentId => id !== undefined,
     ),
   );
-  const pairedAgentIds = new Set<AgentId>(
-    [...terminalRowAgentIds].filter((id) => externalRowAgentIds.has(id)),
-  );
-
   function connectionSlots(
     agentId: AgentId | undefined,
     rowLabel: string,
@@ -477,7 +477,7 @@ export function AgentConnectionsSection({
     const projectMcp = connection.cells.projectMcp;
     const ownsFollowup =
       projectMcp === undefined ||
-      !pairedAgentIds.has(agentId) ||
+      !hasPairedConnectionRows(agentId) ||
       followupRowFamily(projectMcp.consentClass) === mode;
     const followup = ownsFollowup
       ? followupHintText(deriveRowFollowup({ agentId, mode, snapshot, detected, projectMcp }))
@@ -918,7 +918,7 @@ export function AgentConnectionsSection({
       <ConfigureConnectionDialog
         key={`configure:${configureId ?? 'closed'}`}
         connection={configureConnection}
-        paired={configureId !== null && pairedAgentIds.has(configureId)}
+        paired={configureId !== null && hasPairedConnectionRows(configureId)}
         open={configureConnection !== null}
         onOpenChange={(open) => {
           if (open) return;
@@ -946,7 +946,7 @@ export function AgentConnectionsSection({
       <RemoveConnectionDialog
         key={`remove:${removeId ?? 'closed'}`}
         connection={removeConnection}
-        paired={removeId !== null && pairedAgentIds.has(removeId)}
+        paired={removeId !== null && hasPairedConnectionRows(removeId)}
         open={removeConnection !== null}
         onOpenChange={(open) => {
           if (!open) setRemoveId(null);

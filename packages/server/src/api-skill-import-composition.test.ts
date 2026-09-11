@@ -353,6 +353,7 @@ test('disconnect during an incomplete multipart request retains staging while th
       );
       const staged = () => readdirSync(home).filter((name) => name.startsWith('ok-skill-upload-'));
       await vi.waitFor(() => expect(staged()).toHaveLength(1));
+      const retainedStaging = staged();
       socket.destroy();
       const result = await rawRequest(port, '/api/skill-upload', {
         method: 'POST',
@@ -360,7 +361,7 @@ test('disconnect during an incomplete multipart request retains staging while th
       });
       expect(result.status).toBe(400);
       expect(existsSync(join(contentDir, '.claude/skills/aborted-contract'))).toBe(false);
-      expect(staged()).toHaveLength(1);
+      await vi.waitFor(() => expect(staged()).toEqual(retainedStaging));
       expect(child.exitCode).toBeNull();
     } finally {
       socket.destroy();

@@ -787,6 +787,10 @@ msgstr ""
 msgid "{displayName} Desktop"
 msgstr ""
 
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "{displayName} is installed, but OpenKnowledge tools aren't connected to it yet."
+msgstr ""
+
 #. placeholder {0}: formatFileSize(size)
 #. placeholder {1}: formatFileSize(limit)
 #: src/components/LargeFileEditorState.tsx
@@ -2876,12 +2880,8 @@ msgstr ""
 msgid "Claude CLI"
 msgstr ""
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Claude Code (claude) isn't installed or on your PATH."
-msgstr ""
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Claude Code is installed, but OpenKnowledge tools aren't connected to it yet."
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx
@@ -3418,7 +3418,7 @@ msgstr ""
 msgid "Connect to GitHub Enterprise Server"
 msgstr ""
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Connect tools"
 msgstr ""
 
@@ -3868,15 +3868,12 @@ msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr ""
 
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
-msgstr ""
-
-#: src/components/ClaudeReadinessBanner.tsx
-msgid "Couldn't connect OpenKnowledge tools to Claude Code. Please try again."
 msgstr ""
 
 #: src/lib/acp/launch-agent-thread.ts
@@ -6526,7 +6523,7 @@ msgstr ""
 msgid "Get {displayName}"
 msgstr ""
 
-#: src/components/ClaudeReadinessBanner.tsx
+#: src/components/TerminalCliMissingBanner.tsx
 msgid "Get Claude Code"
 msgstr ""
 
@@ -11604,8 +11601,13 @@ msgstr ""
 msgid "Restart server"
 msgstr ""
 
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TerminalExitNotice.tsx
 msgid "Restart terminal"
+msgstr ""
+
+#: src/components/TerminalAgentConnectionBanner.tsx
+msgid "Restart this terminal session to use the newly installed OpenKnowledge tools."
 msgstr ""
 
 #: src/lib/install-server-drift-listener.ts
@@ -11707,6 +11709,7 @@ msgstr ""
 #: src/components/handoff/useHandoffDispatch.ts
 #: src/components/PublishToGitHubDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
+#: src/components/TerminalAgentConnectionBanner.tsx
 #: src/components/TrashFailureModal.tsx
 msgid "Retry"
 msgstr ""

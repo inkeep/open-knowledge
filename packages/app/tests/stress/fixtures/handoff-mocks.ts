@@ -482,7 +482,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           onData: () => () => {},
           onExit: () => () => {},
           onNotice: () => () => {},
-          claudePreflight: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),
+          claudePreflight: async () => ({ claude: 'present' as const }),
           cliPreflight: async () => ({ onPath: 'present' as const }),
           cliInstalledMap: async () => ({
             claude: true,
@@ -495,7 +495,6 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             openclaw: true,
             hermes: true,
           }),
-          rewireClaudeMcp: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),
         },
         menu: {
           dispatch: async () => undefined,

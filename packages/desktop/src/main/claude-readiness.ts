@@ -6,7 +6,6 @@ import { windowsWherePathArgs } from '../shared/windows-env.ts';
 import { getLogger } from './desktop-logger.ts';
 
 export type ClaudeOnPath = ClaudeReadiness['claude'];
-export type McpWiringStatus = ClaudeReadiness['mcp'];
 
 export function cliProbeArgs(
   bin: string,
@@ -131,15 +130,10 @@ export function interpretClaudeProbe(code: number | null): ClaudeOnPath {
   return code === 0 ? 'present' : 'not-found';
 }
 
-export function mcpStatusFromClassification(kind: McpEntryKind): McpWiringStatus {
-  return kind === 'present' ? 'wired' : 'needs-rewire';
-}
-
 export interface ResolveClaudeReadinessDeps {
   probeClaude(): Promise<number | null>;
   classifyMcpEntry(): McpEntryKind;
   isProjectMcpPreApprovable(): boolean;
-  isProjectMcpWired?(): boolean;
   hasProjectMcpEntry?(): boolean;
   isGlobalMcpOwnManaged?(): boolean;
 }
@@ -204,22 +198,8 @@ export async function resolveClaudeReadiness(
     );
     globalEntryIsOwn = false;
   }
-  const globalWired = mcpStatusFromClassification(kind) === 'wired';
-  let projectWired = mcpPreApprovable;
-  if (deps.isProjectMcpWired !== undefined) {
-    try {
-      projectWired = deps.isProjectMcpWired();
-    } catch (err) {
-      getLogger('claude-readiness').warn(
-        { err },
-        'isProjectMcpWired threw; falling back to the exact project answer',
-      );
-    }
-  }
   return {
     claude: interpretClaudeProbe(code),
-    mcp: globalWired || projectWired ? 'wired' : 'needs-rewire',
-    mcpScopes: { global: globalWired, project: projectWired },
     mcpPreApprovable,
     okToolsAutoApprovable: resolveOkToolsAutoApprovable({
       projectEntryPresent,

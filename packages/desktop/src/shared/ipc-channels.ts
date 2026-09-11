@@ -707,7 +707,7 @@ export interface RequestChannels {
     result: undefined;
   };
   'ok:terminal:claude-assist': {
-    args: [req: { action: 'preflight' | 'rewire' }];
+    args: [req: { action: 'preflight' }];
     result: ClaudeReadiness;
   };
   'ok:terminal:cli-preflight': {

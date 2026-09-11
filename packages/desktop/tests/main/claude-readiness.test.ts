@@ -5,7 +5,6 @@ import {
   cliProbeArgs,
   interpretClaudeProbe,
   type McpEntryKind,
-  mcpStatusFromClassification,
   type ProbeChild,
   type ProbeTimers,
   probePlatformCliOnPath,
@@ -88,17 +87,6 @@ describe('interpretClaudeProbe', () => {
   });
   test('null (probe could not run) → unknown, NOT not-found', () => {
     expect(interpretClaudeProbe(null)).toBe('unknown');
-  });
-});
-
-describe('mcpStatusFromClassification', () => {
-  test('present → wired', () => {
-    expect(mcpStatusFromClassification('present')).toBe('wired');
-  });
-  test('absent / no-entry / decline → needs-rewire', () => {
-    expect(mcpStatusFromClassification('absent')).toBe('needs-rewire');
-    expect(mcpStatusFromClassification('no-entry')).toBe('needs-rewire');
-    expect(mcpStatusFromClassification('decline')).toBe('needs-rewire');
   });
 });
 
@@ -424,14 +412,12 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'present',
-      mcp: 'wired',
-      mcpScopes: { global: true, project: true },
       mcpPreApprovable: true,
       okToolsAutoApprovable: true,
     });
   });
 
-  test('claude not-found + mcp missing → needs-rewire, not pre-approvable', async () => {
+  test('claude not-found + mcp missing → not pre-approvable', async () => {
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(1),
       classifyMcpEntry: () => 'no-entry',
@@ -439,8 +425,6 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'not-found',
-      mcp: 'needs-rewire',
-      mcpScopes: { global: false, project: false },
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });
@@ -454,8 +438,6 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'present',
-      mcp: 'wired',
-      mcpScopes: { global: true, project: false },
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });
@@ -469,8 +451,6 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'unknown',
-      mcp: 'wired',
-      mcpScopes: { global: true, project: true },
       mcpPreApprovable: true,
       okToolsAutoApprovable: true,
     });
@@ -485,7 +465,7 @@ describe('resolveClaudeReadiness', () => {
     expect(r.claude).toBe('unknown');
   });
 
-  test('a throwing classify degrades to needs-rewire, never crashes', async () => {
+  test('a throwing classification does not grant tool auto-approval', async () => {
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(0),
       classifyMcpEntry: () => {
@@ -495,8 +475,6 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'present',
-      mcp: 'needs-rewire',
-      mcpScopes: { global: false, project: false },
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });
@@ -512,71 +490,9 @@ describe('resolveClaudeReadiness', () => {
     });
     expect(r).toEqual({
       claude: 'present',
-      mcp: 'wired',
-      mcpScopes: { global: true, project: false },
       mcpPreApprovable: false,
       okToolsAutoApprovable: false,
     });
-  });
-});
-
-describe('MCP wiring is an OR over both config scopes', () => {
-  function readiness(globalPresent: boolean, projectOwn: boolean) {
-    return resolveClaudeReadiness({
-      probeClaude: () => Promise.resolve(0),
-      classifyMcpEntry: () => (globalPresent ? 'present' : 'no-entry'),
-      isProjectMcpPreApprovable: () => projectOwn,
-    });
-  }
-
-  test('global entry only → wired, attributed to the global scope', async () => {
-    const r = await readiness(true, false);
-    expect(r.mcp).toBe('wired');
-    expect(r.mcpScopes).toEqual({ global: true, project: false });
-  });
-
-  test('project entry only → wired, attributed to the project scope', async () => {
-    const r = await readiness(false, true);
-    expect(r.mcp).toBe('wired');
-    expect(r.mcpScopes).toEqual({ global: false, project: true });
-  });
-
-  test('both scopes → wired, both attributed', async () => {
-    const r = await readiness(true, true);
-    expect(r.mcp).toBe('wired');
-    expect(r.mcpScopes).toEqual({ global: true, project: true });
-  });
-
-  test('neither scope → needs-rewire, so the nudge still reaches the user who needs it', async () => {
-    const r = await readiness(false, false);
-    expect(r.mcp).toBe('needs-rewire');
-    expect(r.mcpScopes).toEqual({ global: false, project: false });
-  });
-
-  test('a project read that throws degrades that scope to unsatisfied without losing the global one', async () => {
-    const r = await resolveClaudeReadiness({
-      probeClaude: () => Promise.resolve(0),
-      classifyMcpEntry: () => 'present',
-      isProjectMcpPreApprovable: () => {
-        throw new Error('project .mcp.json read blew up');
-      },
-    });
-    expect(r.mcp).toBe('wired');
-    expect(r.mcpScopes).toEqual({ global: true, project: false });
-  });
-
-  test('both reads throwing degrade to needs-rewire rather than crashing preflight', async () => {
-    const r = await resolveClaudeReadiness({
-      probeClaude: () => Promise.resolve(0),
-      classifyMcpEntry: () => {
-        throw new Error('claude.json read blew up');
-      },
-      isProjectMcpPreApprovable: () => {
-        throw new Error('project .mcp.json read blew up');
-      },
-    });
-    expect(r.mcp).toBe('needs-rewire');
-    expect(r.mcpScopes).toEqual({ global: false, project: false });
   });
 });
 
@@ -602,7 +518,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       globalEntryIsOwn: true,
     });
     expect(r.okToolsAutoApprovable).toBe(true);
-    expect(r.mcpPreApprovable).toBe(false);
   });
 
   test('a project-only OK entry earns both, exactly as before', async () => {
@@ -612,7 +527,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       globalEntryIsOwn: false,
     });
     expect(r.okToolsAutoApprovable).toBe(true);
-    expect(r.mcpPreApprovable).toBe(true);
   });
 
   test('both scopes OK-owned earns both', async () => {
@@ -622,7 +536,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       globalEntryIsOwn: true,
     });
     expect(r.okToolsAutoApprovable).toBe(true);
-    expect(r.mcpPreApprovable).toBe(true);
   });
 
   test('neither scope earns auto-approve', async () => {
@@ -632,7 +545,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       globalEntryIsOwn: false,
     });
     expect(r.okToolsAutoApprovable).toBe(false);
-    expect(r.mcpPreApprovable).toBe(false);
   });
 
   test('a FOREIGN project entry named open-knowledge disables auto-approve even with a legit global entry', async () => {
@@ -642,7 +554,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       globalEntryIsOwn: true,
     });
     expect(r.okToolsAutoApprovable).toBe(false);
-    expect(r.mcpPreApprovable).toBe(false);
   });
 
   test('a global entry that is present but NOT OK-owned earns no auto-approve', async () => {
@@ -653,7 +564,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       hasProjectMcpEntry: () => false,
       isGlobalMcpOwnManaged: () => false,
     });
-    expect(r.mcp).toBe('wired');
     expect(r.okToolsAutoApprovable).toBe(false);
   });
 
@@ -694,8 +604,6 @@ describe('OK-tool auto-approve is gated separately from project server trust', (
       isGlobalMcpOwnManaged: () => false,
     });
     expect(r.okToolsAutoApprovable).toBe(false);
-    expect(r.mcp).toBe('wired');
-    expect(r.mcpScopes.global).toBe(false);
   });
 
   test('omitting both scope reads falls back to the stricter project-only gate', async () => {

@@ -1,6 +1,8 @@
 import {
   type AgentId,
   type ApplyIntent,
+  agentIdForHandoffTarget,
+  agentIdForTerminalCli,
   type BlockedReason,
   buildConnectionsView,
   CONNECTION_ROW_AGENT_IDS,
@@ -13,6 +15,8 @@ import {
   requiresExplicitConsent,
   type SatisfierId,
   type SurfaceState,
+  TERMINAL_CLI_IDS,
+  VISIBLE_HANDOFF_TARGETS,
 } from '@inkeep/open-knowledge-core';
 import { plural } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -169,15 +173,28 @@ export function ConnectionAgentIcon({
   return <AgentBrandIcon host={agentId} aria-hidden className={className} />;
 }
 
-export function connectionsFromSnapshot(snapshot: HostSnapshot): AgentConnection[] {
+export function connectionsFromSnapshot(
+  snapshot: HostSnapshot,
+  { forceDetected = [] }: { forceDetected?: readonly AgentId[] } = {},
+): AgentConnection[] {
   return buildConnectionsView({
     agentIds: CONNECTION_ROW_AGENT_IDS,
     probes: snapshot.probes,
-    detection: snapshot.detection,
+    detection: {
+      ...snapshot.detection,
+      detected: [...snapshot.detection.detected, ...forceDetected],
+    },
   }).rows.flatMap((row) => {
     const connection = connectionFromRow(row);
     return connection === null ? [] : [connection];
   });
+}
+
+export function hasPairedConnectionRows(agentId: AgentId): boolean {
+  return (
+    TERMINAL_CLI_IDS.some((cli) => agentIdForTerminalCli(cli) === agentId) &&
+    VISIBLE_HANDOFF_TARGETS.some((target) => agentIdForHandoffTarget(target.id) === agentId)
+  );
 }
 
 export function partsForConnection(connection: AgentConnection): ConnectionParts {
@@ -721,6 +738,7 @@ export function ConfigureConnectionDialog({
   onOpenChange,
   onSave,
   paired = false,
+  onCloseAutoFocus,
 }: {
   connection: AgentConnection | null;
   open: boolean;
@@ -730,6 +748,7 @@ export function ConfigureConnectionDialog({
     alsoRemove?: readonly SatisfierId[],
   ) => Promise<ApplyAgentConnectionsResult>;
   paired?: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { i18n, t } = useLingui();
   const [draft, setDraft] = useState<ConnectionParts>(() =>
@@ -789,7 +808,11 @@ export function ConfigureConnectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !saving && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-lg"
+        showCloseButton={false}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader className="gap-2">
           <DialogTitle className="flex items-center gap-2 text-lg">
             {connection ? (

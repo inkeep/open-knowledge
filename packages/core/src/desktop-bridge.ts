@@ -965,14 +965,8 @@ export type OkPtyNotice =
 
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
-  readonly mcp: 'wired' | 'needs-rewire';
-  readonly mcpScopes?: {
-    readonly global: boolean;
-    readonly project: boolean;
-  };
   readonly mcpPreApprovable?: boolean;
   readonly okToolsAutoApprovable?: boolean;
-  readonly rewireError?: string;
 }
 
 export interface CliReadiness {
@@ -1328,7 +1322,6 @@ export interface OkDesktopBridge {
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
     cliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>>;
-    rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
   accessibility?: {

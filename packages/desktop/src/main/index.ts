@@ -3561,7 +3561,6 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
       }),
     classifyMcpEntry: () => scopes.globalKind,
     isProjectMcpPreApprovable: () => scopes.projectOwn,
-    isProjectMcpWired: () => scopes.projectWired,
     hasProjectMcpEntry: () => scopes.projectEntryPresent,
     isGlobalMcpOwnManaged: () => scopes.globalOwn,
   });
@@ -3833,29 +3832,13 @@ function registerIpcHandlers() {
       terminalManager.setSessionOrder({ windowId: win.id, orderedPtyIds: req.orderedPtyIds });
     return undefined;
   });
-  handle('ok:terminal:claude-assist', async (event, req) => {
-    let rewireError: string | undefined;
-    if (req.action === 'rewire' && app.isPackaged && supportedPackagedInstall()) {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      mcpWiringHandle?.destroy();
-      mcpWiringHandle = null;
-      try {
-        mcpWiringHandle = armMcpWiring({
-          forceShow: true,
-          immediateDispatchTarget: win?.webContents,
-        });
-      } catch (err) {
-        rewireError = formatUnknownError(err);
-        getLogger('terminal').warn({ err: rewireError }, 'claude mcp rewire failed');
-      }
-    }
+  handle('ok:terminal:claude-assist', async (event) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const projectRoot =
       callerWin && wm
         ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
         : undefined;
-    const readiness = await resolveTerminalClaudeReadiness(projectRoot);
-    return rewireError === undefined ? readiness : { ...readiness, rewireError };
+    return resolveTerminalClaudeReadiness(projectRoot);
   });
 
   handle('ok:terminal:cli-preflight', async (_event, req): Promise<CliReadiness> => {

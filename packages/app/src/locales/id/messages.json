@@ -1499,6 +1499,10 @@
     "GuaJb-": ["Buka draf surel"],
     "GubkSu": ["Pakai paket awal"],
     "GuqOb1": ["Gagal memuat judul"],
+    "GwYdEF": [
+      ["displayName"],
+      " sudah terpasang, tetapi alat OpenKnowledge belum terhubung dengannya."
+    ],
     "GwpcXB": ["Menyusun…"],
     "Gx0VS1": ["mis. drafts/ atau *.draft.md"],
     "GzPQ2f": ["Terus ikuti kabar terbaru"],
@@ -3086,7 +3090,6 @@
       "Basis pengetahuan yang mengikuti Open Knowledge Format dari Google, cara bersama untuk menata apa yang Anda tahu. Pilih ini jika Anda ingin catatan Anda bekerja baik dengan alat lain yang memahami format tersebut."
     ],
     "_azghp": ["Perubahan sebelumnya"],
-    "_bth6g": ["Claude Code sudah terpasang, tetapi alat OpenKnowledge belum terhubung dengannya."],
     "_ci9Bj": ["Server mengembalikan respons folder yang tidak lengkap."],
     "_eguJc": ["Mengunggah"],
     "_fQGOp": ["Spasi tidak diperbolehkan di jalur"],
@@ -3335,7 +3338,6 @@
     "ciozf1": ["Keterampilan sudah ada dalam proyek"],
     "cjtjry": ["Menyusuri riwayat navigasi OpenKnowledge ke belakang."],
     "cklVjM": ["Lini masa"],
-    "cn1sLi": ["Alat OpenKnowledge tidak bisa dihubungkan ke Claude Code. Silakan coba lagi."],
     "cnGeoo": ["Hapus"],
     "cqQyPB": ["Nama folder"],
     "crqzW5": ["Alat AI"],
@@ -4658,6 +4660,9 @@
     "qkqG0b": ["Ambil versi remote"],
     "qlAIQ1": ["Remote"],
     "qo4zCg": ["Jalur tidak boleh memuat garis miring terbalik"],
+    "qoN0PD": [
+      "Mulai ulang sesi terminal ini untuk menggunakan alat OpenKnowledge yang baru diinstal."
+    ],
     "qpQwGC": ["Jelaskan apa yang sedang Anda kerjakan dan agennya akan menyiapkannya untuk Anda."],
     "qr2gAH": ["Pilih apa yang disiapkan OpenKnowledge untuk ", ["0"], "."],
     "qribBG": ["skema ", ["deleteTarget"]],

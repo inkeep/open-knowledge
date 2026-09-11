@@ -1,5 +1,8 @@
+import { AGENT_REGISTRY, type HostSnapshot, TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import type { ApplyAgentConnectionsResult } from '@/lib/agent-connections';
 import type {
   ClaudeReadiness,
   OkDesktopBridge,
@@ -9,6 +12,7 @@ import type {
   OkPtyExit,
   OkPtyNotice,
 } from '@/lib/desktop-bridge-types';
+import { terminalAgentSnapshot } from './terminal-agent-connections.test-helper';
 import {
   applyModelledScroll,
   createScrollModelState,
@@ -228,7 +232,7 @@ vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: mockResolvedTheme }),
 }));
 
-const WIRED: ClaudeReadiness = { claude: 'present', mcp: 'wired' };
+const WIRED: ClaudeReadiness = { claude: 'present' };
 
 function makeBridge(
   createResult: OkPtyCreateResult,
@@ -260,7 +264,6 @@ function makeBridge(
     async (_req: { projectPath: string; kind: 'doc' | 'folder'; path: string }) =>
       'exists' as const,
   );
-  const rewireClaudeMcp = vi.fn(async () => preflight);
   const adoptMock = vi.fn(adopt);
   const terminal = {
     create: vi.fn(async () => createResult),
@@ -284,7 +287,6 @@ function makeBridge(
     }),
     claudePreflight: vi.fn(async () => preflight),
     cliPreflight: vi.fn(async () => ({ onPath: 'present' as const })),
-    rewireClaudeMcp,
   };
   return {
     bridge: {
@@ -301,7 +303,6 @@ function makeBridge(
     revealAsset,
     revealExternal,
     checkTargetExists,
-    rewireClaudeMcp,
     unsubData,
     unsubExit,
     unsubNotice,
@@ -317,11 +318,26 @@ function makeBridge(
   };
 }
 
+let connectionSnapshot: HostSnapshot | null = null;
+const applyConnections = vi.fn(
+  async (): Promise<ApplyAgentConnectionsResult> => ({
+    ok: true,
+    report: { actions: [], conflicts: [], withheld: [] },
+    snapshot: connectionSnapshot,
+  }),
+);
+vi.doMock('@/lib/agent-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/agent-connections')>()),
+  applyAgentConnectionIntents: applyConnections,
+}));
+
 const { TerminalPanel } = await import('./TerminalPanel');
 const { XTERM_DARK_THEME, XTERM_LIGHT_THEME } = await import('./terminal-theme');
 
 describe('TerminalPanel', () => {
   beforeEach(() => {
+    connectionSnapshot = terminalAgentSnapshot(TERMINAL_CLI_IDS);
+    applyConnections.mockClear();
     lastTerm = null;
     lastFit = null;
     roCallback = null;
@@ -760,10 +776,8 @@ describe('TerminalPanel', () => {
   });
 
   test('the starting notice never covers or click-blocks the readiness banner (PRD-8313)', async () => {
-    const { bridge, pushData } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'present', mcp: 'needs-rewire' },
-    );
+    connectionSnapshot = terminalAgentSnapshot();
+    const { bridge, pushData } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'present' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     const banner = await screen.findByTestId('terminal-readiness-banner');
@@ -2053,7 +2067,7 @@ describe('TerminalPanel', () => {
   test('a claude launch probes readiness and shows a help affordance when claude is not on PATH', async () => {
     const { bridge, terminal, openExternal } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
+      { claude: 'not-found' },
     );
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
@@ -2065,20 +2079,92 @@ describe('TerminalPanel', () => {
     expect(openExternal.mock.calls[0]?.[0]).toContain('claude-code');
   });
 
-  test('a claude launch shows a re-wire affordance when claude is present but OK tools are not wired', async () => {
-    const { bridge, rewireClaudeMcp } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'present', mcp: 'needs-rewire' },
-    );
-    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
+  test.each(TERMINAL_CLI_IDS)(
+    'a %s launch checks connection readiness and opens its setup dialog',
+    async (cli) => {
+      connectionSnapshot = terminalAgentSnapshot();
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(
+        <TooltipProvider>
+          <TerminalPanel bridge={bridge} launch={{ prompt: null, cli, nonce: 1 }} />
+        </TooltipProvider>,
+      );
 
-    expect(await screen.findByText(/aren't connected to it yet/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
-    expect(rewireClaudeMcp).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull());
-  });
+      expect(await screen.findByText(/aren't connected to it yet/)).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
+      expect(screen.getByRole('dialog').textContent).toContain(
+        'Choose what OpenKnowledge sets up for',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByRole('button', { name: 'Connect tools' })).toBeTruthy();
+    },
+  );
+
+  test.each(TERMINAL_CLI_IDS)(
+    'restarts a running %s session after setup without disturbing a sibling',
+    async (cli) => {
+      connectionSnapshot = terminalAgentSnapshot();
+      const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      let created = 0;
+      terminal.create.mockImplementation(async () => ({ ok: true, ptyId: `pty-${++created}` }));
+      render(
+        <TooltipProvider>
+          <TerminalPanel bridge={bridge} launch={{ prompt: null, cli, nonce: 1 }} />
+        </TooltipProvider>,
+      );
+      await screen.findByRole('button', { name: 'Connect tools' });
+      const originalTerm = lastTerm;
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(2));
+      const siblingTerm = lastTerm;
+
+      const mcp = AGENT_REGISTRY[cli].satisfiers.find((satisfier) => satisfier.piece === 'mcp');
+      if (mcp === undefined) throw new Error(`Missing MCP satisfier for ${cli}`);
+      connectionSnapshot = terminalAgentSnapshot([cli]);
+      applyConnections.mockResolvedValueOnce({
+        ok: true,
+        snapshot: connectionSnapshot,
+        report: {
+          actions: [
+            {
+              satisfierId: mcp.id,
+              agentId: cli,
+              piece: 'mcp',
+              scope: mcp.scope,
+              kind: mcp.kind,
+              desired: 'present',
+              action: 'written',
+            },
+          ],
+          conflicts: [],
+          withheld: [],
+        },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(terminal.kill).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Restart terminal' }));
+      await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(3));
+      expect(terminal.kill).toHaveBeenCalledExactlyOnceWith('pty-1');
+      expect(originalTerm?.dispose).toHaveBeenCalledTimes(1);
+      expect(siblingTerm?.dispose).not.toHaveBeenCalled();
+      expect(terminal.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ launchCli: cli, launchCommand: expect.any(String) }),
+      );
+      expect(
+        cli === 'claude' ? terminal.claudePreflight : terminal.cliPreflight,
+      ).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(applyConnections).toHaveBeenCalledTimes(3));
+      expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+      expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
+      expect(screen.queryByTestId('terminal-restart-banner')).toBeNull();
+    },
+  );
 
   test('a claude launch shows no readiness banner when claude is present and OK tools are wired', async () => {
+    connectionSnapshot = terminalAgentSnapshot(['claude']);
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' }, WIRED);
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
@@ -2087,13 +2173,11 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
   });
 
-  test('the readiness banner is dismissible', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+  test('the missing-CLI banner is dismissible', async () => {
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     await screen.findByText(/isn't installed or on your PATH/);
@@ -2125,7 +2209,6 @@ describe('TerminalPanel', () => {
       onNotice: vi.fn(() => vi.fn(() => {})),
       claudePreflight: vi.fn(async () => WIRED),
       cliPreflight: vi.fn(async () => ({ onPath: 'present' as const })),
-      rewireClaudeMcp: vi.fn(async () => WIRED),
     };
     const bridge = {
       terminal,
@@ -2307,11 +2390,8 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
-  test('hides the Claude readiness banner once the shell has exited', async () => {
-    const { bridge, pushExit } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+  test('hides the missing-CLI banner once the shell has exited', async () => {
+    const { bridge, pushExit } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
     await screen.findByText(/isn't installed or on your PATH/);
@@ -2322,10 +2402,7 @@ describe('TerminalPanel', () => {
   });
 
   test('a plain tab (no launch intent) shows no claude-readiness banner even when claude is not on PATH', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} />);
 
     await waitFor(() =>
@@ -2336,14 +2413,12 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
     expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
   });
 
   test('a plain tab (no launch intent) shows no MCP-rewire nudge either', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'present', mcp: 'needs-rewire' },
-    );
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'present' });
     render(<TerminalPanel bridge={bridge} />);
 
     await waitFor(() =>
@@ -2354,14 +2429,12 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
     expect(screen.queryByText(/aren't connected to it yet/)).toBeNull();
   });
 
   test('a "run this command" tab shows no claude-readiness banner (no CLI is involved)', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-1' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, { claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} commandId="install-slidev" />);
 
     await waitFor(() =>
@@ -2372,14 +2445,12 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
     expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
   });
 
   test('an adopted tab (reload survivor) shows no claude-readiness banner', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-ignored' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-ignored' }, { claude: 'not-found' });
     render(<TerminalPanel bridge={bridge} adoptPtyId="surv-1" />);
 
     await waitFor(() =>
@@ -2390,14 +2461,12 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
     expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
   });
 
   test('an adopted tab that still carries a stale claude launch intent shows no readiness banner', async () => {
-    const { bridge } = makeBridge(
-      { ok: true, ptyId: 'pty-ignored' },
-      { claude: 'not-found', mcp: 'needs-rewire' },
-    );
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-ignored' }, { claude: 'not-found' });
     render(
       <TerminalPanel
         bridge={bridge}
@@ -2414,6 +2483,7 @@ describe('TerminalPanel', () => {
       await Promise.resolve();
     });
     expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    expect(screen.queryByTestId('terminal-cli-missing-banner')).toBeNull();
     expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull();
   });
 
@@ -2475,7 +2545,6 @@ describe('TerminalPanel', () => {
       }),
       onNotice: vi.fn(() => vi.fn(() => {})),
       claudePreflight: vi.fn(async () => WIRED),
-      rewireClaudeMcp: vi.fn(async () => WIRED),
     };
     const bridge = {
       terminal,
