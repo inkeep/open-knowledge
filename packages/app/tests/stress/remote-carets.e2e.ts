@@ -490,7 +490,9 @@ test('typing after a trailing space stays in its paragraph when a peer edits els
     await pageA.keyboard.type('x');
     await expect.poll(async () => sourceText(pageA), { timeout: 10_000 }).toContain('x');
     const [first, second] = (await sourceText(pageA)).split('\n\n');
-    expect(first, 'the typing left its paragraph').toMatch(/^Alpha paragraph zero\. ?x$/);
+    expect(first, 'the typing left its paragraph, or the space before it was dropped').toBe(
+      'Alpha paragraph zero. x',
+    );
     expect(second, 'the typing landed in the next paragraph').toBe('Bravo paragraph one.');
   } finally {
     await ctxA.close();

@@ -778,9 +778,7 @@ describe('projection binding — a trailing space the source does not spell yet'
       expect(doc.resolve(selection.from).index(0)).toBe(0);
 
       rig.editor.view.dispatch(rig.editor.state.tr.insertText('x'));
-      expect(rig.ytext.toString()).toMatch(
-        /^Alpha paragraph zero\. ?x\n\nBravo paragraph one\.Q\n$/,
-      );
+      expect(rig.ytext.toString()).toBe('Alpha paragraph zero. x\n\nBravo paragraph one.Q\n');
     } finally {
       rig.destroy();
     }
@@ -905,6 +903,69 @@ describe('projection binding — unwritten trailing spaces collapse when the car
       caretAt(rig, endOf(rig, 1));
       expect(blockText(rig, 0)).toBe('code  ');
       expect(rig.ytext.toString()).toContain('code  ');
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  function peerAppendsToLastBlock(rig: Rig): void {
+    rig.ydoc.transact(() => rig.ytext.insert(rig.ytext.length - 1, 'Q'), 'peer');
+  }
+
+  it('keeps the spaces the caret sits after when a peer edits elsewhere', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, '  ');
+      peerAppendsToLastBlock(rig);
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.  ');
+      const { $head } = rig.editor.state.selection;
+      expect([$head.index(0), $head.parentOffset]).toEqual([0, 'Alpha paragraph zero.  '.length]);
+      expect(rig.ytext.toString()).toBe(SEED.replace('two.', 'two.Q'));
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('writes the kept space with the next word', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, ' ');
+      peerAppendsToLastBlock(rig);
+      rig.editor.view.dispatch(rig.editor.state.tr.insertText('x'));
+      expect(rig.ytext.toString()).toBe(SEED.replace('zero.', 'zero. x').replace('two.', 'two.Q'));
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('does not put the spaces back after the user undoes what they typed', () => {
+    const rig = createRig(SEED);
+    try {
+      const undoManager = sharedUndoManagerFor(rig.ytext);
+      typeAtEnd(rig, 0, 'x');
+      rig.editor.view.dispatch(rig.editor.state.tr.insertText(' '));
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.x ');
+      undoManager.undo();
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.');
+      expect(rig.ytext.toString()).toBe(SEED);
+      undoManager.undo();
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.');
+      expect(rig.ytext.toString()).toBe(SEED);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('writes nothing of its own and pushes no undo step when it keeps them', () => {
+    const rig = createRig(SEED);
+    try {
+      const undoManager = sharedUndoManagerFor(rig.ytext);
+      typeAtEnd(rig, 0, '  ');
+      const origins: unknown[] = [];
+      rig.ytext.observe((_event, transaction) => origins.push(transaction.origin));
+      peerAppendsToLastBlock(rig);
+      expect(origins).toEqual(['peer']);
+      expect(undoManager.undoStack.length).toBe(0);
     } finally {
       rig.destroy();
     }

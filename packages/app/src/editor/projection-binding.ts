@@ -71,6 +71,16 @@ function trailingBlanks(block: PmNode): number {
   return TRAILING_BLANKS.exec(text)?.[0].length ?? 0;
 }
 
+function caretTrailingBlanks(state: EditorState): string {
+  const { selection } = state;
+  if (!selection.empty) return '';
+  const { $head } = selection;
+  const blanks = trailingBlanks($head.parent);
+  if (blanks === 0 || $head.pos !== $head.end()) return '';
+  const size = $head.parent.content.size;
+  return $head.parent.textBetween(size - blanks, size);
+}
+
 /* STOP: trailing spaces are the one thing a user types that the bytes cannot spell, so they live
    only in this editor. They are kept while the caret sits after them, and dropped the moment it
    does not: the editor then shows exactly what Y.Text holds, as every other client already does,
@@ -463,6 +473,26 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         adopt(alignTo(next, view.state.doc, 'project'));
       };
 
+      /* STOP: a remote re-derive rebuilds from the bytes, which cannot spell the caret's trailing
+         spaces, so it would drop them and glue the user's next word on. They are put back as a
+         local edit the bytes already equal, through the ordinary update path: no write, no undo
+         step, and a rebased projection the one-run mapping already carries. Only the caret's own
+         run, and only when the carried caret still ends that textblock; never anything wider.
+         Never across the user's own undo or redo (the shared manager is the write's origin): an
+         undo must take the spaces back with everything else, not have them put back after it. */
+      const restoreTrailingBlanks = (kept: string): void => {
+        const { selection } = view.state;
+        if (kept === '' || !selection.empty) return;
+        const { $head } = selection;
+        if (!$head.parent.isTextblock || $head.parent.type.spec.code) return;
+        if ($head.pos !== $head.end() || trailingBlanks($head.parent) > 0) return;
+        const tr = view.state.tr.insertText(kept, $head.pos);
+        tr.setSelection(TextSelection.create(tr.doc, $head.pos + kept.length));
+        tr.setMeta('addToHistory', false);
+        tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
+        view.dispatch(tr);
+      };
+
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
         if (transaction.origin === origin) return;
         if (visibility.hidden) {
@@ -471,6 +501,8 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         }
         const delta = narrowDelta(event.changes.delta as never, projection.source);
         const before = liveSelection();
+        const kept =
+          transaction.origin === options.undoManager ? '' : caretTrailingBlanks(view.state);
         project(
           ytext.toString(),
           {
@@ -480,6 +512,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           },
           true,
         );
+        restoreTrailingBlanks(kept);
       };
 
       visibility.show = () => {
